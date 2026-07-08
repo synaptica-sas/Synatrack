@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://app-gestion-backend-k9ln.onrender.com/api/:path*"
+      "destination": "https://app-gestion-demo.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
