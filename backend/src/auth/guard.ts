@@ -5,13 +5,16 @@ import { env } from "../config/env.js";
 import { prisma } from "../infra/prisma.js";
 
 /**
- * Crea la relación usuario-rol si no existe. Si dos peticiones concurrentes
- * (p. ej. dos llamadas del frontend justo después del login) intentan crear
- * la misma asignación al mismo tiempo, una de las dos puede chocar contra la
- * restricción única (userId, roleId) incluso usando upsert. En ese caso el
- * estado deseado ya se cumplió (la fila existe), así que se ignora el error.
+ * Crea la relación usuario-rol si no existe. El frontend dispara varias
+ * peticiones autenticadas en paralelo (una por cada hook de dominio), y cada
+ * una pasa por `authenticate`. Si dos de ellas caen en este mismo instante,
+ * una puede chocar contra la restricción única (userId, roleId) -- ya sea
+ * porque la otra ya insertó la fila (P2002) o porque la borró justo antes de
+ * que esta intentara actualizarla (P2025). En ambos casos se reintenta una
+ * vez: si para entonces la fila ya existe, el estado deseado se cumplió y no
+ * hay nada más que hacer.
  */
-async function ensureUserRole(userId: string, roleId: string) {
+async function ensureUserRole(userId: string, roleId: string, attemptsLeft = 2): Promise<void> {
   try {
     await prisma.userRole.upsert({
       where: { userId_roleId: { userId, roleId } },
@@ -19,11 +22,16 @@ async function ensureUserRole(userId: string, roleId: string) {
       create: { userId, roleId },
     });
   } catch (err) {
-    const isDuplicateRoleAssignment =
-      err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
-    if (!isDuplicateRoleAssignment) {
+    const isConcurrencyRace =
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      (err.code === "P2002" || err.code === "P2025");
+    if (!isConcurrencyRace) {
       throw err;
     }
+    if (attemptsLeft <= 0) {
+      return;
+    }
+    await ensureUserRole(userId, roleId, attemptsLeft - 1);
   }
 }
 
@@ -167,20 +175,32 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       // asignado por más de un camino (directo + grupo, o varios grupos).
       const uniqueRoles = Array.from(new Set(tokenRoles));
 
-      // Limpiar roles actuales de la DB para este usuario
-      await prisma.userRole.deleteMany({
-        where: { userId: user.id },
-      });
+      // El frontend dispara varias peticiones autenticadas en paralelo, y
+      // todas pasan por aquí. Si los roles en la BD ya coinciden con los del
+      // token, no tocamos la tabla -- evita el borrar-y-recrear (y su
+      // condición de carrera) en el 100% de las peticiones normales; solo se
+      // ejecuta de verdad cuando los roles cambiaron desde el último login.
+      const currentRoleNames = user.roles.map((entry) => entry.role.name);
+      const rolesAlreadyInSync =
+        currentRoleNames.length === uniqueRoles.length &&
+        uniqueRoles.every((role) => currentRoleNames.includes(role));
 
-      // Insertar nuevos roles desde el token
-      for (const appRole of uniqueRoles) {
-        const roleObj = await prisma.role.upsert({
-          where: { name: appRole },
-          update: {},
-          create: { name: appRole },
+      if (!rolesAlreadyInSync) {
+        // Limpiar roles actuales de la DB para este usuario
+        await prisma.userRole.deleteMany({
+          where: { userId: user.id },
         });
 
-        await ensureUserRole(user.id, roleObj.id);
+        // Insertar nuevos roles desde el token
+        for (const appRole of uniqueRoles) {
+          const roleObj = await prisma.role.upsert({
+            where: { name: appRole },
+            update: {},
+            create: { name: appRole },
+          });
+
+          await ensureUserRole(user.id, roleObj.id);
+        }
       }
     }
   } else if (localRolesCount === 0) {
