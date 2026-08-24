@@ -140,21 +140,32 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     }
 
     if (tokenRoles.length > 0) {
+      // Deduplicar: Azure AD puede repetir el mismo rol si el usuario lo tiene
+      // asignado por más de un camino (directo + grupo, o varios grupos).
+      const uniqueRoles = Array.from(new Set(tokenRoles));
+
       // Limpiar roles actuales de la DB para este usuario
       await prisma.userRole.deleteMany({
         where: { userId: user.id },
       });
 
       // Insertar nuevos roles desde el token
-      for (const appRole of tokenRoles) {
+      for (const appRole of uniqueRoles) {
         const roleObj = await prisma.role.upsert({
           where: { name: appRole },
           update: {},
           create: { name: appRole },
         });
 
-        await prisma.userRole.create({
-          data: {
+        await prisma.userRole.upsert({
+          where: {
+            userId_roleId: {
+              userId: user.id,
+              roleId: roleObj.id,
+            },
+          },
+          update: {},
+          create: {
             userId: user.id,
             roleId: roleObj.id,
           },
