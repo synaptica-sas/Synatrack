@@ -1,8 +1,31 @@
-import { AppRole } from "@prisma/client";
+import { AppRole, Prisma } from "@prisma/client";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { env } from "../config/env.js";
 import { prisma } from "../infra/prisma.js";
+
+/**
+ * Crea la relación usuario-rol si no existe. Si dos peticiones concurrentes
+ * (p. ej. dos llamadas del frontend justo después del login) intentan crear
+ * la misma asignación al mismo tiempo, una de las dos puede chocar contra la
+ * restricción única (userId, roleId) incluso usando upsert. En ese caso el
+ * estado deseado ya se cumplió (la fila existe), así que se ignora el error.
+ */
+async function ensureUserRole(userId: string, roleId: string) {
+  try {
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId, roleId } },
+      update: {},
+      create: { userId, roleId },
+    });
+  } catch (err) {
+    const isDuplicateRoleAssignment =
+      err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+    if (!isDuplicateRoleAssignment) {
+      throw err;
+    }
+  }
+}
 
 type MicrosoftClaims = JWTPayload & {
   oid?: string;
@@ -157,19 +180,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
           create: { name: appRole },
         });
 
-        await prisma.userRole.upsert({
-          where: {
-            userId_roleId: {
-              userId: user.id,
-              roleId: roleObj.id,
-            },
-          },
-          update: {},
-          create: {
-            userId: user.id,
-            roleId: roleObj.id,
-          },
-        });
+        await ensureUserRole(user.id, roleObj.id);
       }
     }
   } else if (localRolesCount === 0) {
@@ -180,12 +191,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       create: { name: AppRole.CONSULTANT },
     });
 
-    await prisma.userRole.create({
-      data: {
-        userId: user.id,
-        roleId: consultantRole.id,
-      },
-    });
+    await ensureUserRole(user.id, consultantRole.id);
   }
 
   // Regla especial de seguridad: Garantizar que el correo configurado en ADMIN_EMAIL siempre tenga el rol ADMIN local
@@ -196,19 +202,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       create: { name: AppRole.ADMIN },
     });
 
-    await prisma.userRole.upsert({
-      where: {
-        userId_roleId: {
-          userId: user.id,
-          roleId: adminRoleObj.id,
-        },
-      },
-      update: {},
-      create: {
-        userId: user.id,
-        roleId: adminRoleObj.id,
-      },
-    });
+    await ensureUserRole(user.id, adminRoleObj.id);
   }
 
   // Obtener los roles actualizados desde la base de datos
