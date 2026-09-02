@@ -27,7 +27,7 @@ export function GastosDetailRow({
     <tr>
       <td
         colSpan={colSpan}
-        style={{ padding: 0, background: "var(--color-primary-05)", borderBottom: "1px solid var(--color-primary-10)" }}
+        style={{ padding: 0, background: "var(--card-bg)", borderBottom: "1px solid var(--color-primary-10)" }}
       >
         <div
           style={{
@@ -87,10 +87,10 @@ export function GastosDetailRow({
             </tbody>
             <tfoot>
               <tr>
-                <td style={{ ...tdStyle, fontWeight: 700, color: "#5f2f00" }} colSpan={2}>
+                <td style={{ ...tdStyle, fontWeight: 700, color: "var(--text-strong)" }} colSpan={2}>
                   Subtotal
                 </td>
-                <td style={{ ...tdStyle, fontWeight: 700, color: "#5f2f00" }}>
+                <td style={{ ...tdStyle, fontWeight: 700, color: "var(--text-strong)" }}>
                   {fmtMoney(subtotal, baseCurrency)}
                 </td>
                 <td colSpan={canWrite ? 2 : 1} />
@@ -110,12 +110,12 @@ const thStyle: React.CSSProperties = {
   color: "var(--color-accent)",
   fontWeight: 700,
   borderBottom: "1px solid var(--border-color)",
-  background: "#fff4ea",
+  background: "var(--state-neutral-bg)",
 };
 
 const tdStyle: React.CSSProperties = {
   padding: "0.35rem 0.5rem",
-  color: "#374151",
+  color: "var(--text)",
   verticalAlign: "middle",
 };
 

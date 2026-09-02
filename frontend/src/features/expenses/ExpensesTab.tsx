@@ -308,7 +308,7 @@ export function ExpensesTab({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
             <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
               Costos proyectados (forecasts)
-              <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "#6b7280", fontWeight: 400 }}>
+              <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "var(--text-soft)", fontWeight: 400 }}>
                 — costo futuro estimado basado en proyecciones activas
               </span>
             </h3>
@@ -326,7 +326,7 @@ export function ExpensesTab({
             <span style={{ fontSize: "1.4rem", fontWeight: 800, color: "#2563eb" }}>
               {fmtBase(totalProjectedCost)}
             </span>
-            <span style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+            <span style={{ fontSize: "0.8rem", color: "var(--text-soft)" }}>
               Total en {forecasts.length} proyecciones · {forecastByProject.length} proyectos
             </span>
           </div>
@@ -353,7 +353,7 @@ export function ExpensesTab({
               </table>
             </div>
           )}
-          <p style={{ margin: "0.5rem 0 0", fontSize: "0.72rem", color: "#9ca3af" }}>
+          <p style={{ margin: "0.5rem 0 0", fontSize: "0.72rem", color: "var(--text-soft)" }}>
             Nota: costos proyectados en moneda original del forecast. Para comparación exacta en {baseCurrency} configure las tasas de cambio en FX Config.
           </p>
         </article>

@@ -53,6 +53,27 @@ export function formatDateLong(iso: string | null | undefined): string {
   }
 }
 
+/**
+ * "27 ago 2026, 7:24 p.m." — para marcas de tiempo reales (createdAt/updatedAt),
+ * a diferencia de formatDate() esta SÍ usa la zona horaria local del navegador
+ * en vez de forzar UTC, porque aquí importa el instante real, no una fecha
+ * de calendario que deba verse igual sin importar el huso horario.
+ */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat("es-CO", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
 /** Días entre dos fechas ISO (inclusivo) */
 export function calcDias(inicio: string, fin: string): number {
   return (

@@ -154,9 +154,9 @@ export function SearchableSelect({
           width: "100%",
           padding: "0.6rem 0.75rem",
           borderRadius: "10px",
-          border: isOpen ? "1px solid #ea580c" : "1px solid #f1c79d",
-          background: disabled ? "#f5f5f5" : "#fffdfa",
-          color: disabled ? "#8c8c8c" : "#2a1e12",
+          border: isOpen ? "1px solid #ea580c" : "1px solid var(--border-color)",
+          background: disabled ? "var(--state-neutral-bg)" : "var(--card-bg)",
+          color: disabled ? "var(--text-soft)" : "var(--text)",
           cursor: disabled ? "not-allowed" : "pointer",
           fontSize: "0.88rem",
           boxShadow: isOpen ? "0 0 0 3px rgba(234, 88, 12, 0.15)" : "none",
@@ -222,8 +222,8 @@ export function SearchableSelect({
             left: 0,
             right: 0,
             marginTop: "6px",
-            background: "#ffffff",
-            border: "1px solid var(--color-primary-20)",
+            background: "var(--card-bg)",
+            border: "1px solid var(--border-color)",
             borderRadius: "10px",
             boxShadow: "0 10px 25px -5px rgba(154, 79, 15, 0.15), 0 8px 10px -6px rgba(154, 79, 15, 0.15)",
             zIndex: 1000,
@@ -235,7 +235,7 @@ export function SearchableSelect({
           }}
         >
           {!allowFreeText && (
-            <div style={{ padding: "0.5rem", borderBottom: "1px solid #fdecd8", background: "#fffbf7" }}>
+            <div style={{ padding: "0.5rem", borderBottom: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
               <input
                 ref={searchInputRef}
                 type="text"
@@ -248,8 +248,9 @@ export function SearchableSelect({
                   padding: "0.4rem 0.6rem",
                   fontSize: "0.82rem",
                   borderRadius: "6px",
-                  border: "1px solid var(--color-primary-20)",
-                  background: "#ffffff",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--card-bg)",
+                  color: "var(--text)",
                   outline: "none",
                   boxSizing: "border-box"
                 }}
@@ -281,11 +282,11 @@ export function SearchableSelect({
                   padding: "0.5rem 0.75rem",
                   fontSize: "0.85rem",
                   cursor: "pointer",
-                  color: value === "" ? "#9a4f0f" : "#2a1e12",
-                  background: value === "" 
-                    ? "#fff8f0" 
-                    : highlightedIndex === -1 
-                      ? "#fffbf5" 
+                  color: value === "" ? "var(--color-accent)" : "var(--text)",
+                  background: value === ""
+                    ? "var(--color-accent-10)"
+                    : highlightedIndex === -1
+                      ? "var(--color-accent-05)"
                       : "transparent",
                   fontWeight: value === "" ? 700 : 400,
                   transition: "background-color 0.1s"
@@ -296,7 +297,7 @@ export function SearchableSelect({
             )}
 
             {filteredOptions.length === 0 ? (
-              <div style={{ padding: "0.6rem 0.75rem", fontSize: "0.82rem", color: "#9ca3af", fontStyle: "italic", textAlign: "center" }}>
+              <div style={{ padding: "0.6rem 0.75rem", fontSize: "0.82rem", color: "var(--text-soft)", fontStyle: "italic", textAlign: "center" }}>
                 No se encontraron resultados
               </div>
             ) : (
@@ -332,11 +333,11 @@ export function SearchableSelect({
                       padding: "0.5rem 0.75rem",
                       fontSize: "0.85rem",
                       cursor: "pointer",
-                      color: isSelected ? "#9a4f0f" : "#2a1e12",
-                      background: isSelected 
-                        ? "#fff1e2" 
-                        : isHighlighted 
-                          ? "#fffaf0" 
+                      color: isSelected ? "var(--color-accent)" : "var(--text)",
+                      background: isSelected
+                        ? "var(--color-accent-10)"
+                        : isHighlighted
+                          ? "var(--color-accent-05)"
                           : "transparent",
                       fontWeight: isSelected ? 700 : 400,
                       transition: "background-color 0.1s",

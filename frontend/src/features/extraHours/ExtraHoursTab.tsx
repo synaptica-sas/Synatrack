@@ -716,7 +716,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
       case "PENDING_FINANCE": return { label: "Pte. Nómina (Nivel 2)", bg: "var(--color-blue-10)", color: "var(--color-sec-blue)" };
       case "APPROVED": return { label: "Aprobada total", bg: "var(--color-green-10)", color: "var(--color-sec-green)" };
       case "REJECTED": return { label: "Rechazada", bg: "var(--color-red-10)", color: "var(--color-sec-red)" };
-      default: return { label: status, bg: "var(--color-primary-05)", color: "var(--color-primary)" };
+      default: return { label: status, bg: "var(--color-primary-05)", color: "var(--text)" };
     }
   };
 
@@ -886,7 +886,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
           
           {/* Form and Preview */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "rgba(255, 255, 255, 0.55)" }}>
+            <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
               <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.05rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
                 Registrar Solicitud
               </h3>
@@ -975,7 +975,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
                 {/* Warnings warning box */}
                 {formWarnings.length > 0 && (
-                  <div style={{ padding: "0.5rem 0.75rem", background: "var(--color-accent-10)", border: "1px solid var(--color-accent-20)", color: "var(--color-primary)", borderRadius: "8px", fontSize: "0.8rem" }}>
+                  <div style={{ padding: "0.5rem 0.75rem", background: "var(--color-accent-10)", border: "1px solid var(--color-accent-20)", color: "var(--text)", borderRadius: "8px", fontSize: "0.8rem" }}>
                     ⚠️ <strong>Límite advertencia:</strong>
                     <ul style={{ margin: "0.25rem 0 0 0", paddingLeft: "1.2rem" }}>
                       {formWarnings.map((w, idx) => <li key={idx}>{w}</li>)}
@@ -1389,7 +1389,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           
           {/* Header */}
-          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "rgba(255, 255, 255, 0.55)" }}>
+          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
             <h3 style={{ margin: 0, fontSize: "1.15rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
               ⚙ Configuración Multipaís de Horas Extra
             </h3>
@@ -1693,7 +1693,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           
           {/* Header */}
-          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "rgba(255, 255, 255, 0.55)" }}>
+          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
             <h3 style={{ margin: 0, fontSize: "1.15rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
               📅 Gestión de Días No Laborables y Festivos
             </h3>
@@ -1939,7 +1939,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           
           {/* Header */}
-          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "rgba(255, 255, 255, 0.55)" }}>
+          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
             <h3 style={{ margin: 0, fontSize: "1.15rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
               🤝 Delegación de Aprobaciones
             </h3>

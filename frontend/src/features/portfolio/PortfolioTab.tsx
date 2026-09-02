@@ -28,12 +28,12 @@ function RagBadge({ status }: { status: HealthStatus }) {
 function KpiCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
   return (
     <div style={{
-      background: "var(--bg-card, #fff)", border: "1px solid #e5e7eb", borderRadius: "0.5rem",
+      background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e7eb)", borderRadius: "0.5rem",
       padding: "1rem 1.25rem", minWidth: "10rem", flex: "1 1 10rem",
     }}>
-      <div style={{ fontSize: "0.68rem", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.3rem" }}>{label}</div>
+      <div style={{ fontSize: "0.68rem", color: "var(--text-soft, #6b7280)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.3rem" }}>{label}</div>
       <div style={{ fontSize: "1.5rem", fontWeight: 800, color: accent ?? "inherit" }}>{value}</div>
-      {sub && <div style={{ fontSize: "0.7rem", color: "#9ca3af", marginTop: "0.15rem" }}>{sub}</div>}
+      {sub && <div style={{ fontSize: "0.7rem", color: "var(--text-soft, #9ca3af)", marginTop: "0.15rem" }}>{sub}</div>}
     </div>
   );
 }
@@ -66,7 +66,7 @@ function BudgetBar({ pct }: { pct: number }) {
   const color = pct > 100 ? "#ef4444" : pct > 90 ? "#f59e0b" : "#22c55e";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: "8rem" }}>
-      <div style={{ flex: 1, height: "0.45rem", background: "#e5e7eb", borderRadius: "9999px", overflow: "hidden" }}>
+      <div style={{ flex: 1, height: "0.45rem", background: "var(--border-color, #e5e7eb)", borderRadius: "9999px", overflow: "hidden" }}>
         <div style={{ width: `${capped}%`, height: "100%", background: color }} />
       </div>
       <span style={{ fontSize: "0.65rem", color: "#6b7280", whiteSpace: "nowrap" }}>{pct.toFixed(0)}%</span>
@@ -228,10 +228,10 @@ export function PortfolioTab({
       </div>
 
       {/* Health breakdown bar */}
-      <div style={{ background: "var(--bg-card, #fff)", border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "1rem" }}>
+      <div style={{ background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e7eb)", borderRadius: "0.5rem", padding: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem", fontSize: "0.75rem" }}>
           <span style={{ fontWeight: 600 }}>Distribución de salud</span>
-          <span style={{ color: "#6b7280" }}>
+          <span style={{ color: "var(--text-soft, #6b7280)" }}>
             🟢 {summary.byHealth.GREEN} &nbsp; 🟡 {summary.byHealth.YELLOW} &nbsp; 🔴 {summary.byHealth.RED}
           </span>
         </div>
@@ -240,8 +240,8 @@ export function PortfolioTab({
 
       {/* Critical projects alert box */}
       {critical.length > 0 && (
-        <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
-          <div style={{ fontWeight: 700, color: "#dc2626", marginBottom: "0.4rem", fontSize: "0.85rem" }}>
+        <div style={{ background: "var(--state-danger-bg)", border: "1px solid var(--state-danger-border)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
+          <div style={{ fontWeight: 700, color: "var(--state-danger-text)", marginBottom: "0.4rem", fontSize: "0.85rem" }}>
             Proyectos en estado crítico (Salud Crítico)
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
@@ -249,7 +249,7 @@ export function PortfolioTab({
               <button
                 key={p.projectId}
                 type="button"
-                style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "0.35rem", padding: "0.2rem 0.6rem", cursor: "pointer", fontSize: "0.75rem", color: "#dc2626", fontWeight: 600 }}
+                style={{ background: "var(--state-danger-bg)", border: "1px solid var(--state-danger-border)", borderRadius: "0.35rem", padding: "0.2rem 0.6rem", cursor: "pointer", fontSize: "0.75rem", color: "var(--state-danger-text)", fontWeight: 600 }}
                 onClick={() => onOpenProject?.(p.projectId)}
               >
                 {p.projectName}
@@ -260,7 +260,7 @@ export function PortfolioTab({
       )}
 
       {/* Filters */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", background: "var(--bg-card, #fff)", border: "1px solid #e5e7eb", borderRadius: "0.5rem", padding: "1rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e7eb)", borderRadius: "0.5rem", padding: "1rem" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Empresa</label>
@@ -288,7 +288,7 @@ export function PortfolioTab({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Salud</label>
-            <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value as HealthStatus | "")} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)" }}>
+            <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value as HealthStatus | "")} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
               <option value="">Todas</option>
               <option value="GREEN">Saludable</option>
               <option value="YELLOW">Advertencia</option>
@@ -297,7 +297,7 @@ export function PortfolioTab({
           </div>
           <div>
             <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Estado</label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)" }}>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
               <option value="">Todos</option>
               <option value="ACTIVE">Activo</option>
               <option value="PAUSED">Pausado</option>
@@ -330,11 +330,11 @@ export function PortfolioTab({
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={13} style={{ textAlign: "center", color: "#9ca3af" }}>Sin proyectos</td>
+                <td colSpan={13} style={{ textAlign: "center", color: "var(--text-soft)" }}>Sin proyectos</td>
               </tr>
             )}
             {sorted.map((p) => (
-              <tr key={p.projectId} style={{ background: p.healthStatus === "RED" ? "#fff5f5" : p.healthStatus === "YELLOW" ? "#fffbeb" : "inherit" }}>
+              <tr key={p.projectId} style={{ background: p.healthStatus === "RED" ? "var(--state-danger-bg)" : p.healthStatus === "YELLOW" ? "var(--state-warning-bg)" : "inherit" }}>
                 <td><RagBadge status={p.healthStatus} /></td>
                 <td style={{ fontWeight: 600 }}>{p.projectName}</td>
                 <td>{p.company}</td>

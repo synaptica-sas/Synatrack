@@ -623,6 +623,13 @@ export async function deleteFxRate(id: string): Promise<void> {
   await request<void>(`/api/fx/${id}`, "DELETE");
 }
 
+export type FxSyncResult = { updated: string[]; failed: string[] };
+
+export async function syncFxRates(): Promise<FxSyncResult> {
+  const response = await request<ApiEnvelope<FxSyncResult>>("/api/fx/sync", "POST");
+  return response.data;
+}
+
 export async function listRevenueEntries(projectId?: string): Promise<RevenueEntry[]> {
   const query = projectId ? `?projectId=${projectId}` : "";
   const response = await request<ApiEnvelope<RevenueEntry[]>>(`/api/revenue${query}`);

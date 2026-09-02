@@ -718,22 +718,22 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
-      case "urgent": return { label: "Urgente", bg: "#fecaca", color: "#b91c1c" };
-      case "high": return { label: "Alta", bg: "#fef3c7", color: "#d97706" };
-      case "medium": return { label: "Media", bg: "#dbeafe", color: "#2563eb" };
-      case "low": return { label: "Baja", bg: "#f3f4f6", color: "#374151" };
-      default: return { label: priority, bg: "#e5e7eb", color: "#1f2937" };
+      case "urgent": return { label: "Urgente", bg: "var(--state-danger-bg)", color: "var(--state-danger-text)" };
+      case "high": return { label: "Alta", bg: "var(--state-warning-bg)", color: "var(--state-warning-text)" };
+      case "medium": return { label: "Media", bg: "var(--state-info-bg)", color: "var(--state-info-text)" };
+      case "low": return { label: "Baja", bg: "var(--state-neutral-bg)", color: "var(--state-neutral-text)" };
+      default: return { label: priority, bg: "var(--state-neutral-bg)", color: "var(--state-neutral-text)" };
     }
   };
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case "completed": return { label: "Completado", bg: "#dcfce7", color: "#15803d" };
-      case "in_progress": return { label: "En Progreso", bg: "#dbeafe", color: "#1d4ed8" };
-      case "pending": return { label: "Pendiente", bg: "#fef3c7", color: "var(--color-accent)" };
-      case "blocked": return { label: "Bloqueado", bg: "#fee2e2", color: "#b91c1c" };
-      case "cancelled": return { label: "Cancelado", bg: "#f3f4f6", color: "#4b5563" };
-      default: return { label: status, bg: "#f3f4f6", color: "#374151" };
+      case "completed": return { label: "Completado", bg: "var(--state-success-bg)", color: "var(--state-success-text)" };
+      case "in_progress": return { label: "En Progreso", bg: "var(--state-info-bg)", color: "var(--state-info-text)" };
+      case "pending": return { label: "Pendiente", bg: "var(--state-warning-bg)", color: "var(--state-warning-text)" };
+      case "blocked": return { label: "Bloqueado", bg: "var(--state-danger-bg)", color: "var(--state-danger-text)" };
+      case "cancelled": return { label: "Cancelado", bg: "var(--state-neutral-bg)", color: "var(--state-neutral-text)" };
+      default: return { label: status, bg: "var(--state-neutral-bg)", color: "var(--state-neutral-text)" };
     }
   };
 
@@ -843,7 +843,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
         actions={
           <>
             {/* View Toggle */}
-            <div style={{ display: "flex", background: "#f3f4f6", padding: "0.2rem", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
+            <div style={{ display: "flex", background: "var(--card-bg)", padding: "0.2rem", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
               <button
                 type="button"
                 className={view === "week" ? "" : "ghost"}
@@ -920,7 +920,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
               type="text"
               readOnly
               value={myConsultant ? myConsultant.fullName : authUser?.displayName || ""}
-              style={{ padding: "0.6rem 0.75rem", borderRadius: "10px", background: "#f3f4f6", border: "1px solid #d1d5db", fontSize: "0.88rem" }}
+              style={{ padding: "0.6rem 0.75rem", borderRadius: "10px", background: "var(--state-neutral-bg)", border: "1px solid var(--border-color)", color: "var(--text)", fontSize: "0.88rem" }}
             />
           </div>
         )}
@@ -976,9 +976,9 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
             type="button"
             onClick={() => onDrillTo && onDrillTo("extraHours")}
             style={{
-              background: "#fef3c7",
-              color: "#d97706",
-              border: "1px solid #fcd34d",
+              background: "var(--state-warning-bg)",
+              color: "var(--state-warning-text)",
+              border: "1px solid var(--state-warning-border)",
               fontSize: "0.85rem",
               padding: "0.5rem 1rem",
               borderRadius: "8px",
@@ -996,9 +996,9 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
             type="button"
             onClick={() => setTeamsModalOpen(true)}
             style={{
-              background: "#f0f2ff",
-              color: "#3f47c9",
-              border: "1px solid #cbd2f6",
+              background: "var(--state-info-bg)",
+              color: "var(--state-info-text)",
+              border: "1px solid var(--state-info-border)",
               fontSize: "0.85rem",
               padding: "0.5rem 1rem",
               borderRadius: "8px",
@@ -1056,7 +1056,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           
           {/* Week Selector Controls */}
-          <div className="nav-bar-week" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fdf8f5", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
+          <div className="nav-bar-week" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--card-bg)", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" className="ghost" onClick={() => navigateWeek(-1)} style={{ padding: "0.3rem 0.6rem" }}>◀ Semana anterior</button>
               <button type="button" className="ghost" onClick={() => setSelectedDate(new Date())} style={{ padding: "0.3rem 0.6rem", fontWeight: 700 }}>📅 Hoy</button>
@@ -1139,7 +1139,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                     {/* Day Activities List */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", flexGrow: 1, overflowY: "auto", maxHeight: "250px" }}>
                       {dayActivities.length === 0 ? (
-                        <span style={{ color: "#9ca3af", fontStyle: "italic", fontSize: "0.72rem", textAlign: "center", marginTop: "2rem", display: "block" }}>
+                        <span style={{ color: "var(--text-soft)", fontStyle: "italic", fontSize: "0.72rem", textAlign: "center", marginTop: "2rem", display: "block" }}>
                           Sin actividades
                         </span>
                       ) : (
@@ -1199,7 +1199,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           
           {/* Month Navigator */}
-          <div className="nav-bar-week" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fdf8f5", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
+          <div className="nav-bar-week" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--card-bg)", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <button type="button" className="ghost" onClick={() => navigateMonth(-1)} style={{ padding: "0.3rem 0.6rem" }}>◀ Mes anterior</button>
               <button type="button" className="ghost" onClick={() => setSelectedDate(new Date())} style={{ padding: "0.3rem 0.6rem", fontWeight: 700 }}>📅 Hoy</button>
@@ -1269,8 +1269,8 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                           <span style={{
                             fontSize: "0.8rem",
                             fontWeight: 700,
-                            color: isHighWork ? "#d97706" : "var(--text-strong)",
-                            background: isHighWork ? "#fef3c7" : "transparent",
+                            color: isHighWork ? "var(--state-warning-text)" : "var(--text-strong)",
+                            background: isHighWork ? "var(--state-warning-bg)" : "transparent",
                             padding: isHighWork ? "0.1rem 0.25rem" : 0,
                             borderRadius: "4px"
                           }}>
@@ -1280,12 +1280,12 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                             <span style={{ fontSize: "0.7rem", color: "#ef4444" }} title={dayCheck.label}>🔒</span>
                           )}
                           {dayCheck.isHoliday && !isDayBlocked && (
-                            <span style={{ fontSize: "0.7rem", color: "#b91c1c" }} title={dayCheck.label}>🎉</span>
+                            <span style={{ fontSize: "0.7rem", color: "var(--state-danger-text)" }} title={dayCheck.label}>🎉</span>
                           )}
                         </div>
                         
                         {dayActivities.length > 0 && (
-                          <span style={{ fontSize: "0.65rem", padding: "0.05rem 0.2rem", background: "#f3f4f6", borderRadius: "3px", color: "var(--text-soft)" }}>
+                          <span style={{ fontSize: "0.65rem", padding: "0.05rem 0.2rem", background: "var(--state-neutral-bg)", borderRadius: "3px", color: "var(--text-soft)" }}>
                             {dayActivities.length} {dayActivities.length === 1 ? "act" : "acts"}
                           </span>
                         )}
@@ -1294,7 +1294,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                       {totalAct > 0 && (
                         <div style={{ display: "flex", flexDirection: "column", fontSize: "0.68rem", textAlign: "right" }}>
                           <span style={{ color: "var(--text-soft)" }}>Est: {totalEst}h</span>
-                          <strong style={{ color: isHighWork ? "#b45309" : "#16a34a" }}>
+                          <strong style={{ color: isHighWork ? "var(--state-warning-text)" : "var(--state-success-text)" }}>
                             Real: {totalAct}h {isHighWork && "⚠️"}
                           </strong>
                         </div>
@@ -1347,7 +1347,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                         <td>
                           <strong>{act.title}</strong>
                           {act.description && (
-                            <span style={{ display: "block", fontSize: "0.7rem", color: "#6b7280", maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            <span style={{ display: "block", fontSize: "0.7rem", color: "var(--text-soft)", maxWidth: "250px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                               {act.description}
                             </span>
                           )}
@@ -1359,7 +1359,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                           <div style={{ fontSize: "0.8rem" }}>
                             Est: <strong>{Number(act.estimatedHours).toFixed(1)}h</strong>
                           </div>
-                          <div style={{ fontSize: "0.8rem", color: "#16a34a" }}>
+                          <div style={{ fontSize: "0.8rem", color: "var(--state-success-text)" }}>
                             Real: <strong>{Number(act.actualHours).toFixed(1)}h</strong>
                           </div>
                         </td>
@@ -1409,7 +1409,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           
           {/* Header Controls for Report */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fdf8f5", padding: "1rem", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "var(--card-bg)", padding: "1rem", borderRadius: "14px", border: "1px solid var(--border-color)" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
               <strong style={{ fontSize: "1rem", color: "var(--text-strong)" }}>
                 Reporte de Actividades del Equipo
@@ -1446,7 +1446,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                 <strong style={{ fontSize: "1.8rem", color: "var(--color-accent)", fontFamily: "var(--display)" }}>{reportStats.totalActualHours.toFixed(1)}h</strong>
                 <span style={{ fontSize: "0.8rem", color: "var(--text-soft)" }}>/ {reportStats.totalEstimatedHours.toFixed(1)}h est.</span>
               </div>
-              <div style={{ marginTop: "0.5rem", fontSize: "0.72rem", display: "flex", gap: "0.3rem", color: reportStats.totalActualHours >= reportStats.totalEstimatedHours ? "#16a34a" : "#dc2626" }}>
+              <div style={{ marginTop: "0.5rem", fontSize: "0.72rem", display: "flex", gap: "0.3rem", color: reportStats.totalActualHours >= reportStats.totalEstimatedHours ? "var(--state-success-text)" : "var(--state-danger-text)" }}>
                 <span>{reportStats.totalActualHours >= reportStats.totalEstimatedHours ? "▲" : "▼"}</span>
                 <span>{reportStats.totalEstimatedHours > 0 ? Math.round((reportStats.totalActualHours / reportStats.totalEstimatedHours) * 100) : 0}% de ejecución</span>
               </div>
@@ -1489,7 +1489,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                 </strong>
                 <span style={{ fontSize: "0.8rem", color: "var(--text-soft)" }}>({(reportStats.hoursByType["🤝 Reunión"] || 0).toFixed(1)}h de reunión)</span>
               </div>
-              <div style={{ marginTop: "0.5rem", fontSize: "0.72rem", color: ((reportStats.hoursByType["🤝 Reunión"] || 0) / reportStats.totalActualHours) > 0.3 ? "#dc2626" : "var(--text-soft)", fontWeight: ((reportStats.hoursByType["🤝 Reunión"] || 0) / reportStats.totalActualHours) > 0.3 ? 700 : 400 }}>
+              <div style={{ marginTop: "0.5rem", fontSize: "0.72rem", color: ((reportStats.hoursByType["🤝 Reunión"] || 0) / reportStats.totalActualHours) > 0.3 ? "var(--state-danger-text)" : "var(--text-soft)", fontWeight: ((reportStats.hoursByType["🤝 Reunión"] || 0) / reportStats.totalActualHours) > 0.3 ? 700 : 400 }}>
                 {((reportStats.hoursByType["🤝 Reunión"] || 0) / reportStats.totalActualHours) > 0.3 ? "⚠️ Sobrecarga administrativa alta" : "✓ Distribución de reuniones normal"}
               </div>
             </div>
@@ -1499,7 +1499,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }} className="grid-one-col-mobile">
             {/* Chart 1: Projects distribution */}
             <div className="card" style={{ padding: "1.5rem" }}>
-              <h4 style={{ margin: "0 0 1.25rem 0", color: "#5f2f00", fontSize: "0.95rem" }}>📂 Distribución de Horas por Proyecto</h4>
+              <h4 style={{ margin: "0 0 1.25rem 0", color: "var(--text-strong)", fontSize: "0.95rem" }}>📂 Distribución de Horas por Proyecto</h4>
               {Object.keys(reportStats.hoursByProject).length === 0 ? (
                 <p style={{ fontStyle: "italic", color: "var(--text-soft)", fontSize: "0.85rem", textAlign: "center", padding: "2rem" }}>Sin datos de proyectos para este periodo</p>
               ) : (
@@ -1512,7 +1512,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                           <strong>{proj}</strong>
                           <span>{hrs.toFixed(1)}h ({pct}% )</span>
                         </div>
-                        <div style={{ width: "100%", height: "8px", background: "#f3f4f6", borderRadius: "4px", overflow: "hidden" }}>
+                        <div style={{ width: "100%", height: "8px", background: "var(--state-neutral-bg)", borderRadius: "4px", overflow: "hidden" }}>
                           <div style={{ width: `${pct}%`, height: "100%", background: "var(--gradient-accent)", borderRadius: "4px" }} />
                         </div>
                       </div>
@@ -1524,7 +1524,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
 
             {/* Chart 2: Activity Type distribution */}
             <div className="card" style={{ padding: "1.5rem" }}>
-              <h4 style={{ margin: "0 0 1.25rem 0", color: "#121228", fontSize: "0.95rem" }}>📊 Horas por Tipo de Actividad</h4>
+              <h4 style={{ margin: "0 0 1.25rem 0", color: "var(--text-strong)", fontSize: "0.95rem" }}>📊 Horas por Tipo de Actividad</h4>
               {Object.keys(reportStats.hoursByType).length === 0 ? (
                 <p style={{ fontStyle: "italic", color: "var(--text-soft)", fontSize: "0.85rem", textAlign: "center", padding: "2rem" }}>Sin datos de tipo de actividad para este periodo</p>
               ) : (
@@ -1546,7 +1546,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                           <strong>{type}</strong>
                           <span>{hrs.toFixed(1)}h ({pct}% )</span>
                         </div>
-                        <div style={{ width: "100%", height: "8px", background: "#f3f4f6", borderRadius: "4px", overflow: "hidden" }}>
+                        <div style={{ width: "100%", height: "8px", background: "var(--state-neutral-bg)", borderRadius: "4px", overflow: "hidden" }}>
                           <div style={{ width: `${pct}%`, height: "100%", background: gradient, borderRadius: "4px" }} />
                         </div>
                       </div>
@@ -1559,7 +1559,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
 
           {/* Consultant workload table */}
           <div className="card" style={{ padding: "1.5rem" }}>
-            <h4 style={{ margin: "0 0 1rem 0", color: "#5f2f00", fontSize: "0.95rem" }}>👥 Carga de Trabajo de Consultores</h4>
+            <h4 style={{ margin: "0 0 1rem 0", color: "var(--text-strong)", fontSize: "0.95rem" }}>👥 Carga de Trabajo de Consultores</h4>
             <div className="table-wrap">
               <table>
                 <thead>
@@ -1613,11 +1613,11 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                         </td>
                         <td style={{ textAlign: "center" }}>
                           {weekendWork ? (
-                            <span className="pill error" style={{ fontSize: "0.68rem", padding: "0.15rem 0.45rem", fontWeight: 700, background: "#fee2e2", color: "#b91c1c" }} title="Ha registrado actividades en fin de semana o festivos">
+                            <span className="pill error" style={{ fontSize: "0.68rem", padding: "0.15rem 0.45rem", fontWeight: 700, background: "var(--state-danger-bg)", color: "var(--state-danger-text)" }} title="Ha registrado actividades en fin de semana o festivos">
                               ⚠️ HE Pendiente
                             </span>
                           ) : (
-                            <span style={{ color: "#9ca3af", fontSize: "0.75rem" }}>—</span>
+                            <span style={{ color: "var(--text-soft)", fontSize: "0.75rem" }}>—</span>
                           )}
                         </td>
                         <td style={{ textAlign: "center" }}>
@@ -1964,7 +1964,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
                     <span className="loading" style={{ margin: 0 }}>Cargando eventos de Microsoft...</span>
                   </div>
                 ) : syncEvents.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "3rem", color: "#9ca3af", fontStyle: "italic", fontSize: "0.85rem" }}>
+                  <div style={{ textAlign: "center", padding: "3rem", color: "var(--text-soft)", fontStyle: "italic", fontSize: "0.85rem" }}>
                     No se encontraron eventos en tu calendario para esta semana.
                   </div>
                 ) : (
@@ -2065,11 +2065,11 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
           position: "fixed",
           top: "20px",
           right: "20px",
-          backgroundColor: "#ecfdf5",
-          border: "1px solid #10b981",
+          backgroundColor: "var(--state-success-bg)",
+          border: "1px solid var(--state-success-border)",
           borderRadius: "8px",
           padding: "1rem 1.5rem",
-          color: "#065f46",
+          color: "var(--state-success-text)",
           boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
           zIndex: 9999,
           display: "flex",
@@ -2088,7 +2088,7 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
             style={{
               background: "none",
               border: "none",
-              color: "#059669",
+              color: "var(--state-success-text)",
               cursor: "pointer",
               fontSize: "1.1rem",
               padding: "0 0 0 0.5rem"

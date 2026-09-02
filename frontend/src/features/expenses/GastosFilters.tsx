@@ -157,8 +157,8 @@ export function GastosFilters({
                     borderRadius: "9999px",
                     border: "1px solid",
                     borderColor: active ? "#ea580c" : "var(--border-color)",
-                    background: active ? "#ea580c" : "#fff8f0",
-                    color: active ? "#fff" : "#9a3412",
+                    background: active ? "#ea580c" : "var(--card-bg)",
+                    color: active ? "#fff" : "var(--tint-orange-text)",
                     fontWeight: 600,
                     cursor: "pointer",
                   }}

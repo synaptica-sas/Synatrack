@@ -184,7 +184,7 @@ export function ProfileTab({ authUser, onRefreshAuth, onError }: ProfileTabProps
             fontSize: "1.6rem", 
             fontWeight: 700, 
             fontStyle: "italic",
-            color: "var(--color-primary)", 
+            color: "var(--text)", 
             margin: "0 auto",
             lineHeight: 1.4,
             letterSpacing: "-0.01em",
@@ -293,7 +293,7 @@ export function ProfileTab({ authUser, onRefreshAuth, onError }: ProfileTabProps
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Ej. Andres Toro"
                 className="styled-input"
-                style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "rgba(255,255,255,0.8)", fontSize: "0.95rem" }}
+                style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", fontSize: "0.95rem" }}
               />
             </div>
 
@@ -306,7 +306,7 @@ export function ProfileTab({ authUser, onRefreshAuth, onError }: ProfileTabProps
                 onChange={(e) => setPhrase(e.target.value)}
                 placeholder="Tu visión en una frase corta..."
                 className="styled-input"
-                style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "rgba(255,255,255,0.8)", fontSize: "0.95rem" }}
+                style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", fontSize: "0.95rem" }}
               />
             </div>
           </div>
@@ -320,7 +320,7 @@ export function ProfileTab({ authUser, onRefreshAuth, onError }: ProfileTabProps
               onChange={(e) => setBio(e.target.value)}
               placeholder="Cuéntanos un poco sobre ti, tu trayectoria y tus áreas de interés..."
               className="styled-input"
-              style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "rgba(255,255,255,0.8)", fontSize: "0.95rem", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
+              style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", fontSize: "0.95rem", resize: "vertical", fontFamily: "inherit", lineHeight: 1.5 }}
             />
           </div>
 
@@ -343,7 +343,7 @@ export function ProfileTab({ authUser, onRefreshAuth, onError }: ProfileTabProps
                     alignItems: "center", 
                     gap: "0.35rem", 
                     background: "var(--color-accent-10)", 
-                    color: "var(--color-primary)", 
+                    color: "var(--text)", 
                     padding: "0.35rem 0.75rem", 
                     borderRadius: "20px", 
                     fontSize: "0.82rem",
@@ -389,7 +389,7 @@ export function ProfileTab({ authUser, onRefreshAuth, onError }: ProfileTabProps
                 onKeyDown={handleKeyDown}
                 placeholder="Escribe una habilidad (ej. React) y presiona Enter..."
                 className="styled-input"
-                style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "rgba(255,255,255,0.8)", fontSize: "0.95rem" }}
+                style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", fontSize: "0.95rem" }}
               />
               
               {showSuggestions && skillInput.trim() !== "" && filteredSuggestions.length > 0 && (

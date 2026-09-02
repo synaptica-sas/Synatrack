@@ -27,7 +27,7 @@ function KPI({
     <div style={{
       flex: "1 1 0",
       minWidth: "9rem",
-      background: "#fff8f0",
+      background: "var(--card-bg)",
       border: "1px solid var(--border-color)",
       borderRadius: "10px",
       padding: "0.65rem 0.9rem",
@@ -35,7 +35,7 @@ function KPI({
       <div style={{ fontSize: "0.68rem", color: "var(--color-accent)", fontWeight: 600, marginBottom: "0.15rem" }}>
         {label}
       </div>
-      <div style={{ fontSize: "1.05rem", fontWeight: 800, color: accent ?? "#5f2f00" }}>
+      <div style={{ fontSize: "1.05rem", fontWeight: 800, color: accent ?? "var(--text-strong)" }}>
         {value}
       </div>
       {sub && (
@@ -46,7 +46,7 @@ function KPI({
           fontSize: "0.68rem",
           fontWeight: 700,
           marginTop: "0.1rem",
-          color: delta > 0 ? "#dc2626" : "#16a34a",
+          color: delta > 0 ? "var(--state-danger-text)" : "var(--state-success-text)",
         }}>
           {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}% vs período anterior
         </div>
@@ -98,9 +98,9 @@ export function GastosKPIStrip({
 
   const execPct = pct(currentTotal, totalBudget);
   const execColor =
-    execPct >= 100 ? "#dc2626" :
-    execPct >= 85  ? "#d97706" :
-    "#16a34a";
+    execPct >= 100 ? "var(--state-danger-text)" :
+    execPct >= 85  ? "var(--state-warning-text)" :
+    "var(--state-success-text)";
 
   return (
     <div style={{

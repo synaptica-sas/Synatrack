@@ -13,6 +13,7 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.string().email().default("admin@synaptica.local"),
   SUPPORT_EMAIL: z.string().email().optional(),
   PAYROLL_EMAIL: z.string().email().optional(),
+  FX_SYNC_TOKEN: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

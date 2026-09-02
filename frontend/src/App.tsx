@@ -117,18 +117,42 @@ function numberish(v: string | null | undefined) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Busca la tasa entre dos monedas en los FxConfig ya cargados: directa, inversa,
+ *  o triangulada vía cualquier otra moneda pivote (misma lógica que currency.ts
+ *  en el backend, reimplementada aquí porque el drawer no llama a la API). */
+function findFxRate(fxConfigs: FxConfig[], from: string, to: string): number | null {
+  if (from === to) return 1;
+
+  const direct = fxConfigs.find((c) => c.baseCode === from && c.quoteCode === to);
+  if (direct) return Number(direct.rate);
+
+  const inverse = fxConfigs.find((c) => c.baseCode === to && c.quoteCode === from);
+  if (inverse) return 1 / Number(inverse.rate);
+
+  for (const c of fxConfigs) {
+    if (c.baseCode !== from) continue;
+    const pivotToTarget = fxConfigs.find((p) => p.baseCode === c.quoteCode && p.quoteCode === to);
+    if (pivotToTarget) return Number(c.rate) * Number(pivotToTarget.rate);
+    const pivotInverse = fxConfigs.find((p) => p.baseCode === to && p.quoteCode === c.quoteCode);
+    if (pivotInverse) return Number(c.rate) / Number(pivotInverse.rate);
+  }
+
+  return null;
+}
+
 function FxDrawer({ open, onClose, fxConfigs }: { open: boolean; onClose: () => void; fxConfigs: FxConfig[] }) {
-  const [conv, setConv] = useState(() => {
-    const first = fxConfigs[0];
-    return { from: first?.baseCode ?? "USD", to: first?.quoteCode ?? "COP", amount: "1", rate: first?.rate ?? "4000" };
-  });
+  const [conv, setConv] = useState({ from: "USD", to: "COP", amount: "1" });
+  const [useCustomRate, setUseCustomRate] = useState(false);
+  const [customRate, setCustomRate] = useState("");
+
+  const autoRate = useMemo(() => findFxRate(fxConfigs, conv.from, conv.to), [fxConfigs, conv.from, conv.to]);
+  const effectiveRate = useCustomRate ? numberish(customRate) : autoRate;
 
   const result = useMemo(() => {
     const a = numberish(conv.amount);
-    const r = numberish(conv.rate);
-    if (r <= 0) return null;
-    return a * r;
-  }, [conv.amount, conv.rate]);
+    if (effectiveRate === null || effectiveRate <= 0) return null;
+    return a * effectiveRate;
+  }, [conv.amount, effectiveRate]);
 
   return (
     <>
@@ -138,7 +162,7 @@ function FxDrawer({ open, onClose, fxConfigs }: { open: boolean; onClose: () => 
       )}
       <div className={`fx-drawer${open ? " open" : ""}`} role="dialog" aria-label="Conversor FX" aria-modal="true">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ margin: 0, fontSize: "1rem", color: "#5f2f00" }}>⊗ Conversor de divisas</h2>
+          <h2 style={{ margin: 0, fontSize: "1rem", color: "var(--text-strong)" }}>⊗ Conversor de divisas</h2>
           <button type="button" className="ghost" onClick={onClose} aria-label="Cerrar conversor" style={{ padding: "0.25rem 0.5rem" }}>✕</button>
         </div>
 
@@ -149,24 +173,49 @@ function FxDrawer({ open, onClose, fxConfigs }: { open: boolean; onClose: () => 
           <select value={conv.to} onChange={(e) => setConv((p) => ({ ...p, to: e.target.value }))}>
             {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>Hacia {c}</option>)}
           </select>
-          <div>
-            <label style={{ fontSize: "0.7rem", color: "#6b7280", display: "block", marginBottom: "0.2rem" }}>Cantidad</label>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ fontSize: "0.7rem", color: "var(--text-soft)", display: "block", marginBottom: "0.2rem" }}>Cantidad</label>
             <input type="number" min="0" step="0.01" value={conv.amount}
               onChange={(e) => setConv((p) => ({ ...p, amount: e.target.value }))} placeholder="Cantidad" />
           </div>
-          <div>
-            <label style={{ fontSize: "0.7rem", color: "#6b7280", display: "block", marginBottom: "0.2rem" }}>
-              Tasa {conv.from}→{conv.to}
-            </label>
-            <input type="number" min="0" step="0.0001" value={conv.rate}
-              onChange={(e) => setConv((p) => ({ ...p, rate: e.target.value }))} />
-          </div>
         </div>
 
-        <div style={{ background: "#fff8f0", border: "1px solid var(--border-color)", borderRadius: "10px", padding: "0.75rem" }}>
+        <label className="check" style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "var(--text-soft)", userSelect: "none" }}>
+          <input
+            type="checkbox"
+            checked={useCustomRate}
+            onChange={(e) => {
+              setUseCustomRate(e.target.checked);
+              if (e.target.checked && !customRate) {
+                setCustomRate(autoRate !== null ? String(autoRate) : "");
+              }
+            }}
+          />
+          Usar una tasa personalizada
+        </label>
+
+        {useCustomRate ? (
+          <div>
+            <label style={{ fontSize: "0.7rem", color: "var(--text-soft)", display: "block", marginBottom: "0.2rem" }}>
+              Tasa {conv.from}→{conv.to}
+            </label>
+            <input type="number" min="0" step="0.0001" value={customRate}
+              onChange={(e) => setCustomRate(e.target.value)} />
+          </div>
+        ) : autoRate === null ? (
+          <p style={{ fontSize: "0.78rem", color: "var(--state-warning-text)", margin: 0 }}>
+            No hay tasa configurada para {conv.from}→{conv.to} en "Tasas FX". Configúrala ahí, o marca "Usar una tasa personalizada" para calcular con un valor puntual.
+          </p>
+        ) : (
+          <p style={{ fontSize: "0.78rem", color: "var(--text-soft)", margin: 0 }}>
+            Tasa automática (Tasas FX): 1 {conv.from} = {autoRate.toLocaleString("es-CO", { maximumFractionDigits: 6 })} {conv.to}
+          </p>
+        )}
+
+        <div style={{ background: "var(--state-warning-bg)", border: "1px solid var(--border-color)", borderRadius: "10px", padding: "0.75rem" }}>
           {result === null
-            ? <p style={{ color: "#9ca3af", fontSize: "0.85rem", margin: 0 }}>Define una tasa mayor a 0</p>
-            : <p style={{ color: "#5f2f00", fontWeight: 800, fontSize: "1.1rem", margin: 0 }}>
+            ? <p style={{ color: "var(--text-soft)", fontSize: "0.85rem", margin: 0 }}>Define una tasa mayor a 0</p>
+            : <p style={{ color: "var(--text-strong)", fontWeight: 800, fontSize: "1.1rem", margin: 0 }}>
                 {conv.from} {Number(conv.amount).toLocaleString("es-CO")}
                 <span style={{ color: "var(--color-accent)", fontSize: "0.85rem", fontWeight: 600, margin: "0 0.4rem" }}>→</span>
                 {conv.to} {result.toLocaleString("es-CO", { maximumFractionDigits: 2 })}
@@ -181,7 +230,7 @@ function FxDrawer({ open, onClose, fxConfigs }: { open: boolean; onClose: () => 
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
               {fxConfigs.map((fx) => (
-                <div key={fx.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "#5f2f00" }}>
+                <div key={fx.id} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "var(--text-strong)" }}>
                   <span>{fx.baseCode} → {fx.quoteCode}</span>
                   <strong>{Number(fx.rate).toLocaleString("es-CO", { maximumFractionDigits: 4 })}</strong>
                 </div>
@@ -1496,7 +1545,7 @@ function App() {
                     top: "45px",
                     right: 0,
                     width: "220px",
-                    background: "rgba(255, 255, 255, 0.98)",
+                    background: "var(--card-bg)",
                     backdropFilter: "blur(12px)",
                     border: "1px solid var(--border-color)",
                     borderRadius: "12px",

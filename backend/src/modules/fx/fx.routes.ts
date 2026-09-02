@@ -2,7 +2,9 @@ import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
+import { env } from "../../config/env.js";
 import { prisma } from "../../infra/prisma.js";
+import { runFxSync } from "./fx-sync.service.js";
 
 const fxPayloadSchema = z
   .object({
@@ -177,4 +179,33 @@ export async function fxRoutes(app: FastifyInstance) {
       return reply.status(404).send({ message: `No se encontró tasa para ${from}/${to}` });
     },
   );
+
+  // POST /api/fx/sync — sincroniza tasas desde exchangerate-api.com
+  // Acepta dos formas de acceso:
+  //  1) Token compartido (header Authorization: Bearer <FX_SYNC_TOKEN>) — para
+  //     el Render Cron Job, que no tiene una sesión de usuario.
+  //  2) Sesión de usuario normal con rol ADMIN/FINANCE — para el botón
+  //     "Actualizar ahora" del frontend.
+  app.post("/sync", async (request, reply) => {
+    const authHeader = request.headers.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length).trim()
+      : null;
+    const isSystemToken = Boolean(env.FX_SYNC_TOKEN) && bearerToken === env.FX_SYNC_TOKEN;
+
+    if (!isSystemToken) {
+      await authenticate(request, reply);
+      if (reply.sent) return;
+      await authorize([AppRole.ADMIN, AppRole.FINANCE])(request, reply);
+      if (reply.sent) return;
+    }
+
+    try {
+      const result = await runFxSync(prisma);
+      return { data: result };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return reply.status(502).send({ message: "No se pudo sincronizar con el proveedor de tasas de cambio", detail });
+    }
+  });
 }

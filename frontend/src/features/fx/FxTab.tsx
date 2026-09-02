@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
 import { PageHeader } from "../../components/PageHeader";
-import { deleteFxRate, listFxHistory, upsertFxRate, type FxConfig, type FxRateHistory } from "../../services/api";
+import { deleteFxRate, listFxHistory, syncFxRates, upsertFxRate, type FxConfig, type FxRateHistory } from "../../services/api";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { formatDate } from "../../utils/formatDate";
+import { formatDate, formatDateTime } from "../../utils/formatDate";
 
 const currencyOptions = ["COP", "USD", "EUR", "MXN", "PEN", "CLP"];
 
@@ -41,6 +41,8 @@ export function FxTab({
   const [historyFilter, setHistoryFilter] = useState({ baseCode: "", quoteCode: "", from: "", to: "" });
   const [history, setHistory] = useState<FxRateHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setFetchingRate(true);
@@ -75,6 +77,23 @@ export function FxTab({
       await onReload();
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo eliminar la tasa");
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const result = await syncFxRates();
+      const parts = [];
+      if (result.updated.length > 0) parts.push(`Actualizadas: ${result.updated.join(", ")}`);
+      if (result.failed.length > 0) parts.push(`No disponibles: ${result.failed.join(", ")}`);
+      setSyncMessage(parts.join(" · ") || "Sin cambios");
+      await onReload();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "No se pudo sincronizar con el proveedor de tasas");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -122,10 +141,10 @@ export function FxTab({
                 value={form.rate}
                 readOnly
                 required
-                style={{ width: "100%", cursor: "default", background: "var(--color-surface-alt, #f5f5f5)" }}
+                style={{ width: "100%", cursor: "default", background: "var(--state-neutral-bg)", color: "var(--text)" }}
               />
               {fetchingRate && (
-                <span style={{ position: "absolute", right: "0.6rem", top: "50%", transform: "translateY(-50%)", fontSize: "0.75rem", color: "var(--color-muted, #888)" }}>
+                <span style={{ position: "absolute", right: "0.6rem", top: "50%", transform: "translateY(-50%)", fontSize: "0.75rem", color: "var(--text-soft)" }}>
                   ⟳
                 </span>
               )}
@@ -135,11 +154,19 @@ export function FxTab({
         ) : (
           <p className="fx-note">Solo ADMIN y FINANCE pueden modificar tasas.</p>
         )}
-        <p className="fx-note">La tasa se obtiene automáticamente de Frankfurter según las monedas seleccionadas. Ej: 1 USD = 4200 COP</p>
+        <p className="fx-note">La tasa se obtiene automáticamente de exchangerate-api.com según las monedas seleccionadas. Ej: 1 USD = 4200 COP</p>
       </article>
 
       <article className="card">
-        <h3>Tasas configuradas</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+          <h3 style={{ margin: 0 }}>Tasas configuradas</h3>
+          {canWrite && (
+            <button type="button" className="ghost" onClick={() => void handleSync()} disabled={syncing}>
+              {syncing ? "Sincronizando…" : "🔄 Actualizar ahora"}
+            </button>
+          )}
+        </div>
+        {syncMessage && <p className="fx-note">{syncMessage}</p>}
         {loading ? (
           <p className="loading">Cargando...</p>
         ) : fxConfigs.length === 0 ? (
@@ -162,7 +189,7 @@ export function FxTab({
                     <td><span className="pill neutral">{fx.baseCode}/{fx.quoteCode}</span></td>
                     <td>{`1 ${fx.baseCode} = ${Number(fx.rate).toLocaleString("es-CO", { maximumFractionDigits: 6 })} ${fx.quoteCode}`}</td>
                     <td>{`1 ${fx.quoteCode} = ${(1 / Number(fx.rate)).toLocaleString("es-CO", { maximumFractionDigits: 6 })} ${fx.baseCode}`}</td>
-                    <td>{formatDate(fx.updatedAt)}</td>
+                    <td>{formatDateTime(fx.updatedAt)}</td>
                     {canWrite && (
                       <td>
                         <button type="button" className="ghost" onClick={() => setDeleteTarget(fx)}>Eliminar</button>

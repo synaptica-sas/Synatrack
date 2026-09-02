@@ -19,12 +19,33 @@ services:
       - key: DIRECT_URL
         sync: false
       - key: AUTH_ENABLED
-        value: "false"
+        sync: false
       - key: AUTH_DEMO_BYPASS
-        value: "true"
+        sync: false
       - key: ADMIN_EMAIL
         sync: false
       - key: AZURE_AD_TENANT_ID
         sync: false
       - key: AZURE_AD_AUDIENCE
+        sync: false
+      - key: FX_SYNC_TOKEN
+        sync: false
+
+  # Dispara la sincronización diaria de tasas FX contra el Web Service de arriba.
+  # Verifica la sintaxis exacta contra la documentación actual de Render antes
+  # de confiar en el "Blueprint sync" automático — si no aplica sola, crea este
+  # Cron Job manualmente en el dashboard con el mismo comando y la misma
+  # variable FX_SYNC_TOKEN (debe tener el mismo valor que la del Web Service).
+  - type: cron
+    name: app-gestion-fx-sync
+    runtime: docker
+    plan: starter
+    schedule: "0 13 * * *" # 08:00 hora Colombia (UTC-5)
+    image:
+      url: docker.io/curlimages/curl:latest
+    dockerCommand: >
+      curl -sf -X POST https://app-gestion-backend.onrender.com/api/fx/sync
+      -H "Authorization: Bearer $FX_SYNC_TOKEN"
+    envVars:
+      - key: FX_SYNC_TOKEN
         sync: false

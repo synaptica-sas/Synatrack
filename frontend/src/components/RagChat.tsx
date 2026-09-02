@@ -211,7 +211,7 @@ export function RagChat({ projects, statsProjects = [], fxConfigs, consultants =
       right: "20px",
       width: "350px",
       height: "450px",
-      background: "rgba(255, 255, 255, 0.95)",
+      background: "var(--card-bg)",
       backdropFilter: "blur(12px)",
       border: "1px solid var(--border-color)",
       borderRadius: "16px",

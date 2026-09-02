@@ -329,7 +329,7 @@ export function ConsultantsTab({
                 value={form.hourlyRate}
                 onChange={(v) => setForm((p) => ({ ...p, hourlyRate: v }))}
               />
-              <select value={form.isInternal ? "true" : "false"} onChange={(e) => setForm((p) => ({ ...p, isInternal: e.target.value === "true" }))} style={{ height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)", width: "100%" }}>
+              <select value={form.isInternal ? "true" : "false"} onChange={(e) => setForm((p) => ({ ...p, isInternal: e.target.value === "true" }))} style={{ height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)", width: "100%" }}>
                 <option value="true">Interno</option>
                 <option value="false">Externo</option>
               </select>
@@ -356,14 +356,14 @@ export function ConsultantsTab({
                 gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
                 gap: "0.75rem",
                 padding: "1rem",
-                background: "#fffcf7",
-                border: "1px solid var(--color-primary-20)",
+                background: "var(--card-bg)",
+                border: "1px solid var(--border-color)",
                 borderRadius: "12px",
                 marginBottom: "0.5rem"
               }}>
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Estado</label>
-                  <select value={filterActive} onChange={(e) => setFilterActive(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)", fontSize: "0.82rem", outline: "none" }}>
+                  <select value={filterActive} onChange={(e) => setFilterActive(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)", fontSize: "0.82rem", outline: "none" }}>
                     <option value="ALL">Todos los estados</option>
                     <option value="ACTIVE">Activo</option>
                     <option value="INACTIVE">Inactivo</option>
@@ -371,14 +371,14 @@ export function ConsultantsTab({
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>País</label>
-                  <select value={filterCountry} onChange={(e) => setFilterCountry(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)", fontSize: "0.82rem", outline: "none" }}>
+                  <select value={filterCountry} onChange={(e) => setFilterCountry(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)", fontSize: "0.82rem", outline: "none" }}>
                   <option value="ALL">Todos los países</option>
                   {countryOptions.map((c) => <option key={`filter-country-${c}`} value={c}>{displayCountryWithFlag(c)}</option>)}
                 </select>
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Tipo</label>
-                  <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)", fontSize: "0.82rem", outline: "none" }}>
+                  <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)", fontSize: "0.82rem", outline: "none" }}>
                     <option value="ALL">Todos los tipos</option>
                     <option value="INTERNAL">Interno</option>
                     <option value="EXTERNAL">Externo</option>
@@ -386,21 +386,21 @@ export function ConsultantsTab({
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Empresa</label>
-                  <select value={filterCompany} onChange={(e) => setFilterCompany(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)", fontSize: "0.82rem", outline: "none" }}>
+                  <select value={filterCompany} onChange={(e) => setFilterCompany(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)", fontSize: "0.82rem", outline: "none" }}>
                     <option value="ALL">Todas las empresas</option>
                     {companies.map((c) => <option key={`filter-company-${c}`} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Rol</label>
-                  <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)", fontSize: "0.82rem", outline: "none" }}>
+                  <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)", fontSize: "0.82rem", outline: "none" }}>
                     <option value="ALL">Todos los roles</option>
                     {roleOptions.map((r) => <option key={`filter-role-${r}`} value={r}>{r}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Seniority</label>
-                  <select value={filterSeniority} onChange={(e) => setFilterSeniority(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)", fontSize: "0.82rem", outline: "none" }}>
+                  <select value={filterSeniority} onChange={(e) => setFilterSeniority(e.target.value)} style={{ width: "100%", padding: "0.5rem 0.6rem", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)", fontSize: "0.82rem", outline: "none" }}>
                     <option value="ALL">Todos los seniority</option>
                     {seniorityOptions.map((s) => <option key={`filter-seniority-${s}`} value={s}>{s}</option>)}
                   </select>
@@ -442,7 +442,7 @@ export function ConsultantsTab({
                           <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
                             <span className={`pill ${c.active ? "ok" : "neutral"}`}>{c.active ? "Activo" : "Inactivo"}</span>
                             {c.allowWeekendWork && (
-                              <span className="pill warning" style={{ fontSize: "0.7rem", background: "#fef3c7", color: "#d97706", fontWeight: 700 }} title="Autorizado para registrar en fines de semana y festivos">
+                              <span className="pill warning" style={{ fontSize: "0.7rem", background: "var(--state-warning-bg)", color: "var(--state-warning-text)", fontWeight: 700 }} title="Autorizado para registrar en fines de semana y festivos">
                                 📅 Finde
                               </span>
                             )}
@@ -456,9 +456,9 @@ export function ConsultantsTab({
                                   type="button"
                                   className="ghost"
                                   style={{
-                                    background: "#ecfdf5",
-                                    color: "#047857",
-                                    borderColor: "#a7f3d0",
+                                    background: "var(--state-success-bg)",
+                                    color: "var(--state-success-text)",
+                                    borderColor: "var(--state-success-border)",
                                     display: "inline-flex",
                                     alignItems: "center",
                                     gap: "0.25rem"
@@ -508,7 +508,7 @@ export function ConsultantsTab({
                     ))}
                     {filteredConsultants.length === 0 && (
                       <tr>
-                        <td colSpan={(canWrite || !!onAssignConsultant) ? 10 : 9} style={{ textAlign: "center", color: "#9ca3af", padding: "2rem" }}>
+                        <td colSpan={(canWrite || !!onAssignConsultant) ? 10 : 9} style={{ textAlign: "center", color: "var(--text-soft)", padding: "2rem" }}>
                           No se encontraron consultores con los filtros aplicados.
                         </td>
                       </tr>
@@ -588,7 +588,7 @@ export function ConsultantsTab({
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Tipo</label>
-                  <select value={editForm.isInternal ? "true" : "false"} onChange={(e) => setEditForm((p) => p && { ...p, isInternal: e.target.value === "true" })} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)" }}>
+                  <select value={editForm.isInternal ? "true" : "false"} onChange={(e) => setEditForm((p) => p && { ...p, isInternal: e.target.value === "true" })} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
                     <option value="true">Interno</option>
                     <option value="false">Externo</option>
                   </select>

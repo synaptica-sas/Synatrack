@@ -8,9 +8,9 @@ import { fmtMoney, fmtDate } from "./gastosUtils";
 
 function StatusBadge({ status }: { status: GroupedGasto["status"] }) {
   const map = {
-    exceeded: { bg: "#fee2e2", color: "#991b1b", text: "⚠ Superado" },
-    warning:  { bg: "#fef9c3", color: "#92400e", text: "⚡ Cerca del límite" },
-    ok:       { bg: "#dcfce7", color: "#166534", text: "✅ OK" },
+    exceeded: { bg: "var(--state-danger-bg)", color: "var(--state-danger-text)", text: "⚠ Superado" },
+    warning:  { bg: "var(--state-warning-bg)", color: "var(--state-warning-text)", text: "⚡ Cerca del límite" },
+    ok:       { bg: "var(--state-success-bg)", color: "var(--state-success-text)", text: "✅ OK" },
   };
   const s = map[status];
   return (
@@ -109,23 +109,23 @@ export function GastosSummaryTable({
                   aria-expanded={isOpen}
                   style={{
                     cursor: "pointer",
-                    background: isOpen ? "#fff4ea" : undefined,
+                    background: isOpen ? "var(--state-neutral-bg)" : undefined,
                     transition: "background 0.15s",
                   }}
                 >
-                  <td style={{ fontWeight: 600, color: "#5f2f00", padding: "0.55rem 0.75rem" }}>
+                  <td style={{ fontWeight: 600, color: "var(--text-strong)", padding: "0.55rem 0.75rem" }}>
                     {group.label}
                   </td>
-                  <td style={{ textAlign: "center", color: "#6b7280" }}>
+                  <td style={{ textAlign: "center", color: "var(--text-soft)" }}>
                     {group.count}
                   </td>
                   <td
-                    style={{ textAlign: "right", fontWeight: 700, color: "#1e293b" }}
+                    style={{ textAlign: "right", fontWeight: 700, color: "var(--text-strong)" }}
                     title={group.tooltipBreakdown}
                   >
                     {fmtMoney(group.totalBase, baseCurrency)}
                   </td>
-                  <td style={{ textAlign: "center", color: "#6b7280" }}>
+                  <td style={{ textAlign: "center", color: "var(--text-soft)" }}>
                     {fmtDate(group.lastDate)}
                   </td>
                   {groupBy === "project" && (
@@ -178,14 +178,14 @@ export function GastosSummaryTable({
         {/* Grand total footer */}
         {groups.length > 0 && (
           <tfoot>
-            <tr style={{ borderTop: "2px solid var(--border-color)", background: "#fff4ea" }}>
-              <td style={{ padding: "0.5rem 0.75rem", fontWeight: 800, color: "#5f2f00" }}>
+            <tr style={{ borderTop: "2px solid var(--border-color)", background: "var(--state-neutral-bg)" }}>
+              <td style={{ padding: "0.5rem 0.75rem", fontWeight: 800, color: "var(--text-strong)" }}>
                 Total general
               </td>
-              <td style={{ textAlign: "center", fontWeight: 700, color: "#5f2f00" }}>
+              <td style={{ textAlign: "center", fontWeight: 700, color: "var(--text-strong)" }}>
                 {totals.count}
               </td>
-              <td style={{ textAlign: "right", fontWeight: 800, color: "#5f2f00" }}>
+              <td style={{ textAlign: "right", fontWeight: 800, color: "var(--text-strong)" }}>
                 {fmtMoney(totals.totalBase, baseCurrency)}
               </td>
               <td colSpan={groupBy === "project" ? 3 : 2} />

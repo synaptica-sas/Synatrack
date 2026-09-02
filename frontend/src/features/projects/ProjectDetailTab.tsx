@@ -89,7 +89,7 @@ function BudgetBar({ pct: p }: { pct: number }) {
       <div style={{ flex: 1, height: "0.6rem", background: "var(--color-primary-10)", borderRadius: "9999px", overflow: "hidden" }}>
         <div style={{ width: `${capped}%`, height: "100%", background: color }} />
       </div>
-      <span style={{ fontSize: "0.75rem", color: "var(--color-primary)", minWidth: "3rem", textAlign: "right" }}>{p.toFixed(1)}%</span>
+      <span style={{ fontSize: "0.75rem", color: "var(--text)", minWidth: "3rem", textAlign: "right" }}>{p.toFixed(1)}%</span>
     </div>
   );
 }
@@ -267,7 +267,7 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
       </div>
 
       {/* Budget bar */}
-      <div style={{ background: "var(--color-primary-05)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
+      <div style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
         <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.4rem" }}>Uso de presupuesto</div>
         <BudgetBar pct={financials.usedBudgetPercent} />
       </div>
@@ -293,7 +293,7 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
         <div style={{ flex: "1 1 16rem" }}>
           <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.35rem" }}>Línea base</div>
           {hasBaseline ? (
-            <div style={{ fontSize: "0.8rem", color: "var(--color-primary)" }}>
+            <div style={{ fontSize: "0.8rem", color: "var(--text)" }}>
               <span style={{ color: "var(--color-sec-green)", fontWeight: 600 }}>Establecida</span>
               {" — "}{new Date(project.baselineSetAt!).toLocaleDateString("es-CO")}
               {project.baselineSetBy ? ` por ${project.baselineSetBy}` : ""}
@@ -308,7 +308,7 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
 
       {/* Baseline comparison */}
       {hasBaseline && (
-        <div style={{ background: "var(--color-primary-05)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
+        <div style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
           <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.4rem" }}>Comparación vs línea base</div>
           <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", fontSize: "0.8rem" }}>
             <div><span style={{ color: "var(--color-sec-gray)" }}>Presupuesto base:</span> {fmt(Number(project.baselineBudget ?? 0), project.currency)}</div>
@@ -319,7 +319,7 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
       )}
 
       {/* EVM Burndown chart */}
-      <div style={{ background: "var(--color-primary-05)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
+      <div style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
         <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>Curva S — Valor planeado vs Costo real (EVM)</div>
         {timeline ? (
           <BurndownChart timeline={timeline} />

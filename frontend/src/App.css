@@ -1904,6 +1904,44 @@ body.dark {
   --border-color: #222f47;
   --gradient-accent: linear-gradient(135deg, #f1a323, #f59e0b);
   --gradient-primary: linear-gradient(135deg, #121228, #1c1c38);
+
+  /* Tintes de estado en modo oscuro: translúcidos sobre el fondo oscuro en
+     vez de parches sólidos claros (que quedaban casi ilegibles). */
+  --state-danger-bg: rgba(220, 38, 38, 0.14);
+  --state-danger-border: rgba(248, 113, 113, 0.45);
+  --state-danger-text: #f87171;
+
+  --state-warning-bg: rgba(245, 158, 11, 0.14);
+  --state-warning-border: rgba(251, 191, 36, 0.45);
+  --state-warning-text: #fbbf24;
+
+  --state-success-bg: rgba(34, 197, 94, 0.14);
+  --state-success-border: rgba(74, 222, 128, 0.45);
+  --state-success-text: #4ade80;
+
+  --state-info-bg: rgba(59, 130, 246, 0.14);
+  --state-info-border: rgba(96, 165, 250, 0.45);
+  --state-info-text: #60a5fa;
+
+  --state-neutral-bg: rgba(148, 163, 184, 0.12);
+  --state-neutral-border: rgba(148, 163, 184, 0.35);
+  --state-neutral-text: #94a3b8;
+
+  --tint-purple-bg: rgba(124, 58, 237, 0.14);
+  --tint-purple-border: rgba(167, 139, 250, 0.4);
+  --tint-purple-text: #c4b5fd;
+
+  --tint-orange-bg: rgba(194, 65, 12, 0.14);
+  --tint-orange-border: rgba(251, 146, 60, 0.4);
+  --tint-orange-text: #fb923c;
+
+  --tint-cyan-bg: rgba(14, 116, 144, 0.14);
+  --tint-cyan-border: rgba(34, 211, 238, 0.4);
+  --tint-cyan-text: #22d3ee;
+
+  --tint-pink-bg: rgba(190, 24, 93, 0.14);
+  --tint-pink-border: rgba(244, 114, 182, 0.4);
+  --tint-pink-text: #f472b6;
 }
 
 body.dark .shell {

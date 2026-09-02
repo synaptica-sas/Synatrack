@@ -871,9 +871,9 @@ export function DashboardTab({
         <h3 style={{ marginBottom: "0.6rem" }}>Salud del portafolio</h3>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center", marginBottom: "0.6rem" }}>
           {[
-            { label: "Verde",    count: healthCounts.green,  color: "#22c55e", bg: "#dcfce7", pct: healthCounts.total > 0 ? healthCounts.green / healthCounts.total * 100 : 0 },
-            { label: "Amarillo", count: healthCounts.yellow, color: "#f59e0b", bg: "#fef9c3", pct: healthCounts.total > 0 ? healthCounts.yellow / healthCounts.total * 100 : 0 },
-            { label: "Rojo",     count: healthCounts.red,    color: "#ef4444", bg: "#fee2e2", pct: healthCounts.total > 0 ? healthCounts.red / healthCounts.total * 100 : 0 },
+            { label: "Verde",    count: healthCounts.green,  color: "#22c55e", bg: "var(--state-success-bg)", pct: healthCounts.total > 0 ? healthCounts.green / healthCounts.total * 100 : 0 },
+            { label: "Amarillo", count: healthCounts.yellow, color: "#f59e0b", bg: "var(--state-warning-bg)", pct: healthCounts.total > 0 ? healthCounts.yellow / healthCounts.total * 100 : 0 },
+            { label: "Rojo",     count: healthCounts.red,    color: "#ef4444", bg: "var(--state-danger-bg)", pct: healthCounts.total > 0 ? healthCounts.red / healthCounts.total * 100 : 0 },
           ].map(({ label, count, color, bg, pct }) => (
             <div key={label} style={{
               display: "flex", flexDirection: "column", alignItems: "center",
@@ -881,7 +881,7 @@ export function DashboardTab({
             }}>
               <span style={{ fontSize: "1.6rem", fontWeight: 800, color, lineHeight: 1 }}>{count}</span>
               <span style={{ fontSize: "0.68rem", color, fontWeight: 700 }}>{label}</span>
-              <span style={{ fontSize: "0.62rem", color: "#9ca3af", marginTop: "0.1rem" }}>{pct.toFixed(0)}%</span>
+              <span style={{ fontSize: "0.62rem", color: "var(--text-soft)", marginTop: "0.1rem" }}>{pct.toFixed(0)}%</span>
             </div>
           ))}
           {healthCounts.total > 0 && (
@@ -894,10 +894,10 @@ export function DashboardTab({
         </div>
         {/* Critical projects */}
         {displayProjects.filter((p) => p.healthStatus === "RED").length > 0 && (
-          <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "0.4rem", padding: "0.5rem 0.75rem", fontSize: "0.8rem" }}>
-            <span style={{ fontWeight: 700, color: "#dc2626" }}>🔴 Proyectos críticos: </span>
+          <div style={{ background: "var(--state-danger-bg)", border: "1px solid var(--state-danger-border)", borderRadius: "0.4rem", padding: "0.5rem 0.75rem", fontSize: "0.8rem" }}>
+            <span style={{ fontWeight: 700, color: "var(--state-danger-text)" }}>🔴 Proyectos críticos: </span>
             {displayProjects.filter((p) => p.healthStatus === "RED").map((p) => (
-              <span key={p.projectId} style={{ color: "#dc2626", marginRight: "0.75rem" }}>
+              <span key={p.projectId} style={{ color: "var(--state-danger-text)", marginRight: "0.75rem" }}>
                 {p.projectName} {p.evm?.cpi != null ? `(CPI ${p.evm.cpi.toFixed(2)})` : ""}
               </span>
             ))}
@@ -907,26 +907,26 @@ export function DashboardTab({
 
       {/* Tareas 9 + 14: Mini-cards riesgos/issues/cambios + EVM */}
       <div className="grid three-col">
-        <article className="card" style={{ textAlign: "center", background: risksSummary.openHighRisks > 0 ? "#fef2f2" : "#f0fdf4", border: `1px solid ${risksSummary.openHighRisks > 0 ? "#fca5a5" : "#86efac"}` }}>
+        <article className="card" style={{ textAlign: "center", background: risksSummary.openHighRisks > 0 ? "var(--state-danger-bg)" : "var(--state-success-bg)", border: `1px solid ${risksSummary.openHighRisks > 0 ? "var(--state-danger-border)" : "var(--state-success-border)"}` }}>
           <h3 style={{ fontSize: "0.78rem", marginBottom: "0.35rem" }}>⚠️ Riesgos altos abiertos</h3>
-          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.openHighRisks > 0 ? "#dc2626" : "#16a34a", margin: 0 }}>
+          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.openHighRisks > 0 ? "var(--state-danger-text)" : "var(--state-success-text)", margin: 0 }}>
             {risksSummary.openHighRisks}
           </p>
-          <p style={{ fontSize: "0.68rem", color: "#6b7280", marginTop: "0.1rem" }}>Score ≥ 6</p>
+          <p style={{ fontSize: "0.68rem", color: "var(--state-neutral-text)", marginTop: "0.1rem" }}>Score ≥ 6</p>
         </article>
-        <article className="card" style={{ textAlign: "center", background: risksSummary.openIssues > 0 ? "#fffbeb" : "#f0fdf4", border: `1px solid ${risksSummary.openIssues > 0 ? "#fcd34d" : "#86efac"}` }}>
+        <article className="card" style={{ textAlign: "center", background: risksSummary.openIssues > 0 ? "var(--state-warning-bg)" : "var(--state-success-bg)", border: `1px solid ${risksSummary.openIssues > 0 ? "var(--state-warning-border)" : "var(--state-success-border)"}` }}>
           <h3 style={{ fontSize: "0.78rem", marginBottom: "0.35rem" }}>🐛 Incidentes abiertos</h3>
-          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.openIssues > 0 ? "#b45309" : "#16a34a", margin: 0 }}>
+          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.openIssues > 0 ? "var(--state-warning-text)" : "var(--state-success-text)", margin: 0 }}>
             {risksSummary.openIssues}
           </p>
-          <p style={{ fontSize: "0.68rem", color: "#6b7280", marginTop: "0.1rem" }}>En curso o sin resolver</p>
+          <p style={{ fontSize: "0.68rem", color: "var(--state-neutral-text)", marginTop: "0.1rem" }}>En curso o sin resolver</p>
         </article>
-        <article className="card" style={{ textAlign: "center", background: risksSummary.pendingChgs > 0 ? "#eff6ff" : "#f9fafb", border: `1px solid ${risksSummary.pendingChgs > 0 ? "#93c5fd" : "#e5e7eb"}` }}>
+        <article className="card" style={{ textAlign: "center", background: risksSummary.pendingChgs > 0 ? "var(--state-info-bg)" : "var(--state-neutral-bg)", border: `1px solid ${risksSummary.pendingChgs > 0 ? "var(--state-info-border)" : "var(--state-neutral-border)"}` }}>
           <h3 style={{ fontSize: "0.78rem", marginBottom: "0.35rem" }}>📋 Cambios pendientes</h3>
-          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.pendingChgs > 0 ? "#1d4ed8" : "#6b7280", margin: 0 }}>
+          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.pendingChgs > 0 ? "var(--state-info-text)" : "var(--state-neutral-text)", margin: 0 }}>
             {risksSummary.pendingChgs}
           </p>
-          <p style={{ fontSize: "0.68rem", color: "#6b7280", marginTop: "0.1rem" }}>Solicitudes por aprobar</p>
+          <p style={{ fontSize: "0.68rem", color: "var(--state-neutral-text)", marginTop: "0.1rem" }}>Solicitudes por aprobar</p>
         </article>
       </div>
 
@@ -1034,7 +1034,7 @@ export function DashboardTab({
             <select
               value={projectStatus}
               onChange={(e) => { setProjectStatus(e.target.value); setTablePage(1); }}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)" }}
+              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               <option value="">Todos los estados</option>
               <option value="ACTIVE">Activos</option>
@@ -1047,7 +1047,7 @@ export function DashboardTab({
             <select
               value={projectType}
               onChange={(e) => { setProjectType(e.target.value); setTablePage(1); }}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)" }}
+              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               <option value="">Todos los tipos</option>
               <option value="FIXED_PRICE">Precio Fijo (Fixed Price)</option>
@@ -1067,7 +1067,7 @@ export function DashboardTab({
             <select
               value={baseCurrency}
               onChange={(e) => void changeBaseCurrency(e.target.value)}
-              style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)" }}
+              style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               {["COP","USD","EUR","MXN","PEN","CLP"].map((c) => <option key={c} value={c}>Ver en {c}</option>)}
             </select>
@@ -1084,8 +1084,8 @@ export function DashboardTab({
 
       {/* Alert banner */}
       {totals.alertCount > 0 && (
-        <article className="card" style={{ background: "#fef3c7", border: "1px solid #f59e0b" }}>
-          <h3 style={{ color: "#92400e", marginBottom: "0.4rem" }}>
+        <article className="card" style={{ background: "var(--state-warning-bg)", border: "1px solid var(--state-warning-border)" }}>
+          <h3 style={{ color: "var(--state-warning-text)", marginBottom: "0.4rem" }}>
             ⚠️ Proyectos en riesgo ({totals.alertCount})
           </h3>
           <div className="tag-list">

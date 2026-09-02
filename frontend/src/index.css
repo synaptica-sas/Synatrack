@@ -65,10 +65,53 @@
   --card-bg: #ffffff;
   --border-color: var(--color-primary-15);
 
-  /* Hover states & premium gradients strictly inside palette */
+  /* Hover states. --gradient-accent es plano en modo claro (antes era un
+     degradado naranja→rojo); el nombre se conserva porque muchos botones ya
+     referencian esta variable, pero ahora contiene un color sólido. */
   --color-accent-hover: var(--color-accent-80);
-  --gradient-accent: linear-gradient(135deg, var(--color-accent) 0%, var(--color-sec-red) 100%);
+  --gradient-accent: var(--color-accent);
   --gradient-primary: linear-gradient(135deg, var(--color-primary) 0%, var(--color-sec-blue) 100%);
+
+  /* Tintes de estado para mini-tarjetas/chips (alerta, éxito, advertencia,
+     info, neutral). Los valores claros son los mismos que ya se usaban a
+     mano en varias pantallas; en modo oscuro se sobreescriben en App.css. */
+  --state-danger-bg: #fef2f2;
+  --state-danger-border: #fca5a5;
+  --state-danger-text: #dc2626;
+
+  --state-warning-bg: #fffbeb;
+  --state-warning-border: #fcd34d;
+  --state-warning-text: #b45309;
+
+  --state-success-bg: #f0fdf4;
+  --state-success-border: #86efac;
+  --state-success-text: #16a34a;
+
+  --state-info-bg: #eff6ff;
+  --state-info-border: #93c5fd;
+  --state-info-text: #1d4ed8;
+
+  --state-neutral-bg: #f9fafb;
+  --state-neutral-border: #e5e7eb;
+  --state-neutral-text: #6b7280;
+
+  /* Tintes categóricos (decorativos, no semánticos) para distinguir
+     conceptos entre sí, p. ej. las tarjetas educativas de Estimaciones. */
+  --tint-purple-bg: #f5f3ff;
+  --tint-purple-border: #ddd6fe;
+  --tint-purple-text: #7c3aed;
+
+  --tint-orange-bg: #fff7ed;
+  --tint-orange-border: #fed7aa;
+  --tint-orange-text: #c2410c;
+
+  --tint-cyan-bg: #ecfeff;
+  --tint-cyan-border: #a5f3fc;
+  --tint-cyan-text: #0e7490;
+
+  --tint-pink-bg: #fdf2f8;
+  --tint-pink-border: #fbcfe8;
+  --tint-pink-text: #be185d;
 
   --sans: "Manrope", "Segoe UI", sans-serif;
   --display: "Space Grotesk", "Manrope", sans-serif;

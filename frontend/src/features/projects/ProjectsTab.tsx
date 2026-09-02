@@ -353,7 +353,7 @@ export function ProjectsTab({
                 <select
                   value={healthFilter}
                   onChange={(e) => setHealthFilter(e.target.value as HealthStatus | "")}
-                  style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--color-primary-20)", background: "var(--color-primary-05)", color: "var(--color-primary)" }}
+                  style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
                 >
                   <option value="">Todas</option>
                   <option value="GREEN">Verde (OK)</option>
