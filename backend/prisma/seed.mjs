@@ -51,6 +51,26 @@ async function main() {
     },
   });
 
+  // Corrección puntual de `monthlyDivisor` (DEP-10).
+  // Antes vivía en `ensureDefaultConfigs()` y corría en cada petición de horas extra.
+  // Aquí es idempotente: solo toca las filas que siguen con el 220 heredado del DEFAULT
+  // de la columna, nunca un valor ajustado a mano por un administrador.
+  const monthlyDivisorFixes = {
+    Peru: 240,
+    Chile: 180,
+    Mexico: 240,
+    Ecuador: 240,
+    Argentina: 200,
+    "España": 160,
+  };
+
+  for (const [country, monthlyDivisor] of Object.entries(monthlyDivisorFixes)) {
+    await prisma.extraHoursConfig.updateMany({
+      where: { country, monthlyDivisor: 220 },
+      data: { monthlyDivisor },
+    });
+  }
+
   console.log("Database initialized successfully with roles and admin user.");
 }
 

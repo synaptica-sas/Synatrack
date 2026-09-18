@@ -143,7 +143,13 @@ const defaultConfigs = [
   },
 ];
 
-async function ensureDefaultConfigs() {
+/**
+ * Siembra de configuraciones por defecto y normalización de países heredados.
+ *
+ * Se ejecuta **una sola vez por proceso** (ver `ensureDefaultConfigs`): antes se
+ * invocaba en cada petición del módulo, de modo que cada request escribía en la base.
+ */
+async function seedDefaultConfigs() {
   // Migrate legacy USA country values to Default for users and consultants
   await prisma.user.updateMany({
     where: {
@@ -193,25 +199,35 @@ async function ensureDefaultConfigs() {
     for (const defaultC of defaultConfigs) {
       if (missingCountries.includes(defaultC.country)) {
         await prisma.extraHoursConfig.create({
-          data: defaultC as any,
+          data: defaultC,
         });
       }
     }
   }
 
-  // If a country has default monthlyDivisor = 220 in DB but its actual default is not 220,
-  // we update it to correct the initial database migration setting.
-  const updatedConfigs = await prisma.extraHoursConfig.findMany();
-  for (const config of updatedConfigs) {
-    const defaultC = defaultConfigs.find(d => d.country === config.country);
-    if (defaultC && Number((config as any).monthlyDivisor) === 220 && defaultC.monthlyDivisor !== 220) {
-      await prisma.extraHoursConfig.update({
-        where: { id: config.id },
-        data: { monthlyDivisor: defaultC.monthlyDivisor } as any
-      });
-    }
-  }
+  // NOTA: la corrección puntual de `monthlyDivisor = 220` que antes corría aquí en cada
+  // petición se movió a la migración de datos
+  // `prisma/migrations/20260918130000_fix_extra_hours_monthly_divisor` y al seed
+  // (`prisma/seed.mjs`), que es donde corresponde a una corrección de una sola vez.
 }
+
+/**
+ * Memoriza la siembra para que ocurra una única vez por proceso.
+ * Si falla, se libera la memoria para poder reintentar en la siguiente invocación.
+ */
+let defaultConfigsPromise: Promise<void> | null = null;
+
+async function ensureDefaultConfigs(): Promise<void> {
+  if (!defaultConfigsPromise) {
+    defaultConfigsPromise = seedDefaultConfigs().catch((error) => {
+      defaultConfigsPromise = null;
+      throw error;
+    });
+  }
+  return defaultConfigsPromise;
+}
+
+export { ensureDefaultConfigs };
 
 export async function extraHoursRoutes(app: FastifyInstance) {
   // 0. Obtener países soportados dinámicamente
@@ -398,7 +414,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           nocturnalHolidayMultiplier: Number(activeConfig.nocturnalHolidayMultiplier),
           diurnalStart: activeConfig.diurnalStart,
           diurnalEnd: activeConfig.diurnalEnd,
-          monthlyDivisor: Number((activeConfig as any).monthlyDivisor || 220),
+          monthlyDivisor: Number(activeConfig.monthlyDivisor || 220),
         },
       });
 
@@ -495,7 +511,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           nocturnalHolidayMultiplier: Number(activeConfig.nocturnalHolidayMultiplier),
           diurnalStart: activeConfig.diurnalStart,
           diurnalEnd: activeConfig.diurnalEnd,
-          monthlyDivisor: Number((activeConfig as any).monthlyDivisor || 220),
+          monthlyDivisor: Number(activeConfig.monthlyDivisor || 220),
         },
       });
 
@@ -547,7 +563,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
               diurnalStart: "06:00:00",
               diurnalEnd: "21:00:00",
               monthlyDivisor: 220,
-            } as any,
+            },
           });
         }
       }
@@ -581,7 +597,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           diurnalStart: formattedStart,
           diurnalEnd: formattedEnd,
           monthlyDivisor: payload.monthlyDivisor,
-        } as any,
+        },
         create: {
           country,
           weeklyExtraHoursLimit: payload.weeklyExtraHoursLimit,
@@ -592,7 +608,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           diurnalStart: formattedStart,
           diurnalEnd: formattedEnd,
           monthlyDivisor: payload.monthlyDivisor,
-        } as any,
+        },
       });
 
       return { data: updated };
@@ -621,7 +637,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           diurnalStart: defaultConfig.diurnalStart,
           diurnalEnd: defaultConfig.diurnalEnd,
           monthlyDivisor: defaultConfig.monthlyDivisor,
-        } as any,
+        },
         create: {
           country: defaultConfig.country,
           weeklyExtraHoursLimit: defaultConfig.weeklyExtraHoursLimit,
@@ -632,7 +648,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           diurnalStart: defaultConfig.diurnalStart,
           diurnalEnd: defaultConfig.diurnalEnd,
           monthlyDivisor: defaultConfig.monthlyDivisor,
-        } as any,
+        },
       });
 
       return { data: updated };

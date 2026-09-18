@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { getLogger } from "../../infra/logger.js";
 
 /**
  * Job nocturno: mantiene los estados de asignaciones sincronizados con las fechas.
@@ -27,7 +28,8 @@ export async function runAssignmentMaintenance(prisma: PrismaClient): Promise<vo
     data: { status: "COMPLETED" },
   });
 
-  console.log(
-    `[AssignmentJob] Activadas: ${activated.count} | Completadas: ${completed.count}`,
+  getLogger().info(
+    { activated: activated.count, completed: completed.count },
+    "[AssignmentJob] Mantenimiento de asignaciones completado",
   );
 }
