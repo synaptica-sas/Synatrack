@@ -26,7 +26,7 @@ git push origin deploy
 - Usar scripts seguros de backend: build genera Prisma Client y start solo arranca la API.
 - Crear migraciones Prisma y ejecutarlas con `npm run prisma:deploy`.
 - Configurar Supabase con `DATABASE_URL` pooled y `DIRECT_URL` direct/session.
-- Configurar Render con root `backend`, build `npm ci && npm run build`, start `npm run start`.
+- Configurar Render con root `backend`, build `npm ci --include=dev && npm run build`, start `npm run start`.
 - Configurar Vercel con root `frontend`, build `npm run build`, output `dist`.
 - Configurar CORS en Render con la URL final de Vercel.
 - Mantener `.env` fuera de Git; usar solo `.env.example` y `.env.production.example`.
@@ -110,7 +110,7 @@ Configuracion manual equivalente a `render.yaml`:
 | --- | --- |
 | Type | Web Service |
 | Root Directory | `backend` |
-| Build Command | `npm ci && npm run build` |
+| Build Command | `npm ci --include=dev && npm run build` |
 | Start Command | `npm run start` |
 | Health Check Path | `/health` |
 | Plan | Free |

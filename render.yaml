@@ -1,17 +1,28 @@
 services:
+  # ATENCION - discrepancia conocida entre este `name` y la URL real (DEP-20).
+  # El servicio vivo en produccion responde en https://app-gestion-demo.onrender.com
+  # (/health devuelve 200), mientras que aqui el servicio se declara como
+  # `app-gestion-backend`. En Render el subdominio *.onrender.com se asigna al
+  # CREAR el servicio y NO cambia si luego se renombra, asi que lo mas probable
+  # es que este servicio se haya creado como `app-gestion-demo` y renombrado
+  # despues. Por eso NO se toca el `name`: cambiarlo en un blueprint hace que el
+  # sync trate el servicio como uno nuevo (se crea otro servicio, con otra URL y
+  # sin las env vars `sync: false`) y deja el actual huerfano. Si se quiere
+  # alinear, hay que hacerlo desde el dashboard de Render y verificar que la URL
+  # publica siga siendo app-gestion-demo.onrender.com.
   - type: web
     name: app-gestion-backend
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install --include=dev && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: 20.19.0
+        value: 24.13.0
       - key: CORS_ORIGIN
         sync: false
       - key: DATABASE_URL
@@ -32,6 +43,10 @@ services:
         sync: false
 
   # Dispara la sincronización diaria de tasas FX contra el Web Service de arriba.
+  # El host es app-gestion-demo.onrender.com: es la URL publica real del Web
+  # Service (verificada, /health -> 200). Antes apuntaba al host inexistente
+  # app-gestion-backend.onrender.com, por lo que la sincronizacion diaria de
+  # tasas de cambio nunca llego a ejecutarse (DEP-20).
   # Verifica la sintaxis exacta contra la documentación actual de Render antes
   # de confiar en el "Blueprint sync" automático — si no aplica sola, crea este
   # Cron Job manualmente en el dashboard con el mismo comando y la misma
@@ -44,7 +59,7 @@ services:
     image:
       url: docker.io/curlimages/curl:latest
     dockerCommand: >
-      curl -sf -X POST https://app-gestion-backend.onrender.com/api/fx/sync
+      curl -sf -X POST https://app-gestion-demo.onrender.com/api/fx/sync
       -H "Authorization: Bearer $FX_SYNC_TOKEN"
     envVars:
       - key: FX_SYNC_TOKEN

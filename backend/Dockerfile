@@ -1,5 +1,5 @@
 # Base image
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 
 # Install openssl for Prisma
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
@@ -20,7 +20,7 @@ COPY . .
 RUN npm run build
 
 # Production runtime image
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 
 # Install openssl for Prisma in runner image too
 RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
