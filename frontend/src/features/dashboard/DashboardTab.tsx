@@ -12,7 +12,14 @@ import type { TabId } from "../../types";
 import { formatISODateRange } from "../../utils/periodUtils";
 import { backendHealthToResult, HEALTH_CRITERIA_TOOLTIP } from "../../utils/projectHealth";
 import { AlertBadge } from "./AlertBadge";
-import { calcDelta, calcEVM, fmt, type DeltaResult } from "./dashboardUtils";
+import {
+  calcDelta,
+  calcEVM,
+  fmt,
+  sortProjectRows,
+  type DeltaResult,
+  type ProjectSortField,
+} from "./dashboardUtils";
 import { PageHeader } from "../../components/PageHeader";
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
@@ -358,7 +365,8 @@ function saveViews(views: SavedView[]) {
 
 // ── Main component ───────────────────────────────────────────────────────────
 
-type SortField = "budget" | "spent" | "remainingBudget" | "revenueRecognized" | "grossMarginActual" | "projectedTotal" | "projectedPct" | "alertLevel";
+/** La definición vive en `dashboardUtils` junto a la función de orden. */
+type SortField = ProjectSortField;
 
 const PAGE_SIZE = 15;
 
@@ -700,7 +708,6 @@ export function DashboardTab({
 
   // ── Project table: filter + sort + paginate ──────────────────────────────
 
-  type DisplayProject = typeof displayProjects[number];
 
   const filteredProjects = useMemo(() => {
     const q = tableSearch.trim().toLowerCase();
@@ -709,20 +716,10 @@ export function DashboardTab({
     );
   }, [displayProjects, tableSearch]);
 
-  const alertOrder = useMemo(() => ({ exceeded: 0, warning: 1, ok: 2 }), []);
-
-  const sortedProjects = useMemo(() => {
-    return [...filteredProjects].sort((a, b) => {
-      let av: number, bv: number;
-      if (sortField === "alertLevel") {
-        av = alertOrder[a.alertLevel]; bv = alertOrder[b.alertLevel];
-      } else {
-        av = (a[sortField as keyof DisplayProject] as number) ?? 0;
-        bv = (b[sortField as keyof DisplayProject] as number) ?? 0;
-      }
-      return sortDir === "asc" ? av - bv : bv - av;
-    });
-  }, [alertOrder, filteredProjects, sortField, sortDir]);
+  const sortedProjects = useMemo(
+    () => sortProjectRows(filteredProjects, sortField, sortDir),
+    [filteredProjects, sortField, sortDir],
+  );
 
   const totalPages = Math.max(1, Math.ceil(sortedProjects.length / PAGE_SIZE));
   const pagedProjects = sortedProjects.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
