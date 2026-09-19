@@ -16,16 +16,22 @@
 ## Local quick start
 1. Install dependencies:
    - `npm install`
-2. Set `DATABASE_URL` and `DIRECT_URL` in `.env` with reachable Postgres URLs
-   - Port 5432 example: `.env.local.example`
-   - Port 5433 example: `.env.local.5433.example`
+2. Create `.env` from the only example file in this folder, `.env.example`:
+   - `cp .env.example .env` (Windows: `copy .env.example .env`)
+   - Then set `DATABASE_URL` and `DIRECT_URL` to a reachable Postgres. `.env.example` already
+     ships commented-out pairs for local Postgres on port 5432 and on port 5433; uncomment the
+     one you need and remove the Supabase strings.
+   - Note: `.env.local.example` and `.env.local.5433.example` do not exist; earlier versions of
+     this README referenced them by mistake.
 3. Generate Prisma client:
    - `npm run prisma:generate`
 4. Apply schema to a local/demo database:
    - `npm run prisma:deploy`
    - For throwaway local experiments only, `npm run prisma:push`
-5. (Optional) Seed demo data:
+5. Seed baseline data:
    - `npm run prisma:seed`
+   - This only creates the `AppRole` roles and the admin user from `ADMIN_EMAIL`. It does **not**
+     create demo projects, consultants or time entries: the app starts empty.
 6. Start API:
    - `npm run dev`
 

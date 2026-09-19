@@ -425,8 +425,11 @@ erDiagram
 | 3 | `20260604214520_add_extrahours_and_estimations` | Enum `ExtraHourStatus`; tablas `ExtraHoursConfig`, `ExtraHourEntry`, `Estimation`; columnas `Project.allowExtraHours`, `Consultant.identification`, `User.bio/photoUrl/phrase` |
 | 4 | `20260605151148_add_user_skills` | Columna `User.skills TEXT[]` |
 | 5 | `20260605160845_add_activities_model` | Tabla `Activity` |
+| 6 | `20260918120000_fix_schema_drift` | Modelos `CustomHoliday` y `ApprovalDelegation`; columnas `Consultant.allowWeekendWork`/`isInternal`/`company`, `ExtraHoursConfig.country`/`monthlyDivisor` y `User.country` |
 
-> **⚠️ Drift de esquema detectado**: comparando `schema.prisma` contra las 5 migraciones anteriores, los siguientes elementos **no tienen migración asociada**: el modelo `CustomHoliday`, el modelo `ApprovalDelegation`, los campos `Consultant.allowWeekendWork`/`Consultant.isInternal`, `ExtraHoursConfig.monthlyDivisor` y `User.country`. Esto indica que se aplicaron con `prisma db push` (existe el script `npm run prisma:push`) en lugar de generar una migración versionada. **Consecuencia práctica**: una base de datos nueva creada solo con `prisma migrate deploy` (el comando que usa el flujo de producción documentado) **no tendrá estas tablas/columnas**, y la aplicación fallará en runtime al intentar usarlas. Ver [§10](#10-puntos-críticos-del-proyecto).
+> **Drift de esquema — resuelto el 2026-09-18**: hasta esa fecha el modelo `CustomHoliday`, el modelo `ApprovalDelegation`, los campos `Consultant.allowWeekendWork`/`isInternal`, `ExtraHoursConfig.monthlyDivisor` y `User.country` existían en `schema.prisma` pero **no tenían migración asociada** (se habían aplicado con `prisma db push`), de modo que una base creada solo con `prisma migrate deploy` quedaba incompleta. La migración `20260918120000_fix_schema_drift` los incorpora y es **idempotente** (`IF NOT EXISTS`), así que puede aplicarse tal cual sobre una base que ya los tenga.
+>
+> ⚠️ **Pendiente en Supabase/producción**: la migración aún no se ha aplicado allá. Hay que ejecutar `npm run prisma:deploy` contra esa base o, si se prefiere no tocarla, `prisma migrate resolve --applied 20260918120000_fix_schema_drift`. Sigue en pie la regla: nunca `prisma db push` fuera de un prototipo local. Ver [§10](#10-puntos-críticos-del-proyecto).
 
 #### 3.5.3 Seeders
 
@@ -606,15 +609,15 @@ Variables con `sync: false` (deben configurarse manualmente en el dashboard de R
 
 ### 6.6 Cómo realizar un nuevo despliegue
 
-1. Trabajar y probar en `develop`.
-2. `git checkout deploy && git merge develop && git push origin deploy` (Render y Vercel despliegan automáticamente al detectar el push, vía sus integraciones nativas con GitHub).
+1. Trabajar y probar en la rama correspondiente (hoy solo existen `main`, `origin/dev` y las ramas de depuración `fix/*`/`docs/*` de `documentacion/PLAN_DE_RAMAS.md`; **las ramas `develop` y `deploy` que citaban versiones anteriores de este documento no existen**).
+2. Fusionar en `main` y empujar. El push a `main` dispara el workflow de Azure Static Web Apps; Render y Vercel despliegan por sus integraciones nativas con GitHub, pero **la rama que tienen conectada no está declarada en el repositorio** y hay que confirmarla en el panel de cada servicio.
 3. Si hubo cambios de esquema: correr manualmente `npm run prisma:deploy` (desde `backend/`, contra la `DATABASE_URL`/`DIRECT_URL` de producción) — **no ocurre automáticamente**.
 4. Validar: `GET /health` del backend (`ok`, `database: "up"`), abrir el frontend, revisar consola por errores CORS, probar login y un CRUD básico, y opcionalmente correr `npm run smoke` contra la URL de Render.
 
 ### 6.7 Cómo configurar un nuevo entorno
 
 1. Crear proyecto en Supabase → copiar cadena *pooled* (`DATABASE_URL`) y directa (`DIRECT_URL`, con `sslmode=require`).
-2. `cd backend && npm ci && npm run prisma:generate && npm run prisma:deploy` (y opcionalmente `npm run prisma:push` para aplicar los elementos con drift mencionados en [§3.5.2](#352-migraciones), y `npm run prisma:seed`).
+2. `cd backend && npm ci && npm run prisma:generate && npm run prisma:deploy && npm run prisma:seed`. Ya **no** hace falta `npm run prisma:push`: el drift quedó cubierto por la migración `20260918120000_fix_schema_drift` (ver [§3.5.2](#352-migraciones)). El seed crea solo los roles y el usuario `ADMIN_EMAIL`, no datos de demostración.
 3. Configurar el Web Service en Render (ver [§6.3](#63-backend-en-render-renderyaml)) con todas las variables `sync: false`.
 4. Configurar el proyecto en Vercel (ver [§6.4](#64-frontend-en-vercel)) con las 6 variables de `frontend/.env.example`.
 5. Si se usará login real (no demo): registrar la app en Microsoft Entra ID, configurar `AZURE_AD_TENANT_ID`/`AZURE_AD_AUDIENCE` en el backend y `VITE_AZURE_*` en el frontend (mismo tenant/app registration en ambos lados), y cambiar `AUTH_ENABLED=true`, `AUTH_DEMO_BYPASS=false`.
@@ -630,7 +633,7 @@ Variables con `sync: false` (deben configurarse manualmente en el dashboard de R
 
 ### 6.9 CI/CD
 
-**No existe** ningún workflow de GitHub Actions (no hay carpeta `.github/`). El "CI/CD" actual es 100% las integraciones nativas de Render/Vercel escuchando pushes a la rama `deploy` — no hay tests automáticos ni type-check obligatorio antes de desplegar.
+Existe **un** workflow de GitHub Actions: `.github/workflows/azure-static-web-apps-victorious-glacier-0d52b010f.yml`, que construye y publica el frontend en Azure Static Web Apps en cada push a `main` y en los PR contra `main`. **No corre tests ni type-check**, y declara `output_location: "build"` cuando Vite emite `dist` (ver DEP-19 en `BACKLOG_DEPURACION.md`). El resto del despliegue (backend en Render, frontend en Vercel) sigue dependiendo de las integraciones nativas de esos servicios con GitHub, sin ninguna validación automática previa.
 
 ---
 
