@@ -50,9 +50,9 @@ revisadas. R1–R4 no deberían alterar ninguna funcionalidad.
 
 | Rama | Estado | Verificación |
 |---|---|---|
-| R1 | pendiente | — |
-| R2 | pendiente | — |
-| R3 | pendiente | — |
-| R4 | pendiente | — |
-| R5 | pendiente | — |
-| R6 | pendiente | — |
+| R1 | lista para revisión | tsc -b, eslint y 124 pruebas en verde; build correcto |
+| R2 | lista para revisión | tsc, build y 153 pruebas; servidor arrancado y endpoints 200 |
+| R3 | lista para revisión | 153 + 124 pruebas y ambos builds en Node 24; falta probar la imagen Docker |
+| R4 | lista para revisión | solo documentación; comandos verificados contra el repo real |
+| R5 | sin empezar | — |
+| R6 | sin empezar | — |
