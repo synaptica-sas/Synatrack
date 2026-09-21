@@ -25,7 +25,7 @@ fusiona antes, los diffs de las demás quedan limpios.
 | Rama | Qué hace | Riesgo | Cómo se verificó |
 |---|---|---|---|
 | `chore/contexto-y-agentes` | Contexto del proyecto, 7 agentes, scripts de entorno local, mapa de endpoints y backlog de 30 hallazgos | Nulo, no toca código de la app | No aplica |
-| `fix/limpieza-frontend` | Monta `ErrorBoundary`, borra 4 archivos muertos, quita 19 clases CSS, arregla una prueba que no probaba nada | Bajo | eslint limpio, 124 pruebas, build correcto |
+| `fix/limpieza-frontend` | Monta `ErrorBoundary`, borra 4 archivos muertos, quita 19 clases CSS, arregla una prueba que no probaba nada y **corrige las cifras equivocadas del tablero (DEP-35)** | Bajo | eslint limpio, 124 pruebas, build correcto y verificación en navegador de los cinco indicadores |
 | `fix/limpieza-backend` | Quita 10 `as any`, saca del camino de request una escritura en base que ocurría en cada petición, unifica logging, saca las pruebas del build | Bajo | 153 pruebas, servidor arrancado, endpoints 200 |
 | `fix/configuracion-entorno` | Arregla el cron de FX (apuntaba a un host inexistente), el workflow de Azure, unifica Node 24, valida `DIRECT_URL` | Medio | 153 + 124 pruebas y ambos builds en Node 24 |
 | `docs/actualizar-manuales` | Corrige manuales que no permitían levantar la app | Nulo | Comandos comprobados contra el repo |
@@ -53,6 +53,12 @@ Se borraron `Table.tsx` (206 líneas), `KpiCard.tsx`, `StatusBadge.tsx` y el hoo
 
 `tableSort.test.ts` tenía **una copia** de la lógica de orden en el propio test, así que
 podía estar en verde con el código roto. Ahora importa la función real.
+
+**Agregado después de la primera revisión (DEP-35):** el tablero mostraba "Presupuesto total
+(USD)" como US$ 660.090.000 cuando el valor correcto era US$ 257.089. `DashboardTab` usaba
+`initialStats` solo como valor inicial de `useState`, así que ignoraba la prop cuando llegaban
+los datos y caía a un cálculo local que suma monedas distintas sin convertir. Se sincroniza
+con un `useEffect`. Verificado en navegador contra la API.
 
 ### `fix/limpieza-backend`
 

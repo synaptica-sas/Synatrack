@@ -32,7 +32,10 @@
       "Bash(node scripts/generate-map.mjs:*)",
       "Bash(graphify:*)",
       "Bash(git add *)",
-      "Bash(python -)"
+      "Bash(git checkout *)",
+      "Bash(python -)",
+      "Bash(git branch *)",
+      "Bash(git ls-remote *)"
     ],
     "deny": [
       "Read(./backend/.env)",
