@@ -32,6 +32,24 @@ if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
   });
 }
 
+/**
+ * Escapa texto para interpolarlo en HTML.
+ *
+ * Los correos de esta plataforma mezclan texto escrito por usuarios (nombres,
+ * observaciones, motivos de rechazo, notas de feedback) con plantillas HTML. Sin
+ * escapar, cualquiera puede inyectar etiquetas en el correo que recibe nómina.
+ * Se aplica a TODO valor interpolado dentro de un `html`, no solo a los que hoy
+ * parecen peligrosos.
+ */
+export function escaparHtml(valor: unknown): string {
+  return String(valor ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export interface EmailParams {
   to: string;
   subject: string;
@@ -116,15 +134,15 @@ export async function notifyNewExtraHourRequest(params: {
     <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
       <h2 style="color: #9a4f0f;">Aprobación Operativa Pendiente (Nivel 1)</h2>
       <p>Hola,</p>
-      <p>El consultor <strong>${consultantName}</strong> ha registrado una nueva solicitud de horas extra para el proyecto <strong>"${projectName}"</strong>.</p>
+      <p>El consultor <strong>${escaparHtml(consultantName)}</strong> ha registrado una nueva solicitud de horas extra para el proyecto <strong>"${escaparHtml(projectName)}"</strong>.</p>
       <table style="border-collapse: collapse; width: 100%; max-width: 400px; margin: 15px 0;">
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Fecha</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${date}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(date)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Total Horas</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${hours} horas</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(hours)} horas</td>
         </tr>
       </table>
       <p>Por favor, ingresa al módulo de <strong>Horas Extra -> Aprobaciones PM</strong> en la plataforma para gestionar esta solicitud.</p>
@@ -161,35 +179,35 @@ export async function notifyExtraHourApprovedByPM(params: {
     <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
       <h2 style="color: #16a34a;">Validación de Nómina Pendiente (Nivel 2)</h2>
       <p>Hola Nómina,</p>
-      <p>El Project Manager <strong>${approvedByPM}</strong> ha otorgado la aprobación operativa de Nivel 1 para las horas extra de <strong>${consultantName}</strong>.</p>
+      <p>El Project Manager <strong>${escaparHtml(approvedByPM)}</strong> ha otorgado la aprobación operativa de Nivel 1 para las horas extra de <strong>${escaparHtml(consultantName)}</strong>.</p>
       <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 15px 0;">
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0; width: 150px;">Consultor</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${consultantName}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(consultantName)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Identificación</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${identification}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(identification)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Proyecto</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${projectName}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(projectName)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Fecha</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${date}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(date)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Horas Aprobadas</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${hours} horas</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(hours)} horas</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Valor Estimado</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; color: #16a34a;">${totalAmount.toLocaleString()} ${currency}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; color: #16a34a;">${escaparHtml(totalAmount.toLocaleString())} ${escaparHtml(currency)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Observaciones</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${observations || "Ninguna"}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(observations || "Ninguna")}</td>
         </tr>
       </table>
       <p>Por favor, ingresa a la sección de <strong>Aprobaciones de Nómina</strong> para otorgar el visto bueno definitivo para el pago.</p>
@@ -249,19 +267,19 @@ export async function notifyFeedbackReceived(params: {
       <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 15px 0;">
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0; width: 120px;">Usuario</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${userName} (${userEmail})</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(userName)} (${escaparHtml(userEmail)})</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Categoría</td>
           <td style="padding: 8px; border: 1px solid #f4d4b6;">
             <span style="padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; background: ${category === "BUG" ? "#fee2e2; color: #dc2626;" : "#fef3c7; color: #d97706;"}">
-              ${category}
+              ${escaparHtml(category)}
             </span>
           </td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Observaciones</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6; white-space: pre-wrap;">${notes}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6; white-space: pre-wrap;">${escaparHtml(notes)}</td>
         </tr>
       </table>
       <br/>
@@ -313,16 +331,16 @@ export async function notifyExtraHourFullyApproved(params: {
   const html = `
     <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
       <h2 style="color: #16a34a;">✅ Solicitud de Horas Extra Aprobada</h2>
-      <p>Hola <strong>${consultantName}</strong>,</p>
-      <p>Tu solicitud de horas extra para el proyecto <strong>"${projectName}"</strong> ha recibido la aprobación final por parte de <strong>${approvedBy}</strong> y se ha registrado para el pago de nómina.</p>
+      <p>Hola <strong>${escaparHtml(consultantName)}</strong>,</p>
+      <p>Tu solicitud de horas extra para el proyecto <strong>"${escaparHtml(projectName)}"</strong> ha recibido la aprobación final por parte de <strong>${escaparHtml(approvedBy)}</strong> y se ha registrado para el pago de nómina.</p>
       <table style="border-collapse: collapse; width: 100%; max-width: 400px; margin: 15px 0;">
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0; width: 150px;">Fecha</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${date}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(date)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Horas Aprobadas</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${hours} horas</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(hours)} horas</td>
         </tr>
       </table>
       <br/>
@@ -355,20 +373,20 @@ export async function notifyExtraHourRejected(params: {
   const html = `
     <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
       <h2 style="color: #dc2626;">❌ Solicitud de Horas Extra Rechazada</h2>
-      <p>Hola <strong>${consultantName}</strong>,</p>
-      <p>Tu solicitud de horas extra para el proyecto <strong>"${projectName}"</strong> ha sido rechazada por <strong>${rejectedBy}</strong>.</p>
+      <p>Hola <strong>${escaparHtml(consultantName)}</strong>,</p>
+      <p>Tu solicitud de horas extra para el proyecto <strong>"${escaparHtml(projectName)}"</strong> ha sido rechazada por <strong>${escaparHtml(rejectedBy)}</strong>.</p>
       <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 15px 0;">
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0; width: 150px;">Fecha</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${date}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(date)}</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0;">Horas Solicitadas</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6;">${hours} horas</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(hours)} horas</td>
         </tr>
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fee2e2; color: #dc2626;">Motivo de Rechazo</td>
-          <td style="padding: 8px; border: 1px solid #f4d4b6; color: #dc2626;">${rejectionNote}</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6; color: #dc2626;">${escaparHtml(rejectionNote)}</td>
         </tr>
       </table>
       <p>Por favor revisa la información o ponte en contacto con tu supervisor de ser necesario.</p>

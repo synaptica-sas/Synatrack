@@ -35,13 +35,12 @@ const configPayloadSchema = z.object({
   monthlyDivisor: z.coerce.number().positive().default(220),
 });
 
-const reviewPayloadSchema = z.object({
-  approvedBy: z.string().trim().min(1),
-  rejectionNote: z.string().trim().optional(),
-});
-
+/**
+ * El cuerpo del rechazo solo aporta el motivo: la identidad de quien aprueba o
+ * rechaza sale de `request.authUser`, nunca del cliente. La aprobación no recibe
+ * cuerpo alguno.
+ */
 const rejectPayloadSchema = z.object({
-  approvedBy: z.string().trim().min(1),
   rejectionNote: z.string().trim().min(3),
 });
 
@@ -663,7 +662,6 @@ export async function extraHoursRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const { id } = idParamsSchema.parse(request.params);
-      const payload = reviewPayloadSchema.parse(request.body);
       const user = request.authUser!;
       const email = user.email.toLowerCase();
       const isAdmin = user.roles.includes(AppRole.ADMIN);
@@ -746,7 +744,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           totalAmount: Number(entry.totalAmount),
           currency: entry.consultant.rateCurrency || "USD",
           projectName: entry.project?.name || "Proyecto",
-          approvedByPM: payload.approvedBy || user.email,
+          approvedByPM: email,
           observations: entry.observations || undefined,
         }).catch((err) => {
           console.error("Error al enviar notificación de aprobación del PM a nómina:", err);
@@ -764,7 +762,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           data: {
             status: ExtraHourStatus.APPROVED,
             approvedAt: new Date(),
-            approvedBy: payload.approvedBy,
+            approvedBy: email,
             rejectionNote: null,
           },
           include: { project: true, consultant: true },
@@ -777,7 +775,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           date: entry.date.toISOString().split("T")[0],
           hours: Number(entry.totalHours),
           projectName: entry.project?.name || "Proyecto",
-          approvedBy: payload.approvedBy,
+          approvedBy: email,
         }).catch((err) => {
           console.error("Error al enviar notificación de aprobación final al consultor:", err);
         });
@@ -864,7 +862,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         data: {
           status: ExtraHourStatus.REJECTED,
           approvedAt: null,
-          approvedBy: payload.approvedBy,
+          approvedBy: email,
           rejectionNote: payload.rejectionNote,
         },
         include: { project: true, consultant: true },
@@ -877,7 +875,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         date: entry.date.toISOString().split("T")[0],
         hours: Number(entry.totalHours),
         projectName: entry.project?.name || "Proyecto",
-        rejectedBy: payload.approvedBy,
+        rejectedBy: email,
         rejectionNote: payload.rejectionNote || "No especificado",
       }).catch((err) => {
         console.error("Error al enviar notificación de rechazo al consultor:", err);

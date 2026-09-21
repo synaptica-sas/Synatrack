@@ -64,7 +64,15 @@ export async function buildApp() {
       });
     }
 
+    // El detalle y la traza van SIEMPRE al log del servidor.
     app.log.error({ err: error }, "Unhandled error");
+
+    // En producción la respuesta no lleva nada del interior: ni mensaje de la
+    // excepción ni traza. Fuera de producción sí, porque ayuda a desarrollar.
+    if (env.NODE_ENV === "production") {
+      return reply.status(500).send({ message: "Internal server error" });
+    }
+
     const detail = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;
     return reply.status(500).send({ message: "Internal server error", detail, stack });

@@ -1764,7 +1764,6 @@ function App() {
                   loading={timeEntriesHook.loading}
                   canWrite={can("time:write")}
                   canReview={can("time:review")}
-                  reviewerName={authUser.displayName}
                   onReload={timeEntriesHook.reload}
                   onError={handleError}
                 />

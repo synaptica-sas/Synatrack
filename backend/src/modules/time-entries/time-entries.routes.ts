@@ -12,17 +12,41 @@ const timeEntryPayloadSchema = z.object({
   note: z.string().trim().optional(),
 });
 
-const reviewPayloadSchema = z.object({
-  approvedBy: z.string().trim().min(1),
-  rejectionNote: z.string().trim().optional(),
-});
-
+/**
+ * El cuerpo del rechazo solo aporta el motivo: la identidad de quien rechaza sale
+ * de `request.authUser`, nunca del cliente.
+ */
 const rejectPayloadSchema = z.object({
-  approvedBy: z.string().trim().min(1),
   rejectionNote: z.string().trim().min(3),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
+
+/**
+ * Proyección del consultor **sin datos sensibles**, para los roles que pueden ver
+ * las horas de toda la plantilla pero no su información económica ni su documento.
+ *
+ * Se omiten a propósito: `hourlyRate` y `costPerMonth` (remuneración) e
+ * `identification` (documento de identidad, dato personal que la vista de horas
+ * no necesita).
+ */
+const consultantSinDatosSensiblesSelect = {
+  id: true,
+  fullName: true,
+  email: true,
+  role: true,
+  company: true,
+  rateCurrency: true,
+  country: true,
+  skills: true,
+  seniority: true,
+  maxHoursPerDay: true,
+  active: true,
+  allowWeekendWork: true,
+  isInternal: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export async function timeEntriesRoutes(app: FastifyInstance) {
   app.get(
@@ -30,14 +54,56 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.VIEWER])],
     },
-    async () => {
-    const entries = await prisma.timeEntry.findMany({
-      include: {
-        project: true,
-        consultant: true,
-      },
-      orderBy: { workDate: "desc" },
-    });
+    async (request) => {
+      // Alcance por fila, replicando el patrón de `extra-hours`:
+      //   ADMIN      -> todas.
+      //   PM         -> las suyas (como consultor) + las de los proyectos que gestiona.
+      //   VIEWER     -> todas, pero sin los datos sensibles del consultor.
+      //   CONSULTANT -> solo las suyas.
+      // El orden de las comprobaciones fija la precedencia cuando alguien tiene
+      // varios roles a la vez.
+      const user = request.authUser!;
+      const roles = user.roles;
+      const email = user.email.toLowerCase();
+
+      const incluirTodo = { project: true, consultant: true } as const;
+      const orderBy = { workDate: "desc" } as const;
+
+      if (roles.includes(AppRole.ADMIN)) {
+        const entries = await prisma.timeEntry.findMany({ include: incluirTodo, orderBy });
+        return { data: entries };
+      }
+
+      if (roles.includes(AppRole.PM)) {
+        const entries = await prisma.timeEntry.findMany({
+          where: {
+            OR: [
+              { consultant: { email } },
+              { project: { projectManagerEmail: email } },
+            ],
+          },
+          include: incluirTodo,
+          orderBy,
+        });
+        return { data: entries };
+      }
+
+      if (roles.includes(AppRole.VIEWER)) {
+        const entries = await prisma.timeEntry.findMany({
+          include: {
+            project: true,
+            consultant: { select: consultantSinDatosSensiblesSelect },
+          },
+          orderBy,
+        });
+        return { data: entries };
+      }
+
+      const entries = await prisma.timeEntry.findMany({
+        where: { consultant: { email } },
+        include: incluirTodo,
+        orderBy,
+      });
 
       return { data: entries };
     },
@@ -50,6 +116,30 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
     const payload = timeEntryPayloadSchema.parse(request.body);
+
+    // Un CONSULTANT solo puede registrar horas a su propio nombre. ADMIN y PM sí
+    // pueden hacerlo a nombre de otros: es un flujo legítimo de la PMO.
+    const user = request.authUser!;
+    const esGestor = user.roles.includes(AppRole.ADMIN) || user.roles.includes(AppRole.PM);
+
+    if (!esGestor) {
+      const propio = await prisma.consultant.findFirst({
+        where: { email: user.email.toLowerCase() },
+        select: { id: true },
+      });
+
+      if (!propio) {
+        return reply.status(403).send({
+          message: `No hay un consultor asociado al correo ${user.email}, así que no se pueden registrar horas a tu nombre. Pide a un administrador que cree tu ficha de consultor.`,
+        });
+      }
+
+      if (propio.id !== payload.consultantId) {
+        return reply.status(403).send({
+          message: "Solo puedes registrar horas a tu propio nombre.",
+        });
+      }
+    }
 
     const entryYear = payload.workDate.getUTCFullYear();
     const entryMonth = payload.workDate.getUTCMonth() + 1;
@@ -105,7 +195,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params);
-    const payload = reviewPayloadSchema.parse(request.body);
+    // La identidad de quien aprueba sale del token, no del cuerpo de la petición.
+    const revisor = request.authUser!.email.toLowerCase();
 
     const existing = await prisma.timeEntry.findUnique({ where: { id } });
     if (!existing) {
@@ -121,7 +212,7 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       data: {
         status: TimeEntryStatus.APPROVED,
         approvedAt: new Date(),
-        approvedBy: payload.approvedBy,
+        approvedBy: revisor,
         rejectionNote: null,
       },
     });
@@ -138,6 +229,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params);
     const payload = rejectPayloadSchema.parse(request.body);
+    // La identidad de quien rechaza sale del token, no del cuerpo de la petición.
+    const revisor = request.authUser!.email.toLowerCase();
 
     const existing = await prisma.timeEntry.findUnique({ where: { id } });
     if (!existing) {
@@ -153,7 +246,7 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       data: {
         status: TimeEntryStatus.REJECTED,
         approvedAt: null,
-        approvedBy: payload.approvedBy,
+        approvedBy: revisor,
         rejectionNote: payload.rejectionNote,
       },
     });

@@ -35,7 +35,6 @@ export function TimeEntriesTab({
   loading,
   canWrite,
   canReview,
-  reviewerName,
   onReload,
   onError,
 }: {
@@ -45,7 +44,6 @@ export function TimeEntriesTab({
   loading: boolean;
   canWrite: boolean;
   canReview: boolean;
-  reviewerName: string;
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
 }) {
@@ -99,9 +97,9 @@ export function TimeEntriesTab({
   async function handleReview(id: string, action: "approve" | "reject") {
     try {
       if (action === "approve") {
-        await approveTimeEntry(id, reviewerName);
+        await approveTimeEntry(id);
       } else {
-        await rejectTimeEntry(id, reviewerName, "No cumple criterio");
+        await rejectTimeEntry(id, "No cumple criterio");
       }
       await onReload();
     } catch (err) {

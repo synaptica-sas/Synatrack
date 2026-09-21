@@ -82,6 +82,16 @@ export type Consultant = {
 
 export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
 
+/**
+ * Consultor tal como llega dentro de un registro de horas.
+ *
+ * `GET /api/time-entries` recorta los datos sensibles del consultor para los roles
+ * que no deben verlos (hoy, VIEWER), así que tarifa, costo y documento son
+ * opcionales: no se puede asumir que vengan.
+ */
+export type TimeEntryConsultant = Omit<Consultant, "hourlyRate" | "costPerMonth" | "identification"> &
+  Partial<Pick<Consultant, "hourlyRate" | "costPerMonth" | "identification">>;
+
 export type TimeEntry = {
   id: string;
   projectId: string;
@@ -96,7 +106,7 @@ export type TimeEntry = {
   createdAt: string;
   updatedAt: string;
   project: Project;
-  consultant: Consultant;
+  consultant: TimeEntryConsultant;
 };
 
 export type Expense = {
@@ -506,16 +516,15 @@ export async function createTimeEntry(payload: {
   return response.data;
 }
 
-export async function approveTimeEntry(id: string, approvedBy: string): Promise<TimeEntry> {
-  const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}/approve`, "PATCH", {
-    approvedBy,
-  });
+// La identidad de quien aprueba o rechaza la toma el backend del token; el
+// cliente ya no la envía (ni podría falsificarla).
+export async function approveTimeEntry(id: string): Promise<TimeEntry> {
+  const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}/approve`, "PATCH");
   return response.data;
 }
 
-export async function rejectTimeEntry(id: string, approvedBy: string, rejectionNote: string): Promise<TimeEntry> {
+export async function rejectTimeEntry(id: string, rejectionNote: string): Promise<TimeEntry> {
   const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}/reject`, "PATCH", {
-    approvedBy,
     rejectionNote,
   });
   return response.data;
@@ -1630,16 +1639,13 @@ export async function resetCountryExtraHoursConfig(country: string): Promise<Ext
   return response.data;
 }
 
-export async function approveExtraHour(id: string, payload: {
-  approvedBy: string;
-  rejectionNote?: string;
-}): Promise<ExtraHourEntry> {
-  const response = await request<ApiEnvelope<ExtraHourEntry>>(`/api/extra-hours/${id}/approve`, "PATCH", payload);
+// Igual que en horas normales: `approvedBy` sale del token en el backend.
+export async function approveExtraHour(id: string): Promise<ExtraHourEntry> {
+  const response = await request<ApiEnvelope<ExtraHourEntry>>(`/api/extra-hours/${id}/approve`, "PATCH");
   return response.data;
 }
 
 export async function rejectExtraHour(id: string, payload: {
-  approvedBy: string;
   rejectionNote: string;
 }): Promise<ExtraHourEntry> {
   const response = await request<ApiEnvelope<ExtraHourEntry>>(`/api/extra-hours/${id}/reject`, "PATCH", payload);

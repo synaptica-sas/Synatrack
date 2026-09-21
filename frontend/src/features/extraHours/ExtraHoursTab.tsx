@@ -530,7 +530,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     if (!authUser) return;
     setApprovingId(id);
     try {
-      await approveExtraHour(id, { approvedBy: authUser.displayName });
+      await approveExtraHour(id);
       triggerSuccess("Solicitud aprobada correctamente.");
       await loadEntries();
     } catch (err) {
@@ -550,7 +550,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
     try {
       await rejectExtraHour(rejectionTargetId, {
-        approvedBy: authUser.displayName,
         rejectionNote: rejectionNote.trim()
       });
       setRejectionTargetId(null);
