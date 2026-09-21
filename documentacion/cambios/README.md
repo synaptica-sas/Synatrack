@@ -71,9 +71,10 @@ producción: `app-gestion-demo.onrender.com/health` responde 200 y
 `app-gestion-backend.onrender.com` no contesta en 150 segundos. El cron de `render.yaml`
 apuntaba al segundo. Conviene revisar si las tasas quedaron desactualizadas.
 
-Riesgo a tener en cuenta antes de fusionar: `node:24-slim` cambia la base de Debian
-bookworm a trixie, y con ella la versión de OpenSSL que Prisma usa. **Falta construir la
-imagen Docker una vez**; no se pudo probar porque esta máquina no tiene Docker.
+Sobre el riesgo de Docker que se había señalado antes: **no aplica a producción**. Render
+despliega el backend con `runtime: node`, no con el Dockerfile; los Dockerfile solo los usa
+`docker-compose.yml`, que es una alternativa de desarrollo local. Lo único que cambia en
+producción es `NODE_VERSION`, reversible en una línea.
 
 ### `docs/actualizar-manuales`
 
@@ -92,3 +93,14 @@ el mismo.
 Advertencia: cambiar el contenido de una migración altera su checksum. Si alguien ya la
 tiene aplicada en su base local, `migrate deploy` le avisará; lo más simple ahí es
 recrear la base.
+
+---
+
+## Verificación conjunta
+
+Las cinco ramas se integraron y se probaron juntas contra una base creada desde cero:
+migraciones, compilación, 153 + 124 pruebas, la API ejercitada por HTTP y un recorrido por
+las 16 pantallas con navegador real. **Sin regresiones.**
+
+El informe completo, con lo que sí se probó y lo que no, está en
+`documentacion/cambios/VERIFICACION_INTEGRACION.md`.

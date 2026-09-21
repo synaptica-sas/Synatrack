@@ -31,7 +31,8 @@
       "Bash(npx prisma migrate deploy:*)",
       "Bash(node scripts/generate-map.mjs:*)",
       "Bash(graphify:*)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(python -)"
     ],
     "deny": [
       "Read(./backend/.env)",

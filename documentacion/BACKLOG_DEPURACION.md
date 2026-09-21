@@ -93,6 +93,20 @@ es exactamente como se introducen regresiones.
 
 ---
 
+## 7. Hallazgos de la verificación de integración (2026-09-21)
+
+Encontrados al ejercitar la aplicación completa con las cinco ramas integradas. **Los tres
+son preexistentes**, no los introdujeron esas ramas. Detalle en
+`documentacion/cambios/VERIFICACION_INTEGRACION.md`.
+
+| ID | P | Hallazgo | Evidencia | Acción |
+|---|---|---|---|---|
+| DEP-32 | **P0** | **Los montos se muestran en la moneda equivocada cuando falta la tasa FX.** Con la base sin tasas cargadas, el tablero muestra un proyecto de 100.000.000 COP como "US$ 100.000.000" y un gasto de 500.000 COP como "US$ 500.000": no convierte, solo cambia la etiqueta. La diferencia real es de unas 4.000 veces. Misma raíz que el punto 19 de la doc técnica §10, que lo describía solo para nómina. | `convertAmountFallback` en `backend/src/utils/currency.ts`; reproducido en el tablero con base nueva (verificado) | Que la respuesta marque explícitamente los montos que no se pudieron convertir y que la interfaz los señale, en vez de rotularlos con la moneda base. |
+| DEP-33 | P1 | **Los enlaces profundos no funcionan.** Entrar directo a `/projects` o a cualquier ruta de pestaña (salvo `/profile`) redirige siempre a `/dashboard`. La navegación por el menú sí actualiza la URL, pero esa URL no se puede compartir ni recargar. | Efecto de enrutamiento de `frontend/src/App.tsx`: mientras `authUser` es `null` durante el arranque, redirige a `/` y se pierde el destino (verificado con Playwright en las 16 pantallas) | Guardar la ruta pedida antes de redirigir y restaurarla cuando termine la autenticación. |
+| DEP-34 | P3 | Tres advertencias de React en Actividades: `fill-opacity`, `stop-color` y `stop-opacity` deberían ir en camelCase en JSX. | Consola del navegador en `/activities` (verificado) | Renombrar a `fillOpacity`, `stopColor`, `stopOpacity`. |
+
+---
+
 ## Orden sugerido
 
 1. **DEP-02** (montar `ErrorBoundary`) — media hora, elimina las pantallas en blanco.
