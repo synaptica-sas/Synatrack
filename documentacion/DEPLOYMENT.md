@@ -2,23 +2,24 @@
 
 Este repositorio queda orientado a una demo con:
 
-- Frontend: Vercel desde la rama `deploy`, carpeta `frontend`.
-- Backend: Render Web Service desde la rama `deploy`, carpeta `backend`.
+- Frontend: Vercel, carpeta `frontend`.
+- Backend: Render Web Service, carpeta `backend`.
 - Base de datos: Supabase PostgreSQL.
+- Adicionalmente, el frontend también se publica en Azure Static Web Apps desde GitHub Actions.
 
-## Flujo de ramas
+## Ramas
 
-Trabaja en `develop` y solo fusiona a `deploy` cuando la demo compile y pase validaciones basicas.
+Las ramas que existen hoy en el repositorio (`git branch -a`) son:
 
-```bash
-git checkout develop
-# cambios + pruebas
-git push origin develop
+- `main`: rama principal y base de todo el trabajo.
+- `origin/dev`: rama remota heredada, sin uso activo.
+- Ramas de trabajo `fix/*` y `docs/*` creadas para la depuración en curso; su alcance está en `documentacion/PLAN_DE_RAMAS.md`.
 
-git checkout deploy
-git merge develop
-git push origin deploy
-```
+**No existen las ramas `develop` ni `deploy`** que describían versiones anteriores de este documento, y **no hay un flujo de promoción acordado** entre ramas. Lo único automatizado en el repositorio es `.github/workflows/azure-static-web-apps-*.yml`, que despliega el frontend a Azure Static Web Apps en cada push a `main` y en los PR contra `main`.
+
+La rama que Render y Vercel tienen conectada no está declarada en el repositorio (`render.yaml` no fija `branch`): hay que confirmarla en el panel de cada servicio antes de asumir que un merge libera la demo.
+
+Cuando se acuerde un flujo de ramas formal, este es el lugar donde documentarlo.
 
 ## Lista de trabajo para llegar a la meta
 
@@ -29,7 +30,7 @@ git push origin deploy
 - Configurar Render con root `backend`, build `npm ci --include=dev && npm run build`, start `npm run start`.
 - Configurar Vercel con root `frontend`, build `npm run build`, output `dist`.
 - Configurar CORS en Render con la URL final de Vercel.
-- Mantener `.env` fuera de Git; usar solo `.env.example` y `.env.production.example`.
+- Mantener `.env` fuera de Git; usar solo los ejemplos versionados: `backend/.env.example`, `frontend/.env.example` y `frontend/.env.production.example`.
 - Validar `/health`, login/demo auth, CRUD principal y refresh directo de `/home`.
 
 ## Supabase
@@ -46,23 +47,26 @@ npm run prisma:generate
 npm run prisma:deploy
 ```
 
-Para cargar datos demo:
+Ejecuta el seed:
 
 ```bash
 npm run prisma:seed
 ```
 
+El seed (`backend/prisma/seed.mjs`) crea **solo los roles y el usuario administrador** (`ADMIN_EMAIL`). **No carga datos de demostración**: la base queda vacía de proyectos, consultores y horas.
+
 ## Desarrollo local antes del despliegue
 
 La aplicacion puede probarse localmente con PostgreSQL local o con Supabase remoto.
 
-Para PostgreSQL local en puerto `5432`, usa como referencia:
+El único archivo de ejemplo del backend es **`backend/.env.example`** (no existen `.env.local.example` ni `.env.local.5433.example`; versiones anteriores de este documento los citaban por error):
 
-- `backend/.env.local.example`
+```bash
+cd backend
+cp .env.example .env      # en Windows: copy .env.example .env
+```
 
-Para PostgreSQL local en puerto `5433`, usa como referencia:
-
-- `backend/.env.local.5433.example`
+Ese ejemplo trae comentados los pares de `DATABASE_URL`/`DIRECT_URL` para PostgreSQL local en el puerto `5432` y en el `5433`; descomenta el que corresponda y borra las cadenas de Supabase.
 
 El archivo local `backend/.env` ya esta preparado para `localhost:5433` y queda ignorado por Git. Si tu usuario, clave o nombre de base cambia, ajusta:
 

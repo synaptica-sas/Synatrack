@@ -81,8 +81,8 @@ Después, desde `backend/`: `npm run prisma:deploy` y `npm run prisma:seed`.
 
 1. **Node.js 24** (el que declaran ambos `package.json`).
 2. `cd backend && npm install` y `cd frontend && npm install`.
-3. `cp backend/.env.example backend/.env` y ajustar `DATABASE_URL`/`DIRECT_URL` al puerto 5433.
-   (Los docs antiguos mencionan `.env.local.5433.example`; ese archivo no existe.)
+3. `cp backend/.env.example backend/.env` y ajustar `DATABASE_URL`/`DIRECT_URL` al puerto 5433
+   (el propio ejemplo trae ese par comentado; hay que descomentarlo y borrar las cadenas de Supabase).
 4. `cp frontend/.env.example frontend/.env`, dejar `VITE_API_URL=http://localhost:4000`,
    `VITE_FORCE_LOCAL_AUTH=true` y **vaciar** las variables `VITE_AZURE_*` (si quedan con los
    placeholders `<...>`, MSAL intenta inicializarse con un client id inválido).
@@ -210,5 +210,5 @@ Criterios con los que están escritos, por si hay que agregar otro:
 `.claude/settings.json` acota los permisos (lectura amplia, escritura limitada al código y
 la documentación, confirmación para `git commit/push` y para `prisma migrate dev`/`db push`).
 
-> Pendiente menor: la regla `"Read(./**/.env.*)"` de la lista `deny` también bloquea leer los
-> `.env.example`, que son inocuos. Conviene ajustarla a `"Read(./**/.env)"`.
+> Resuelto: la regla `deny` ya es `"Read(./**/.env)"` (más `backend/.env` y `frontend/.env`), así
+> que los `.env.example` se pueden leer y los `.env` reales siguen bloqueados.

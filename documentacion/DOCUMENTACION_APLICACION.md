@@ -1,7 +1,15 @@
-# Documentación Aplicación - App Gestión Demo
+# Documentación Aplicación - Synatrack
 
 ## 1. Resumen General
-App Gestión es una aplicación web para el control de proyectos, consultores, horas, gastos, proyecciones, capacidad y métricas consolidadas de seguimiento (PMO).
+**Synatrack** es una aplicación web para el control de proyectos, consultores, horas, gastos, proyecciones, capacidad y métricas consolidadas de seguimiento (PMO).
+
+> [!NOTE]
+> **El nombre aparece de tres formas distintas** y conviene saberlo para no confundirse:
+> `Synatrack` (repositorio y documentación), `SynaTrack` (títulos y pie de página de la interfaz,
+> `frontend/src/App.tsx`) y `App Gestión` / `app-gestion-*` (nombres de los servicios en
+> `render.yaml`, `vercel.json` y varias variables de entorno, además del nombre de la base
+> `app_gestion_demo`). Unificarlos implica tocar código y configuración de despliegue, así que
+> por ahora queda documentado, no cambiado.
 
 La solución cuenta con:
 - **Frontend**: React 19 + TypeScript + Vite.
@@ -17,21 +25,23 @@ La autenticación está diseñada para funcionar en dos modalidades seleccionabl
 
 ## 2. Arquitectura de Ramas y Despliegue
 
-### 2.1 Flujo de Ramas
-- **`develop`**: Rama activa de desarrollo. Contiene las últimas características de la aplicación (Capacidad, Horas Extra, Auditoría, Estimaciones, Portafolio PMO, RAG Chat, accesos directos, etc.) y mejoras estéticas de UX.
-- **`main`** / **`deploy`**: Rama conectada a los servicios automáticos de Render y Vercel. 
+### 2.1 Ramas existentes
+Las ramas que existen hoy en el repositorio (`git branch -a`) son:
+
+- **`main`**: rama principal y base de todo el trabajo. Contiene las características de la aplicación (Capacidad, Horas Extra, Auditoría, Estimaciones, Portafolio PMO, RAG Chat, accesos directos, etc.).
+- **`origin/dev`**: rama remota heredada, sin uso activo en este momento.
+- **`fix/*` y `docs/*`**: ramas de trabajo creadas para la depuración en curso; su alcance y orden están descritos en `documentacion/PLAN_DE_RAMAS.md`.
 
 > [!IMPORTANT]
-> Para liberar los últimos cambios de la demo a producción (Render y Vercel), se debe fusionar la rama `develop` en la rama activa de despliegue (`deploy` o `main`) mediante Git:
-> ```bash
-> git checkout deploy # o main, según corresponda
-> git merge develop
-> git push origin deploy
-> ```
+> **No existen las ramas `develop` ni `deploy`** que mencionaban versiones anteriores de este documento, y **no hay un flujo de promoción acordado** entre ramas. Lo que sí está automatizado hoy:
+> - `.github/workflows/azure-static-web-apps-*.yml` despliega el frontend a Azure Static Web Apps en cada push a `main` (y en los PR contra `main`). Ojo: declara `output_location: "build"` cuando Vite emite `dist`; está registrado como DEP-19 en `BACKLOG_DEPURACION.md`.
+> - Render y Vercel (ver `render.yaml` y `frontend/vercel.json`) apuntan al despliegue de la demo; la rama que tienen configurada debe confirmarse en los paneles de cada servicio, porque no está declarada en el repositorio.
+>
+> Antes de definir un flujo de ramas formal hay que acordarlo con el equipo; este documento solo describe el estado actual.
 
 ---
 
-## 3. Módulos y Secciones del Proyecto (Rama `develop`)
+## 3. Módulos y Secciones del Proyecto
 La aplicación cuenta con las siguientes secciones agrupadas en la barra de navegación lateral y accesibles según el rol del usuario:
 
 ### 3.1 Gobierno
@@ -95,13 +105,16 @@ La aplicación cuenta con las siguientes secciones agrupadas en la barra de nave
   - Bitácora detallada de auditoría para registrar cada cambio efectuado en la base de datos (acción realizada, entidad afectada, estado antes y después, IP del usuario y navegador).
 
 ### 3.5 Características Adicionales de Usabilidad
-- **RAG Chatbot**: Asistente virtual inteligente contextualizado (se abre con `Ctrl + K` o mediante el icono flotante) que permite a los usuarios hacer preguntas en lenguaje natural sobre las métricas del proyecto o dudas operativas.
+- **Asistente RAG (demo)**: panel de consulta rápida que se abre con `Ctrl + K` o con el icono flotante (`frontend/src/components/RagChat.tsx`).
+  - **Qué hace**: busca coincidencias de texto en el navegador sobre los datos que la pantalla ya tiene cargados (proyectos, consultores, tasas FX y las métricas de estadísticas) y arma una respuesta con plantillas fijas. Reconoce el nombre de un proyecto o de un consultor y un puñado de palabras clave (`riesgo`/`alerta`, `proyecto`, `presupuesto`/`costo`, `tasa`/`divisa`/`fx`, `ayuda`). Si nada coincide, responde que no encontró registros.
+  - **Qué NO hace**: no usa ningún modelo de lenguaje, no hay embeddings, ni índice vectorial, ni llamada a un servicio de IA, ni comprensión de lenguaje natural. El retardo de escritura y la línea de "Fuentes" son parte de la simulación de la demo, no de un pipeline RAG real.
+  - **Implicación**: preguntas formuladas de forma distinta a las palabras clave anteriores no serán entendidas. Conviene aclararlo al presentarlo ante un cliente para no generar expectativas falsas.
 - **Atajos de Teclado**:
   - `Alt + N`: Ir a Dashboard.
   - `Alt + H`: Ir a Horas.
   - `Alt + F`: Ir a Proyecciones.
   - `Alt + C`: Ir a Consultores.
-  - `Ctrl + K`: Abrir/Cerrar RAG Chatbot.
+  - `Ctrl + K`: Abrir/Cerrar el asistente RAG.
   - `?`: Mostrar ayuda de atajos.
 
 ---
@@ -164,7 +177,7 @@ Para que Render (Backend) y Vercel (Frontend) operen con inicio de sesión real 
 
 ## 6. Lista de Verificación para la Salida a Producción (Checklist)
 
-1. [ ] **Fusión de Código**: Integrar los últimos cambios estéticos y funcionales de la rama `develop` a la rama activa de despliegue (`deploy` o `main`).
+1. [ ] **Fusión de Código**: Integrar la rama de trabajo correspondiente en `main` (la rama que dispara el despliegue automático del frontend). Ver §2.1 y `documentacion/PLAN_DE_RAMAS.md`.
 2. [ ] **Verificar Redireccionamientos en Azure AD**: En la App Registration del Frontend, agregar `https://[dominio-vercel].vercel.app/home` y asegurar que el tipo de redirección sea **SPA (Single Page Application)**.
 3. [ ] **Alinear Valores de Roles**: Comprobar que en Azure AD los App Roles asignados tengan como "Value" los términos en inglés (`ADMIN`, `PM`, `CONSULTANT`, `FINANCE`, `VIEWER`).
 4. [ ] **Cambio de Variables de Entorno**: Actualizar las variables especificadas en la sección 5 tanto en Render como en Vercel y forzar un redespliegue de los servicios.
@@ -177,8 +190,14 @@ Para que Render (Backend) y Vercel (Frontend) operen con inicio de sesión real 
 
 Para ejecutar y probar la aplicación en tu máquina local, sigue estos pasos:
 
+> [!NOTE]
+> En las máquinas de desarrollo actuales **no se usa Docker**: la base es un PostgreSQL portable
+> arrancado con `.\scripts\db.ps1 start` y la aplicación completa se levanta con `.\scripts\dev.ps1`.
+> Ese camino, que es el verificado, está en `documentacion/DESARROLLO_LOCAL.md`. Los pasos de
+> abajo son la alternativa manual con Docker, válida en máquinas que sí lo tengan.
+
 ### 7.1 Requisitos Previos
-- **Node.js**: Versión 18 o 20 instalada.
+- **Node.js**: Versión **24.x** (es la que declaran `backend/package.json` y `frontend/package.json` en `engines`).
 - **Docker**: Para levantar la base de datos PostgreSQL local configurada en el puerto `5433`.
 
 ### 7.2 Levantar la Base de Datos Local (Docker)
@@ -197,15 +216,23 @@ docker-compose up -d
    ```bash
    npm ci
    ```
-3. Crea tu archivo de configuración de entorno:
-   - En Windows, copia el archivo de ejemplo para el puerto 5433:
+3. Crea tu archivo de configuración de entorno a partir del **único ejemplo que existe**, `backend/.env.example`:
+   - En Windows:
      ```cmd
-     copy .env.local.5433.example .env
+     copy .env.example .env
      ```
-   - En Linux/macOS, usa `cp`:
+   - En Linux/macOS:
      ```bash
-     cp .env.local.5433.example .env
+     cp .env.example .env
      ```
+   Luego edita `backend/.env` y descomenta el par de líneas del puerto `5433` que ya vienen
+   en el ejemplo, reemplazando los valores de Supabase:
+   ```env
+   DATABASE_URL="postgresql://postgres:postgres@localhost:5433/app_gestion_demo?schema=public"
+   DIRECT_URL="postgresql://postgres:postgres@localhost:5433/app_gestion_demo?schema=public"
+   ```
+   *Nota: no existen `.env.local.example` ni `.env.local.5433.example`; versiones anteriores de
+   este documento los mencionaban por error.*
 4. Genera el cliente de Prisma:
    ```bash
    npm run prisma:generate
@@ -214,10 +241,13 @@ docker-compose up -d
    ```bash
    npm run prisma:deploy
    ```
-6. Carga la base de datos con los datos semilla y de prueba:
+6. Ejecuta el seed:
    ```bash
    npm run prisma:seed
    ```
+   *El seed (`backend/prisma/seed.mjs`) crea **solo los roles y el usuario administrador**
+   (`ADMIN_EMAIL`, por defecto `admin@synaptica.local`). **No carga datos de demostración**:
+   la aplicación arranca vacía y hay que crear proyectos y consultores a mano.*
 7. Inicia el servidor de desarrollo del backend:
    ```bash
    npm run dev
@@ -251,3 +281,24 @@ docker-compose up -d
    http://localhost:5173/home
    ```
 
+
+---
+
+## 8. Carpeta `contexto/` (insumos del cliente)
+
+La carpeta `contexto/`, en la raíz del repositorio, **no es código ni se usa en tiempo de
+ejecución**: guarda los insumos originales con los que se levantó el requerimiento.
+
+| Archivo | Qué es |
+|---|---|
+| `REQUERIMIENTO_DESARROLLO.docx` | Requerimiento funcional original. |
+| `Conversacion.docx` | Notas de la conversación inicial con el cliente. |
+| `Plantilla_Monitoreo_Presupuesto_TI_Completa2.xlsx` | Plantilla de monitoreo de presupuesto de TI que sirvió de referencia. |
+| `SY_6.html` | Maqueta/entregable en HTML (~97 KB). |
+
+> [!WARNING]
+> **Revisar confidencialidad antes de compartir el repositorio.** Son documentos comerciales del
+> cliente y pueden contener información sensible (nombres, cifras, condiciones). Antes de dar
+> acceso al repositorio a alguien externo, o de hacerlo público, hay que revisar su contenido y
+> decidir si se mueven fuera del control de versiones. Mientras tanto **no se borran**: son la
+> trazabilidad del origen del proyecto. Ver DEP-28 en `documentacion/BACKLOG_DEPURACION.md`.
