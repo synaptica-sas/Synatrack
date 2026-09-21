@@ -1,4 +1,4 @@
-import { resolvePermissions } from "../../auth/roles.js";
+import { resolvePermissions, rolePermissions } from "../../auth/roles.js";
 import { authenticate } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import type { FastifyInstance } from "fastify";
@@ -26,6 +26,27 @@ export async function authRoutes(app: FastifyInstance) {
           permissions: resolvePermissions(user.roles),
         },
       };
+    },
+  );
+
+  /**
+   * Matriz completa de permisos por rol, tal como la define `auth/roles.ts`.
+   *
+   * La consume el simulador de rol del frontend (el selector "VISTA" que ven
+   * los administradores) para previsualizar la interfaz como otro rol sin
+   * mantener una segunda copia escrita a mano (DEP-15).
+   *
+   * Importante: esto es solo presentación. Los permisos reales del backend los
+   * imponen los `authorize([AppRole...])` de cada ruta, que no cambian porque
+   * el administrador mueva el selector.
+   */
+  app.get(
+    "/permissions",
+    {
+      preHandler: [authenticate],
+    },
+    async () => {
+      return { data: rolePermissions };
     },
   );
 }

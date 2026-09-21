@@ -3,9 +3,10 @@ import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { env } from "./config/env";
 import { apiTokenRequest, loginRequest } from "./auth/msal";
 import {
-  getHealth, getMe, setApiAccessToken, sendFeedback,
-  type AuthUser, type HealthResponse, type FxConfig,
+  getHealth, getMe, getRolePermissions, setApiAccessToken, sendFeedback,
+  type AuthUser, type HealthResponse, type FxConfig, type RolePermissionsMap,
 } from "./services/api";
+import { findFxRate } from "./utils/fxRate";
 import { useProjects } from "./hooks/useProjects";
 import { useConsultants } from "./hooks/useConsultants";
 import { useTimeEntries } from "./hooks/useTimeEntries";
@@ -115,29 +116,6 @@ const CURRENCY_OPTIONS = ["COP", "USD", "EUR", "MXN", "PEN", "CLP"];
 function numberish(v: string | null | undefined) {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
-}
-
-/** Busca la tasa entre dos monedas en los FxConfig ya cargados: directa, inversa,
- *  o triangulada vía cualquier otra moneda pivote (misma lógica que currency.ts
- *  en el backend, reimplementada aquí porque el drawer no llama a la API). */
-function findFxRate(fxConfigs: FxConfig[], from: string, to: string): number | null {
-  if (from === to) return 1;
-
-  const direct = fxConfigs.find((c) => c.baseCode === from && c.quoteCode === to);
-  if (direct) return Number(direct.rate);
-
-  const inverse = fxConfigs.find((c) => c.baseCode === to && c.quoteCode === from);
-  if (inverse) return 1 / Number(inverse.rate);
-
-  for (const c of fxConfigs) {
-    if (c.baseCode !== from) continue;
-    const pivotToTarget = fxConfigs.find((p) => p.baseCode === c.quoteCode && p.quoteCode === to);
-    if (pivotToTarget) return Number(c.rate) * Number(pivotToTarget.rate);
-    const pivotInverse = fxConfigs.find((p) => p.baseCode === to && p.quoteCode === c.quoteCode);
-    if (pivotInverse) return Number(c.rate) / Number(pivotInverse.rate);
-  }
-
-  return null;
 }
 
 function FxDrawer({ open, onClose, fxConfigs }: { open: boolean; onClose: () => void; fxConfigs: FxConfig[] }) {
@@ -981,39 +959,28 @@ function App() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  /**
+   * Matriz de permisos por rol servida por el backend (`GET /api/auth/permissions`,
+   * que devuelve `rolePermissions` de `auth/roles.ts`). Se carga una sola vez al
+   * arrancar, solo para administradores, que son los únicos que ven el selector
+   * de vista. Antes había aquí una copia literal de la matriz (DEP-15).
+   */
+  const [rolePermissionsMap, setRolePermissionsMap] = useState<RolePermissionsMap | null>(null);
+
+  /**
+   * Simulador de rol: cambia ÚNICAMENTE lo que se ve en la interfaz, para que un
+   * administrador pueda previsualizar la aplicación como otro rol. No altera los
+   * permisos reales: el backend sigue autorizando con los roles del token en el
+   * `authorize([AppRole...])` de cada ruta.
+   */
   const handleSwitchRole = useCallback((role: "ADMIN" | "PM" | "CONSULTANT" | "FINANCE") => {
-    if (!originalUser) return;
-    const rolePermissionsMap: Record<string, string[]> = {
-      ADMIN: [
-        "projects:read", "projects:write", "consultants:read", "consultants:write",
-        "time:read", "time:write", "time:review", "expenses:read", "expenses:write",
-        "forecasts:read", "forecasts:write", "revenue:read", "revenue:write",
-        "fx:read", "fx:write", "stats:read", "assignments:read", "assignments:write",
-        "capacity:read", "snapshots:close", "alerts:read", "alerts:resolve",
-        "audit:read", "users:manage", "extrahours:read", "extrahours:write",
-        "extrahours:review", "extrahours:config", "estimations:write", "estimations:read"
-      ],
-      PM: [
-        "projects:read", "projects:write", "consultants:read", "consultants:write",
-        "time:read", "time:write", "time:review", "expenses:read", "expenses:write",
-        "forecasts:read", "forecasts:write", "revenue:read", "revenue:write",
-        "fx:read", "stats:read", "assignments:read", "assignments:write",
-        "capacity:read", "alerts:read", "alerts:resolve", "extrahours:read",
-        "extrahours:write", "extrahours:review", "estimations:write", "estimations:read"
-      ],
-      CONSULTANT: [
-        "time:read", "time:write", "alerts:read", "extrahours:read", "extrahours:write", "estimations:read"
-      ],
-      FINANCE: [
-        "extrahours:read", "extrahours:review"
-      ]
-    };
+    if (!originalUser || !rolePermissionsMap) return;
     setAuthUser({
       ...originalUser,
       roles: [role],
-      permissions: rolePermissionsMap[role]
+      permissions: rolePermissionsMap[role] ?? []
     });
-  }, [originalUser]);
+  }, [originalUser, rolePermissionsMap]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1256,6 +1223,18 @@ function App() {
       const me = await getMe();
       setOriginalUser(me);
       setAuthUser(me);
+
+      // La matriz de permisos solo hace falta para el selector de vista, que es
+      // exclusivo de administradores. Si falla, el selector queda deshabilitado
+      // pero el arranque continúa: es una ayuda de previsualización, no una
+      // dependencia del funcionamiento normal.
+      if (me.roles.includes("ADMIN")) {
+        try {
+          setRolePermissionsMap(await getRolePermissions());
+        } catch {
+          setRolePermissionsMap(null);
+        }
+      }
       
       if (!authWithMicrosoftEnabled) {
         sessionStorage.setItem("bypass_auth", "true");
@@ -1454,6 +1433,10 @@ function App() {
                     key={r}
                     type="button"
                     onClick={() => handleSwitchRole(r)}
+                    disabled={!rolePermissionsMap}
+                    title={rolePermissionsMap
+                      ? "Previsualizar la interfaz como este rol (no cambia tus permisos reales)"
+                      : "No se pudo cargar la matriz de permisos"}
                     style={{
                       background: isActive ? "var(--gradient-accent)" : "none",
                       color: isActive ? "#fff" : "var(--color-sec-blue)",
@@ -1462,7 +1445,8 @@ function App() {
                       padding: "4px 10px",
                       fontSize: "0.68rem",
                       fontWeight: 700,
-                      cursor: "pointer",
+                      cursor: rolePermissionsMap ? "pointer" : "not-allowed",
+                      opacity: rolePermissionsMap ? 1 : 0.5,
                       transition: "all 0.2s ease"
                     }}
                   >

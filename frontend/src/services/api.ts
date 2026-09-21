@@ -365,6 +365,17 @@ export async function getMe(): Promise<AuthUser> {
   return response.data;
 }
 
+/**
+ * Matriz de permisos por rol. Es la de `backend/src/auth/roles.ts`: el frontend
+ * no mantiene copia propia (DEP-15).
+ */
+export type RolePermissionsMap = Record<AppRole, string[]>;
+
+export async function getRolePermissions(): Promise<RolePermissionsMap> {
+  const response = await request<ApiEnvelope<RolePermissionsMap>>("/api/auth/permissions");
+  return response.data;
+}
+
 export async function listAdminUsers(): Promise<AdminUser[]> {
   const response = await request<ApiEnvelope<AdminUser[]>>("/api/admin/users");
   return response.data;

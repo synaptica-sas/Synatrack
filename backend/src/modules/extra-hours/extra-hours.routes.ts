@@ -228,6 +228,67 @@ async function ensureDefaultConfigs(): Promise<void> {
 
 export { ensureDefaultConfigs };
 
+/** Nivel del flujo de doble aprobación en el que se encuentra una solicitud. */
+export type ExtraHourAuthLevel = "PM" | "FINANCE";
+
+/** Lo mínimo que hace falta de la solicitud para decidir quién puede actuar. */
+type ExtraHourForAuth = {
+  status: ExtraHourStatus;
+  project: { id: string; projectManagerEmail: string | null } | null;
+};
+
+/** Lo mínimo que hace falta del usuario autenticado. */
+type AuthUserForAuth = {
+  email: string;
+  roles: AppRole[];
+};
+
+/**
+ * Decide en qué nivel del flujo de doble aprobación (PM → Finanzas) está una
+ * solicitud de horas extra y si el usuario autenticado puede actuar sobre ella.
+ *
+ * Existe porque `approve` y `reject` repetían esta comprobación palabra por
+ * palabra (DEP-17). Devuelve solo el veredicto: cada handler conserva su propio
+ * mensaje de error, que es lo único en lo que diferían.
+ *
+ * Reglas (idénticas a las que había en ambos handlers):
+ *  - `PENDING_PM` (nivel 1): el PM del proyecto, un ADMIN, o quien tenga una
+ *    delegación de aprobación vigente sobre ese proyecto.
+ *  - cualquier otro estado (nivel 2, `PENDING_FINANCE`): FINANCE o ADMIN.
+ */
+export async function getExtraHourAuthLevel(
+  entry: ExtraHourForAuth,
+  user: AuthUserForAuth,
+): Promise<{ level: ExtraHourAuthLevel; authorized: boolean }> {
+  const email = user.email.toLowerCase();
+  const isAdmin = user.roles.includes(AppRole.ADMIN);
+  const isFinance = user.roles.includes(AppRole.FINANCE);
+
+  if (entry.status !== ExtraHourStatus.PENDING_PM) {
+    return { level: "FINANCE", authorized: isFinance || isAdmin };
+  }
+
+  const isPM = entry.project?.projectManagerEmail?.toLowerCase() === email;
+
+  let hasDelegation = false;
+  if (!isPM && !isAdmin && entry.project?.id) {
+    const now = new Date();
+    const activeDelegation = await prisma.approvalDelegation.findFirst({
+      where: {
+        projectId: entry.project.id,
+        toUserEmail: email,
+        startDate: { lte: now },
+        endDate: { gte: now },
+      },
+    });
+    if (activeDelegation) {
+      hasDelegation = true;
+    }
+  }
+
+  return { level: "PM", authorized: isPM || isAdmin || hasDelegation };
+}
+
 export async function extraHoursRoutes(app: FastifyInstance) {
   // 0. Obtener países soportados dinámicamente
   app.get(
@@ -664,8 +725,6 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const { id } = idParamsSchema.parse(request.params);
       const user = request.authUser!;
       const email = user.email.toLowerCase();
-      const isAdmin = user.roles.includes(AppRole.ADMIN);
-      const isFinance = user.roles.includes(AppRole.FINANCE);
 
       const existing = await prisma.extraHourEntry.findUnique({
         where: { id },
@@ -703,26 +762,13 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         }
       }
 
-      // Lógica de transición de estados
-      if (existing.status === ExtraHourStatus.PENDING_PM) {
-        // Nivel 1: Requiere aprobación del PM del proyecto, Admin o Delegado
-        const isPM = existing.project?.projectManagerEmail?.toLowerCase() === email;
-        let hasDelegation = false;
-        if (!isPM && !isAdmin && existing.project?.id) {
-          const activeDelegation = await prisma.approvalDelegation.findFirst({
-            where: {
-              projectId: existing.project.id,
-              toUserEmail: email,
-              startDate: { lte: new Date() },
-              endDate: { gte: new Date() },
-            },
-          });
-          if (activeDelegation) {
-            hasDelegation = true;
-          }
-        }
+      // Lógica de transición de estados. El nivel y el veredicto los decide
+      // `getExtraHourAuthLevel`, compartido con `reject` (DEP-17).
+      const auth = await getExtraHourAuthLevel(existing, user);
 
-        if (!isPM && !isAdmin && !hasDelegation) {
+      if (auth.level === "PM") {
+        // Nivel 1: Requiere aprobación del PM del proyecto, Admin o Delegado
+        if (!auth.authorized) {
           return reply.status(403).send({ message: "Solo el supervisor (PM) de este proyecto, un consultor con delegación activa o el Administrador pueden otorgar la aprobación operativa." });
         }
 
@@ -753,7 +799,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         return { data: entry };
       } else {
         // Nivel 2: Requiere aprobación de Finanzas / Recursos Humanos (Lina) o Admin
-        if (!isFinance && !isAdmin) {
+        if (!auth.authorized) {
           return reply.status(403).send({ message: "Solo el personal de Finanzas / Nómina o el Administrador pueden otorgar la aprobación final para pago." });
         }
 
@@ -796,8 +842,6 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const payload = rejectPayloadSchema.parse(request.body);
       const user = request.authUser!;
       const email = user.email.toLowerCase();
-      const isAdmin = user.roles.includes(AppRole.ADMIN);
-      const isFinance = user.roles.includes(AppRole.FINANCE);
 
       const existing = await prisma.extraHourEntry.findUnique({
         where: { id },
@@ -831,30 +875,16 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         return reply.status(409).send({ message: "Solo solicitudes pendientes pueden ser rechazadas" });
       }
 
-      // Validar quién tiene permiso de rechazar
-      if (existing.status === ExtraHourStatus.PENDING_PM) {
-        const isPM = existing.project?.projectManagerEmail?.toLowerCase() === email;
-        let hasDelegation = false;
-        if (!isPM && !isAdmin && existing.project?.id) {
-          const activeDelegation = await prisma.approvalDelegation.findFirst({
-            where: {
-              projectId: existing.project.id,
-              toUserEmail: email,
-              startDate: { lte: new Date() },
-              endDate: { gte: new Date() },
-            },
-          });
-          if (activeDelegation) {
-            hasDelegation = true;
-          }
-        }
-        if (!isPM && !isAdmin && !hasDelegation) {
-          return reply.status(403).send({ message: "Solo el PM de este proyecto, un consultor con delegación activa o el Administrador pueden rechazar en este nivel." });
-        }
-      } else {
-        if (!isFinance && !isAdmin) {
-          return reply.status(403).send({ message: "Solo Finanzas o el Administrador pueden rechazar en este nivel." });
-        }
+      // Validar quién tiene permiso de rechazar. Mismo helper que `approve`
+      // (DEP-17): el veredicto es común, el mensaje de error es el de aquí.
+      const auth = await getExtraHourAuthLevel(existing, user);
+
+      if (!auth.authorized) {
+        const message =
+          auth.level === "PM"
+            ? "Solo el PM de este proyecto, un consultor con delegación activa o el Administrador pueden rechazar en este nivel."
+            : "Solo Finanzas o el Administrador pueden rechazar en este nivel.";
+        return reply.status(403).send({ message });
       }
 
       const entry = await prisma.extraHourEntry.update({

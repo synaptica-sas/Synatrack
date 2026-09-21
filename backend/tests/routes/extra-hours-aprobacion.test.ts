@@ -121,3 +121,172 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
     expect(res.statusCode).toBe(400);
   });
 });
+
+/**
+ * Niveles de aprobación de horas extra (DEP-17).
+ *
+ * `approve` y `reject` comparten ahora `getExtraHourAuthLevel`. Estas pruebas
+ * fijan el comportamiento de ambos en los dos niveles del flujo, para que la
+ * unificación no pueda cambiar quién puede autorizar un pago.
+ */
+describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar en cada nivel", () => {
+  let app: FastifyInstance;
+  let escenario: EscenarioBasico;
+  let pmEmail: string;
+  const DELEGADO_EMAIL = "delegado.eh@synaptica.test";
+
+  beforeAll(async () => {
+    app = await crearAppDePrueba();
+    escenario = await crearEscenarioBasico("eh-niveles");
+    pmEmail = `pm.${escenario.prefijo}@synaptica.test`;
+  });
+
+  afterAll(async () => {
+    await prisma.approvalDelegation.deleteMany({ where: { projectId: escenario.projectId } });
+    await limpiarEscenario(escenario);
+    await app.close();
+  });
+
+  async function nuevaEntrada(dia: number) {
+    return crearHoraExtra({
+      consultantId: escenario.consultorA.id,
+      projectId: escenario.projectId,
+      fecha: new Date(Date.UTC(2026, 4, dia)),
+    });
+  }
+
+  it("nivel 1: el PM del proyecto aprueba y la solicitud pasa a PENDING_FINANCE", async () => {
+    const entrada = await nuevaEntrada(1);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, pmEmail),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
+  });
+
+  it("nivel 1: un PM ajeno al proyecto recibe 403 tanto al aprobar como al rechazar", async () => {
+    const entrada = await nuevaEntrada(2);
+    const aprobar = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, "otro.pm@synaptica.test"),
+    });
+    expect(aprobar.statusCode).toBe(403);
+
+    const rechazar = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/reject`,
+      headers: comoRol(AppRole.PM, "otro.pm@synaptica.test"),
+      payload: { rejectionNote: "No corresponde" },
+    });
+    expect(rechazar.statusCode).toBe(403);
+  });
+
+  it("nivel 1: Finanzas no puede aprobar todavía", async () => {
+    const entrada = await nuevaEntrada(3);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("nivel 1: una delegación vigente habilita a quien no es PM", async () => {
+    const entrada = await nuevaEntrada(4);
+    const delegacion = await prisma.approvalDelegation.create({
+      data: {
+        projectId: escenario.projectId,
+        fromUserEmail: pmEmail,
+        toUserEmail: DELEGADO_EMAIL,
+        startDate: new Date(Date.now() - 86_400_000),
+        endDate: new Date(Date.now() + 86_400_000),
+      },
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, DELEGADO_EMAIL),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
+
+    await prisma.approvalDelegation.delete({ where: { id: delegacion.id } });
+  });
+
+  it("nivel 1: una delegación vencida no habilita a nadie", async () => {
+    const entrada = await nuevaEntrada(5);
+    const delegacion = await prisma.approvalDelegation.create({
+      data: {
+        projectId: escenario.projectId,
+        fromUserEmail: pmEmail,
+        toUserEmail: DELEGADO_EMAIL,
+        startDate: new Date(Date.now() - 10 * 86_400_000),
+        endDate: new Date(Date.now() - 86_400_000),
+      },
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, DELEGADO_EMAIL),
+    });
+    expect(res.statusCode).toBe(403);
+
+    await prisma.approvalDelegation.delete({ where: { id: delegacion.id } });
+  });
+
+  it("nivel 2: el PM ya no puede aprobar ni rechazar; Finanzas sí", async () => {
+    const entrada = await nuevaEntrada(6);
+    const nivel1 = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, pmEmail),
+    });
+    expect(nivel1.statusCode).toBe(200);
+
+    const pmIntenta = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, pmEmail),
+    });
+    expect(pmIntenta.statusCode).toBe(403);
+
+    const pmRechaza = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/reject`,
+      headers: comoRol(AppRole.PM, pmEmail),
+      payload: { rejectionNote: "Ya no me toca" },
+    });
+    expect(pmRechaza.statusCode).toBe(403);
+
+    const finanzas = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
+    });
+    expect(finanzas.statusCode).toBe(200);
+    expect(finanzas.json().data.status).toBe(ExtraHourStatus.APPROVED);
+  });
+
+  it("nivel 2: Finanzas puede rechazar una solicitud ya aprobada por el PM", async () => {
+    const entrada = await nuevaEntrada(7);
+    await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, pmEmail),
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/reject`,
+      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
+      payload: { rejectionNote: "Fuera de presupuesto" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe(ExtraHourStatus.REJECTED);
+  });
+});
