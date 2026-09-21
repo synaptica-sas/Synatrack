@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import { ZodError } from "zod";
 import { env } from "./config/env.js";
 import { registerRoutes } from "./routes/index.js";
+import { setAppLogger } from "./infra/logger.js";
 
 function normalizeOrigin(value: string) {
   return value.trim().replace(/\/$/, "");
@@ -12,6 +13,9 @@ export async function buildApp() {
   const app = Fastify({
     logger: env.NODE_ENV !== "test",
   });
+
+  // Los módulos sin acceso a `request` (notificaciones, alertas, jobs) escriben aquí.
+  setAppLogger(app.log);
 
   // Permitir cuerpos JSON vacíos cuando se envía la cabecera 'Content-Type: application/json'
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
@@ -50,7 +54,7 @@ export async function buildApp() {
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
-      console.error("Zod Validation Error:", JSON.stringify(error.issues, null, 2));
+      app.log.warn({ issues: error.issues }, "Error de validación Zod");
       return reply.status(400).send({
         message: "Validation error",
         issues: error.issues.map((issue) => ({

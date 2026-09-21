@@ -92,7 +92,10 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   try {
     claims = await verifyMicrosoftToken(token);
   } catch (err) {
-    console.error("DEBUG: Token verification failed:", err);
+    request.log.warn(
+      { reason: err instanceof Error ? err.name : "unknown" },
+      "Token de Microsoft rechazado",
+    );
     return reply.status(401).send({ message: "Invalid Microsoft token" });
   }
 
@@ -265,7 +268,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
         });
       }
     } catch (err) {
-      console.error("Failed to run JIT consultant sync on login:", err);
+      request.log.error({ err }, "Falló la sincronización JIT de consultor en el login");
     }
   }
 

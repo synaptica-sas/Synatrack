@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
+import { getLogger } from "../infra/logger.js";
 
 // Leer variables directamente de process.env para notificaciones
 const SMTP_HOST = process.env.SMTP_HOST || "";
@@ -53,18 +54,15 @@ export async function sendEmail(params: EmailParams) {
         text,
         html,
       });
-      console.log(`[SMTP] Correo enviado con éxito a: ${to} | Asunto: ${subject}`);
+      getLogger().info({ to, subject }, "[SMTP] Correo enviado con éxito");
     } catch (error) {
-      console.error(`[SMTP ERROR] Falló el envío de correo a ${to}:`, error);
+      getLogger().error({ err: error, to, subject }, "[SMTP] Falló el envío de correo");
     }
   } else {
-    console.log("==========================================================");
-    console.log("[SMTP MOCK] Se solicitó el envío de correo (SMTP no configurado)");
-    console.log(`De: ${SMTP_FROM}`);
-    console.log(`Para: ${to}`);
-    console.log(`Asunto: ${subject}`);
-    console.log(`Texto:\n${text}`);
-    console.log("==========================================================");
+    getLogger().info(
+      { from: SMTP_FROM, to, subject, text },
+      "[SMTP MOCK] Se solicitó el envío de correo (SMTP no configurado)",
+    );
   }
 }
 
@@ -73,7 +71,7 @@ export async function sendEmail(params: EmailParams) {
  */
 export async function sendTeamsMessage(webhookUrl: string, payload: any) {
   if (!webhookUrl) {
-    console.log("[TEAMS MOCK] Mensaje de Teams omitido (Webhook no configurado)");
+    getLogger().info("[TEAMS MOCK] Mensaje de Teams omitido (Webhook no configurado)");
     return;
   }
 
@@ -86,12 +84,15 @@ export async function sendTeamsMessage(webhookUrl: string, payload: any) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[TEAMS ERROR] El webhook respondió con status ${response.status}: ${errorText}`);
+      getLogger().error(
+        { status: response.status, response: errorText },
+        "[TEAMS] El webhook respondió con error",
+      );
     } else {
-      console.log(`[TEAMS] Tarjeta de notificación enviada con éxito al webhook.`);
+      getLogger().info("[TEAMS] Tarjeta de notificación enviada con éxito al webhook");
     }
   } catch (error) {
-    console.error("[TEAMS ERROR] Excepción al realizar la petición al Webhook de Teams:", error);
+    getLogger().error({ err: error }, "[TEAMS] Excepción al llamar al Webhook de Teams");
   }
 }
 

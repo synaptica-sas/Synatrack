@@ -200,7 +200,7 @@ No hay ningún *scheduler* (cron, `node-cron`, `setInterval`) en el repositorio:
 | [`backend/src/config/`](backend/src/config/) | `env.ts`: valida `process.env` con Zod al arrancar; aborta el proceso si falta algo obligatorio | Importado por `guard.ts`, `app.ts`, `server.ts` |
 | [`backend/src/types/`](backend/src/types/) | `fastify.d.ts`: extiende `FastifyRequest` con `authUser` | Permite `request.authUser!` tipado en cualquier ruta |
 | [`backend/prisma/`](backend/prisma/) | `schema.prisma` (modelo de datos), `migrations/` (historial SQL), `seed.mjs` (datos mínimos) | Fuente de verdad del esquema; `prisma generate` produce el cliente que usa `infra/prisma.ts` |
-| [`backend/scripts/`](backend/scripts/) | Scripts operativos: `bootstrap-admin.mjs`, `smoke.mjs`, `test-connection.mjs` | Se ejecutan manualmente (`npm run bootstrap:admin`, etc.), no forman parte del server en runtime |
+| [`backend/scripts/`](backend/scripts/) | Scripts operativos: `bootstrap-admin.mjs`, `smoke.mjs` | Se ejecutan manualmente (`npm run bootstrap:admin`, etc.), no forman parte del server en runtime |
 
 ### 3.3 Arquitectura interna
 
@@ -626,7 +626,6 @@ Variables con `sync: false` (deben configurarse manualmente en el dashboard de R
 |---|---|---|
 | `backend/scripts/bootstrap-admin.mjs` | `npm run bootstrap:admin` | Garantiza/crea el usuario ADMIN inicial en una BD ya migrada |
 | `backend/scripts/smoke.mjs` | `npm run smoke` | Smoke test E2E contra una API viva (health → CRUD básico → stats) |
-| `backend/scripts/test-connection.mjs` | `node scripts/test-connection.mjs` | Diagnóstico de conectividad TCP cruda hacia el pooler de Supabase (host/puerto hardcodeados) |
 
 ### 6.9 CI/CD
 

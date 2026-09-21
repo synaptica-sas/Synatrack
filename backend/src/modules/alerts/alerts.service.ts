@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
 import { addDays } from "../../utils/capacity.js";
 import { computeEVM } from "../../utils/evm.js";
+import { getLogger } from "../../infra/logger.js";
 
 async function upsertAlert(
   prisma: PrismaClient,
@@ -216,5 +217,5 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
     });
   }
 
-  console.log("[AlertEngine] Motor de alertas completado");
+  getLogger().info("[AlertEngine] Motor de alertas completado");
 }

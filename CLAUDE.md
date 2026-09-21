@@ -55,7 +55,7 @@ backend/
   prisma/schema.prisma          # 25+ modelos, todos los enums de negocio
   prisma/migrations/            # desfasado respecto al schema (ver §7)
   prisma/seed.mjs               # datos demo
-  scripts/{smoke,bootstrap-admin,test-connection}.mjs
+  scripts/{smoke,bootstrap-admin}.mjs
   src/app.ts                    # buildApp: CORS, content-type parser, error handler
   src/server.ts                 # listen + jobs de arranque (una sola vez)
   src/config/env.ts             # validación Zod de variables de entorno
