@@ -85,21 +85,47 @@ Quedaron 23 capturas como evidencia.
 
 ## Hallazgos (los tres preexistentes, ninguno causado por estas ramas)
 
-### A. Los montos se muestran en la moneda equivocada cuando no hay tasa FX
+### A. El tablero muestra cifras equivocadas al abrirlo (DEP-35)
 
-**Es el más grave y conviene atenderlo pronto.** En una base sin tasas cargadas, el tablero
-muestra un proyecto de **100.000.000 COP** como **"US$ 100.000.000"**, y un gasto de
-500.000 COP como "US$ 500.000". No convierte y tampoco avisa: solo cambia la etiqueta.
+**Es el más grave.** Al entrar al tablero, "Presupuesto total (USD)" muestra
+**US$ 660.090.000**. El valor correcto es **US$ 257.089**: una diferencia de **2.568 veces**.
+"Ingresos reconocidos" y "Margen bruto" salen en 0 aunque haya datos.
 
-La causa es `convertAmountFallback`, que ante la falta de tasa devuelve el monto original
-en vez de fallar. Es la misma raíz que el punto 19 de `DOCUMENTACION_TECNICA.md` §10, que
-lo describía para la nómina; aquí se confirma que también afecta al tablero.
+La causa no es la conversión del backend, que funciona: `/api/stats/overview?baseCurrency=USD`
+devuelve 257.089 correctamente. El problema está en `DashboardTab.tsx:421`:
 
-Un usuario que abra la aplicación antes de cargar las tasas ve cifras que parecen dólares y
-son pesos: una diferencia de unas 4.000 veces. Verificado que `stats/`, `currency.ts` y
-`financial.ts` están intactos respecto de `main`.
+```ts
+const [stats, setStats] = useState<StatsOverview | null>(initialStats);
+```
 
-### B. Los enlaces profundos no funcionan
+`initialStats` llega por prop desde `App`, pero se usa **solo como valor inicial** del
+`useState`. Cuando `DashboardTab` se monta, la petición de `App` todavía no resolvió, así que
+entra `null`; y cuando resuelve, React **ignora la prop actualizada**. `setStats` solo se
+llama desde `changeBaseCurrency`. Entonces el componente cae a `dashboardTotals`, que suma
+presupuestos de monedas distintas como si fueran la misma unidad
+(480M COP + 180M COP + 90.000 USD = "660.090.000").
+
+Comprobado en el navegador:
+
+| Momento | Presupuesto total |
+|---|---|
+| Al cargar | US$ 660.090.000 — incorrecto |
+| Al elegir COP en el selector | $ 1.015.500.000 — correcto |
+| De vuelta a USD | US$ 257.089 — correcto |
+
+O sea: **las cifras solo se vuelven confiables después de tocar el selector de moneda.**
+
+### B. La conversión falla en silencio sin tasas (DEP-32)
+
+Aparte de lo anterior, si la base no tiene tasas cargadas `convertAmountFallback` devuelve el
+monto sin convertir y sin avisar, así que los importes salen en su moneda original con la
+etiqueta de la moneda base. Es la misma raíz del punto 19 de la doc técnica §10.
+
+*(Corrección: en la primera versión de este informe atribuí a esta causa lo que se veía en el
+tablero. Al cargar tasas quedó claro que eran dos problemas distintos y que el del tablero es
+el A.)*
+
+### C. Los enlaces profundos no funcionan
 
 Entrar directamente a `http://localhost:5173/projects` (o a cualquier ruta que no sea
 `/profile`) redirige siempre a `/dashboard`. La navegación por el menú sí funciona y
@@ -109,7 +135,7 @@ La causa está en el efecto de enrutamiento de `App.tsx`: mientras `authUser` es
 durante el arranque, cualquier ruta de pestaña se redirige a `/`, y al terminar la carga ya
 se perdió el destino original. `App.tsx` está intacto respecto de `main`.
 
-### C. Tres advertencias de React en Actividades
+### D. Tres advertencias de React en Actividades
 
 `fill-opacity`, `stop-color` y `stop-opacity` deberían escribirse en camelCase
 (`fillOpacity`, `stopColor`, `stopOpacity`) en JSX. Son advertencias de consola, sin efecto
