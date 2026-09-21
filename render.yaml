@@ -41,6 +41,10 @@ services:
         sync: false
       - key: FX_SYNC_TOKEN
         sync: false
+      - key: JOBS_RUN_TOKEN
+        sync: false
+      - key: JOBS_INTERVAL_MINUTES
+        value: "0"
 
   # Dispara la sincronización diaria de tasas FX contra el Web Service de arriba.
   # El host es app-gestion-demo.onrender.com: es la URL publica real del Web
@@ -63,4 +67,30 @@ services:
       -H "Authorization: Bearer $FX_SYNC_TOKEN"
     envVars:
       - key: FX_SYNC_TOKEN
+        sync: false
+
+  # Dispara el ciclo de mantenimiento (estados de asignación + motor de alertas).
+  #
+  # Hace falta porque el intervalo en proceso no sirve en el plan free: el Web
+  # Service se duerme a los 15 minutos de inactividad y, mientras duerme, no
+  # ejecuta nada. Antes de esto los dos trabajos solo corrían al arrancar el
+  # proceso, así que podían pasar días sin ejecutarse y las alertas quedaban
+  # obsoletas.
+  #
+  # Este cron despierta el servicio y dispara el ciclo. La misma advertencia que
+  # el de FX: verifica la sintaxis contra la documentación de Render y, si el
+  # "Blueprint sync" no lo aplica solo, créalo a mano en el dashboard con este
+  # mismo comando y el mismo valor de JOBS_RUN_TOKEN que el Web Service.
+  - type: cron
+    name: app-gestion-jobs
+    runtime: docker
+    plan: starter
+    schedule: "0 * * * *" # cada hora, en punto
+    image:
+      url: docker.io/curlimages/curl:latest
+    dockerCommand: >
+      curl -sf -X POST https://app-gestion-demo.onrender.com/api/jobs/run
+      -H "Authorization: Bearer $JOBS_RUN_TOKEN"
+    envVars:
+      - key: JOBS_RUN_TOKEN
         sync: false

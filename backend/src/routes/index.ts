@@ -28,6 +28,7 @@ import { activitiesRoutes } from "../modules/activities/activities.routes.js";
 import { customHolidaysRoutes } from "../modules/holidays/custom-holidays.routes.js";
 import { delegationsRoutes } from "../modules/delegations/delegations.routes.js";
 import { feedbackRoutes } from "../modules/feedback/feedback.routes.js";
+import { jobsRoutes } from "../modules/jobs/jobs.routes.js";
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(healthRoutes);
@@ -59,4 +60,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(customHolidaysRoutes, { prefix: "/api/custom-holidays" });
   await app.register(delegationsRoutes, { prefix: "/api/delegations" });
   await app.register(feedbackRoutes, { prefix: "/api/feedback" });
+  await app.register(jobsRoutes, { prefix: "/api/jobs" });
 }

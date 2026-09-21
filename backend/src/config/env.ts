@@ -64,6 +64,23 @@ const envSchema = z.object({
   PAYROLL_EMAIL: z.string().email().optional(),
   FX_SYNC_TOKEN: z.string().min(1).optional(),
 
+  // --- Trabajos periódicos de mantenimiento (POST /api/jobs/run) --------------
+  // Token compartido que usa el cron externo (Render Cron Job) para disparar el
+  // ciclo de mantenimiento sin sesión de usuario. Mismo patrón que FX_SYNC_TOKEN,
+  // pero token propio para poder rotarlo por separado. Sin definir, la ruta solo
+  // acepta sesiones con rol ADMIN.
+  JOBS_RUN_TOKEN: optionalString,
+  // Minutos entre ciclos del intervalo EN PROCESO. `0` (por defecto) lo deja
+  // apagado, que es lo correcto en Render free: el servicio se duerme y el cron
+  // externo es quien despierta y dispara. Póngalo > 0 en instalaciones que estén
+  // siempre despiertas (Docker, on-premise, plan de pago). Máximo 1440 (un día).
+  JOBS_INTERVAL_MINUTES: z.coerce
+    .number()
+    .int("JOBS_INTERVAL_MINUTES debe ser un número entero de minutos")
+    .min(0, "JOBS_INTERVAL_MINUTES no puede ser negativa")
+    .max(1440, "JOBS_INTERVAL_MINUTES no puede superar 1440 (24 h)")
+    .default(0),
+
   // --- Simulador de rol para desarrollo ---------------------------------------
   // Solo tienen efecto cuando el bypass de demo ya está activo
   // (`!AUTH_ENABLED || AUTH_DEMO_BYPASS`). Con autenticación real de Entra ID se

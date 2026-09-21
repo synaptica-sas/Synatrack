@@ -160,8 +160,9 @@ Ordenado por lo que más valor tiene arreglar primero.
 
 Sigue abierto en `DOCUMENTACION_TECNICA.md` §10, y pesa más que varios de los de arriba:
 
-- **No hay scheduler**: las alertas y los estados de asignación solo se recalculan cuando el
-  proceso se reinicia.
+- ~~**No hay scheduler**~~ **RESUELTO** en `feat/scheduler`: ciclo unificado, endpoint
+  `POST /api/jobs/run` con token compartido, cron horario en `render.yaml` e intervalo en
+  proceso opcional.
 - **Auditoría parcial**: horas, horas extra, gastos, ingresos, consultores y usuarios no
   dejan rastro en `AuditLog`.
 - **Sin paginación** en casi todos los listados.

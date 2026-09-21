@@ -2,6 +2,7 @@ import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
+import { permitirTokenCompartidoOSesion } from "../../auth/shared-token.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../infra/prisma.js";
 import { runFxSync } from "./fx-sync.service.js";
@@ -187,18 +188,11 @@ export async function fxRoutes(app: FastifyInstance) {
   //  2) Sesión de usuario normal con rol ADMIN/FINANCE — para el botón
   //     "Actualizar ahora" del frontend.
   app.post("/sync", async (request, reply) => {
-    const authHeader = request.headers.authorization;
-    const bearerToken = authHeader?.startsWith("Bearer ")
-      ? authHeader.slice("Bearer ".length).trim()
-      : null;
-    const isSystemToken = Boolean(env.FX_SYNC_TOKEN) && bearerToken === env.FX_SYNC_TOKEN;
-
-    if (!isSystemToken) {
-      await authenticate(request, reply);
-      if (reply.sent) return;
-      await authorize([AppRole.ADMIN, AppRole.FINANCE])(request, reply);
-      if (reply.sent) return;
-    }
+    const autorizado = await permitirTokenCompartidoOSesion(request, reply, {
+      token: env.FX_SYNC_TOKEN,
+      roles: [AppRole.ADMIN, AppRole.FINANCE],
+    });
+    if (!autorizado) return;
 
     try {
       const result = await runFxSync(prisma);

@@ -1,8 +1,7 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./infra/prisma.js";
-import { runAssignmentMaintenance } from "./modules/assignments/assignments.job.js";
-import { runAlertEngine } from "./modules/alerts/alerts.service.js";
+import { runMaintenanceCycle, startJobsScheduler, stopJobsScheduler } from "./modules/jobs/jobs.service.js";
 import { ensureDefaultConfigs } from "./modules/extra-hours/extra-hours.routes.js";
 
 async function main() {
@@ -25,13 +24,28 @@ async function main() {
       );
     }
 
-    // Ejecutar jobs de mantenimiento al iniciar
-    void runAssignmentMaintenance(prisma).catch((e) => app.log.error(e, "[AssignmentJob]"));
-    void runAlertEngine(prisma).catch((e) => app.log.error(e, "[AlertEngine]"));
+    // Ciclo de mantenimiento al arrancar (asignaciones + alertas). Nunca rechaza:
+    // cada trabajo va con su propio try/catch dentro de runMaintenanceCycle.
+    void runMaintenanceCycle(prisma, "arranque");
+
+    // Intervalo EN PROCESO. Se arranca aquí y NUNCA en `buildApp()`, para que las
+    // pruebas de ruta no dejen temporizadores colgando. Apagado salvo que
+    // JOBS_INTERVAL_MINUTES > 0 (ver documentacion/cambios/R8-scheduler.md).
+    startJobsScheduler(prisma);
 
     // Siembra de configuraciones de horas extra: una sola vez por proceso.
     // Antes se ejecutaba en cada petición del módulo de horas extra (DEP-10).
     void ensureDefaultConfigs().catch((e) => app.log.error(e, "[ExtraHoursConfig]"));
+
+    // Apagado ordenado: sin esto, el temporizador mantiene vivo el proceso y
+    // Render/Docker terminan matándolo a la fuerza en cada redespliegue.
+    for (const senal of ["SIGINT", "SIGTERM"] as const) {
+      process.once(senal, () => {
+        app.log.info({ senal }, "Señal de apagado recibida; cerrando");
+        stopJobsScheduler();
+        void app.close().then(() => process.exit(0));
+      });
+    }
   } catch (error) {
     app.log.error(error);
     process.exit(1);
