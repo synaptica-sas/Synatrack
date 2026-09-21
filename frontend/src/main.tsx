@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { MsalProvider } from "@azure/msal-react";
 import "./index.css";
 import App from "./App.tsx";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { msalInstance } from "./auth/msal";
 
 async function bootstrapApp() {
@@ -27,9 +28,11 @@ async function bootstrapApp() {
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <MsalProvider instance={msalInstance}>
-        <App />
-      </MsalProvider>
+      <ErrorBoundary>
+        <MsalProvider instance={msalInstance}>
+          <App />
+        </MsalProvider>
+      </ErrorBoundary>
     </StrictMode>,
   );
 }

@@ -189,3 +189,79 @@ html {
   background: var(--color-primary-40);
 }
 
+
+/* ── ErrorBoundary (fallback de error de render) ────────────────────────── */
+.error-boundary {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: var(--bg);
+}
+
+.error-boundary-card {
+  width: min(560px, 100%);
+  padding: 2rem;
+  border: 1px solid var(--state-danger-border);
+  border-radius: 14px;
+  background: var(--card-bg);
+  text-align: center;
+  box-shadow: 0 10px 30px var(--color-primary-10);
+}
+
+.error-boundary-card h2 {
+  margin: 0 0 0.5rem;
+  font-family: var(--display);
+  color: var(--state-danger-text);
+}
+
+.error-boundary-card p {
+  margin: 0 0 0.5rem;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.error-boundary-detail {
+  margin: 1rem 0 0;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--state-danger-bg);
+  color: var(--state-danger-text);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-align: left;
+  word-break: break-word;
+}
+
+.error-boundary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+.error-boundary-actions button {
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text);
+  transition: all 0.2s ease;
+}
+
+.error-boundary-actions button.primary {
+  border-color: transparent;
+  background: var(--gradient-accent);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.error-boundary-actions button:hover {
+  filter: brightness(0.96);
+}
