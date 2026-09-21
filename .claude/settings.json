@@ -1,0 +1,55 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//**)",
+      "Glob(//**)",
+      "Grep(//**)",
+      "Edit(backend/**)",
+      "Edit(frontend/**)",
+      "Edit(documentacion/**)",
+      "Edit(scripts/**)",
+      "Write(backend/**)",
+      "Write(frontend/**)",
+      "Write(documentacion/**)",
+      "Write(scripts/**)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git branch:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run:*)",
+      "Bash(npm ci:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma migrate diff:*)",
+      "Bash(npx prisma migrate deploy:*)",
+      "Bash(node scripts/generate-map.mjs:*)",
+      "Bash(graphify:*)",
+      "Bash(git add *)",
+      "Bash(git checkout *)",
+      "Bash(python -)",
+      "Bash(git branch *)",
+      "Bash(git ls-remote *)"
+    ],
+    "deny": [
+      "Read(./backend/.env)",
+      "Read(./frontend/.env)",
+      "Read(./**/.env)",
+      "Bash(git push --force:*)",
+      "Bash(rm -rf:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(npx prisma migrate dev:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(npm run prisma:seed:*)"
+    ]
+  }
+}
