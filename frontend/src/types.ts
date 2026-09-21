@@ -1,5 +1,5 @@
 export type TabId =
-  | "dashboard" | "portfolio" | "projects" | "consultants" | "timeEntries"
+  | "dashboard" | "portfolio" | "projects" | "consultants" | "timeEntries" | "tracker"
   | "financial" | "forecasts" | "capacity" | "fx" | "admin" | "audit" | "alerts"
   | "extraHours" | "estimations" | "profile" | "activities" | "extraHoursConfig";
 

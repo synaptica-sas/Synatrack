@@ -16,6 +16,14 @@ enum TimeEntryStatus {
   REJECTED
 }
 
+// Origen del registro de horas: formulario clasico, grilla semanal (timesheet)
+// o cronometro en vivo (tracker).
+enum TimeEntrySource {
+  MANUAL
+  TIMESHEET
+  TIMER
+}
+
 enum AppRole {
   ADMIN
   PM
@@ -185,6 +193,7 @@ model Project {
   estimations      Estimation[]
   activities       Activity[]
   delegations      ApprovalDelegation[]
+  runningTimers    RunningTimer[]
 }
 
 model Consultant {
@@ -215,6 +224,7 @@ model Consultant {
   identification String?
   extraHourEntries ExtraHourEntry[]
   activities       Activity[]
+  runningTimer     RunningTimer?
 }
 
 model TimeEntry {
@@ -228,16 +238,48 @@ model TimeEntry {
   approvedBy    String?
   approvedAt    DateTime?
   rejectionNote String?
+  // Descripcion libre de la tarea (estilo Clockify). `note` se conserva para el
+  // flujo de aprobacion existente; `description` es lo que el consultor escribe
+  // en el timesheet o en el tracker.
+  description   String?
+  activityId    String?
+  source        TimeEntrySource @default(MANUAL)
+  // Solo para entradas creadas por el cronometro: inicio y fin reales.
+  startedAt     DateTime?
+  endedAt       DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  activity   Activity?  @relation(fields: [activityId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([consultantId])
   @@index([status])
   @@index([workDate])
+  @@index([activityId])
+  @@index([consultantId, workDate])
+}
+
+// Cronometro en curso. Vive en la BD (no en el navegador) para que siga
+// corriendo al cerrar el navegador o cambiar de equipo. Un consultor solo puede
+// tener uno activo a la vez: de ahi el @unique en consultantId.
+model RunningTimer {
+  id           String   @id @default(cuid())
+  consultantId String   @unique
+  projectId    String
+  activityId   String?
+  description  String?
+  startedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activity   Activity?  @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
 }
 
 enum FinancialEntryType {
@@ -662,6 +704,8 @@ model Activity {
 
   consultant     Consultant  @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   project        Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  timeEntries    TimeEntry[]
+  runningTimers  RunningTimer[]
 
   @@index([consultantId])
   @@index([projectId])
