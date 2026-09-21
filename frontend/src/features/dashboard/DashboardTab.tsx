@@ -421,6 +421,18 @@ export function DashboardTab({
   const [stats, setStats] = useState<StatsOverview | null>(initialStats);
   const [baseCurrency, setBaseCurrency] = useState(initialBaseCurrency);
 
+  // `initialStats` llega null en el primer render, porque la petición de App todavía no
+  // resolvió. Como `useState` solo mira su argumento la primera vez, sin este efecto el
+  // componente se quedaba en null para siempre y caía al cálculo local de `dashboardTotals`,
+  // que suma importes de monedas distintas sin convertir. Se sincroniza solo cuando la
+  // moneda del dato coincide con la seleccionada, para no pisar la elección del usuario
+  // cuando cambió la moneda base a mano (ver `changeBaseCurrency`).
+  useEffect(() => {
+    if (initialStats && initialStats.baseCurrency === baseCurrency) {
+      setStats(initialStats);
+    }
+  }, [initialStats, baseCurrency]);
+
   // Restore persisted date range on mount
   const initial = readPersistedRange();
   const [dateRange, setDateRange] = useState<DateRange>(initial);

@@ -260,3 +260,63 @@ EXIT=0
    agrega una columna ordenable a `ProjectSortField` que no exista en las filas, TypeScript no lo
    va a detener y esa columna ordenará todo como 0. Es exactamente el mismo comportamiento que
    tenía el código en línea; no es una regresión, pero sí una trampa heredada.
+
+---
+
+## Añadido después de la revisión: DEP-35, cifras equivocadas en el tablero
+
+Al ejecutar la aplicación en local con datos y tasas de cambio cargadas apareció un defecto
+que las pruebas no detectaban, y se arregló en esta misma rama por pedido de Juan.
+
+### El problema
+
+Al abrir el tablero, "Presupuesto total (USD)" mostraba **US$ 660.090.000** cuando el valor
+correcto es **US$ 257.089**: una diferencia de **2.568 veces**. "Ingresos reconocidos" y
+"Margen bruto" salían en 0 aunque hubiera datos.
+
+`DashboardTab` recibe `initialStats` por prop, pero la usaba **solo como valor inicial** de
+`useState`. En el primer render la petición de `App` todavía no resolvió, así que entraba
+`null`; y como `useState` no vuelve a mirar su argumento, el componente se quedaba en `null`
+para siempre. `setStats` solo se invocaba desde `changeBaseCurrency`.
+
+Sin esos datos, el tablero caía a `dashboardTotals`, un cálculo local que **suma importes de
+monedas distintas como si fueran la misma unidad**: 480M COP + 180M COP + 90.000 USD daba
+ese "660.090.000". El backend no tenía nada que ver: `/api/stats/overview?baseCurrency=USD`
+devolvía 257.089 correctamente.
+
+### El arreglo
+
+Un `useEffect` que sincroniza el estado con la prop, en `DashboardTab.tsx`:
+
+```ts
+useEffect(() => {
+  if (initialStats && initialStats.baseCurrency === baseCurrency) {
+    setStats(initialStats);
+  }
+}, [initialStats, baseCurrency]);
+```
+
+La comparación con `baseCurrency` es deliberada: sin ella, un refresco de `App` (que siempre
+pide USD) pisaría la moneda que el usuario eligió a mano en el selector.
+
+### Verificación
+
+Medido en el navegador, antes y después:
+
+| Momento | Antes | Después |
+|---|---|---|
+| Al cargar | US$ 660.090.000 | **US$ 257.089** |
+| Al elegir COP | $ 1.015.500.000 | $ 1.015.500.000 |
+| De vuelta a USD | US$ 257.089 | US$ 257.089 |
+
+Los cinco indicadores quedaron correctos y contrastados contra la API: presupuesto 257.089,
+gasto real 15.814, ingresos 87.342, margen bruto 71.528 y costo proyectado 16.203.
+`tsc -b` limpio, eslint sin hallazgos y **124 pruebas** en verde, el mismo número de antes.
+
+### Riesgo que queda abierto
+
+El arreglo hace que el tablero use los datos del backend en cuanto llegan, pero **no elimina
+el cálculo local de respaldo**. Si la petición de estadísticas falla, `stats` se queda en
+`null` y el tablero vuelve a mostrar la suma de monedas mezcladas, ahora sí en silencio,
+porque los hooks no exponen el error. Lo correcto sería que ante un fallo muestre un estado
+de error en vez de un número inventado. Queda anotado en el backlog.
