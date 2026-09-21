@@ -1,5 +1,10 @@
 # Backlog de depuración — Synatrack
 
+> **Estado al 2026-09-21:** de 40 ítems, **27 están resueltos** y fusionados en `dev`
+> (ramas R1 a R6). Quedan **13 abiertos**, listados en la sección "Qué queda" al final.
+> Los ítems tachados conservan su descripción original a propósito, para que se entienda
+> qué se arregló y por qué.
+
 Revisión enfocada en **código muerto, objetos obsoletos, duplicación y configuración
 inconsistente**, con el objetivo de ir limpiando el proyecto. Fecha: 2026-09-18.
 
@@ -24,13 +29,13 @@ es exactamente como se introducen regresiones.
 
 | ID | P | Hallazgo | Evidencia | Acción |
 |---|---|---|---|---|
-| DEP-01 | P1 | **`Table.tsx` (206 líneas) no lo importa nadie.** Es un componente completo con búsqueda, orden y paginación; cada `*Tab.tsx` reimplementa su propia tabla a mano. | `frontend/src/components/Table.tsx`, 0 imports (verificado) | Decidir: adoptarlo en las tablas nuevas, o borrarlo. Mantenerlo sin usar es peor que cualquiera de las dos. |
-| DEP-02 | **P0** | **`ErrorBoundary.tsx` existe pero no está montado.** Hoy un error de render deja la pantalla en blanco sin mensaje. | `frontend/src/components/ErrorBoundary.tsx`, 0 imports (verificado) | Envolver `<App />` en `main.tsx`. Es el ítem de mejor relación esfuerzo/beneficio de la lista. |
-| DEP-03 | P2 | **`usePermissions.ts` muerto**: `App.tsx` define su propio `can()` en línea. | `frontend/src/hooks/usePermissions.ts`, 0 imports (verificado) | Usar el hook en `App.tsx` y borrar el duplicado, o borrar el hook. |
-| DEP-04 | P2 | `KpiCard.tsx` y `StatusBadge.tsx` sin usar. | 0 imports (verificado) | Mismo criterio que DEP-01. |
+| ~~DEP-01~~ RESUELTO (fix/limpieza-frontend) | P1 | **`Table.tsx` (206 líneas) no lo importa nadie.** Es un componente completo con búsqueda, orden y paginación; cada `*Tab.tsx` reimplementa su propia tabla a mano. | `frontend/src/components/Table.tsx`, 0 imports (verificado) | Decidir: adoptarlo en las tablas nuevas, o borrarlo. Mantenerlo sin usar es peor que cualquiera de las dos. |
+| ~~DEP-02~~ RESUELTO (fix/limpieza-frontend) | **P0** | **`ErrorBoundary.tsx` existe pero no está montado.** Hoy un error de render deja la pantalla en blanco sin mensaje. | `frontend/src/components/ErrorBoundary.tsx`, 0 imports (verificado) | Envolver `<App />` en `main.tsx`. Es el ítem de mejor relación esfuerzo/beneficio de la lista. |
+| ~~DEP-03~~ RESUELTO (fix/limpieza-frontend) | P2 | **`usePermissions.ts` muerto**: `App.tsx` define su propio `can()` en línea. | `frontend/src/hooks/usePermissions.ts`, 0 imports (verificado) | Usar el hook en `App.tsx` y borrar el duplicado, o borrar el hook. |
+| ~~DEP-04~~ RESUELTO (fix/limpieza-frontend) | P2 | `KpiCard.tsx` y `StatusBadge.tsx` sin usar. | 0 imports (verificado) | Mismo criterio que DEP-01. |
 | DEP-05 | P2 | **`AssignmentStatus.PARTIAL` nunca se escribe.** Aparece en 12 filtros `where` de lectura y en ningún `create`/`update`. Todas esas consultas cargan una condición que jamás se cumple. | `alerts.service.ts:201`, `assignments.job.ts:24`, `assignments.routes.ts:98,188`, `capacity.routes.ts:82,309,370,438,514` (verificado) | Implementarlo (asignación parcial real) o retirarlo del enum y de los filtros. Ojo: el `"PARTIAL"` de `capacity.routes.ts:22` es de `availabilityStatus`, **otro** enum que sí se calcula — no tocar. |
 | DEP-06 | P2 | **`AlertType.CONSULTANT_OVERLOADED` nunca se genera.** Solo aparece en una unión de tipos TypeScript. | `alerts.service.ts:9` (verificado) | `capacity.ts` ya calcula el estado `OVERLOADED`: conectar ambos es trabajo corto y de valor alto. |
-| DEP-07 | P2 | **~19 clases CSS sin uso aparente** en `App.css`: `span-4`, `span-5`, `span-full`, `span-all`, `filters-bar`, `converter-result`, `fx-drawer-duplicate-disabled`, `switch-item`, `feedback-panel`, `page-header`, `page-title`, `page-subtitle`, `section-layout-header`, `section-layout-title`, `stats-tab-container`, `role-chip`, `role-chip-group`, `inactive`, `day-number`. | Análisis de 204 clases contra todo el código (por confirmar) | Verificar una por una antes de borrar. **Descartados como falsos positivos:** `role-admin/pm/consultant/finance/viewer` y `sev-critical/warning/info` **sí se usan**, construidas dinámicamente (`` `role-${r.toLowerCase()}` ``). |
+| ~~DEP-07~~ RESUELTO (fix/limpieza-frontend) | P2 | **~19 clases CSS sin uso aparente** en `App.css`: `span-4`, `span-5`, `span-full`, `span-all`, `filters-bar`, `converter-result`, `fx-drawer-duplicate-disabled`, `switch-item`, `feedback-panel`, `page-header`, `page-title`, `page-subtitle`, `section-layout-header`, `section-layout-title`, `stats-tab-container`, `role-chip`, `role-chip-group`, `inactive`, `day-number`. | Análisis de 204 clases contra todo el código (por confirmar) | Verificar una por una antes de borrar. **Descartados como falsos positivos:** `role-admin/pm/consultant/finance/viewer` y `sev-critical/warning/info` **sí se usan**, construidas dinámicamente (`` `role-${r.toLowerCase()}` ``). |
 | DEP-08 | P3 | Exports de tipos y funciones sin referencias externas (72 detectados), p. ej. `sendEmail`, `sendTeamsMessage`, `isSupportedCountry`, y ~20 funciones de `services/api.ts` (`listMilestones`, `updateRisk`, `listIssues`, `setProjectHealth`…). | Análisis de exports (por confirmar) | Las de `api.ts` probablemente son andamiaje para pantallas nunca construidas (hitos, riesgos, incidencias tienen backend pero no UI propia). Decidir producto antes que código. |
 
 ---
@@ -39,13 +44,13 @@ es exactamente como se introducen regresiones.
 
 | ID | P | Hallazgo | Evidencia | Acción |
 |---|---|---|---|---|
-| DEP-09 | P1 | **10 `as any` que ya no hacen falta.** Se pusieron porque el cliente Prisma no conocía `monthlyDivisor` cuando se aplicó por `db push`. Ahora que existe la migración y el cliente está regenerado, sobran y están ocultando el tipado real. | `extra-hours.routes.ts:196,207,210,401,498,550,584,595,624,635` (verificado) | Quitarlos y compilar. Es limpieza mecánica y segura. |
-| DEP-10 | P1 | **Bucle de corrección de datos que corre en cada petición.** `ensureDefaultConfigs()` recorre las configuraciones y reescribe `monthlyDivisor` si vale 220 — una corrección puntual de migración convertida en efecto permanente. Además se invoca en casi todos los endpoints de horas extra, así que **cada request escribe en la base**. | `extra-hours.routes.ts:200-213` (verificado) | Mover a una migración de datos o al seed, y sacar `ensureDefaultConfigs()` del camino de request. |
-| DEP-11 | P2 | **`test-connection.mjs` es un diagnóstico viejo** con el host del pooler de Supabase incrustado. No lo llama ningún script de `package.json`. | `backend/scripts/test-connection.mjs` (verificado) | Borrar, o parametrizar por variable de entorno si aún sirve para soporte. |
+| ~~DEP-09~~ RESUELTO (fix/limpieza-backend) | P1 | **10 `as any` que ya no hacen falta.** Se pusieron porque el cliente Prisma no conocía `monthlyDivisor` cuando se aplicó por `db push`. Ahora que existe la migración y el cliente está regenerado, sobran y están ocultando el tipado real. | `extra-hours.routes.ts:196,207,210,401,498,550,584,595,624,635` (verificado) | Quitarlos y compilar. Es limpieza mecánica y segura. |
+| ~~DEP-10~~ RESUELTO (fix/limpieza-backend) | P1 | **Bucle de corrección de datos que corre en cada petición.** `ensureDefaultConfigs()` recorre las configuraciones y reescribe `monthlyDivisor` si vale 220 — una corrección puntual de migración convertida en efecto permanente. Además se invoca en casi todos los endpoints de horas extra, así que **cada request escribe en la base**. | `extra-hours.routes.ts:200-213` (verificado) | Mover a una migración de datos o al seed, y sacar `ensureDefaultConfigs()` del camino de request. |
+| ~~DEP-11~~ RESUELTO (fix/limpieza-backend) | P2 | **`test-connection.mjs` es un diagnóstico viejo** con el host del pooler de Supabase incrustado. No lo llama ningún script de `package.json`. | `backend/scripts/test-connection.mjs` (verificado) | Borrar, o parametrizar por variable de entorno si aún sirve para soporte. |
 | ~~DEP-12~~ | — | ~~Chunk de `html2canvas` sin dependencia~~ **DESCARTADO. Era un error de esta revisión.** `html2canvas` no está en `package.json` porque entra como dependencia **transitiva de `jspdf`**; el build sí genera el chunk (`vendor-html2canvas`, 199 kB). La línea de `manualChunks` es correcta y hay que dejarla. | `npm run build` en `frontend/` (verificado) | Ninguna. |
-| DEP-13 | P2 | **`prisma` (el CLI) está en `dependencies`, no en `devDependencies`.** Se instala en producción sin necesitarse en runtime. | `backend/package.json` (verificado) | Mover a `devDependencies`. Verificar antes que el build de Render no lo necesite en tiempo de arranque. |
+| ~~DEP-13~~ RESUELTO (fix/limpieza-backend) | P2 | **`prisma` (el CLI) está en `dependencies`, no en `devDependencies`.** Se instala en producción sin necesitarse en runtime. | `backend/package.json` (verificado) | Mover a `devDependencies`. Verificar antes que el build de Render no lo necesite en tiempo de arranque. |
 | DEP-14 | P3 | `TODO(backend)` duplicado sobre rangos ISO en vez de trimestres. | `frontend/src/utils/periodUtils.ts:110,217` | Resolver o convertir en ítem de backlog con dueño. |
-| DEP-31 | P1 | **El build de producción incluye los archivos de prueba.** `tsconfig.json` compila `src/**/*.ts` sin excluir `__tests__`, así que `dist/utils/__tests__/*.js` viaja al servidor. Efecto colateral: después de un `npm run build`, `npm test` recolecta las pruebas **dos veces** (306 en vez de 153) porque vitest también mira `dist/`. Un conteo de pruebas inflado es peligroso: esconde si algo dejó de ejecutarse. | `backend/tsconfig.json`, `dist/utils/__tests__/` (verificado) | Excluir `**/__tests__/**` y `**/*.test.ts` del `tsconfig.json`, y acotar el `include` de vitest a `src/`. |
+| ~~DEP-31~~ RESUELTO (fix/limpieza-backend) | P1 | **El build de producción incluye los archivos de prueba.** `tsconfig.json` compila `src/**/*.ts` sin excluir `__tests__`, así que `dist/utils/__tests__/*.js` viaja al servidor. Efecto colateral: después de un `npm run build`, `npm test` recolecta las pruebas **dos veces** (306 en vez de 153) porque vitest también mira `dist/`. Un conteo de pruebas inflado es peligroso: esconde si algo dejó de ejecutarse. | `backend/tsconfig.json`, `dist/utils/__tests__/` (verificado) | Excluir `**/__tests__/**` y `**/*.test.ts` del `tsconfig.json`, y acotar el `include` de vitest a `src/`. |
 
 ---
 
@@ -54,7 +59,7 @@ es exactamente como se introducen regresiones.
 | ID | P | Hallazgo | Evidencia | Acción |
 |---|---|---|---|---|
 | ~~DEP-15~~ RESUELTO (fix/duplicacion) | **P0** | **Tres copias de la matriz de permisos.** `auth/roles.ts` (backend, solo alimenta la UI), `authorize([AppRole...])` en cada ruta (lo que realmente protege), y **una tercera copia literal en `App.tsx:984`** dentro de `handleSwitchRole`. Tres fuentes que pueden desincronizarse sin que nada avise. | `backend/src/auth/roles.ts`, `frontend/src/App.tsx:984-1016` (verificado) | Mínimo: que `handleSwitchRole` derive los permisos de una sola definición compartida. Idealmente, que `authorize(...)` reciba permisos y no roles (§11.1 de la doc técnica). |
-| DEP-16 | P1 | **Prueba que no prueba el código.** `tableSort.test.ts` reimplementa ("Mirrors the sort logic from DashboardTab") la lógica de orden en el propio test. Puede estar verde mientras `DashboardTab` está roto. | `frontend/src/test/tableSort.test.ts:3` (verificado) | Extraer la función de orden a `dashboardUtils.ts` e importarla desde el test. |
+| ~~DEP-16~~ RESUELTO (fix/limpieza-frontend) | P1 | **Prueba que no prueba el código.** `tableSort.test.ts` reimplementa ("Mirrors the sort logic from DashboardTab") la lógica de orden en el propio test. Puede estar verde mientras `DashboardTab` está roto. | `frontend/src/test/tableSort.test.ts:3` (verificado) | Extraer la función de orden a `dashboardUtils.ts` e importarla desde el test. |
 | ~~DEP-17~~ RESUELTO (fix/duplicacion) | P1 | Lógica de aprobar/rechazar de horas extra duplicada entre los dos handlers (quién puede en cada nivel, delegaciones, mes cerrado). | `extra-hours.routes.ts` `approve` y `reject` | Extraer un helper `getExtraHourAuthLevel(...)`. Ya estaba propuesto en §11.3 de la doc técnica. |
 | ~~DEP-18~~ RESUELTO (fix/duplicacion) | P1 | `findFxRate` en `App.tsx` reimplementa la triangulación de monedas de `currency.ts` del backend, con un comentario que lo admite. Dos implementaciones de la misma regla financiera. | `frontend/src/App.tsx:126` (verificado) | Consumir `GET /api/fx/rate`, o aceptar la duplicación y probarla en el frontend. Hoy no tiene pruebas. |
 
@@ -64,12 +69,12 @@ es exactamente como se introducen regresiones.
 
 | ID | P | Hallazgo | Evidencia | Acción |
 |---|---|---|---|---|
-| DEP-19 | **P0** | **El workflow de Azure Static Web Apps publica `build/` pero Vite emite `dist/`.** Corre en cada push a `main` y no despliega nada útil; además no corre pruebas ni type-check. | `.github/workflows/azure-static-web-apps-*.yml` (verificado) | Corregir `output_location` a `dist` y agregar test + type-check. Confirmado que Vercel y Azure SWA **ambos** se usan. |
-| DEP-20 | **P0** | **El cron de FX apunta a un host que no existe.** Se comprobó contra producción: `app-gestion-demo.onrender.com/health` responde **200**, y `app-gestion-backend.onrender.com` **no responde en 150 s** (no existe). `render.yaml` declara el servicio como `app-gestion-backend` y su cron job hace `curl` a `https://app-gestion-backend.onrender.com/api/fx/sync` → **la sincronización diaria de tasas de cambio nunca ha funcionado**. | `render.yaml` vs. respuesta real de producción (verificado) | `frontend/vercel.json` está **correcto**, no tocarlo. Corregir el host del cron en `render.yaml` a `app-gestion-demo.onrender.com` y alinear el `name` del servicio con la realidad. Revisar después si las tasas FX en producción están desactualizadas. |
-| DEP-21 | P1 | **Node inconsistente en cuatro sitios**: `.nvmrc` (20.19.0), Dockerfiles (`node:20-slim`), `render.yaml` (20.19.0) vs `package.json engines` (**24.x**). La máquina local corre 24.13.0, o sea que **hoy se desarrolla en un major distinto al de producción**. | `backend/.nvmrc`, `frontend/.nvmrc`, ambos `Dockerfile`, `render.yaml`, ambos `package.json` (verificado) | Elegir una versión y alinear los cinco archivos. Dado que local ya corre 24 y `engines` lo pide, lo natural es subir producción; hay que probarlo. |
+| ~~DEP-19~~ RESUELTO (fix/configuracion-entorno) | **P0** | **El workflow de Azure Static Web Apps publica `build/` pero Vite emite `dist/`.** Corre en cada push a `main` y no despliega nada útil; además no corre pruebas ni type-check. | `.github/workflows/azure-static-web-apps-*.yml` (verificado) | Corregir `output_location` a `dist` y agregar test + type-check. Confirmado que Vercel y Azure SWA **ambos** se usan. |
+| ~~DEP-20~~ RESUELTO (fix/configuracion-entorno) | **P0** | **El cron de FX apunta a un host que no existe.** Se comprobó contra producción: `app-gestion-demo.onrender.com/health` responde **200**, y `app-gestion-backend.onrender.com` **no responde en 150 s** (no existe). `render.yaml` declara el servicio como `app-gestion-backend` y su cron job hace `curl` a `https://app-gestion-backend.onrender.com/api/fx/sync` → **la sincronización diaria de tasas de cambio nunca ha funcionado**. | `render.yaml` vs. respuesta real de producción (verificado) | `frontend/vercel.json` está **correcto**, no tocarlo. Corregir el host del cron en `render.yaml` a `app-gestion-demo.onrender.com` y alinear el `name` del servicio con la realidad. Revisar después si las tasas FX en producción están desactualizadas. |
+| ~~DEP-21~~ RESUELTO (fix/configuracion-entorno) | P1 | **Node inconsistente en cuatro sitios**: `.nvmrc` (20.19.0), Dockerfiles (`node:20-slim`), `render.yaml` (20.19.0) vs `package.json engines` (**24.x**). La máquina local corre 24.13.0, o sea que **hoy se desarrolla en un major distinto al de producción**. | `backend/.nvmrc`, `frontend/.nvmrc`, ambos `Dockerfile`, `render.yaml`, ambos `package.json` (verificado) | Elegir una versión y alinear los cinco archivos. Dado que local ya corre 24 y `engines` lo pide, lo natural es subir producción; hay que probarlo. |
 | DEP-22 | P1 | **`SMTP_FROM` por defecto usa `noreply@synaptica.cc`** (dominio `.cc`), mientras el resto del proyecto usa `synaptica.co`. Si `.cc` no es un dominio propio, todo correo saliente sale con remitente ajeno y se va a spam. | `backend/src/utils/notifications.ts:9`, `backend/.env.example` (verificado) | Confirmar el dominio correcto. Probable errata. |
-| DEP-23 | P2 | `DIRECT_URL` no pasa por la validación Zod de `config/env.ts`: una URL mal puesta falla recién al migrar, no al arrancar. | `backend/src/config/env.ts` (verificado) | Agregarla al schema. |
-| DEP-24 | P2 | `render.yaml` construye con `npm install --include=dev` y `DEPLOYMENT.md` documenta `npm ci`. Instalan versiones potencialmente distintas. | (verificado) | Unificar en `npm ci`. |
+| ~~DEP-23~~ RESUELTO (fix/configuracion-entorno) | P2 | `DIRECT_URL` no pasa por la validación Zod de `config/env.ts`: una URL mal puesta falla recién al migrar, no al arrancar. | `backend/src/config/env.ts` (verificado) | Agregarla al schema. |
+| ~~DEP-24~~ RESUELTO (fix/configuracion-entorno) | P2 | `render.yaml` construye con `npm install --include=dev` y `DEPLOYMENT.md` documenta `npm ci`. Instalan versiones potencialmente distintas. | (verificado) | Unificar en `npm ci`. |
 
 ---
 
@@ -77,10 +82,10 @@ es exactamente como se introducen regresiones.
 
 | ID | P | Hallazgo | Evidencia | Acción |
 |---|---|---|---|---|
-| DEP-25 | P1 | **Las instrucciones de arranque local no funcionan**: mandan a copiar `.env.local.5433.example` y `.env.local.example`, que no existen. Quien siga el manual se traba en el paso 3. *(Corrección a esta revisión: `.env.production.example` **sí** existe, pero en `frontend/`, no en `backend/`.)* | `DOCUMENTACION_APLICACION.md:203,207`, `DEPLOYMENT.md:61,65`, `backend/README.md:20-21` (verificado) | Apuntar a `backend/.env.example`, que ya trae comentados los pares de conexión para 5432 y 5433. |
-| DEP-26 | P2 | **La documentación describe un flujo de ramas que no existe**: `develop` → `deploy`. Las ramas reales son `main` y `origin/dev`. | `DEPLOYMENT.md:11-19`, `DOCUMENTACION_APLICACION.md:21-34` (verificado) | Reescribir con las ramas reales. |
-| DEP-27 | P2 | El RAG Chat se documenta como "asistente virtual inteligente" y es coincidencia de texto en el cliente, sin LLM. | `DOCUMENTACION_APLICACION.md` §3.5 vs `RagChat.tsx` (verificado) | Ajustar la descripción, o ponerle una etiqueta en la UI. Genera expectativas falsas frente a un cliente. |
-| DEP-28 | P3 | `contexto/` guarda insumos comerciales del cliente (`.docx`, `.xlsx`, `SY_6.html` de 97 KB) dentro del repo de código. | (verificado) | No es basura, pero no pertenece aquí. Revisar además si su contenido es confidencial antes de compartir el repo. |
+| ~~DEP-25~~ RESUELTO (docs/actualizar-manuales) | P1 | **Las instrucciones de arranque local no funcionan**: mandan a copiar `.env.local.5433.example` y `.env.local.example`, que no existen. Quien siga el manual se traba en el paso 3. *(Corrección a esta revisión: `.env.production.example` **sí** existe, pero en `frontend/`, no en `backend/`.)* | `DOCUMENTACION_APLICACION.md:203,207`, `DEPLOYMENT.md:61,65`, `backend/README.md:20-21` (verificado) | Apuntar a `backend/.env.example`, que ya trae comentados los pares de conexión para 5432 y 5433. |
+| ~~DEP-26~~ RESUELTO (docs/actualizar-manuales) | P2 | **La documentación describe un flujo de ramas que no existe**: `develop` → `deploy`. Las ramas reales son `main` y `origin/dev`. | `DEPLOYMENT.md:11-19`, `DOCUMENTACION_APLICACION.md:21-34` (verificado) | Reescribir con las ramas reales. |
+| ~~DEP-27~~ RESUELTO (docs/actualizar-manuales) | P2 | El RAG Chat se documenta como "asistente virtual inteligente" y es coincidencia de texto en el cliente, sin LLM. | `DOCUMENTACION_APLICACION.md` §3.5 vs `RagChat.tsx` (verificado) | Ajustar la descripción, o ponerle una etiqueta en la UI. Genera expectativas falsas frente a un cliente. |
+| ~~DEP-28~~ RESUELTO (docs/actualizar-manuales) | P3 | `contexto/` guarda insumos comerciales del cliente (`.docx`, `.xlsx`, `SY_6.html` de 97 KB) dentro del repo de código. | (verificado) | No es basura, pero no pertenece aquí. Revisar además si su contenido es confidencial antes de compartir el repo. |
 
 ---
 
@@ -88,8 +93,8 @@ es exactamente como se introducen regresiones.
 
 | ID | P | Hallazgo | Evidencia | Acción |
 |---|---|---|---|---|
-| DEP-29 | P2 | **`console.error("DEBUG: Token verification failed:")`** en el camino de autenticación: en producción imprime el detalle de cada token rechazado. | `backend/src/auth/guard.ts:95` (verificado) | Pasar al logger de Fastify (`request.log.warn`) sin volcar el error crudo. |
-| DEP-30 | P3 | 12 `console.log` en `notifications.ts`, `alerts.service.ts` y `assignments.job.ts` conviviendo con el logger estructurado de Fastify. | (verificado) | Unificar en el logger de la app para que los logs de Render sean parseables. |
+| ~~DEP-29~~ RESUELTO (fix/limpieza-backend) | P2 | **`console.error("DEBUG: Token verification failed:")`** en el camino de autenticación: en producción imprime el detalle de cada token rechazado. | `backend/src/auth/guard.ts:95` (verificado) | Pasar al logger de Fastify (`request.log.warn`) sin volcar el error crudo. |
+| ~~DEP-30~~ RESUELTO (fix/limpieza-backend) | P3 | 12 `console.log` en `notifications.ts`, `alerts.service.ts` y `assignments.job.ts` conviviendo con el logger estructurado de Fastify. | (verificado) | Unificar en el logger de la app para que los logs de Render sean parseables. |
 
 ---
 
@@ -128,3 +133,37 @@ son preexistentes**, no los introdujeron esas ramas. Detalle en
 4. **DEP-09 / DEP-10 / DEP-12 / DEP-11** — limpieza mecánica, bajo riesgo, deja el código legible.
 5. **DEP-21 / DEP-22 / DEP-25** — alineación de entorno y manual que hoy no funciona.
 6. Lo demás, por oportunidad cuando se toque el área.
+
+---
+
+## Qué queda abierto (13 ítems)
+
+Ordenado por lo que más valor tiene arreglar primero.
+
+| ID | P | Resumen | Por qué importa |
+|---|---|---|---|
+| DEP-37 | **P0** | `projectManagerEmail` no se puede asignar desde ningún lado | La aprobación de horas extra por el PM **nunca puede ocurrir**; y deja inerte la mitad del alcance por rol que se construyó en R5 |
+| DEP-38 | P1 | La fuga de tarifas sigue abierta en `extra-hours` y otras rutas | Es la misma falla que se cerró en `time-entries`; el arreglo ya está escrito, solo hay que aplicarlo |
+| DEP-33 | P1 | Los enlaces profundos no funcionan | Ninguna URL de la aplicación se puede compartir ni recargar |
+| DEP-36 | P1 | Si falla la petición de estadísticas, el tablero inventa un número | Muestra una suma de monedas mezcladas en vez de un error |
+| DEP-32 | P1 | La conversión de moneda falla en silencio sin tasas | Importes en la moneda equivocada, sin aviso |
+| DEP-22 | P1 | `SMTP_FROM` usa el dominio `synaptica.cc` y no `.co` | Si no es un dominio propio, todo correo sale con remitente ajeno |
+| DEP-39 | P2 | `findFxRate` del frontend no triangula como el backend | El conversor dice "sin tasa" donde el backend sí calcula |
+| DEP-05 | P2 | `AssignmentStatus.PARTIAL` nunca se escribe | 12 filtros cargan una condición imposible |
+| DEP-06 | P2 | `AlertType.CONSULTANT_OVERLOADED` nunca se genera | `capacity.ts` ya calcula el estado; conectarlo es trabajo corto |
+| DEP-40 | P3 | `approve` y `reject` validan en orden distinto | Códigos de error inconsistentes ante el mismo caso |
+| DEP-34 | P3 | Tres advertencias de React por atributos SVG | Cosmético |
+| DEP-08 | P3 | ~20 funciones de `api.ts` sin usar | Andamiaje de pantallas nunca construidas (hitos, riesgos, incidencias) |
+| DEP-14 | P3 | `TODO(backend)` duplicado en `periodUtils.ts` | Sin dueño |
+
+### Lo que NO está en este documento
+
+Sigue abierto en `DOCUMENTACION_TECNICA.md` §10, y pesa más que varios de los de arriba:
+
+- **No hay scheduler**: las alertas y los estados de asignación solo se recalculan cuando el
+  proceso se reinicia.
+- **Auditoría parcial**: horas, horas extra, gastos, ingresos, consultores y usuarios no
+  dejan rastro en `AuditLog`.
+- **Sin paginación** en casi todos los listados.
+- **Tres cálculos distintos de rentabilidad**, con `marginThreshold` hardcodeado a 15 en dos
+  sitios, ignorando el valor configurado por proyecto.
