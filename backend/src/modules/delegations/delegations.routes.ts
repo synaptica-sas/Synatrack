@@ -3,7 +3,7 @@ import { AppRole } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { writeAudit } from "../../utils/audit.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const delegationPayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -103,7 +103,7 @@ export async function delegationsRoutes(app: FastifyInstance) {
       });
 
       await writeAudit(prisma, {
-        entity: "approvalDelegation",
+        entity: AUDIT_ENTITIES.approvalDelegation,
         entityId: delegation.id,
         action: "CREATE",
         changedBy: fromEmail,
@@ -144,7 +144,7 @@ export async function delegationsRoutes(app: FastifyInstance) {
       await prisma.approvalDelegation.delete({ where: { id } });
 
       await writeAudit(prisma, {
-        entity: "approvalDelegation",
+        entity: AUDIT_ENTITIES.approvalDelegation,
         entityId: id,
         action: "DELETE",
         changedBy: email,

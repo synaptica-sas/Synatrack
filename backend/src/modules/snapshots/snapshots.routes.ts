@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
-import { writeAudit } from "../../utils/audit.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const closePayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -115,7 +115,7 @@ export async function snapshotsRoutes(app: FastifyInstance) {
       });
 
       await writeAudit(prisma, {
-        entity: "monthlySnapshot",
+        entity: AUDIT_ENTITIES.monthlySnapshot,
         entityId: snapshot.id,
         action: "CLOSE",
         changedBy: performedBy,

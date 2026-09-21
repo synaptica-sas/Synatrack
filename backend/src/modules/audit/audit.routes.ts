@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { variantesDeEntidad } from "../../utils/audit.js";
 
 const querySchema = z.object({
   entity: z.string().optional(),
@@ -22,8 +23,12 @@ export async function auditRoutes(app: FastifyInstance) {
       const query = querySchema.parse(request.query);
       const skip = (query.page - 1) * query.pageSize;
 
+      // Filtrar por entidad incluye las variantes históricas (`Project`,
+      // `Forecast`) además de la nomenclatura homologada, para que la bitácora
+      // anterior a R9 no desaparezca del filtro. Ver
+      // `documentacion/cambios/R9-auditoria.md`.
       const where = {
-        entity: query.entity,
+        entity: query.entity ? { in: variantesDeEntidad(query.entity) } : undefined,
         entityId: query.entityId,
         changedBy: query.changedBy,
         createdAt: {

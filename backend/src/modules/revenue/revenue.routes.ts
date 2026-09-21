@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const revenuePayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -53,6 +54,16 @@ export async function revenueRoutes(app: FastifyInstance) {
       }
 
       const entry = await prisma.revenueEntry.create({ data: payload });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.revenueEntry,
+        entityId: entry.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: entry as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(201).send({ data: entry });
     },
   );
@@ -79,6 +90,17 @@ export async function revenueRoutes(app: FastifyInstance) {
 
       try {
         const entry = await prisma.revenueEntry.update({ where: { id }, data: payload });
+
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.revenueEntry,
+          entityId: entry.id,
+          action: "UPDATE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          after: entry as unknown as Record<string, unknown>,
+          request,
+        });
+
         return { data: entry };
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
@@ -106,6 +128,16 @@ export async function revenueRoutes(app: FastifyInstance) {
 
       try {
         await prisma.revenueEntry.delete({ where: { id } });
+
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.revenueEntry,
+          entityId: id,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          request,
+        });
+
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;

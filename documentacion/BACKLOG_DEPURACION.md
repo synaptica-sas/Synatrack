@@ -162,8 +162,9 @@ Sigue abierto en `DOCUMENTACION_TECNICA.md` §10, y pesa más que varios de los 
 
 - **No hay scheduler**: las alertas y los estados de asignación solo se recalculan cuando el
   proceso se reinicia.
-- **Auditoría parcial**: horas, horas extra, gastos, ingresos, consultores y usuarios no
-  dejan rastro en `AuditLog`.
+- ~~**Auditoría parcial**~~ **RESUELTO** en `feat/auditoria-completa`: se auditan horas,
+  horas extra, gastos, ingresos, consultores, usuarios, actividades, estimaciones, bloqueos
+  de capacidad y la resolución de alertas, y se homologó la nomenclatura de `entity`.
 - **Sin paginación** en casi todos los listados.
 - **Tres cálculos distintos de rentabilidad**, con `marginThreshold` hardcodeado a 15 en dos
   sitios, ignorando el valor configurado por proyecto.

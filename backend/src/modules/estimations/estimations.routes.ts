@@ -3,6 +3,7 @@ import { AppRole } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const estimationPayloadSchema = z.object({
   projectId: z.string().optional().nullable(),
@@ -88,6 +89,15 @@ export async function estimationsRoutes(app: FastifyInstance) {
         },
       });
 
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.estimation,
+        entityId: estimation.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: estimation as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(201).send({ data: estimation });
     },
   );
@@ -107,6 +117,16 @@ export async function estimationsRoutes(app: FastifyInstance) {
       }
 
       await prisma.estimation.delete({ where: { id } });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.estimation,
+        entityId: id,
+        action: "DELETE",
+        changedBy: request.authUser!.email,
+        before: existing as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(204).send();
     },
   );

@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 import { normalizeCountry } from "../../utils/country.js";
 
@@ -24,6 +25,34 @@ const userUpdateSchema = z.object({
 });
 
 const paramsSchema = z.object({ id: z.string().min(1) });
+
+/** Tipo mínimo para construir la instantánea de auditoría de un usuario. */
+type UsuarioConRoles = {
+  id: string;
+  email: string;
+  displayName: string;
+  microsoftOid: string | null;
+  active: boolean;
+  country: string | null;
+  roles: { role: { name: string } }[];
+};
+
+/**
+ * Instantánea plana del usuario para la bitácora. Aplana los roles a un arreglo
+ * de nombres para que el `diff` muestre el cambio de permisos de forma legible
+ * ("roles: [CONSULTANT] -> [ADMIN]") en vez de una lista de filas `UserRole`.
+ */
+function instantaneaUsuario(user: UsuarioConRoles): Record<string, unknown> {
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.displayName,
+    microsoftOid: user.microsoftOid,
+    active: user.active,
+    country: user.country,
+    roles: user.roles.map((item) => item.role.name).sort(),
+  };
+}
 
 async function ensureRoles() {
   await Promise.all(
@@ -113,6 +142,15 @@ export async function adminUsersRoutes(app: FastifyInstance) {
         },
       });
 
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.user,
+        entityId: user.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: instantaneaUsuario(user),
+        request,
+      });
+
       return reply.status(201).send({
         data: {
           id: user.id,
@@ -137,10 +175,17 @@ export async function adminUsersRoutes(app: FastifyInstance) {
       const { id } = paramsSchema.parse(request.params);
       const payload = userUpdateSchema.parse(request.body);
 
-      const user = await prisma.user.findUnique({ where: { id } });
+      // Se traen también los roles porque son el dato que más importa auditar
+      // aquí: cambiarlos es cambiar permisos.
+      const user = await prisma.user.findUnique({
+        where: { id },
+        include: { roles: { include: { role: true } } },
+      });
       if (!user) {
         return reply.status(404).send({ message: "User not found" });
       }
+
+      const antes = instantaneaUsuario(user);
 
       if (payload.roles) {
         const roleRecords = await prisma.role.findMany({
@@ -174,6 +219,16 @@ export async function adminUsersRoutes(app: FastifyInstance) {
             },
           },
         },
+      });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.user,
+        entityId: updated.id,
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        before: antes,
+        after: instantaneaUsuario(updated),
+        request,
       });
 
       return {

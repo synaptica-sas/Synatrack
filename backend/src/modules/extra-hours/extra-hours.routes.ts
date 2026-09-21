@@ -7,6 +7,7 @@ import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/
 import { normalizeCountry, SUPPORTED_COUNTRIES } from "../../utils/country.js";
 import { getHolidaysForYear } from "../../utils/holidays.js";
 import { calculateExtraHours } from "../../utils/calculateExtraHours.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { notifyNewExtraHourRequest, notifyExtraHourApprovedByPM, notifyExtraHourFullyApproved, notifyExtraHourRejected } from "../../utils/notifications.js";
 
 const extraHourPayloadSchema = z.object({
@@ -520,6 +521,16 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         console.error("Error al enviar notificación de nueva hora extra:", err);
       });
 
+      // Nómina: dejar rastro de quién registró la solicitud y con qué montos.
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.extraHourEntry,
+        entityId: entry.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: entry as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(201).send({ data: entry, warnings: calcResult.warnings });
     },
   );
@@ -801,6 +812,17 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           console.error("Error al enviar notificación de aprobación del PM a nómina:", err);
         });
 
+        // Nivel 1 de la doble aprobación: aprobación operativa del PM.
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.extraHourEntry,
+          entityId: entry.id,
+          action: "APPROVE",
+          changedBy: email,
+          before: existing as unknown as Record<string, unknown>,
+          after: entry as unknown as Record<string, unknown>,
+          request,
+        });
+
         return { data: entry };
       } else {
         // Nivel 2: Requiere aprobación de Finanzas / Recursos Humanos (Lina) o Admin
@@ -829,6 +851,17 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           approvedBy: email,
         }).catch((err) => {
           console.error("Error al enviar notificación de aprobación final al consultor:", err);
+        });
+
+        // Nivel 2 de la doble aprobación: es la autorización de pago.
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.extraHourEntry,
+          entityId: entry.id,
+          action: "APPROVE",
+          changedBy: email,
+          before: existing as unknown as Record<string, unknown>,
+          after: entry as unknown as Record<string, unknown>,
+          request,
         });
 
         return { data: entry };
@@ -914,6 +947,16 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         rejectionNote: payload.rejectionNote || "No especificado",
       }).catch((err) => {
         console.error("Error al enviar notificación de rechazo al consultor:", err);
+      });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.extraHourEntry,
+        entityId: entry.id,
+        action: "REJECT",
+        changedBy: email,
+        before: existing as unknown as Record<string, unknown>,
+        after: entry as unknown as Record<string, unknown>,
+        request,
       });
 
       return { data: entry };
@@ -1066,6 +1109,16 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       }
 
       await prisma.extraHourEntry.delete({ where: { id } });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.extraHourEntry,
+        entityId: id,
+        action: "DELETE",
+        changedBy: request.authUser!.email,
+        before: existing as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(204).send();
     },
   );

@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const blockPayloadSchema = z
   .object({
@@ -50,6 +51,15 @@ export async function blocksRoutes(app: FastifyInstance) {
       if (!consultant) return reply.status(404).send({ message: "Consultor no encontrado" });
 
       const block = await prisma.consultantBlock.create({ data: { consultantId, ...payload } });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.consultantBlock,
+        entityId: block.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: block as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(201).send({ data: block });
     },
   );
@@ -65,6 +75,16 @@ export async function blocksRoutes(app: FastifyInstance) {
 
       try {
         await prisma.consultantBlock.delete({ where: { id: blockId } });
+
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.consultantBlock,
+          entityId: blockId,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: block as unknown as Record<string, unknown>,
+          request,
+        });
+
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;

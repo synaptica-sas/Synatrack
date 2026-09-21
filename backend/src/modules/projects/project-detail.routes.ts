@@ -6,7 +6,7 @@ import { prisma } from "../../infra/prisma.js";
 import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
 import { computeEVM } from "../../utils/evm.js";
 import { computeHealthStatus } from "../../utils/health.js";
-import { writeAudit } from "../../utils/audit.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const idSchema = z.object({ id: z.string().min(1) });
 
@@ -209,7 +209,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       });
 
       await writeAudit(prisma, {
-        entity: "project",
+        entity: AUDIT_ENTITIES.project,
         entityId: id,
         action: "UPDATE",
         changedBy: performedBy,
