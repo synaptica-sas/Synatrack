@@ -72,14 +72,123 @@ function resolveEmail(payload: MicrosoftClaims) {
   return payload.preferred_username || payload.email || payload.upn || null;
 }
 
+// --- Simulador de rol para desarrollo ---------------------------------------
+// Solo se consulta dentro de la rama de bypass de `authenticate`. Con
+// autenticación real (`AUTH_ENABLED=true` y `AUTH_DEMO_BYPASS=false`) este
+// código no se ejecuta nunca, así que ni las variables ni los encabezados
+// pueden usarse para suplantar a nadie en un entorno autenticado.
+
+export const DEV_EMAIL_HEADER = "x-dev-email";
+export const DEV_ROLES_HEADER = "x-dev-roles";
+
+type DemoIdentity = {
+  id: string;
+  email: string;
+  displayName: string;
+  roles: AppRole[];
+};
+
+function readHeader(request: FastifyRequest, name: string): string | null {
+  const raw = request.headers[name];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** Convierte "PM,FINANCE" en roles válidos. Devuelve null si alguno no existe. */
+function parseRolesHeader(raw: string): AppRole[] | null {
+  const names = raw
+    .split(",")
+    .map((name) => name.trim().toUpperCase())
+    .filter((name) => name !== "");
+
+  if (names.length === 0) {
+    return null;
+  }
+
+  const roles: AppRole[] = [];
+  for (const name of names) {
+    if (!(name in AppRole)) {
+      return null;
+    }
+    roles.push(name as AppRole);
+  }
+
+  return Array.from(new Set(roles));
+}
+
+/**
+ * Los encabezados solo se aceptan si el bypass ya está activo (garantizado por
+ * quien llama), si el desarrollador los habilitó explícitamente con
+ * `AUTH_DEV_ROLE_HEADER=true` y si NO estamos en producción. Tres cerrojos
+ * independientes: cualquiera de los tres que falle deja los encabezados inertes.
+ */
+function headersAllowed() {
+  return env.AUTH_DEV_ROLE_HEADER && env.NODE_ENV !== "production";
+}
+
+function resolveDemoIdentity(
+  request: FastifyRequest,
+): { ok: true; identity: DemoIdentity } | { ok: false; message: string } {
+  // Identidad base: la de las variables de entorno. Sin ellas, el admin local
+  // de siempre (mismo id, correo, nombre y rol que antes de existir el simulador).
+  let email = (env.AUTH_DEV_EMAIL ?? env.ADMIN_EMAIL).toLowerCase();
+  let roles: AppRole[] = env.AUTH_DEV_ROLES ?? [AppRole.ADMIN];
+  let simulated = env.AUTH_DEV_EMAIL !== undefined || env.AUTH_DEV_ROLES !== undefined;
+
+  if (headersAllowed()) {
+    const rawRoles = readHeader(request, DEV_ROLES_HEADER);
+    if (rawRoles) {
+      const parsed = parseRolesHeader(rawRoles);
+      if (!parsed) {
+        return {
+          ok: false,
+          message: `El encabezado ${DEV_ROLES_HEADER} trae roles no válidos. Valores aceptados: ${Object.values(AppRole).join(", ")}.`,
+        };
+      }
+      roles = parsed;
+      simulated = true;
+    }
+
+    const rawEmail = readHeader(request, DEV_EMAIL_HEADER);
+    if (rawEmail) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+        return {
+          ok: false,
+          message: `El encabezado ${DEV_EMAIL_HEADER} debe contener un correo válido.`,
+        };
+      }
+      email = rawEmail.toLowerCase();
+      simulated = true;
+    }
+  }
+
+  return {
+    ok: true,
+    identity: simulated
+      ? {
+          id: `local-sim:${email}`,
+          email,
+          displayName: `Simulación (${roles.join(", ")})`,
+          roles,
+        }
+      : {
+          id: "local-admin",
+          email,
+          displayName: "Local Admin",
+          roles,
+        },
+  };
+}
+
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   if (!env.AUTH_ENABLED || env.AUTH_DEMO_BYPASS) {
-    request.authUser = {
-      id: "local-admin",
-      email: env.ADMIN_EMAIL.toLowerCase(),
-      displayName: "Local Admin",
-      roles: [AppRole.ADMIN],
-    };
+    const resolved = resolveDemoIdentity(request);
+    if (!resolved.ok) {
+      return reply.status(400).send({ message: resolved.message });
+    }
+
+    request.authUser = resolved.identity;
     return;
   }
 

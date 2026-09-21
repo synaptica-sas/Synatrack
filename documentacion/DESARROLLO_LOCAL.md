@@ -25,13 +25,77 @@ El backend corre en **modo demo** (`AUTH_ENABLED=false`, `AUTH_DEMO_BYPASS=true`
 automáticamente como `ADMIN` sin pasar por Microsoft. Para probar el login real de Entra ID
 hay que poner las variables de Azure en `backend/.env` y `frontend/.env` y apagar el bypass.
 
+### Entrar como otro rol (simulador de rol)
+
+El bypass de demo siempre inyectaba un `ADMIN`, lo que hacía **imposible ver en local**
+si una ruta autoriza bien o si filtra los datos por consultor. Ahora la identidad del
+modo demo es configurable.
+
+> **Solo funciona con el bypass activo** (`AUTH_ENABLED=false` o `AUTH_DEMO_BYPASS=true`).
+> Con Entra ID real, tanto las variables como los encabezados se ignoran por completo:
+> la decisión vive dentro de la rama de bypass de `authenticate` (`backend/src/auth/guard.ts`).
+
+**Por variables de entorno** (`backend/.env`, requiere reiniciar el backend):
+
+| Variable | Qué hace | Por defecto |
+|---|---|---|
+| `AUTH_DEV_EMAIL` | Correo con el que entrar | `ADMIN_EMAIL` |
+| `AUTH_DEV_ROLES` | Roles separados por coma (`ADMIN`, `PM`, `CONSULTANT`, `FINANCE`, `VIEWER`) | `ADMIN` |
+| `AUTH_DEV_ROLE_HEADER` | Habilita los encabezados de abajo | `false` |
+
+Sin definir ninguna, el comportamiento es **exactamente el de siempre**: `ADMIN` local
+con el correo de `ADMIN_EMAIL`.
+
+El correo importa: `extra-hours`, `activities` y otras rutas filtran por
+`request.authUser.email` contra el correo del **consultor**, así que para ver los datos
+de alguien concreto hay que usar su correo real de la tabla `Consultant`.
+
+```env
+AUTH_DEV_EMAIL=juan.perez@synaptica.co
+AUTH_DEV_ROLES=CONSULTANT
+```
+
+**Por encabezado HTTP** (sin reiniciar, para saltar de rol mientras se prueba):
+
+```env
+AUTH_DEV_ROLE_HEADER=true
+```
+
+```bash
+curl http://localhost:4000/api/extra-hours   -H "x-dev-roles: CONSULTANT"   -H "x-dev-email: juan.perez@synaptica.co"
+```
+
+Tres cerrojos independientes lo protegen: el bypass tiene que estar activo, la variable
+`AUTH_DEV_ROLE_HEADER` tiene que ser `true` (por defecto no lo es) y `NODE_ENV` no puede
+ser `production`. Si falta cualquiera de los tres, los encabezados son inertes.
+Un rol inexistente en `x-dev-roles` devuelve `400` con el mensaje explicando los válidos.
+
+### Pruebas de ruta (`npm run test:routes`)
+
+Además de las pruebas unitarias (`npm test`, solo funciones puras de `src/utils/`), el
+backend tiene **pruebas de ruta** que levantan la app real con `buildApp()` y le pegan con
+`app.inject()`. Viven en `backend/tests/routes/` y corren por separado:
+
+```powershell
+cd backend
+npm run test:routes
+```
+
+Necesitan Postgres en `localhost:5433` y usan una base **dedicada**, `synatrack_test`, que
+se crea y migra sola en el `globalSetup`. **Nunca** tocan `app_gestion_demo`. Si Postgres no
+está arriba, fallan con un mensaje que explica cómo levantarlo; no se saltan en silencio.
+
+Detalle de qué cubren y de los defectos que documentan:
+`documentacion/cambios/R0-pruebas-de-rol.md`.
+
 ### Comandos sueltos
 
 ```powershell
 .\scripts\db.ps1 start|stop|status|psql|reset   # solo la base de datos
 cd backend;  npm run dev                        # solo el backend
 cd frontend; npm run dev                        # solo el frontend
-cd backend;  npm test                           # 153 tests
+cd backend;  npm test                           # 153 tests unitarios
+cd backend;  npm run test:routes                # 12 pruebas de ruta (necesitan Postgres)
 cd frontend; npm test                           # 124 tests
 ```
 

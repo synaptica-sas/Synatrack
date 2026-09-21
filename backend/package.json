@@ -9,6 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:routes": "vitest run --config vitest.routes.config.ts",
     "test:coverage": "vitest run --coverage",
     "smoke": "node scripts/smoke.mjs",
     "dev": "tsx watch src/server.ts",

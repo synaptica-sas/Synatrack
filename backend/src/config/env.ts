@@ -1,5 +1,42 @@
 import "dotenv/config";
+import { AppRole } from "@prisma/client";
 import { z } from "zod";
+
+/**
+ * Las variables de entorno llegan siempre como cadena. Una variable "presente pero
+ * vacía" (`FOO=` en el .env) debe tratarse como ausente, no como cadena vacía, para
+ * que los valores por defecto sigan aplicando.
+ */
+const optionalString = z
+  .string()
+  .trim()
+  .transform((value) => (value === "" ? undefined : value))
+  .optional();
+
+/**
+ * Lista de roles separados por coma, p. ej. `CONSULTANT` o `PM,FINANCE`.
+ * Se normaliza a mayúsculas y se valida contra el enum `AppRole` de Prisma, así
+ * que un rol mal escrito hace fallar el arranque en vez de degradar en silencio.
+ */
+const devRolesSchema = optionalString
+  .transform((value) =>
+    value === undefined
+      ? undefined
+      : value
+          .split(",")
+          .map((role) => role.trim().toUpperCase())
+          .filter((role) => role !== ""),
+  )
+  .pipe(
+    z
+      .array(
+        z.enum(AppRole, {
+          error: `AUTH_DEV_ROLES solo acepta roles de AppRole (${Object.values(AppRole).join(", ")})`,
+        }),
+      )
+      .min(1, "AUTH_DEV_ROLES no puede quedar vacía si se define")
+      .optional(),
+  );
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -26,6 +63,26 @@ const envSchema = z.object({
   SUPPORT_EMAIL: z.string().email().optional(),
   PAYROLL_EMAIL: z.string().email().optional(),
   FX_SYNC_TOKEN: z.string().min(1).optional(),
+
+  // --- Simulador de rol para desarrollo ---------------------------------------
+  // Solo tienen efecto cuando el bypass de demo ya está activo
+  // (`!AUTH_ENABLED || AUTH_DEMO_BYPASS`). Con autenticación real de Entra ID se
+  // ignoran por completo: la decisión se toma en `src/auth/guard.ts`, dentro de la
+  // rama de bypass, nunca fuera de ella.
+  // Detalle de uso en `documentacion/DESARROLLO_LOCAL.md`.
+
+  // Correo con el que entrar en modo demo. Importa porque varias rutas filtran por
+  // `request.authUser.email` contra el correo del consultor. Sin definir: ADMIN_EMAIL.
+  AUTH_DEV_EMAIL: optionalString.pipe(
+    z.string().email("AUTH_DEV_EMAIL debe ser un correo válido").optional(),
+  ),
+  // Roles con los que entrar en modo demo. Sin definir: ADMIN (comportamiento histórico).
+  AUTH_DEV_ROLES: devRolesSchema,
+  // Habilita los encabezados `x-dev-email` / `x-dev-roles` para cambiar de identidad
+  // sin reiniciar el servidor. Exige además `NODE_ENV !== "production"`.
+  AUTH_DEV_ROLE_HEADER: z
+    .preprocess((val) => val === "true" || val === "1" || val === true, z.boolean())
+    .default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);
