@@ -22,6 +22,30 @@ jobs:
         with:
           submodules: true
           lfs: false
+      # Verificación del frontend ANTES de desplegar: si algo de esto falla, el job
+      # se detiene y el push roto no llega a producción (DEP-19).
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'frontend/.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+      # Ojo: `npx tsc --noEmit` a secas NO sirve aquí. El tsconfig.json raíz del
+      # frontend es solo un archivo de referencias (`"files": []`), así que ese
+      # comando sale con 0 sin revisar nada. Hay que usar el modo build (`-b`),
+      # que es el mismo que usa `npm run build`.
+      - name: Type check
+        working-directory: ./frontend
+        run: npx tsc -b --noEmit
+      - name: Tests
+        working-directory: ./frontend
+        run: npm test
+      - name: Build
+        working-directory: ./frontend
+        run: npm run build
       - name: Install OIDC Client from Core Package
         run: npm install @actions/core@1.6.0 @actions/http-client
       - name: Get Id Token
@@ -42,7 +66,9 @@ jobs:
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
           app_location: "./frontend" # App source code path
           api_location: "" # Api source code path - optional
-          output_location: "build" # Built app content directory - optional
+          # Vite emite en `dist/`, no en `build/` (DEP-19). Con "build" la acción
+          # no encontraba artefactos y el despliegue no publicaba nada útil.
+          output_location: "dist" # Built app content directory - optional
           github_id_token: ${{ steps.idtoken.outputs.result }}
           ###### End of Repository/Build Configurations ######
 
