@@ -117,7 +117,14 @@ export function RagChat({ projects, statsProjects = [], fxConfigs, consultants =
         sources = [`Base de datos: Tabla Project (ID: ${matchedProject.id})`, `Cálculo en Tiempo Real: Módulo de Estadísticas`];
 
       } else if (matchedConsultant) {
-        const rateVal = Number(matchedConsultant.hourlyRate || 0).toLocaleString("es-CO");
+        // La tarifa puede no venir: el backend la omite para los roles que no
+        // pueden verla (DEP-38). En ese caso hay que decirlo, no responder "$0",
+        // que se leería como "este consultor no cuesta nada".
+        const tarifaTexto = matchedConsultant.hourlyRate === undefined
+          ? "No disponible para tu rol"
+          : matchedConsultant.hourlyRate === null
+            ? "Sin tarifa registrada"
+            : `$${Number(matchedConsultant.hourlyRate).toLocaleString("es-CO")} COP/hora`;
         const emailText = matchedConsultant.email || "Sin correo registrado";
         const specText = matchedConsultant.skills && matchedConsultant.skills.length > 0
           ? matchedConsultant.skills.join(", ")
@@ -126,7 +133,7 @@ export function RagChat({ projects, statsProjects = [], fxConfigs, consultants =
           `• **Rol/Nivel**: ${matchedConsultant.role || "Consultor"}\n` +
           `• **Especialidad/Habilidades**: ${specText}\n` +
           `• **Correo**: ${emailText}\n` +
-          `• **Tarifa Estándar**: $${rateVal} COP/hora\n` +
+          `• **Tarifa Estándar**: ${tarifaTexto}\n` +
           `• **Estado**: Activo en plataforma`;
         
         sources = [`Base de datos: Tabla Consultant (ID: ${matchedConsultant.id})`, `Campos: fullName, role, hourlyRate`];

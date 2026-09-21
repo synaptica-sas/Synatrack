@@ -1,8 +1,9 @@
 import type { FastifyInstance } from "fastify";
-import { AppRole, ExtraHourStatus } from "@prisma/client";
+import { AppRole, ExtraHourStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
 import { normalizeCountry, SUPPORTED_COUNTRIES } from "../../utils/country.js";
 import { getHolidaysForYear } from "../../utils/holidays.js";
 import { calculateExtraHours } from "../../utils/calculateExtraHours.js";
@@ -312,45 +313,49 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const roles = user.roles;
       const email = user.email.toLowerCase();
 
-      let entries;
+      // Alcance por fila (sin cambios respecto a antes de R7):
+      //   ADMIN / FINANCE / VIEWER -> todas.
+      //   PM                       -> las suyas como consultor + las de sus proyectos.
+      //   CONSULTANT               -> solo las suyas.
+      let where: Prisma.ExtraHourEntryWhereInput | undefined;
+      let soloPropias = false;
 
       if (roles.includes(AppRole.ADMIN) || roles.includes(AppRole.FINANCE) || roles.includes(AppRole.VIEWER)) {
-        // Acceso total
-        entries = await prisma.extraHourEntry.findMany({
-          include: {
-            project: true,
-            consultant: true,
-          },
-          orderBy: { date: "desc" },
-        });
+        where = undefined;
       } else if (roles.includes(AppRole.PM)) {
-        // PM ve las suyas reportadas como consultor Y las de proyectos que gestiona
-        entries = await prisma.extraHourEntry.findMany({
-          where: {
-            OR: [
-              { consultant: { email: email } },
-              { project: { projectManagerEmail: email } },
-            ],
-          },
-          include: {
-            project: true,
-            consultant: true,
-          },
-          orderBy: { date: "desc" },
-        });
+        where = {
+          OR: [
+            { consultant: { email: email } },
+            { project: { projectManagerEmail: email } },
+          ],
+        };
       } else {
-        // Consultor solo ve las suyas
-        entries = await prisma.extraHourEntry.findMany({
-          where: {
-            consultant: { email: email },
-          },
-          include: {
-            project: true,
-            consultant: true,
-          },
-          orderBy: { date: "desc" },
-        });
+        where = { consultant: { email: email } };
+        soloPropias = true;
       }
+
+      // Alcance por campo (DEP-38): el consultor viaja completo solo para quien
+      // puede ver tarifas (ADMIN, PM, FINANCE) o para quien solo recibe sus
+      // propias filas (el CONSULTANT, que ve su propia tarifa y su propio
+      // documento, igual que en `time-entries` desde R5). El caso que se cierra
+      // aquí es el VIEWER: recibía la `hourlyRate` y el `costPerMonth` de toda
+      // la plantilla, la misma fuga que R5 cerró en `time-entries`.
+      const orderBy = { date: "desc" } as const;
+
+      const entries = puedeVerTarifas(roles) || soloPropias
+        ? await prisma.extraHourEntry.findMany({
+            where,
+            include: { project: true, consultant: true },
+            orderBy,
+          })
+        : await prisma.extraHourEntry.findMany({
+            where,
+            include: {
+              project: true,
+              consultant: { select: consultantSinDatosSensiblesSelect },
+            },
+            orderBy,
+          });
 
       return { data: entries };
     },

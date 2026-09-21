@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { puedeVerTarifas } from "../../utils/consultant-scope.js";
 import {
   computeAvailability,
   calculateCommittedHours,
@@ -434,11 +435,27 @@ export async function capacityRoutes(app: FastifyInstance) {
         to: query.to ?? project.endDate,
       };
 
+      // Alcance por campo (DEP-38): `estimatedCost` es `committedHours *
+      // hourlyRate`, y ambas cifras viajan en la respuesta, así que dividir una
+      // por la otra devuelve la tarifa exacta. Para quien no puede verla, la
+      // tarifa ni siquiera se lee de la base y el costo sale `null`.
+      const verTarifas = puedeVerTarifas(request.authUser!.roles);
+
       const assignments = await prisma.assignment.findMany({
         where: { projectId, status: { in: ["ACTIVE", "PARTIAL", "PLANNED", "COMPLETED"] } },
         include: {
           consultant: {
-            include: { capacityConfig: true, blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } } },
+            select: {
+              id: true,
+              fullName: true,
+              role: true,
+              seniority: true,
+              country: true,
+              rateCurrency: true,
+              hourlyRate: verTarifas,
+              capacityConfig: true,
+              blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } },
+            },
           },
         },
         orderBy: { startDate: "asc" },
@@ -455,7 +472,7 @@ export async function capacityRoutes(app: FastifyInstance) {
           const capacityHours = calculateCapacityHours(overlapPeriod, c.capacityConfig, c.blocks, c.country);
           const committedHours = calculateCommittedHours([a], overlapPeriod, c.capacityConfig, c.country);
           const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
-          const estimatedCost = Math.round(committedHours * hourlyRate * 100) / 100;
+          const estimatedCost = verTarifas ? Math.round(committedHours * hourlyRate * 100) / 100 : null;
 
           return {
             consultantId: c.id,
@@ -485,7 +502,9 @@ export async function capacityRoutes(app: FastifyInstance) {
         .filter(Boolean);
 
       const totalCommittedHours = Math.round(consultants.reduce((s, c) => s + c!.committedHours, 0) * 10) / 10;
-      const totalEstimatedCost = Math.round(consultants.reduce((s, c) => s + c!.estimatedCost, 0) * 100) / 100;
+      const totalEstimatedCost = verTarifas
+        ? Math.round(consultants.reduce((s, c) => s + (c!.estimatedCost ?? 0), 0) * 100) / 100
+        : null;
 
       return {
         data: {
@@ -506,6 +525,9 @@ export async function capacityRoutes(app: FastifyInstance) {
       const query = periodQuerySchema.parse(request.query);
       const period = { from: query.from ?? defaultPeriod().from, to: query.to ?? defaultPeriod().to };
 
+      // Mismo criterio que en `/capacity/project/:projectId` (DEP-38).
+      const verTarifas = puedeVerTarifas(request.authUser!.roles);
+
       const projects = await prisma.project.findMany({
         where: { status: { not: "CLOSED" } },
         include: {
@@ -516,7 +538,17 @@ export async function capacityRoutes(app: FastifyInstance) {
               endDate: { gte: period.from },
             },
             include: {
-              consultant: { include: { capacityConfig: true, blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } } } },
+              consultant: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  country: true,
+                  rateCurrency: true,
+                  hourlyRate: verTarifas,
+                  capacityConfig: true,
+                  blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } },
+                },
+              },
             },
           },
         },
@@ -537,7 +569,7 @@ export async function capacityRoutes(app: FastifyInstance) {
               consultantId: c.id,
               fullName: c.fullName,
               committedHours: Math.round(committedHours * 10) / 10,
-              estimatedCost: Math.round(committedHours * hourlyRate * 100) / 100,
+              estimatedCost: verTarifas ? Math.round(committedHours * hourlyRate * 100) / 100 : null,
               currency: c.rateCurrency ?? "USD",
             };
           })
@@ -549,7 +581,9 @@ export async function capacityRoutes(app: FastifyInstance) {
           projectStatus: p.status,
           assignedConsultants: consultantRows.length,
           totalCommittedHours: Math.round(consultantRows.reduce((s, c) => s + c!.committedHours, 0) * 10) / 10,
-          totalEstimatedCost: Math.round(consultantRows.reduce((s, c) => s + c!.estimatedCost, 0) * 100) / 100,
+          totalEstimatedCost: verTarifas
+            ? Math.round(consultantRows.reduce((s, c) => s + (c!.estimatedCost ?? 0), 0) * 100) / 100
+            : null,
           consultants: consultantRows,
         };
       });

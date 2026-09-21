@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
 
 import { normalizeCountry } from "../../utils/country.js";
 
@@ -29,7 +30,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.FINANCE, AppRole.VIEWER])],
     },
-    async () => {
+    async (request) => {
       try {
         // JIT synchronization: Ensure all users with role AppRole.CONSULTANT have a Consultant record
         const consultantUsers = await prisma.user.findMany({
@@ -68,9 +69,19 @@ export async function consultantsRoutes(app: FastifyInstance) {
         app.log.error(err, "Failed to run JIT consultant sync");
       }
 
-      const consultants = await prisma.consultant.findMany({
-        orderBy: { createdAt: "desc" },
-      });
+      // Alcance por campo (DEP-38): este listado es la fuente más directa de
+      // tarifas de toda la plantilla. Solo ADMIN, PM y FINANCE la reciben; para
+      // CONSULTANT y VIEWER se omiten `hourlyRate`, `costPerMonth` e
+      // `identification` con un `select`, para que el dato no salga de la base.
+      // Nota: un CONSULTANT tampoco ve aquí su propia tarifa. Es el precio de un
+      // listado que devuelve a todo el mundo; hoy además ningún rol
+      // `CONSULTANT` tiene el permiso `consultants:read`, así que la pantalla ni
+      // se le muestra.
+      const orderBy = { createdAt: "desc" } as const;
+
+      const consultants = puedeVerTarifas(request.authUser!.roles)
+        ? await prisma.consultant.findMany({ orderBy })
+        : await prisma.consultant.findMany({ select: consultantSinDatosSensiblesSelect, orderBy });
 
       return { data: consultants };
     },

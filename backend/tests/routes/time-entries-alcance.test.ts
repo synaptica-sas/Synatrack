@@ -103,8 +103,8 @@ describe("GET /api/time-entries: alcance por rol", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    // La tarifa de B es 999. No debe aparecer en ninguna parte de la respuesta.
-    expect(res.body).not.toContain("999");
+    // La tarifa de B es 999.77. No debe aparecer en ninguna parte de la respuesta.
+    expect(res.body).not.toContain("999.77");
 
     const filas = res.json().data as Array<{
       consultantId: string;
@@ -145,7 +145,7 @@ describe("GET /api/time-entries: alcance por rol", () => {
       // Lo que sí necesita la pantalla sigue llegando.
       expect(fila.consultant).toHaveProperty("fullName");
     }
-    expect(res.body).not.toContain("999");
+    expect(res.body).not.toContain("999.77");
   });
 
   it("un PM ve las horas de los proyectos que gestiona y no las de otros proyectos", async () => {
@@ -184,7 +184,7 @@ describe("GET /api/time-entries: alcance por rol", () => {
 
     expect(filas.some((fila) => fila.projectId === proyectoAjenoId)).toBe(true);
     const ajena = filas.find((fila) => fila.consultantId === escenario.consultorB.id);
-    expect(Number(ajena?.consultant?.hourlyRate)).toBe(999);
+    expect(Number(ajena?.consultant?.hourlyRate)).toBe(999.77);
   });
 });
 

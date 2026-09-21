@@ -3,6 +3,7 @@ import { AppRole } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
 
 const activityPayloadSchema = z.object({
   title: z.string().trim().min(1, "El título es requerido").max(100, "El título no puede exceder los 100 caracteres"),
@@ -43,6 +44,9 @@ export async function activitiesRoutes(app: FastifyInstance) {
       const query = activityQuerySchema.parse(request.query);
 
       let whereClause: any = {};
+      // `true` cuando el listado ya está restringido a las filas del propio
+      // usuario: entonces el consultor que viaja es él mismo y no hay fuga.
+      let soloPropias = false;
 
       // Restricción por rol
       if (!roles.includes(AppRole.ADMIN) && !roles.includes(AppRole.FINANCE) && !roles.includes(AppRole.VIEWER)) {
@@ -65,6 +69,7 @@ export async function activitiesRoutes(app: FastifyInstance) {
             return { data: [] };
           }
           whereClause.consultantId = consultant.id;
+          soloPropias = true;
         }
       }
 
@@ -117,14 +122,29 @@ export async function activitiesRoutes(app: FastifyInstance) {
         }
       }
 
-      const entries = await prisma.activity.findMany({
-        where: whereClause,
-        include: {
-          project: true,
-          consultant: true,
-        },
-        orderBy: { scheduledDate: "desc" },
-      });
+      // Alcance por campo (DEP-38): el consultor completo —con `hourlyRate`,
+      // `costPerMonth` e `identification`— solo viaja para quien puede ver
+      // tarifas. Un VIEWER recibe todas las actividades de la empresa, así que
+      // aquí tenía la misma fuga que R5 cerró en `time-entries`. El consultor
+      // corriente no entra por esta rama: su `whereClause` ya lo deja con sus
+      // propias filas, y su propia tarifa sí la puede ver.
+      const verTarifas = puedeVerTarifas(roles) || soloPropias;
+      const orderBy = { scheduledDate: "desc" } as const;
+
+      const entries = verTarifas
+        ? await prisma.activity.findMany({
+            where: whereClause,
+            include: { project: true, consultant: true },
+            orderBy,
+          })
+        : await prisma.activity.findMany({
+            where: whereClause,
+            include: {
+              project: true,
+              consultant: { select: consultantSinDatosSensiblesSelect },
+            },
+            orderBy,
+          });
 
       return { data: entries };
     },

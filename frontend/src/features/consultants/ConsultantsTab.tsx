@@ -26,6 +26,16 @@ function money(value: number, currency = "USD") {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 }
 
+/**
+ * `true` cuando el backend no mandó la tarifa porque el rol no puede verla
+ * (DEP-38). Es distinto de "no tiene tarifa cargada" (`null`), y por eso se
+ * comprueba `undefined` y no la falsedad del valor: pintar "0,00" donde en
+ * realidad hay una tarifa oculta sería engañoso.
+ */
+function tarifaOculta(value: string | null | undefined) {
+  return value === undefined;
+}
+
 function numberish(value: string | null | undefined) {
   if (!value) return 0;
   const parsed = Number(value);
@@ -164,7 +174,7 @@ export function ConsultantsTab({
         correo: c.email ?? "",
         rol: c.role,
         empresa: c.company ?? "",
-        tarifa: numberish(c.hourlyRate).toFixed(2),
+        tarifa: tarifaOculta(c.hourlyRate) ? "" : numberish(c.hourlyRate).toFixed(2),
         moneda: c.rateCurrency ?? "USD",
         pais: c.country ?? "",
         estado: c.active ? "Activo" : "Inactivo",
@@ -436,8 +446,8 @@ export function ConsultantsTab({
                             {c.isInternal !== false ? "Interno" : "Externo"}
                           </span>
                         </td>
-                        <td>{money(numberish(c.hourlyRate), c.rateCurrency || "USD")}</td>
-                        <td>{fxLoading ? "…" : toUSD(numberish(c.hourlyRate), c.rateCurrency || "USD")}</td>
+                        <td>{tarifaOculta(c.hourlyRate) ? "—" : money(numberish(c.hourlyRate), c.rateCurrency || "USD")}</td>
+                        <td>{tarifaOculta(c.hourlyRate) ? "—" : fxLoading ? "…" : toUSD(numberish(c.hourlyRate), c.rateCurrency || "USD")}</td>
                         <td>
                           <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
                             <span className={`pill ${c.active ? "ok" : "neutral"}`}>{c.active ? "Activo" : "Inactivo"}</span>
@@ -479,7 +489,9 @@ export function ConsultantsTab({
                                         email: c.email || "",
                                         role: c.role,
                                         company: c.company || "",
-                                        hourlyRate: String(numberish(c.hourlyRate)),
+                                        // Si la tarifa no vino, el campo queda vacío: nunca se
+                                        // reenvía un 0 que sobrescriba la tarifa real.
+                                        hourlyRate: tarifaOculta(c.hourlyRate) ? "" : String(numberish(c.hourlyRate)),
                                         rateCurrency: c.rateCurrency || "USD",
                                         country: c.country || "",
                                         seniority: c.seniority || "",

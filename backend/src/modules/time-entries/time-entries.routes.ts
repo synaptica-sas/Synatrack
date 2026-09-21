@@ -3,6 +3,7 @@ import { AppRole, TimeEntryStatus } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { consultantSinDatosSensiblesSelect } from "../../utils/consultant-scope.js";
 
 const timeEntryPayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -22,31 +23,6 @@ const rejectPayloadSchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
-/**
- * Proyección del consultor **sin datos sensibles**, para los roles que pueden ver
- * las horas de toda la plantilla pero no su información económica ni su documento.
- *
- * Se omiten a propósito: `hourlyRate` y `costPerMonth` (remuneración) e
- * `identification` (documento de identidad, dato personal que la vista de horas
- * no necesita).
- */
-const consultantSinDatosSensiblesSelect = {
-  id: true,
-  fullName: true,
-  email: true,
-  role: true,
-  company: true,
-  rateCurrency: true,
-  country: true,
-  skills: true,
-  seniority: true,
-  maxHoursPerDay: true,
-  active: true,
-  allowWeekendWork: true,
-  isInternal: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
 
 export async function timeEntriesRoutes(app: FastifyInstance) {
   app.get(

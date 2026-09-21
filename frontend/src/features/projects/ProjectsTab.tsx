@@ -85,6 +85,7 @@ type EditForm = {
   sellPrice: string;
   sellCurrency: string;
   allowExtraHours: boolean;
+  projectManagerEmail: string;
 };
 
 const emptyForm = {
@@ -101,6 +102,8 @@ const emptyForm = {
   sellPrice: "",
   sellCurrency: "USD",
   allowExtraHours: true,
+  // Correo del PM (DEP-37). Vacío = sin PM asignado; el backend lo guarda como null.
+  projectManagerEmail: "",
 };
 
 export function ProjectsTab({
@@ -199,6 +202,7 @@ export function ProjectsTab({
         sellPrice: editForm.sellPrice ? Number(editForm.sellPrice) : undefined,
         sellCurrency: editForm.sellCurrency,
         allowExtraHours: editForm.allowExtraHours,
+        projectManagerEmail: editForm.projectManagerEmail,
       });
       setEditForm(null);
       await onReload();
@@ -226,6 +230,7 @@ export function ProjectsTab({
         presupuesto: numberish(p.budget).toFixed(2),
         precioVenta: p.sellPrice ? numberish(p.sellPrice).toFixed(2) : "",
         monedaVenta: p.sellCurrency,
+        projectManager: p.projectManagerEmail ?? "",
         inicio: p.startDate.slice(0, 10),
         fin: p.endDate.slice(0, 10),
       })),
@@ -239,6 +244,7 @@ export function ProjectsTab({
         { key: "presupuesto", label: "Presupuesto" },
         { key: "precioVenta", label: "Precio Venta" },
         { key: "monedaVenta", label: "Moneda Venta" },
+        { key: "projectManager", label: "Project Manager" },
         { key: "inicio", label: "Fecha Inicio" },
         { key: "fin", label: "Fecha Fin" },
       ],
@@ -307,6 +313,13 @@ export function ProjectsTab({
             <select value={form.sellCurrency} onChange={(e) => setForm((p) => ({ ...p, sellCurrency: e.target.value }))}>
               {currencyOptions.map((c) => <option key={`sell-${c}`} value={c}>{`Venta: ${c}`}</option>)}
             </select>
+            <input
+              type="email"
+              placeholder="Correo del Project Manager (opcional)"
+              title="Correo corporativo de quien aprueba las horas extra del proyecto"
+              value={form.projectManagerEmail}
+              onChange={(e) => setForm((p) => ({ ...p, projectManagerEmail: e.target.value }))}
+            />
             <input type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required />
             <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required />
             <textarea placeholder="Descripción" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
@@ -373,6 +386,7 @@ export function ProjectsTab({
                       <th>Salud</th>
                       <th>Nombre</th>
                       <th>Empresa</th>
+                      <th>PM</th>
                       <th>Tipo</th>
                       <th>Estado</th>
                       <th>Presupuesto</th>
@@ -389,6 +403,9 @@ export function ProjectsTab({
                           <td><RagBadge status={stats?.healthStatus} /></td>
                           <td>{project.name}</td>
                           <td>{project.company}</td>
+                          <td style={{ fontSize: "0.75rem" }} title={project.projectManagerEmail ?? "Sin PM asignado"}>
+                            {project.projectManagerEmail ?? "—"}
+                          </td>
                           <td style={{ fontSize: "0.75rem" }}>
                             {project.projectType === "TIME_AND_MATERIAL" ? "T&M" :
                              project.projectType === "FIXED_PRICE" ? "FP" : "Staff"}
@@ -442,6 +459,7 @@ export function ProjectsTab({
                                         status: project.status ?? "ACTIVE",
                                         sellPrice: project.sellPrice ? String(numberish(project.sellPrice)) : "",
                                         sellCurrency: project.sellCurrency ?? "USD",
+                                        projectManagerEmail: project.projectManagerEmail ?? "",
                                         allowExtraHours: project.allowExtraHours !== false,
                                       })
                                     }
@@ -508,6 +526,13 @@ export function ProjectsTab({
               <select value={editForm.sellCurrency} onChange={(e) => setEditForm((p) => p && { ...p, sellCurrency: e.target.value })}>
                 {currencyOptions.map((c) => <option key={`edit-sell-${c}`} value={c}>{`Moneda venta: ${c}`}</option>)}
               </select>
+              <input
+                type="email"
+                placeholder="Correo del Project Manager (opcional)"
+                title="Correo corporativo de quien aprueba las horas extra del proyecto. Vaciar el campo lo desasigna."
+                value={editForm.projectManagerEmail}
+                onChange={(e) => setEditForm((p) => p && { ...p, projectManagerEmail: e.target.value })}
+              />
               <input type="date" value={editForm.startDate} onChange={(e) => setEditForm((p) => p && { ...p, startDate: e.target.value })} required />
               <input type="date" value={editForm.endDate} onChange={(e) => setEditForm((p) => p && { ...p, endDate: e.target.value })} required />
               <textarea value={editForm.description} onChange={(e) => setEditForm((p) => p && { ...p, description: e.target.value })} placeholder="Descripción" />

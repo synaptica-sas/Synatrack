@@ -624,7 +624,8 @@ function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
                         <td>{r.assignedConsultants}</td>
                         <td style={{ fontWeight: 600 }}>{r.totalCommittedHours.toFixed(1)}h</td>
                         <td>{totalHours > 0 ? `${((r.totalCommittedHours / totalHours) * 100).toFixed(1)}%` : "—"}</td>
-                        <td>{r.totalEstimatedCost > 0 ? money(r.totalEstimatedCost, r.consultants[0]?.currency ?? "USD") : "—"}</td>
+                        {/* `null` = el rol no puede ver tarifas (DEP-38); 0 = no hay costo. Ambos se pintan "—". */}
+                        <td>{r.totalEstimatedCost !== null && r.totalEstimatedCost > 0 ? money(r.totalEstimatedCost, r.consultants[0]?.currency ?? "USD") : "—"}</td>
                         <td>
                           {r.consultants.length > 0 && (
                             <button type="button" className="ghost" style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }} onClick={() => setExpandedProject(expandedProject === r.projectId ? null : r.projectId)}>
@@ -649,7 +650,7 @@ function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
                                   <tr key={c.consultantId}>
                                     <td style={{ padding: "0.25rem 0.5rem" }}>{c.fullName}</td>
                                     <td style={{ padding: "0.25rem 0.5rem" }}>{c.committedHours.toFixed(1)}h</td>
-                                    <td style={{ padding: "0.25rem 0.5rem" }}>{c.estimatedCost > 0 ? money(c.estimatedCost, c.currency) : "—"}</td>
+                                    <td style={{ padding: "0.25rem 0.5rem" }}>{c.estimatedCost !== null && c.estimatedCost > 0 ? money(c.estimatedCost, c.currency) : "—"}</td>
                                   </tr>
                                 ))}
                               </tbody>

@@ -7,6 +7,28 @@ import { writeAudit } from "../../utils/audit.js";
 import { buildRateMap } from "../../utils/currency.js";
 import { calculateProfitability } from "../../utils/financial.js";
 
+/**
+ * Correo del Project Manager del proyecto (DEP-37).
+ *
+ * Es **opcional y nulable**: un proyecto sin PM asignado sigue siendo válido, y
+ * así estaban todos los que existían antes de este cambio.
+ *
+ * - `""` (lo que manda un formulario con el campo vacío) se normaliza a `null`,
+ *   que es como se desasigna el PM.
+ * - `undefined` (el campo no viene en la petición) se deja pasar tal cual: en el
+ *   `PUT` significa "no tocar", igual que hace `description`.
+ * - El valor se guarda en **minúsculas** porque todas las comparaciones del
+ *   backend (`getExtraHourAuthLevel`, el alcance por rol de `time-entries`,
+ *   `extra-hours` y `activities`) usan `toLowerCase()` contra el correo del token.
+ */
+const projectManagerEmailSchema = z
+  .union([
+    z.literal(""),
+    z.string().trim().toLowerCase().email("projectManagerEmail debe ser un correo válido"),
+  ])
+  .nullish()
+  .transform((valor) => (valor === "" ? null : valor));
+
 const projectPayloadSchema = z.object({
   name: z.string().trim().min(1),
   company: z.string().trim().min(1),
@@ -24,6 +46,7 @@ const projectPayloadSchema = z.object({
   status: z.enum(["ACTIVE", "PAUSED", "CLOSED"]).default("ACTIVE"),
   sellPrice: z.coerce.number().positive().optional(),
   sellCurrency: z.string().trim().toUpperCase().length(3).default("USD"),
+  projectManagerEmail: projectManagerEmailSchema,
 });
 
 const listProjectsQuerySchema = z.object({
@@ -95,6 +118,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         status: body.status,
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
+        projectManagerEmail: body.projectManagerEmail,
       },
     });
 
@@ -163,6 +187,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         status: body.status,
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
+        projectManagerEmail: body.projectManagerEmail,
       },
     });
 

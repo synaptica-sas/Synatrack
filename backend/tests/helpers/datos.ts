@@ -45,7 +45,11 @@ export async function crearEscenarioBasico(etiqueta: string): Promise<EscenarioB
       fullName: `Consultor B ${prefijo}`,
       email: `b.${prefijo}@synaptica.test`,
       role: "Consultor",
-      hourlyRate: 999,
+      // Tarifa "marcada": las pruebas comprueban que esta cadena no aparezca en
+      // el cuerpo de la respuesta. Lleva decimales a propósito, porque un entero
+      // como 999 aparece por casualidad dentro del `Date.now()` del prefijo y
+      // hacía fallar la comprobación una de cada pocas ejecuciones.
+      hourlyRate: 999.77,
       rateCurrency: "USD",
       country: "Colombia",
     },
@@ -61,6 +65,8 @@ export async function crearEscenarioBasico(etiqueta: string): Promise<EscenarioB
 
 export async function limpiarEscenario(escenario: EscenarioBasico) {
   const consultantIds = [escenario.consultorA.id, escenario.consultorB.id];
+  await prisma.activity.deleteMany({ where: { consultantId: { in: consultantIds } } });
+  await prisma.assignment.deleteMany({ where: { consultantId: { in: consultantIds } } });
   await prisma.extraHourEntry.deleteMany({ where: { consultantId: { in: consultantIds } } });
   await prisma.timeEntry.deleteMany({ where: { consultantId: { in: consultantIds } } });
   await prisma.consultant.deleteMany({ where: { id: { in: consultantIds } } });
@@ -90,6 +96,44 @@ export async function crearHoraExtra(params: {
       diurnalHolidayAmount: 0,
       nocturnalHolidayAmount: 0,
       totalAmount: 100,
+    },
+  });
+}
+
+/** Actividad mínima para probar el alcance de `GET /api/activities`. */
+export async function crearActividad(params: {
+  consultantId: string;
+  projectId: string;
+  titulo: string;
+  fecha: Date;
+}) {
+  return prisma.activity.create({
+    data: {
+      title: params.titulo,
+      consultantId: params.consultantId,
+      projectId: params.projectId,
+      scheduledDate: params.fecha,
+      estimatedHours: 4,
+    },
+  });
+}
+
+/** Asignación mínima para probar el costo estimado de `capacity`. */
+export async function crearAsignacion(params: {
+  consultantId: string;
+  projectId: string;
+  desde: Date;
+  hasta: Date;
+}) {
+  return prisma.assignment.create({
+    data: {
+      consultantId: params.consultantId,
+      projectId: params.projectId,
+      startDate: params.desde,
+      endDate: params.hasta,
+      allocationMode: "PERCENTAGE",
+      allocationPct: 100,
+      status: "ACTIVE",
     },
   });
 }

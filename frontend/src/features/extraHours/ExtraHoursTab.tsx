@@ -1258,7 +1258,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   {financePendingEntries.map((entry) => (
                     <tr key={entry.id}>
                       <td><strong>{entry.consultant?.fullName}</strong></td>
-                      <td>{entry.consultant?.identification || "No asignado"}</td>
+                      {/* `undefined` = el rol no puede ver el documento (DEP-38); `null` = no lo tiene cargado. */}
+                      <td>{entry.consultant?.identification === undefined ? "—" : entry.consultant.identification || "No asignado"}</td>
                       <td><CountryFlag country={entry.consultant?.country || "Default"} /></td>
                       <td>{entry.project?.name}</td>
                       <td>{entry.date.slice(0, 10)}</td>

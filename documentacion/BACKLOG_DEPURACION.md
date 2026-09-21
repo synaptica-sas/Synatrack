@@ -1,7 +1,9 @@
 # Backlog de depuración — Synatrack
 
-> **Estado al 2026-09-21:** de 40 ítems, **27 están resueltos** y fusionados en `dev`
-> (ramas R1 a R6). Quedan **13 abiertos**, listados en la sección "Qué queda" al final.
+> **Estado al 2026-09-21:** de 40 ítems, **29 están resueltos** (27 fusionados en `dev`,
+> ramas R1 a R6, y DEP-37/DEP-38 en `fix/pm-y-fugas-tarifas`, ver
+> `cambios/R7-pm-y-fugas-tarifas.md`). Quedan **11 abiertos**, listados en la sección
+> "Qué queda" al final.
 > Los ítems tachados conservan su descripción original a propósito, para que se entienda
 > qué se arregló y por qué.
 
@@ -118,8 +120,8 @@ son preexistentes**, no los introdujeron esas ramas. Detalle en
 
 | ID | P | Hallazgo | Evidencia | Acción |
 |---|---|---|---|---|
-| DEP-37 | **P0** | **`projectManagerEmail` se lee en 9 sitios y no se escribe en ninguno.** No está en el esquema Zod de crear ni editar proyectos, no hay campo en el formulario del frontend y el seed no lo puebla: la columna solo puede tener valor si alguien lo escribe directo en la base. Consecuencias: la **aprobación de horas extra por el PM nunca puede ocurrir** (`isPM` siempre falso, solo aprueba ADMIN o una delegación), la validación de delegaciones falla igual, y el alcance por rol de `time-entries`, `extra-hours` y `activities` tiene la mitad "proyectos que gestiono" inerte. La documentación describe "Asignación de Project Manager (PM)" como parte del CRUD, pero no existe en el código. | Comprobado en base nueva: al crear un proyecto con `projectManagerEmail`, la columna queda vacía. Con el dato insertado a mano, el alcance del PM sí funciona (verificado) | Agregar el campo al esquema Zod de crear y editar, al formulario de proyectos y, idealmente, un selector de usuarios con rol PM. |
-| DEP-38 | P1 | **La misma fuga de tarifas que se cerró en `time-entries` sigue abierta en otras rutas.** `GET /api/extra-hours` entrega el objeto `consultant` completo, con `hourlyRate`, a un VIEWER. Conviene revisar igual `activities`, `assignments`, `capacity` y `GET /api/consultants`. | `extra-hours.routes.ts` (verificado durante R5) | Aplicar el mismo `select` de Prisma que se usó en `time-entries`. |
+| ~~DEP-37~~ RESUELTO (fix/pm-y-fugas-tarifas) | **P0** | **`projectManagerEmail` se lee en 9 sitios y no se escribe en ninguno.** No está en el esquema Zod de crear ni editar proyectos, no hay campo en el formulario del frontend y el seed no lo puebla: la columna solo puede tener valor si alguien lo escribe directo en la base. Consecuencias: la **aprobación de horas extra por el PM nunca puede ocurrir** (`isPM` siempre falso, solo aprueba ADMIN o una delegación), la validación de delegaciones falla igual, y el alcance por rol de `time-entries`, `extra-hours` y `activities` tiene la mitad "proyectos que gestiono" inerte. La documentación describe "Asignación de Project Manager (PM)" como parte del CRUD, pero no existe en el código. | Comprobado en base nueva: al crear un proyecto con `projectManagerEmail`, la columna queda vacía. Con el dato insertado a mano, el alcance del PM sí funciona (verificado) | Agregar el campo al esquema Zod de crear y editar, al formulario de proyectos y, idealmente, un selector de usuarios con rol PM. |
+| ~~DEP-38~~ RESUELTO (fix/pm-y-fugas-tarifas) | P1 | **La misma fuga de tarifas que se cerró en `time-entries` sigue abierta en otras rutas.** `GET /api/extra-hours` entrega el objeto `consultant` completo, con `hourlyRate`, a un VIEWER. Conviene revisar igual `activities`, `assignments`, `capacity` y `GET /api/consultants`. | `extra-hours.routes.ts` (verificado durante R5) | Aplicar el mismo `select` de Prisma que se usó en `time-entries`. |
 | DEP-39 | P2 | **`findFxRate` del frontend no triangula igual que el backend.** Solo triangula si la moneda de origen aparece como `baseCode`; `buildRateMap` del backend es bidireccional. Con `USD→COP` y `USD→MXN` cargadas, el backend resuelve `COP→MXN` y el conversor del frontend devuelve "sin tasa". | `frontend/src/utils/fxRate.ts`, fijado en una prueba que lo nombra como limitación (verificado) | Igualar el comportamiento al del backend. |
 | DEP-40 | P3 | `approve` y `reject` de horas extra validan en orden distinto: approve comprueba el estado (409) antes que el mes cerrado (400), reject al revés. Ante una solicitud ya aprobada y en mes cerrado, devuelven códigos distintos. | `extra-hours.routes.ts`, anotado al extraer el helper en R6 | Unificar el orden. |
 
@@ -136,14 +138,12 @@ son preexistentes**, no los introdujeron esas ramas. Detalle en
 
 ---
 
-## Qué queda abierto (13 ítems)
+## Qué queda abierto (11 ítems)
 
 Ordenado por lo que más valor tiene arreglar primero.
 
 | ID | P | Resumen | Por qué importa |
 |---|---|---|---|
-| DEP-37 | **P0** | `projectManagerEmail` no se puede asignar desde ningún lado | La aprobación de horas extra por el PM **nunca puede ocurrir**; y deja inerte la mitad del alcance por rol que se construyó en R5 |
-| DEP-38 | P1 | La fuga de tarifas sigue abierta en `extra-hours` y otras rutas | Es la misma falla que se cerró en `time-entries`; el arreglo ya está escrito, solo hay que aplicarlo |
 | DEP-33 | P1 | Los enlaces profundos no funcionan | Ninguna URL de la aplicación se puede compartir ni recargar |
 | DEP-36 | P1 | Si falla la petición de estadísticas, el tablero inventa un número | Muestra una suma de monedas mezcladas en vez de un error |
 | DEP-32 | P1 | La conversión de moneda falla en silencio sin tasas | Importes en la moneda equivocada, sin aviso |

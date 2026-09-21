@@ -58,6 +58,8 @@ export type Project = {
   createdAt: string;
   updatedAt: string;
   allowExtraHours?: boolean;
+  /** Correo del Project Manager. `null` si el proyecto no tiene PM asignado. */
+  projectManagerEmail?: string | null;
 };
 
 export type Consultant = {
@@ -66,10 +68,17 @@ export type Consultant = {
   email: string | null;
   role: string;
   company?: string | null;
-  hourlyRate: string | null;
+  /**
+   * Tarifa de venta. **Opcional a propósito**: el backend la omite (DEP-38) para
+   * los roles que no deben verla (CONSULTANT y VIEWER), así que llega
+   * `undefined`, no `null` ni `0`. `null` significa "no tiene tarifa cargada";
+   * `undefined`, "no te corresponde verla". Quien la pinte debe distinguirlo.
+   */
+  hourlyRate?: string | null;
   rateCurrency: string;
   country: string | null;
-  costPerMonth: string | null;
+  /** Costo interno. Mismo criterio que `hourlyRate`. */
+  costPerMonth?: string | null;
   active: boolean;
   allowWeekendWork?: boolean;
   isInternal?: boolean;
@@ -85,12 +94,12 @@ export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
 /**
  * Consultor tal como llega dentro de un registro de horas.
  *
- * `GET /api/time-entries` recorta los datos sensibles del consultor para los roles
- * que no deben verlos (hoy, VIEWER), así que tarifa, costo y documento son
- * opcionales: no se puede asumir que vengan.
+ * Desde R7 el propio `Consultant` ya declara `hourlyRate`, `costPerMonth` e
+ * `identification` como opcionales, porque el recorte por rol no vive solo en
+ * `time-entries`: también en `extra-hours`, `activities` y `consultants`. El
+ * alias se conserva porque nombra bien la intención allí donde se usa.
  */
-export type TimeEntryConsultant = Omit<Consultant, "hourlyRate" | "costPerMonth" | "identification"> &
-  Partial<Pick<Consultant, "hourlyRate" | "costPerMonth" | "identification">>;
+export type TimeEntryConsultant = Consultant;
 
 export type TimeEntry = {
   id: string;
@@ -432,6 +441,8 @@ export async function createProject(payload: {
   sellPrice?: number;
   sellCurrency?: string;
   allowExtraHours?: boolean;
+  /** Cadena vacía = sin PM. El backend la normaliza a minúsculas y a `null`. */
+  projectManagerEmail?: string | null;
 }): Promise<Project> {
   const response = await request<ApiEnvelope<Project>>("/api/projects", "POST", payload);
   return response.data;
@@ -453,6 +464,8 @@ export async function updateProject(
     sellPrice?: number;
     sellCurrency?: string;
     allowExtraHours?: boolean;
+    /** Cadena vacía = desasignar el PM. */
+    projectManagerEmail?: string | null;
   },
 ): Promise<Project> {
   const response = await request<ApiEnvelope<Project>>(`/api/projects/${id}`, "PUT", payload);
@@ -832,7 +845,8 @@ export type ProjectCapacityConsultant = {
   capacityHours: number;
   committedHours: number;
   utilizationPct: number;
-  estimatedCost: number;
+  /** `null` cuando el rol no puede ver tarifas (DEP-38). */
+  estimatedCost: number | null;
   costCurrency: string;
 };
 
@@ -840,7 +854,7 @@ export type ProjectCapacity = {
   project: { id: string; name: string; startDate: string; endDate: string; status: string };
   period: { from: string; to: string };
   consultants: ProjectCapacityConsultant[];
-  summary: { totalConsultants: number; totalCommittedHours: number; totalEstimatedCost: number };
+  summary: { totalConsultants: number; totalCommittedHours: number; totalEstimatedCost: number | null };
 };
 
 export type ProjectCapacitySummary = {
@@ -849,8 +863,9 @@ export type ProjectCapacitySummary = {
   projectStatus: string;
   assignedConsultants: number;
   totalCommittedHours: number;
-  totalEstimatedCost: number;
-  consultants: { consultantId: string; fullName: string; committedHours: number; estimatedCost: number; currency: string }[];
+  /** `null` cuando el rol no puede ver tarifas (DEP-38). */
+  totalEstimatedCost: number | null;
+  consultants: { consultantId: string; fullName: string; committedHours: number; estimatedCost: number | null; currency: string }[];
 };
 
 type AssignmentPayload = {
