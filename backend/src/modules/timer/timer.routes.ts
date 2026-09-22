@@ -26,6 +26,14 @@ const updatePayloadSchema = z.object({
   activityId: z.string().min(1).nullable().optional(),
   description: z.string().trim().max(500).nullable().optional(),
   startedAt: z.coerce.date().optional(),
+  consultantId: z.string().min(1).optional(),
+});
+
+// Consultar, detener o descartar el cronómetro de otra persona. Solo ADMIN y
+// PM llegan a usarlo: `resolveTargetConsultantId` ignora el campo para el
+// resto de roles y los deja atados a su propio cronómetro.
+const targetConsultantSchema = z.object({
+  consultantId: z.string().min(1).optional(),
 });
 
 const timerInclude = {
@@ -34,10 +42,20 @@ const timerInclude = {
   consultant: { select: { id: true, fullName: true } },
 } satisfies Prisma.RunningTimerInclude;
 
-/** Convierte milisegundos a horas con 2 decimales, con un mínimo de 0.01. */
+/** Un segundo expresado en horas: el valor más pequeño que se registra. */
+const ONE_SECOND_IN_HOURS = 1 / 3600;
+
+/**
+ * Milisegundos a horas con 4 decimales, que es la precisión de la columna.
+ *
+ * Antes se redondeaba a 2 decimales con un mínimo de 0.01, y eso convertía un
+ * minuto de cronómetro (0.0167 h) en 0.02 h -- un 20 % de más -- y cualquier
+ * medición por debajo de 36 segundos en 36 segundos. Ahora el suelo es un
+ * segundo y el redondeo conserva la medida real.
+ */
 function msToHours(ms: number) {
   const hours = ms / 3_600_000;
-  return Math.max(0.01, Math.round(hours * 100) / 100);
+  return Math.max(ONE_SECOND_IN_HOURS, Math.round(hours * 10_000) / 10_000);
 }
 
 export async function timerRoutes(app: FastifyInstance) {
@@ -46,7 +64,8 @@ export async function timerRoutes(app: FastifyInstance) {
     "/",
     { preHandler: [authenticate, authorize([...WRITE_ROLES, AppRole.FINANCE, AppRole.VIEWER])] },
     async (request) => {
-      const target = await resolveTargetConsultantId(request, null);
+      const query = targetConsultantSchema.parse(request.query);
+      const target = await resolveTargetConsultantId(request, query.consultantId);
       // Sin ficha de consultor simplemente no hay cronómetro; no es un error.
       if ("error" in target) return { data: null };
 
@@ -89,8 +108,10 @@ export async function timerRoutes(app: FastifyInstance) {
         where: { consultantId: target.consultantId },
       });
       if (existing) {
+        // Redactado en tercera persona: un ADMIN o PM puede estar arrancando
+        // el cronómetro a nombre de otra persona.
         return reply.status(409).send({
-          message: "Ya tienes un cronómetro en marcha. Detenlo antes de iniciar otro.",
+          message: "Ya hay un cronómetro en marcha para ese consultor. Deténlo antes de iniciar otro.",
         });
       }
 
@@ -117,7 +138,7 @@ export async function timerRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const payload = updatePayloadSchema.parse(request.body);
 
-      const target = await resolveTargetConsultantId(request, null);
+      const target = await resolveTargetConsultantId(request, payload.consultantId);
       if ("error" in target) return reply.status(400).send({ message: target.error });
 
       const existing = await prisma.runningTimer.findUnique({
@@ -167,7 +188,8 @@ export async function timerRoutes(app: FastifyInstance) {
     "/stop",
     { preHandler: [authenticate, authorize(WRITE_ROLES)] },
     async (request, reply) => {
-      const target = await resolveTargetConsultantId(request, null);
+      const payload = targetConsultantSchema.parse(request.body ?? {});
+      const target = await resolveTargetConsultantId(request, payload.consultantId);
       if ("error" in target) return reply.status(400).send({ message: target.error });
 
       const timer = await prisma.runningTimer.findUnique({
@@ -232,7 +254,8 @@ export async function timerRoutes(app: FastifyInstance) {
     "/",
     { preHandler: [authenticate, authorize(WRITE_ROLES)] },
     async (request, reply) => {
-      const target = await resolveTargetConsultantId(request, null);
+      const query = targetConsultantSchema.parse(request.query);
+      const target = await resolveTargetConsultantId(request, query.consultantId);
       if ("error" in target) return reply.status(400).send({ message: target.error });
 
       const timer = await prisma.runningTimer.findUnique({

@@ -21,7 +21,6 @@ import {
 import {
   addDays,
   formatClock,
-  formatHoursTotal,
   formatWeekRange,
   numberish,
   startOfWeek,
@@ -40,6 +39,23 @@ function dayHeading(isoDay: string, today: string): string {
   return `${weekdayLabel(index)} ${d} ${months[m - 1]}`;
 }
 
+/**
+ * Duración de un registro como "HH:MM:SS", el mismo formato que el reloj de
+ * arriba, para que un minuto se lea "00:01:00" y no "0:01".
+ *
+ * Cuando la entrada viene del cronómetro se calcula desde `startedAt` y
+ * `endedAt`, que son los instantes reales: así la cifra no arrastra el
+ * redondeo de la columna de horas. Para lo cargado a mano, que no tiene esas
+ * marcas, se usa el valor de horas.
+ */
+function entryDuration(entry: TimeEntry): string {
+  if (entry.startedAt && entry.endedAt) {
+    const ms = new Date(entry.endedAt).getTime() - new Date(entry.startedAt).getTime();
+    if (ms >= 0) return formatClock(ms / 1000);
+  }
+  return formatClock(numberish(entry.hours) * 3600);
+}
+
 /** Hora local "9:05" a partir de un instante ISO. */
 function clockTime(iso: string | null): string {
   if (!iso) return "";
@@ -49,11 +65,15 @@ function clockTime(iso: string | null): string {
 
 export function TrackerTab({
   projects,
+  consultants,
   canWrite,
   onReload,
   onError,
 }: {
   projects: Project[];
+  /** Vacía salvo para ADMIN y PM: son los únicos que pueden llevar el
+   *  cronómetro a nombre de otra persona. */
+  consultants: Consultant[];
   canWrite: boolean;
   /** Refresca el listado global de horas que alimenta dashboard y aprobaciones. */
   onReload: () => Promise<void>;
@@ -78,6 +98,14 @@ export function TrackerTab({
   const [weekStart, setWeekStart] = useState(() => startOfWeek(todayIso()));
   const today = todayIso();
 
+  // A nombre de quién se está cronometrando. Por defecto uno mismo; ADMIN y PM
+  // pueden cambiarlo para llevar el tiempo de otro consultor.
+  const [targetConsultantId, setTargetConsultantId] = useState("");
+  const canPickConsultant = consultants.length > 0;
+  const targetConsultant =
+    consultants.find((c) => c.id === targetConsultantId) ??
+    (targetConsultantId === myConsultant?.id ? myConsultant : null);
+
   const running = !!timer;
 
   // ── Carga inicial ──────────────────────────────────────────────────────────
@@ -87,7 +115,10 @@ export function TrackerTab({
     void (async () => {
       try {
         const mine = await getMyConsultant();
-        if (!cancelled) setMyConsultant(mine);
+        if (!cancelled) {
+          setMyConsultant(mine);
+          setTargetConsultantId((current) => current || mine?.id || "");
+        }
       } catch {
         // Se resuelve igual: la pantalla explica que falta la ficha.
       } finally {
@@ -101,31 +132,36 @@ export function TrackerTab({
 
   const reloadTimer = useCallback(async () => {
     try {
-      const current = await getRunningTimer();
+      const current = await getRunningTimer(targetConsultantId || undefined);
       setTimer(current);
       if (current) {
         setDescription(current.description ?? "");
         setProjectId(current.projectId);
         setActivityId(current.activityId ?? "");
+      } else {
+        // Al cambiar de consultor, los campos del anterior ya no aplican.
+        setDescription("");
+        setActivityId("");
       }
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo consultar el cronómetro");
     }
-  }, [onError]);
+  }, [onError, targetConsultantId]);
 
   useEffect(() => {
     void reloadTimer();
   }, [reloadTimer]);
 
   const reloadEntries = useCallback(async () => {
-    if (!myConsultant) {
+    const consultantId = targetConsultantId || myConsultant?.id;
+    if (!consultantId) {
       setEntries([]);
       return;
     }
     setEntriesLoading(true);
     try {
       const data = await listTimeEntries({
-        consultantId: myConsultant.id,
+        consultantId,
         from: weekStart,
         to: addDays(weekStart, 6),
       });
@@ -135,18 +171,19 @@ export function TrackerTab({
     } finally {
       setEntriesLoading(false);
     }
-  }, [myConsultant, weekStart, onError]);
+  }, [myConsultant, targetConsultantId, weekStart, onError]);
 
   useEffect(() => {
     void reloadEntries();
   }, [reloadEntries]);
 
   useEffect(() => {
-    if (!myConsultant) return;
+    const consultantId = targetConsultantId || myConsultant?.id;
+    if (!consultantId) return;
     let cancelled = false;
     void (async () => {
       try {
-        const data = await listActivities({ consultantId: myConsultant.id });
+        const data = await listActivities({ consultantId });
         if (!cancelled) setActivities(data);
       } catch {
         if (!cancelled) setActivities([]);
@@ -155,7 +192,7 @@ export function TrackerTab({
     return () => {
       cancelled = true;
     };
-  }, [myConsultant]);
+  }, [myConsultant, targetConsultantId]);
 
   // ── Reloj ──────────────────────────────────────────────────────────────────
 
@@ -197,6 +234,7 @@ export function TrackerTab({
         projectId,
         activityId: activityId || null,
         description: description.trim() || null,
+        consultantId: targetConsultantId || undefined,
       });
       setTimer(created);
     } catch (err) {
@@ -209,10 +247,14 @@ export function TrackerTab({
   async function handleStop() {
     setBusy(true);
     try {
-      await stopTimer();
+      const creada = await stopTimer(targetConsultantId || undefined);
       setTimer(null);
       setDescription("");
       setActivityId("");
+      // La entrada se imputa al día en que arrancó el cronómetro; si se estaba
+      // mirando otra semana, se salta a la suya para que no "desaparezca".
+      const semanaCreada = startOfWeek(creada.workDate.slice(0, 10));
+      if (semanaCreada !== weekStart) setWeekStart(semanaCreada);
       await reloadEntries();
       await onReload();
     } catch (err) {
@@ -226,7 +268,7 @@ export function TrackerTab({
     setConfirmDiscard(false);
     setBusy(true);
     try {
-      await discardTimer();
+      await discardTimer(targetConsultantId || undefined);
       setTimer(null);
       setDescription("");
       setActivityId("");
@@ -249,6 +291,7 @@ export function TrackerTab({
         projectId: entry.projectId,
         activityId: entry.activityId,
         description: entry.description,
+        consultantId: targetConsultantId || undefined,
       });
       setTimer(created);
     } catch (err) {
@@ -277,7 +320,7 @@ export function TrackerTab({
     if (!running) return;
     window.clearTimeout(descriptionTimeout.current);
     descriptionTimeout.current = window.setTimeout(() => {
-      void updateRunningTimer({ description: value.trim() || null }).catch(() => {
+      void updateRunningTimer({ description: value.trim() || null, consultantId: targetConsultantId || undefined }).catch(() => {
         // Un fallo aquí solo pierde el texto en curso, no el tiempo medido.
       });
     }, 700);
@@ -289,7 +332,7 @@ export function TrackerTab({
     setProjectId(value);
     if (!running || !value) return;
     try {
-      const updated = await updateRunningTimer({ projectId: value });
+      const updated = await updateRunningTimer({ projectId: value, consultantId: targetConsultantId || undefined });
       setTimer(updated);
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo cambiar el proyecto");
@@ -301,7 +344,7 @@ export function TrackerTab({
     setActivityId(value);
     if (!running) return;
     try {
-      const updated = await updateRunningTimer({ activityId: value || null });
+      const updated = await updateRunningTimer({ activityId: value || null, consultantId: targetConsultantId || undefined });
       setTimer(updated);
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo cambiar la tarea");
@@ -309,26 +352,33 @@ export function TrackerTab({
     }
   }
 
-  // ── Agrupado por día ───────────────────────────────────────────────────────
+  // ── Registros de la semana, agrupados por día ──────────────────────────────
 
+  // Lo más reciente arriba en los dos niveles: los días van de domingo a lunes
+  // y, dentro de cada uno, la última medición encabeza la lista. Al detener el
+  // cronómetro la entrada recién creada aparece la primera de todas.
   const grouped = useMemo(() => {
     const byDay = new Map<string, TimeEntry[]>();
     for (const entry of entries) {
-      const day = entry.workDate.slice(0, 10);
-      const list = byDay.get(day) ?? [];
-      list.push(entry);
-      byDay.set(day, list);
+      const dia = entry.workDate.slice(0, 10);
+      const lista = byDay.get(dia) ?? [];
+      lista.push(entry);
+      byDay.set(dia, lista);
     }
+
     return weekDays(weekStart)
-      .filter((day) => byDay.has(day))
+      .filter((dia) => byDay.has(dia))
       .reverse()
-      .map((day) => ({
-        day,
-        entries: (byDay.get(day) ?? []).sort((a, b) =>
+      .map((dia) => {
+        const lista = (byDay.get(dia) ?? []).sort((a, b) =>
           (b.startedAt ?? b.createdAt).localeCompare(a.startedAt ?? a.createdAt),
-        ),
-        total: (byDay.get(day) ?? []).reduce((sum, e) => sum + numberish(e.hours), 0),
-      }));
+        );
+        return {
+          day: dia,
+          entries: lista,
+          total: lista.reduce((sum, e) => sum + numberish(e.hours), 0),
+        };
+      });
   }, [entries, weekStart]);
 
   const weekTotal = useMemo(
@@ -340,7 +390,9 @@ export function TrackerTab({
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  if (consultantResolved && !myConsultant) {
+  // Un ADMIN o PM sin ficha propia sigue pudiendo cronometrar a nombre de
+  // otros, así que solo se bloquea a quien no tiene ninguna opción.
+  if (consultantResolved && !myConsultant && !canPickConsultant) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <PageHeader
@@ -366,6 +418,27 @@ export function TrackerTab({
         title="Tracker"
         description="Cronómetro en vivo para medir el tiempo que dedicas a cada proyecto y tarea."
       />
+
+      {canPickConsultant && (
+        <div className="tk-whofor">
+          <label htmlFor="tk-consultor">Cronometrando para</label>
+          <select
+            id="tk-consultor"
+            value={targetConsultantId}
+            onChange={(e) => setTargetConsultantId(e.target.value)}
+            disabled={running}
+            title={running ? "Detén el cronómetro para cambiar de consultor" : undefined}
+          >
+            {!myConsultant && <option value="">Elige un consultor…</option>}
+            {consultants.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.id === myConsultant?.id ? `${c.fullName} (yo)` : c.fullName}
+              </option>
+            ))}
+          </select>
+          {running && <span className="tk-whofor-lock">bloqueado mientras corre</span>}
+        </div>
+      )}
 
       <article className={`card tk-bar${running ? " running" : ""}`}>
         <input
@@ -445,8 +518,11 @@ export function TrackerTab({
       {timer && (
         <p className="tk-running-note">
           Corriendo desde las {clockTime(timer.startedAt)} en{" "}
-          <strong>{activeProject?.name ?? timer.project.name}</strong>. El cronómetro vive en el
-          servidor: puedes cerrar el navegador y seguirá contando.
+          <strong>{activeProject?.name ?? timer.project.name}</strong>
+          {targetConsultant && targetConsultant.id !== myConsultant?.id && (
+            <> a nombre de <strong>{targetConsultant.fullName}</strong></>
+          )}
+          . El cronómetro vive en el servidor: puedes cerrar el navegador y seguirá contando.
         </p>
       )}
 
@@ -473,13 +549,18 @@ export function TrackerTab({
             >
               →
             </button>
-            <button type="button" className="ghost" onClick={() => setWeekStart(startOfWeek(today))}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => setWeekStart(startOfWeek(today))}
+              disabled={weekStart === startOfWeek(today)}
+            >
               Hoy
             </button>
           </div>
           <div className="ts-weektotal">
             <span>Total semana</span>
-            <strong>{formatHoursTotal(weekTotal)}</strong>
+            <strong>{formatClock(weekTotal * 3600)}</strong>
           </div>
         </div>
 
@@ -494,7 +575,7 @@ export function TrackerTab({
             <section key={group.day} className="tk-day">
               <header className="tk-day-head">
                 <strong>{dayHeading(group.day, today)}</strong>
-                <span>{formatHoursTotal(group.total)}</span>
+                <span>{formatClock(group.total * 3600)}</span>
               </header>
               <ul className="tk-entries">
                 {group.entries.map((entry) => (
@@ -506,17 +587,29 @@ export function TrackerTab({
                       <span className="tk-entry-meta">
                         {entry.project.name}
                         {entry.activity && <> · {entry.activity.title}</>}
-                        {entry.startedAt && entry.endedAt && (
-                          <> · {clockTime(entry.startedAt)}–{clockTime(entry.endedAt)}</>
-                        )}
                       </span>
                     </div>
+                    {/* Franja horaria real del cronómetro. Las horas cargadas a
+                        mano no tienen marcas de inicio y fin, así que ahí se
+                        deja un guion en vez de inventar una franja. */}
+                    <span
+                      className={`tk-entry-span${entry.startedAt && entry.endedAt ? "" : " empty"}`}
+                      title={
+                        entry.startedAt && entry.endedAt
+                          ? `Cronómetro de ${clockTime(entry.startedAt)} a ${clockTime(entry.endedAt)}`
+                          : "Registrada a mano, sin franja horaria"
+                      }
+                    >
+                      {entry.startedAt && entry.endedAt
+                        ? `${clockTime(entry.startedAt)} – ${clockTime(entry.endedAt)}`
+                        : "—"}
+                    </span>
                     <span
                       className={`pill ${entry.status === "APPROVED" ? "ok" : entry.status === "REJECTED" ? "error" : "warn"}`}
                     >
                       {label(TIME_ENTRY_STATUS_LABELS, entry.status)}
                     </span>
-                    <span className="tk-entry-hours">{formatHoursTotal(numberish(entry.hours))}</span>
+                    <span className="tk-entry-hours">{entryDuration(entry)}</span>
                     {canWrite && (
                       <button
                         type="button"

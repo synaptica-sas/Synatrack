@@ -117,6 +117,22 @@ export type TimeEntrySource = "MANUAL" | "TIMESHEET" | "TIMER";
 
 export type TimeEntryActivityRef = { id: string; title: string };
 
+/**
+ * Consultor tal y como viaja dentro de un registro de horas: sin tarifas ni
+ * costos. El servidor no los envia en este listado a proposito, porque lo
+ * puede leer cualquier consultor. Para el dato economico esta el directorio de
+ * consultores, que exige el permiso `consultants:read`.
+ */
+export type TimeEntryConsultant = {
+  id: string;
+  fullName: string;
+  email: string | null;
+  role: string;
+  country: string | null;
+  active: boolean;
+  isInternal?: boolean;
+};
+
 export type TimeEntry = {
   id: string;
   projectId: string;
@@ -659,8 +675,14 @@ export async function deleteTimeEntry(id: string): Promise<void> {
 
 // -- Cronometro (Tracker) --------------------------------------------------
 
-export async function getRunningTimer(): Promise<RunningTimer | null> {
-  const response = await request<ApiEnvelope<RunningTimer | null>>("/api/timer");
+/**
+ * Cronometro en marcha. `consultantId` solo lo tienen en cuenta ADMIN y PM,
+ * que pueden llevar el cronometro de otra persona; para el resto de roles el
+ * backend lo ignora y devuelve siempre el propio.
+ */
+export async function getRunningTimer(consultantId?: string): Promise<RunningTimer | null> {
+  const suffix = consultantId ? `?consultantId=${encodeURIComponent(consultantId)}` : "";
+  const response = await request<ApiEnvelope<RunningTimer | null>>(`/api/timer${suffix}`);
   return response.data;
 }
 
@@ -670,6 +692,8 @@ export async function startTimer(payload: {
   description?: string | null;
   /** ISO. Permite reanudar una entrada arrancando el cronometro en el pasado. */
   startedAt?: string;
+  /** Solo ADMIN y PM: arrancar el cronometro a nombre de otro consultor. */
+  consultantId?: string;
 }): Promise<RunningTimer> {
   const response = await request<ApiEnvelope<RunningTimer>>("/api/timer/start", "POST", payload);
   return response.data;
@@ -680,20 +704,26 @@ export async function updateRunningTimer(payload: {
   activityId?: string | null;
   description?: string | null;
   startedAt?: string;
+  consultantId?: string;
 }): Promise<RunningTimer> {
   const response = await request<ApiEnvelope<RunningTimer>>("/api/timer", "PATCH", payload);
   return response.data;
 }
 
 /** Detiene el cronometro y devuelve la entrada de horas que genero. */
-export async function stopTimer(): Promise<TimeEntry> {
-  const response = await request<ApiEnvelope<TimeEntry>>("/api/timer/stop", "POST");
+export async function stopTimer(consultantId?: string): Promise<TimeEntry> {
+  const response = await request<ApiEnvelope<TimeEntry>>(
+    "/api/timer/stop",
+    "POST",
+    consultantId ? { consultantId } : {},
+  );
   return response.data;
 }
 
 /** Descarta el cronometro sin registrar horas. */
-export async function discardTimer(): Promise<void> {
-  await request<void>("/api/timer", "DELETE");
+export async function discardTimer(consultantId?: string): Promise<void> {
+  const suffix = consultantId ? `?consultantId=${encodeURIComponent(consultantId)}` : "";
+  await request<void>(`/api/timer${suffix}`, "DELETE");
 }
 
 // La identidad de quien aprueba o rechaza la toma el backend del token; el
