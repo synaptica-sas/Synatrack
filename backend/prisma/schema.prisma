@@ -232,7 +232,10 @@ model TimeEntry {
   projectId     String
   consultantId  String
   workDate      DateTime
-  hours         Decimal         @db.Decimal(8, 2)
+  // 4 decimales y no 2: con 2 el valor mas pequeno representable es 0.01 h,
+  // o sea 36 segundos, asi que el cronometro no podia registrar un minuto sin
+  // inflarlo. Con 4 la resolucion baja a 0.36 s.
+  hours         Decimal         @db.Decimal(8, 4)
   note          String?
   status        TimeEntryStatus @default(PENDING)
   approvedBy    String?
