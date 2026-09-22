@@ -253,7 +253,18 @@ const PATH_TAB_MAP: Record<string, TabId> = Object.fromEntries(
 
 // ── Landing Page ────────────────────────────────────────────────────────────
 
-function LandingPage({ darkMode, toggleDarkMode, onLoginClick }: { darkMode: boolean; toggleDarkMode: () => void; onLoginClick: () => void }) {
+function LandingPage({ darkMode, toggleDarkMode, onLoginClick, errorMessage }: {
+  darkMode: boolean;
+  toggleDarkMode: () => void;
+  onLoginClick: () => void;
+  /**
+   * Error del arranque. Sin esto, con el backend caído la pantalla de inicio se
+   * quedaba muda al pulsar «Ingresar»: `bootstrap` fallaba, guardaba el mensaje
+   * en `error` y nadie lo pintaba, porque el banner solo existe en la pantalla
+   * de autenticación.
+   */
+  errorMessage?: string | null;
+}) {
   return (
     <>
       <style>{`
@@ -759,6 +770,15 @@ function LandingPage({ darkMode, toggleDarkMode, onLoginClick }: { darkMode: boo
             <p className="landing-description">
               La consola ejecutiva premium para la planificación de recursos, control financiero multipaís y flujos de aprobaciones inteligentes de Synaptica.
             </p>
+            {errorMessage && (
+              <p
+                role="alert"
+                className="error-banner"
+                style={{ marginBottom: "1rem", maxWidth: "32rem" }}
+              >
+                No se pudo iniciar sesión: {errorMessage}
+              </p>
+            )}
             <button type="button" className="landing-btn" onClick={onLoginClick}>
               <span>Ingresar a la Plataforma</span>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -946,6 +966,27 @@ function App() {
     const path = (window.location.pathname || "/").toLowerCase();
     return PATH_TAB_MAP[path] || "dashboard";
   });
+  /**
+   * DEP-33 — Enlaces profundos.
+   *
+   * Durante el arranque `authUser` es `null`, así que el efecto de enrutamiento
+   * redirigía cualquier ruta de pestaña a `/` y, además, el efecto que valida la
+   * pestaña contra los permisos la reseteaba a la primera visible (con la lista
+   * de permisos todavía vacía, a `dashboard`). Cuando la autenticación
+   * terminaba, el destino original ya se había perdido y todo aterrizaba en
+   * `/dashboard`. `/profile` se salvaba solo porque está en `NON_SIDEBAR_TABS`
+   * y ese segundo efecto no lo toca.
+   *
+   * Aquí se guarda la ruta pedida antes de redirigir, para restaurarla en
+   * cuanto haya sesión. Es un `ref` a propósito: no debe provocar renders ni
+   * reejecutar los efectos que la leen.
+   */
+  const rutaPedidaRef = useRef<string | null>(
+    (() => {
+      const path = (window.location.pathname || "/").toLowerCase();
+      return path in PATH_TAB_MAP ? path : null;
+    })(),
+  );
   const [preselectedCapacityConsultantId, setPreselectedCapacityConsultantId] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [originalUser, setOriginalUser] = useState<AuthUser | null>(null);
@@ -1166,23 +1207,48 @@ function App() {
 
     if (authUser) {
       if (isPublicPath) {
+        // DEP-33: si había un destino pedido antes de autenticar, se restaura.
+        const rutaPedida = rutaPedidaRef.current;
+        const pestanaPedida = rutaPedida ? PATH_TAB_MAP[rutaPedida] : undefined;
+        const permitida =
+          pestanaPedida !== undefined &&
+          (NON_SIDEBAR_TABS.includes(pestanaPedida) || allVisibleTabs.some((t) => t.id === pestanaPedida));
+
+        // Mientras no se conozcan los permisos no se decide nada: si se
+        // resolviera ahora, el destino se descartaría por "no permitido".
+        if (pestanaPedida !== undefined && allVisibleTabs.length === 0) return;
+
+        rutaPedidaRef.current = null;
+        if (permitida && rutaPedida) {
+          setActiveTab(pestanaPedida);
+          goTo(rutaPedida, true);
+          return;
+        }
         const path = TAB_PATH_MAP[activeTab] || "/dashboard";
         goTo(path, true);
       } else if (!isTabPath) {
         goTo("/dashboard", true);
+      } else {
+        // Ya se llegó a la ruta pedida por la vía normal.
+        rutaPedidaRef.current = null;
       }
     } else {
       if (isTabPath) {
+        // Se anota el destino ANTES de mandar a la portada.
+        rutaPedidaRef.current = currentPath;
         goTo("/", true);
       }
     }
-  }, [currentPath, authUser, goTo, activeTab]);
+  }, [currentPath, authUser, goTo, activeTab, allVisibleTabs]);
 
   useEffect(() => {
+    // DEP-33: sin sesión, `allVisibleTabs` está vacío y este efecto borraba la
+    // pestaña pedida por URL. Sin permisos no hay nada que validar.
+    if (!authUser || allVisibleTabs.length === 0) return;
     if (!NON_SIDEBAR_TABS.includes(activeTab) && !allVisibleTabs.some((t) => t.id === activeTab)) {
       setActiveTab(allVisibleTabs[0]?.id ?? "dashboard");
     }
-  }, [allVisibleTabs, activeTab]);
+  }, [allVisibleTabs, activeTab, authUser]);
 
   useEffect(() => {
     setError(null);
@@ -1200,6 +1266,8 @@ function App() {
           const path = window.location.pathname.toLowerCase();
           const isPublic = ["/", "/landing", "/login"].includes(path);
           if (!isPublic) {
+            // DEP-33: anotar el destino antes de mandar a la portada.
+            if (path in PATH_TAB_MAP) rutaPedidaRef.current = path;
             window.history.replaceState({}, "", "/");
             setCurrentPath("/");
           }
@@ -1243,8 +1311,17 @@ function App() {
       const path = window.location.pathname.toLowerCase();
       const isPublic = ["/", "/landing", "/login"].includes(path);
       if (isPublic) {
-        window.history.replaceState({}, "", "/dashboard");
-        setCurrentPath("/dashboard");
+        // DEP-33: antes se forzaba siempre `/dashboard`, lo que borraba el
+        // destino que el usuario había pedido por URL. Si hay uno anotado, se
+        // respeta; el efecto que valida permisos corrige después si no le
+        // corresponde verlo.
+        const pedida = rutaPedidaRef.current;
+        const destino = pedida && pedida in PATH_TAB_MAP ? pedida : "/dashboard";
+        rutaPedidaRef.current = null;
+        const pestana = PATH_TAB_MAP[destino];
+        if (pestana) setActiveTab(pestana);
+        window.history.replaceState({}, "", destino);
+        setCurrentPath(destino);
       }
     } catch (err) {
       setAuthUser(null);
@@ -1315,6 +1392,7 @@ function App() {
         <LandingPage
           darkMode={darkMode}
           toggleDarkMode={toggleDarkMode}
+          errorMessage={error}
           onLoginClick={() => {
             if (authWithMicrosoftEnabled) {
               goTo("/login");
@@ -1695,6 +1773,8 @@ function App() {
                   fxConfigs={fxHook.fxConfigs}
                   initialStats={statsHook.stats}
                   initialBaseCurrency="USD"
+                  statsError={statsHook.error}
+                  statsLoading={statsHook.loading}
                   onError={handleError}
                   onDrillTo={drillTo}
                 />

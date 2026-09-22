@@ -1,12 +1,24 @@
 /**
- * Función unificada de salud de proyecto (PMBOK-aligned).
- * Usada en Dashboard, Portafolio y Proyectos para garantizar consistencia.
+ * Presentación del semáforo de salud del proyecto.
  *
- * Criterios:
- *  VERDE   — Uso presupuesto < 70% Y proyectado ≤ presupuesto Y margen ≥ 0
- *  AMARILLO — Uso 70-90% O proyectado entre 90-100% del presupuesto O margen < 10%
- *  ROJO    — Uso 90-100% O proyectado > presupuesto O margen < 0
- *  CRÍTICO — Uso > 100% O proyectado > 120% del presupuesto
+ * DECISIÓN (R11): **el frontend NO calcula salud.** El único semáforo válido es
+ * el `healthStatus` que devuelve el backend (`computeHealthStatus` en
+ * `backend/src/utils/health.ts`, alimentado por `computeProjectFinancials`
+ * desde R10). Este módulo solo traduce ese estado a etiqueta, color e icono.
+ *
+ * Hasta R10 aquí vivía `calcularSaludProyecto`, que reimplementaba el semáforo
+ * con umbrales fijos (margen < 0 rojo, < 10 amarillo, uso de presupuesto
+ * 70/90/100/120). Se eliminó porque:
+ *  1. No la llamaba nadie: las tres pantallas (tablero, portafolio y proyectos)
+ *     ya pintaban con `backendHealthToResult(healthStatus)`. Era código muerto
+ *     que solo servía para volver a divergir.
+ *  2. Sus reglas no eran las del backend ni con los umbrales reales: el backend
+ *     compara contra `marginThreshold` del proyecto (rojo por debajo de la
+ *     mitad del umbral, amarillo por debajo del umbral) y además mira CPI, SPI,
+ *     riesgos altos abiertos e hitos atrasados, datos que el cliente no
+ *     siempre tiene.
+ *  3. Recalcular en el cliente solo puede producir un color que contradiga al
+ *     que ya viene en la misma respuesta.
  */
 
 export type HealthLevel = "VERDE" | "AMARILLO" | "ROJO" | "CRITICO";
@@ -28,42 +40,9 @@ const HEALTH_MAP: Record<HealthLevel, Omit<ProjectHealthResult, "nivel">> = {
   CRITICO:  { label: "Crítico", color: "#a8194c", pillClass: "error", icon: "▲" },
 };
 
-export function calcularSaludProyecto(params: {
-  /** % del presupuesto ya gastado (0-∞) */
-  usedBudgetPercent: number;
-  /** % del presupuesto cubierto por gasto real + proyectado (0-∞) */
-  projectedPct: number;
-  /** Margen bruto real en % (null si no disponible) */
-  grossMarginActualPct: number | null;
-}): ProjectHealthResult {
-  const { usedBudgetPercent, projectedPct, grossMarginActualPct } = params;
-
-  let nivel: HealthLevel;
-
-  if (usedBudgetPercent > 100 || projectedPct > 120) {
-    nivel = "CRITICO";
-  } else if (
-    usedBudgetPercent > 90 ||
-    projectedPct > 100 ||
-    (grossMarginActualPct !== null && grossMarginActualPct < 0)
-  ) {
-    nivel = "ROJO";
-  } else if (
-    usedBudgetPercent > 70 ||
-    projectedPct > 90 ||
-    (grossMarginActualPct !== null && grossMarginActualPct < 10)
-  ) {
-    nivel = "AMARILLO";
-  } else {
-    nivel = "VERDE";
-  }
-
-  return { nivel, ...HEALTH_MAP[nivel] };
-}
-
 /**
- * Convierte el HealthStatus del backend ("GREEN" | "YELLOW" | "RED") al tipo unificado.
- * Usar cuando el dato viene del API y no hay projectedPct disponible.
+ * Convierte el `healthStatus` del backend ("GREEN" | "YELLOW" | "RED") al tipo
+ * de presentación. Es el único camino admitido para pintar el semáforo.
  */
 export function backendHealthToResult(status: "GREEN" | "YELLOW" | "RED"): ProjectHealthResult {
   const map: Record<"GREEN" | "YELLOW" | "RED", HealthLevel> = {
@@ -75,9 +54,55 @@ export function backendHealthToResult(status: "GREEN" | "YELLOW" | "RED"): Proje
   return { nivel, ...HEALTH_MAP[nivel] };
 }
 
-/** Texto del tooltip para mostrar al usuario los criterios de salud */
-export const HEALTH_CRITERIA_TOOLTIP =
-  "VERDE: uso < 70%, proyectado ≤ 100%, margen ≥ 0% | " +
-  "AMARILLO: uso 70-90% o proyectado 90-100% o margen < 10% | " +
-  "ROJO: uso 90-100% o proyectado > presupuesto o margen < 0% | " +
-  "CRÍTICO: uso > 100% o proyectado > 120% del presupuesto";
+/**
+ * Valor por defecto de `marginThreshold` del backend
+ * (`DEFAULT_MARGIN_THRESHOLD_PCT` en `backend/src/utils/financial.ts`).
+ * Solo se usa como texto de respaldo cuando la respuesta no trae el umbral;
+ * nunca para colorear nada.
+ */
+export const UMBRAL_MARGEN_POR_DEFECTO = 15;
+
+/**
+ * Texto del tooltip con los criterios **reales** del backend. Recibe el
+ * `marginThreshold` que viene en la propia respuesta para no inventar un valor.
+ *
+ * @param marginThreshold umbral resuelto del proyecto, tal como lo devuelve el
+ *   API. Si llega `null`/`undefined` se dice explícitamente que no se conoce en
+ *   vez de suponer uno.
+ */
+export function textoCriteriosSalud(marginThreshold?: number | null): string {
+  const umbral =
+    marginThreshold != null && Number.isFinite(marginThreshold)
+      ? `${marginThreshold}%`
+      : "no informado por el API";
+
+  return (
+    "Semáforo calculado por el servidor. " +
+    `Umbral de margen de este proyecto: ${umbral}. ` +
+    "ROJO: presupuesto proyectado excedido, riesgos altos abiertos, CPI o SPI < 0,75, " +
+    "o margen por debajo de la mitad del umbral. " +
+    "AMARILLO: aviso de presupuesto, hitos atrasados, CPI o SPI < 0,9, " +
+    "o margen por debajo del umbral. " +
+    "VERDE: ninguna de las anteriores."
+  );
+}
+
+/**
+ * Color del texto del margen bruto, contrastado contra el umbral **real** del
+ * proyecto y no contra un literal. Devuelve el gris neutro cuando el margen no
+ * es medible (sin ingresos reconocidos).
+ */
+export function colorMargen(
+  grossMarginActualPct: number | null | undefined,
+  marginThreshold?: number | null,
+): string {
+  if (grossMarginActualPct == null) return "#9ca3af";
+  const umbral =
+    marginThreshold != null && Number.isFinite(marginThreshold)
+      ? marginThreshold
+      : UMBRAL_MARGEN_POR_DEFECTO;
+  // Mismos cortes que `computeHealthStatus`: rojo bajo medio umbral, ámbar bajo umbral.
+  if (grossMarginActualPct < umbral * 0.5) return "#ef4444";
+  if (grossMarginActualPct < umbral) return "#f59e0b";
+  return "#22c55e";
+}

@@ -49,17 +49,28 @@ describe("findFxRate", () => {
   });
 
   /**
-   * LIMITACIÓN CONOCIDA, distinta del backend: la triangulación solo arranca
-   * desde monedas que aparecen como `baseCode` en alguna tasa. Si la moneda de
-   * origen solo existe como `quoteCode`, devuelve null aunque haya un camino.
-   * `backend/src/utils/currency.ts` sí lo resuelve, porque construye un mapa
-   * bidireccional antes de buscar el pivote. Se documenta tal cual porque este
-   * cambio solo extrae la función; corregirlo es otro trabajo.
+   * DEP-39. Antes la triangulación solo arrancaba desde monedas que aparecían
+   * como `baseCode`, así que este caso devolvía `null` mientras el backend sí
+   * lo resolvía. Ahora el mapa es bidireccional, como en
+   * `backend/src/utils/currency.ts`, y las dos implementaciones coinciden.
    */
-  it("no triangula cuando la moneda de origen solo aparece como destino (diverge del backend)", () => {
-    // Existen USD->COP y USD->MXN, así que COP->MXN es calculable vía USD,
-    // pero esta implementación no lo encuentra.
-    expect(findFxRate(tasas, "COP", "MXN")).toBeNull();
+  it("triangula aunque la moneda de origen solo aparezca como destino (igual que el backend)", () => {
+    // Existen USD->COP y USD->MXN: 1 COP = 1/4000 USD y 1 USD = 17 MXN.
+    expect(findFxRate(tasas, "COP", "MXN")).toBeCloseTo(17 / 4000, 12);
+  });
+
+  it("coincide con el backend en el par inverso del mismo camino", () => {
+    // 1 MXN = 1/17 USD y 1 USD = 4000 COP.
+    expect(findFxRate(tasas, "MXN", "COP")).toBeCloseTo(4000 / 17, 9);
+  });
+
+  it("descarta tasas no numéricas o no positivas, como `buildRateMap`", () => {
+    const conBasura: FxRateSource[] = [
+      { baseCode: "USD", quoteCode: "COP", rate: "0" },
+      { baseCode: "USD", quoteCode: "MXN", rate: "no-es-un-numero" },
+    ];
+    expect(findFxRate(conBasura, "USD", "COP")).toBeNull();
+    expect(findFxRate(conBasura, "USD", "MXN")).toBeNull();
   });
 
   it("devuelve null cuando no hay ninguna ruta entre las dos monedas", () => {

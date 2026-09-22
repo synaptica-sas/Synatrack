@@ -17,12 +17,12 @@ import {
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SectionLayout } from "../../components/SectionLayout";
 import { downloadCsv } from "../../utils/csv";
-import { backendHealthToResult, HEALTH_CRITERIA_TOOLTIP } from "../../utils/projectHealth";
+import { backendHealthToResult, textoCriteriosSalud } from "../../utils/projectHealth";
 import { ValidationErrorBox } from "../../components/ValidationErrorBox";
 import { isValidationError } from "../../utils/validation";
 import { CurrencyInput } from "../../components/CurrencyInput";
 
-function RagBadge({ status }: { status: HealthStatus | undefined }) {
+function RagBadge({ status, marginThreshold }: { status: HealthStatus | undefined; marginThreshold?: number | null }) {
   if (!status) return <span style={{ color: "var(--color-sec-gray)", fontSize: "0.75rem" }}>—</span>;
   const result = backendHealthToResult(status);
   return (
@@ -37,7 +37,7 @@ function RagBadge({ status }: { status: HealthStatus | undefined }) {
         fontSize: "0.7rem",
         letterSpacing: "0.04em",
       }}
-      title={HEALTH_CRITERIA_TOOLTIP}
+      title={textoCriteriosSalud(marginThreshold)}
     >
       {result.label}
     </span>
@@ -86,6 +86,8 @@ type EditForm = {
   sellCurrency: string;
   allowExtraHours: boolean;
   projectManagerEmail: string;
+  marginThreshold: string;
+  budgetAlertPct: string;
 };
 
 const emptyForm = {
@@ -104,7 +106,26 @@ const emptyForm = {
   allowExtraHours: true,
   // Correo del PM (DEP-37). Vacío = sin PM asignado; el backend lo guarda como null.
   projectManagerEmail: "",
+  /**
+   * Umbrales de R10. Los dos se envían como cadena y el backend los coacciona a
+   * número, pero la cadena vacía NO significa lo mismo en los dos:
+   *  - `marginThreshold` es nulable: vacío = sin umbral propio, se aplica el
+   *    valor por defecto del backend (15 %).
+   *  - `budgetAlertPct` no admite nulo: vacío = no tocar, conserva el valor
+   *    que ya tenga la fila (90 % por defecto).
+   */
+  marginThreshold: "",
+  budgetAlertPct: "",
 };
+
+/** Texto de ayuda de los umbrales, compartido por el alta y la edición. */
+const AYUDA_UMBRAL_MARGEN =
+  "Margen bruto mínimo en % (0–100) para que el proyecto siga en verde. " +
+  "Déjalo vacío para no fijar un umbral propio: se aplicará el valor por defecto del sistema (15 %).";
+
+const AYUDA_UMBRAL_PRESUPUESTO =
+  "% de consumo de presupuesto a partir del cual el proyecto pasa a aviso (0–100). " +
+  "Déjalo vacío para no modificarlo: este campo no admite vacío, así que se conserva el valor actual (90 % por defecto).";
 
 export function ProjectsTab({
   projects,
@@ -203,6 +224,10 @@ export function ProjectsTab({
         sellCurrency: editForm.sellCurrency,
         allowExtraHours: editForm.allowExtraHours,
         projectManagerEmail: editForm.projectManagerEmail,
+        // Se envían tal cual (cadena incluida): la cadena vacía es significativa
+        // y el backend le da a cada campo el tratamiento que le corresponde.
+        marginThreshold: editForm.marginThreshold,
+        budgetAlertPct: editForm.budgetAlertPct,
       });
       setEditForm(null);
       await onReload();
@@ -320,6 +345,31 @@ export function ProjectsTab({
               value={form.projectManagerEmail}
               onChange={(e) => setForm((p) => ({ ...p, projectManagerEmail: e.target.value }))}
             />
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              placeholder="Umbral de margen % (opcional)"
+              title={AYUDA_UMBRAL_MARGEN}
+              value={form.marginThreshold}
+              onChange={(e) => setForm((p) => ({ ...p, marginThreshold: e.target.value }))}
+            />
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              placeholder="Aviso de presupuesto % (opcional)"
+              title={AYUDA_UMBRAL_PRESUPUESTO}
+              value={form.budgetAlertPct}
+              onChange={(e) => setForm((p) => ({ ...p, budgetAlertPct: e.target.value }))}
+            />
+            <p style={{ gridColumn: "1 / -1", margin: 0, fontSize: "0.72rem", lineHeight: 1.4, color: "var(--text-soft)" }}>
+              <strong>Umbral de margen</strong>: vacío significa «sin umbral propio» y se aplica el valor por defecto del
+              sistema (15 %). <strong>Aviso de presupuesto</strong>: vacío significa «no modificar»; este campo no admite
+              vacío y conserva su valor actual (90 % por defecto).
+            </p>
             <input type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required />
             <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required />
             <textarea placeholder="Descripción" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
@@ -400,7 +450,7 @@ export function ProjectsTab({
                       const stats = statsMap.get(project.id);
                       return (
                         <tr key={project.id}>
-                          <td><RagBadge status={stats?.healthStatus} /></td>
+                          <td><RagBadge status={stats?.healthStatus} marginThreshold={stats?.marginThreshold} /></td>
                           <td>{project.name}</td>
                           <td>{project.company}</td>
                           <td style={{ fontSize: "0.75rem" }} title={project.projectManagerEmail ?? "Sin PM asignado"}>
@@ -460,6 +510,10 @@ export function ProjectsTab({
                                         sellPrice: project.sellPrice ? String(numberish(project.sellPrice)) : "",
                                         sellCurrency: project.sellCurrency ?? "USD",
                                         projectManagerEmail: project.projectManagerEmail ?? "",
+                                        marginThreshold:
+                                          project.marginThreshold != null ? String(Number(project.marginThreshold)) : "",
+                                        budgetAlertPct:
+                                          project.budgetAlertPct != null ? String(Number(project.budgetAlertPct)) : "",
                                         allowExtraHours: project.allowExtraHours !== false,
                                       })
                                     }
@@ -533,6 +587,31 @@ export function ProjectsTab({
                 value={editForm.projectManagerEmail}
                 onChange={(e) => setEditForm((p) => p && { ...p, projectManagerEmail: e.target.value })}
               />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                placeholder="Umbral de margen % (opcional)"
+                title={AYUDA_UMBRAL_MARGEN}
+                value={editForm.marginThreshold}
+                onChange={(e) => setEditForm((p) => p && { ...p, marginThreshold: e.target.value })}
+              />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                placeholder="Aviso de presupuesto % (opcional)"
+                title={AYUDA_UMBRAL_PRESUPUESTO}
+                value={editForm.budgetAlertPct}
+                onChange={(e) => setEditForm((p) => p && { ...p, budgetAlertPct: e.target.value })}
+              />
+              <p style={{ gridColumn: "span 2", margin: 0, fontSize: "0.72rem", lineHeight: 1.4, color: "var(--text-soft)" }}>
+                <strong>Umbral de margen</strong>: vaciarlo lo desasigna y el proyecto vuelve al valor por defecto del
+                sistema (15 %). <strong>Aviso de presupuesto</strong>: vaciarlo <em>no</em> lo borra; el campo no admite
+                vacío y conserva el valor actual (90 % por defecto).
+              </p>
               <input type="date" value={editForm.startDate} onChange={(e) => setEditForm((p) => p && { ...p, startDate: e.target.value })} required />
               <input type="date" value={editForm.endDate} onChange={(e) => setEditForm((p) => p && { ...p, endDate: e.target.value })} required />
               <textarea value={editForm.description} onChange={(e) => setEditForm((p) => p && { ...p, description: e.target.value })} placeholder="Descripción" />

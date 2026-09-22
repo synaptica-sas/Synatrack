@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { type HealthStatus } from "../../services/api";
 import { usePortfolio } from "../../hooks/usePortfolio";
-import { backendHealthToResult, HEALTH_CRITERIA_TOOLTIP } from "../../utils/projectHealth";
+import { backendHealthToResult, textoCriteriosSalud, colorMargen } from "../../utils/projectHealth";
 import { PROJECT_STATUS_LABELS, label } from "../../utils/statusLabels";
 import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
@@ -10,7 +10,7 @@ function fmt(n: number, currency = "USD") {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency, maximumFractionDigits: 0 }).format(n);
 }
 
-function RagBadge({ status }: { status: HealthStatus }) {
+function RagBadge({ status, marginThreshold }: { status: HealthStatus; marginThreshold?: number | null }) {
   const result = backendHealthToResult(status);
   return (
     <span
@@ -18,7 +18,7 @@ function RagBadge({ status }: { status: HealthStatus }) {
         display: "inline-block", padding: "0.15rem 0.55rem", borderRadius: "9999px",
         background: result.color, color: "#fff", fontWeight: 700, fontSize: "0.7rem",
       }}
-      title={HEALTH_CRITERIA_TOOLTIP}
+      title={textoCriteriosSalud(marginThreshold)}
     >
       {result.label}
     </span>
@@ -335,7 +335,7 @@ export function PortfolioTab({
             )}
             {sorted.map((p) => (
               <tr key={p.projectId} style={{ background: p.healthStatus === "RED" ? "var(--state-danger-bg)" : p.healthStatus === "YELLOW" ? "var(--state-warning-bg)" : "inherit" }}>
-                <td><RagBadge status={p.healthStatus} /></td>
+                <td><RagBadge status={p.healthStatus} marginThreshold={p.marginThreshold} /></td>
                 <td style={{ fontWeight: 600 }}>{p.projectName}</td>
                 <td>{p.company}</td>
                 <td style={{ fontSize: "0.75rem" }}>
@@ -354,7 +354,10 @@ export function PortfolioTab({
                 <td style={{ fontWeight: 600, color: p.evm?.spi != null ? (p.evm.spi < 0.85 ? "#ef4444" : p.evm.spi < 1 ? "#f59e0b" : "#22c55e") : "#9ca3af" }}>
                   {p.evm?.spi != null ? p.evm.spi.toFixed(2) : "—"}
                 </td>
-                <td style={{ color: p.grossMarginActualPct != null ? (p.grossMarginActualPct < 0 ? "#ef4444" : p.grossMarginActualPct < 15 ? "#f59e0b" : "#22c55e") : "#9ca3af", fontWeight: 600 }}>
+                <td
+                  style={{ color: colorMargen(p.grossMarginActualPct, p.marginThreshold), fontWeight: 600 }}
+                  title={`Umbral de margen del proyecto: ${p.marginThreshold}%`}
+                >
                   {p.grossMarginActualPct != null ? `${p.grossMarginActualPct.toFixed(1)}%` : "—"}
                 </td>
                 <td style={{ textAlign: "center", color: p.openHighRisks > 0 ? "#ef4444" : "#22c55e", fontWeight: 600 }}>

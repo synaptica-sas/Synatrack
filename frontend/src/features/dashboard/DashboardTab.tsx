@@ -10,7 +10,7 @@ import { readPersistedRange, type DateRange } from "../../components/dateRangeUt
 import { SearchableSelect } from "../../components/SearchableSelect";
 import type { TabId } from "../../types";
 import { formatISODateRange } from "../../utils/periodUtils";
-import { backendHealthToResult, HEALTH_CRITERIA_TOOLTIP } from "../../utils/projectHealth";
+import { backendHealthToResult, textoCriteriosSalud } from "../../utils/projectHealth";
 import { AlertBadge } from "./AlertBadge";
 import {
   calcDelta,
@@ -308,7 +308,7 @@ function ExtraHoursByConsultantChart({ data }: { data: { name: string; hours: nu
 // ── KPI Card component ───────────────────────────────────────────────────────
 
 function DashboardKpi({
-  label, value, delta, tooltip, onClick, accent, sub,
+  label, value, delta, tooltip, onClick, accent, sub, error, loading,
 }: {
   label: string;
   value: string;
@@ -317,7 +317,35 @@ function DashboardKpi({
   onClick?: () => void;
   accent?: string;
   sub?: string;
+  /** DEP-36: mensaje del fallo. Si viene, el indicador no muestra ninguna cifra. */
+  error?: string | null;
+  /** Carga en curso: tampoco se muestra cifra, pero no es un error. */
+  loading?: boolean;
 }) {
+  if (error) {
+    return (
+      <article className="card kpi" aria-label={`${label}: sin dato por error`}>
+        <div className="kpi-header">
+          <span className="kpi-label">{label}</span>
+          <span className="kpi-tooltip-btn" title={error} aria-label={`Detalle del error de ${label}`}>!</span>
+        </div>
+        <p style={{ color: "var(--color-sec-red, #dc2626)" }}>Sin dato</p>
+        <p style={{ fontSize: "0.72rem", color: "var(--color-sec-red, #dc2626)", marginTop: "0.15rem", fontWeight: 600 }}>
+          Error al cargar
+        </p>
+      </article>
+    );
+  }
+  if (loading) {
+    return (
+      <article className="card kpi" aria-label={`${label}: cargando`}>
+        <div className="kpi-header">
+          <span className="kpi-label">{label}</span>
+        </div>
+        <p style={{ color: "var(--text-soft)" }}>…</p>
+      </article>
+    );
+  }
   return (
     <article
       className={`card kpi${onClick ? " clickable" : ""}`}
@@ -405,6 +433,8 @@ export function DashboardTab({
   fxConfigs,
   initialStats,
   initialBaseCurrency,
+  statsError,
+  statsLoading,
   onError,
   onDrillTo,
 }: {
@@ -415,11 +445,20 @@ export function DashboardTab({
   fxConfigs: FxConfig[];
   initialStats: StatsOverview | null;
   initialBaseCurrency: string;
+  /** DEP-36: error de la petición de estadísticas, tal como lo expone `useStats`. */
+  statsError: string | null;
+  /** Petición de estadísticas en curso. Sirve para no confundir "cargando" con "falló". */
+  statsLoading: boolean;
   onError: (msg: string) => void;
   onDrillTo?: (tab: TabId) => void;
 }) {
   const [stats, setStats] = useState<StatsOverview | null>(initialStats);
   const [baseCurrency, setBaseCurrency] = useState(initialBaseCurrency);
+  /**
+   * DEP-36. Error propio del tablero (cambio de moneda base). Se combina con el
+   * que llega de `useStats` para decidir si los indicadores se pintan en error.
+   */
+  const [localStatsError, setLocalStatsError] = useState<string | null>(null);
 
   // `initialStats` llega null en el primer render, porque la petición de App todavía no
   // resolvió. Como `useState` solo mira su argumento la primera vez, sin este efecto el
@@ -473,8 +512,14 @@ export function DashboardTab({
     try {
       const newStats = await getStatsOverview(newBase);
       setStats(newStats);
+      setLocalStatsError(null);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Error al cambiar moneda base");
+      const msg = err instanceof Error ? err.message : "Error al cambiar moneda base";
+      // Se descarta el dato de la moneda anterior: seguir mostrándolo bajo la
+      // etiqueta de la moneda nueva sería peor que no mostrar nada.
+      setStats(null);
+      setLocalStatsError(msg);
+      onError(msg);
     }
   }
 
@@ -525,13 +570,11 @@ export function DashboardTab({
     }),
   [forecasts, dashboardProjectIds, statsFilters.from, statsFilters.to]);
 
-  const dashboardTotals = useMemo(() => ({
-    budget:        dashboardProjects.reduce((acc, p) => acc + numberish(p.budget), 0),
-    spent:         dashboardExpenses.reduce((acc, e) => acc + numberish(e.amount), 0),
-    totalHours:    dashboardTimeEntries.reduce((acc, e) => acc + numberish(e.hours), 0),
-    approvedHours: dashboardApprovedTimeEntries.reduce((acc, e) => acc + numberish(e.hours), 0),
-    projectedCost: dashboardForecasts.reduce((acc, f) => acc + numberish(String(f.projectedCost || 0)), 0),
-  }), [dashboardProjects, dashboardExpenses, dashboardTimeEntries, dashboardApprovedTimeEntries, dashboardForecasts]);
+  // DEP-36: aquí vivía `dashboardTotals`, un cálculo local de respaldo que sumaba
+  // `p.budget`, `e.amount` y `f.projectedCost` **sin convertir de moneda**. Solo se
+  // activaba cuando fallaba `/api/stats/overview`, así que el efecto neto era
+  // presentar una cifra sin sentido en lugar de un error. Eliminado: si no hay
+  // estadísticas, los indicadores muestran el fallo (ver `totalsFailed`).
 
   // Previous period totals for delta computation
   const { from: prevFrom, to: prevTo } = prevPeriod(statsFilters.from, statsFilters.to);
@@ -548,18 +591,8 @@ export function DashboardTab({
     };
   }, [timeEntries, expenses, dashboardProjectIds, prevFrom, prevTo]);
 
-  // Per-project summary (for fallback when no stats)
-  const dashboardProjectSummary = useMemo(() => {
-    return dashboardProjects.map((project) => {
-      const spent = dashboardExpenses.filter((e) => e.projectId === project.id).reduce((acc, e) => acc + numberish(e.amount), 0);
-      const approvedHours = dashboardApprovedTimeEntries.filter((e) => e.projectId === project.id).reduce((acc, e) => acc + numberish(e.hours), 0);
-      const projectedCost = dashboardForecasts.filter((f) => f.projectId === project.id).reduce((acc, f) => acc + numberish(String(f.projectedCost || 0)), 0);
-      const budget = numberish(project.budget);
-      const projectedTotal = spent + projectedCost;
-      const projectedPct = budget > 0 ? (projectedTotal / budget) * 100 : 0;
-      return { project, spent, approvedHours, remaining: budget - spent, projectedCost, projectedTotal, projectedPct };
-    }).sort((a, b) => b.projectedPct - a.projectedPct);
-  }, [dashboardProjects, dashboardExpenses, dashboardApprovedTimeEntries, dashboardForecasts]);
+  // DEP-36: aquí vivía `dashboardProjectSummary`, el respaldo por proyecto del
+  // mismo cálculo sin conversión. Eliminado por el mismo motivo.
 
   // Hours by consultant
   const dashboardHoursByConsultant = useMemo(() => {
@@ -644,55 +677,33 @@ export function DashboardTab({
       .slice(0, 5);
   }, [extraHours]);
 
-  // Merge stats or local computation
-  const displayProjects = stats?.projects ?? dashboardProjectSummary.map((row) => ({
-    projectId: row.project.id,
-    projectName: row.project.name,
-    company: row.project.company,
-    currency: row.project.currency,
-    projectType: row.project.projectType ?? "TIME_AND_MATERIAL" as const,
-    status: row.project.status ?? "ACTIVE" as const,
-    phase: null,
-    completionPct: 0,
-    healthStatus: "GREEN" as const,
-    displayCurrency: baseCurrency,
-    budget: numberish(row.project.budget),
-    spent: row.spent,
-    remainingBudget: row.remaining,
-    usedBudgetPercent: 0,
-    totalHours: 0,
-    approvedHours: row.approvedHours,
-    projectedCost: row.projectedCost,
-    projectedTotal: row.projectedTotal,
-    projectedPct: row.projectedPct,
-    estimateAtCompletion: row.projectedTotal,
-    budgetVariance: numberish(row.project.budget) - row.projectedTotal,
-    contractValue: 0,
-    revenueRecognized: 0,
-    grossMarginActual: 0,
-    grossMarginActualPct: null as number | null,
-    grossMarginProjected: 0,
-    grossMarginProjectedPct: null as number | null,
-    alertLevel: (row.projectedPct > 100 ? "exceeded" : row.projectedPct > 90 ? "warning" : "ok") as "ok" | "warning" | "exceeded",
-    evm: null,
-    openHighRisks: 0,
-    openIssues: 0,
-    pendingChanges: 0,
-  }));
+  /**
+   * DEP-36. Sin estadísticas no hay nada que mostrar: el único origen válido de
+   * estos números es `/api/stats/overview`, que es quien convierte de moneda.
+   */
+  const displayProjects = useMemo(() => stats?.projects ?? [], [stats]);
 
-  // Aggregated totals
+  /** Mensaje de fallo de las estadísticas: el del hook o el del cambio de moneda. */
+  const statsErrorMessage = localStatsError ?? statsError;
+  /** Hay fallo y no hay dato: los indicadores se pintan en error. */
+  const totalsFailed = !stats && statsErrorMessage != null;
+  /** No hay dato todavía y tampoco fallo: petición en curso. */
+  const totalsPending = !stats && statsErrorMessage == null;
+
+  // Aggregated totals. Los ceros son de relleno para los cálculos derivados;
+  // nunca se pintan cuando `totalsFailed` o `totalsPending` están activos.
   const totals = {
-    budget:           stats?.totals.budget        ?? dashboardTotals.budget,
-    spent:            stats?.totals.spent         ?? dashboardTotals.spent,
-    laborCostActual:  stats?.totals.laborCostActual ?? null,
-    expensesActual:   stats?.totals.expensesActual  ?? null,
+    budget:           stats?.totals.budget           ?? 0,
+    spent:            stats?.totals.spent            ?? 0,
+    laborCostActual:  stats?.totals.laborCostActual  ?? null,
+    expensesActual:   stats?.totals.expensesActual   ?? null,
     revenue:          stats?.totals.revenueRecognized ?? 0,
     grossMargin:      stats?.totals.grossMarginActual ?? 0,
-    projectedCost:    stats?.totals.projectedCost ?? dashboardTotals.projectedCost,
-    approvedHours:    stats?.totals.approvedHours ?? dashboardTotals.approvedHours,
-    alertCount:       stats?.totals.alertCount    ?? 0,
-    avgCpi:           stats?.totals.avgCpi        ?? null,
-    avgSpi:           stats?.totals.avgSpi        ?? null,
+    projectedCost:    stats?.totals.projectedCost    ?? 0,
+    approvedHours:    stats?.totals.approvedHours    ?? 0,
+    alertCount:       stats?.totals.alertCount       ?? 0,
+    avgCpi:           stats?.totals.avgCpi           ?? null,
+    avgSpi:           stats?.totals.avgSpi           ?? null,
   };
 
   // EVM aggregated — EV = sum(completionPct × BAC) per project (PMBOK)
@@ -1107,12 +1118,26 @@ export function DashboardTab({
         </article>
       )}
 
+      {/* DEP-36: el fallo de las estadísticas se dice, no se disimula con un total local. */}
+      {totalsFailed && (
+        <article className="card" style={{ background: "var(--state-error-bg, #fee2e2)", border: "1px solid var(--state-error-border, #fca5a5)" }}>
+          <h3 style={{ color: "var(--state-error-text, #991b1b)", marginBottom: "0.4rem" }}>
+            No se pudieron cargar las estadísticas
+          </h3>
+          <p style={{ fontSize: "0.8rem", color: "var(--state-error-text, #991b1b)", margin: 0 }}>
+            Los indicadores no muestran cifras porque no hay dato del servidor. Detalle: {statsErrorMessage}
+          </p>
+        </article>
+      )}
+
       {/* ── KPI grid (Tareas 5, 7, 8, 9, 15) ── */}
       <section className="grid dashboard-grid-wide">
         <DashboardKpi
           label={`Presupuesto total (${baseCurrency})`}
           value={fmt(totals.budget, baseCurrency)}
           tooltip={totals.budget === 0 ? "Sin proyectos activos o sin presupuesto asignado" : "Suma de presupuestos de todos los proyectos filtrados"}
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
           onClick={() => onDrillTo?.("projects")}
         />
         <DashboardKpi
@@ -1127,11 +1152,15 @@ export function DashboardTab({
               : "Total de gastos aprobados en el período (costo laboral + gastos directos)"
           }
           onClick={() => onDrillTo?.("expenses")}
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
         />
         <DashboardKpi
           label={`Ingresos reconocidos (${baseCurrency})`}
           value={fmt(totals.revenue, baseCurrency)}
           tooltip={totals.revenue === 0 ? "Sin ingresos reconocidos. Revisar hitos de facturación o entradas de ingreso." : "Ingresos formalmente reconocidos en el período"}
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
           onClick={() => onDrillTo?.("revenue")}
         />
         <DashboardKpi
@@ -1139,12 +1168,16 @@ export function DashboardTab({
           value={fmt(totals.grossMargin, baseCurrency)}
           accent={totals.grossMargin >= 0 ? "#16a34a" : "#dc2626"}
           tooltip="Ingresos reconocidos − Gasto real"
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
           onClick={() => onDrillTo?.("revenue")}
         />
         <DashboardKpi
           label={`Costo proyectado (${baseCurrency})`}
           value={fmt(totals.projectedCost, baseCurrency)}
           tooltip="Suma de costos proyectados en forecasts del período"
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
           onClick={() => onDrillTo?.("forecasts")}
         />
         <DashboardKpi
@@ -1152,6 +1185,8 @@ export function DashboardTab({
           value={totals.approvedHours.toFixed(1)}
           delta={calcDelta(totals.approvedHours, prevTotals.approvedHours)}
           tooltip={totals.approvedHours === 0 ? "Sin horas aprobadas en el período. Revisar registros de tiempo pendientes." : "Horas aprobadas por responsables en el período"}
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
           onClick={() => onDrillTo?.("timeEntries")}
         />
         {/* EVM KPIs (PMBOK) */}
@@ -1296,7 +1331,7 @@ export function DashboardTab({
                           display: "inline-block", width: "0.7rem", height: "0.7rem",
                           borderRadius: "50%", background: healthResult.color,
                         }}
-                        title={`${healthResult.label} — ${HEALTH_CRITERIA_TOOLTIP}`}
+                        title={`${healthResult.label} — ${textoCriteriosSalud(row.marginThreshold)}`}
                         aria-label={`Salud: ${healthResult.label}`}
                       />
                     </td>

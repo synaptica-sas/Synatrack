@@ -60,6 +60,17 @@ export type Project = {
   allowExtraHours?: boolean;
   /** Correo del Project Manager. `null` si el proyecto no tiene PM asignado. */
   projectManagerEmail?: string | null;
+  /**
+   * Umbral de margen bruto en % por debajo del cual el proyecto deja de estar en
+   * verde. `null` = sin umbral propio; el backend aplica su valor por defecto
+   * (`DEFAULT_MARGIN_THRESHOLD_PCT`, 15 %).
+   */
+  marginThreshold?: string | null;
+  /**
+   * % de consumo de presupuesto a partir del cual se avisa. No admite nulo: el
+   * backend lo declara con valor por defecto (90 %).
+   */
+  budgetAlertPct?: string | null;
 };
 
 export type Consultant = {
@@ -199,6 +210,12 @@ export type StatsProjectRow = {
   grossMarginActualPct: number | null;
   grossMarginProjected: number;
   grossMarginProjectedPct: number | null;
+  /**
+   * Umbral de margen ya resuelto por el backend (R10): el del proyecto, o el
+   * valor por defecto de 15 % si el proyecto no tiene uno propio. Siempre es un
+   * número: el frontend no debe volver a aplicar un default.
+   */
+  marginThreshold: number;
   // Hours
   totalHours: number;
   approvedHours: number;
@@ -251,14 +268,21 @@ export function setApiAccessToken(token: string | null) {
 async function request<T>(path: string, method: HttpMethod = "GET", body?: unknown): Promise<T> {
   const baseUrl = ensureApiUrl();
 
-  const response = await fetch(`${baseUrl}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    // `fetch` solo rechaza por fallo de red (servidor caído, CORS, DNS). El
+    // navegador da un "Failed to fetch" en inglés que no dice nada al usuario.
+    throw new Error("No se pudo contactar con el servidor. Verifica que el backend esté disponible.");
+  }
 
   if (!response.ok) {
     const fallbackMessage = `Request failed with status ${response.status}`;
@@ -443,6 +467,16 @@ export async function createProject(payload: {
   allowExtraHours?: boolean;
   /** Cadena vacía = sin PM. El backend la normaliza a minúsculas y a `null`. */
   projectManagerEmail?: string | null;
+  /**
+   * Umbral de margen en % (0–100). Cadena vacía = sin umbral propio: el backend
+   * lo guarda como `null` y aplica su valor por defecto de 15 %.
+   */
+  marginThreshold?: string | number | null;
+  /**
+   * Umbral de aviso de presupuesto en % (0–100). Cadena vacía = **no tocar**: el
+   * campo no admite nulo y conserva el valor que ya tuviera (90 % por defecto).
+   */
+  budgetAlertPct?: string | number | null;
 }): Promise<Project> {
   const response = await request<ApiEnvelope<Project>>("/api/projects", "POST", payload);
   return response.data;
@@ -466,6 +500,10 @@ export async function updateProject(
     allowExtraHours?: boolean;
     /** Cadena vacía = desasignar el PM. */
     projectManagerEmail?: string | null;
+    /** Cadena vacía = desasignar el umbral propio de margen (vuelve a `null`). */
+    marginThreshold?: string | number | null;
+    /** Cadena vacía = **no tocar**; el campo no admite nulo. */
+    budgetAlertPct?: string | number | null;
   },
 ): Promise<Project> {
   const response = await request<ApiEnvelope<Project>>(`/api/projects/${id}`, "PUT", payload);
@@ -1198,6 +1236,10 @@ export type ProjectDetailFinancials = {
   revenueRecognized: number;
   grossMarginActual: number;
   grossMarginActualPct: number | null;
+  /** Umbral de margen ya resuelto por el backend (ver `StatsProjectRow`). */
+  marginThreshold: number;
+  projectedPct: number;
+  projectedTotal: number;
   approvedHours: number;
 };
 
@@ -1242,6 +1284,8 @@ export type PortfolioProject = {
   revenueRecognized: number;
   grossMarginActual: number;
   grossMarginActualPct: number | null;
+  /** Umbral de margen ya resuelto por el backend (ver `StatsProjectRow`). */
+  marginThreshold: number;
   alertLevel: "ok" | "warning" | "exceeded";
   evm: EVMResult | null;
   totalMilestones: number;
