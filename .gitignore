@@ -14,3 +14,7 @@ dist/
 
 # Grafo generado por graphify (se reconstruye con: graphify extract . --code-only)
 graphify-out/
+
+# Cache de Python de las skills
+__pycache__/
+*.pyc
