@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
 import { addDays } from "../../utils/capacity.js";
 import { computeEVM } from "../../utils/evm.js";
+import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
 import { getLogger } from "../../infra/logger.js";
 
 async function upsertAlert(
@@ -133,39 +134,32 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
       },
       expenses: true,
       revenueEntries: true,
+      forecasts: {
+        include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
+      },
     },
   });
 
   for (const project of projectsWithRevenue) {
-    const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap);
-
-    const laborCost = project.timeEntries.reduce((s, e) => {
-      const rate = Number(e.consultant.hourlyRate ?? 0);
-      return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
-    }, 0);
-
-    const expensesCost = project.expenses.reduce(
-      (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap),
-      0,
+    // Mismo cálculo unificado que /stats y el detalle del proyecto.
+    const fin = computeProjectFinancials(
+      toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency),
     );
+    const budget = fin.budget;
+    const spent = fin.totalCostActual;
 
-    const spent = laborCost + expensesCost;
-
-    const revenueRecognized = project.revenueEntries.reduce((s, r) => {
-      return s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap);
-    }, 0);
-
-    // Margin alert (threshold 15%)
-    if (revenueRecognized > 0) {
-      const marginPct = ((revenueRecognized - spent) / revenueRecognized) * 100;
-      const threshold = 15;
-      if (marginPct < threshold) {
+    // Alerta de margen. El umbral sale SIEMPRE de `project.marginThreshold`;
+    // ANTES estaba hardcodeado a 15 aquí, ignorando el valor por proyecto.
+    if (fin.grossMarginActualPct !== null) {
+      const marginPct = fin.grossMarginActualPct;
+      const threshold = fin.marginThreshold;
+      if (fin.belowMarginThreshold) {
         await upsertAlert(prisma, {
           type: "MARGIN_BELOW_THRESHOLD",
           severity: marginPct < threshold * 0.5 ? "CRITICAL" : "WARNING",
           projectId: project.id,
           message: `Proyecto "${project.name}" tiene margen bruto de ${marginPct.toFixed(1)}% (umbral ${threshold}%)`,
-          metadata: { marginPct, revenueRecognized, spent, threshold, currency: baseCurrency },
+          metadata: { marginPct, revenueRecognized: fin.revenueRecognized, spent, threshold, currency: baseCurrency },
         });
       } else {
         await resolveAlert(prisma, "MARGIN_BELOW_THRESHOLD", project.id);

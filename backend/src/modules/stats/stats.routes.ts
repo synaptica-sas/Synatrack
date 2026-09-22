@@ -3,10 +3,10 @@ import { AppRole, TimeEntryStatus } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
-import { getAdjustedForecastCost, getAdjustedForecastRevenue } from "../../utils/financial.js";
+import { buildRateMap } from "../../utils/currency.js";
+import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
 import { computeEVM } from "../../utils/evm.js";
-import { computeHealthStatus } from "../../utils/health.js";
+import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
 
 const statsQuerySchema = z
   .object({
@@ -41,6 +41,8 @@ export async function statsRoutes(app: FastifyInstance) {
       const fxConfigs = await prisma.fxConfig.findMany();
       const rateMap = buildRateMap(fxConfigs);
       const baseCurrency = query.baseCurrency ?? fxConfigs[0]?.baseCode ?? "USD";
+      // Un solo "ahora" por petición; las utilidades no leen el reloj.
+      const now = new Date();
 
       const projects = await prisma.project.findMany({
         where: {
@@ -68,101 +70,18 @@ export async function statsRoutes(app: FastifyInstance) {
         const approvedEntries = project.timeEntries.filter(
           (e) => e.status === TimeEntryStatus.APPROVED,
         );
-        const approvedHours = approvedEntries.reduce((s, e) => s + Number(e.hours), 0);
         const totalHours = project.timeEntries.reduce((s, e) => s + Number(e.hours), 0);
 
-        // Costo laboral real: horas aprobadas * tarifa consultor, convertido a base
-        const laborCostActual = approvedEntries.reduce((s, e) => {
-          const rate = Number(e.consultant.hourlyRate ?? 0);
-          const costLocal = Number(e.hours) * rate;
-          return s + convertAmountFallback(costLocal, e.consultant.rateCurrency, baseCurrency, rateMap);
-        }, 0);
+        // Cálculo financiero unificado (utils/financial.ts) — misma fórmula que
+        // /portfolio, el detalle del proyecto y el motor de alertas.
+        const fin = computeProjectFinancials(
+          toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
+        );
 
-        // Gastos reales en base
-        const expensesActual = project.expenses.reduce((s, e) => {
-          return s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap);
-        }, 0);
-
-        const spent = laborCostActual + expensesActual;
-
-        // Presupuesto en base
-        const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap);
-
-        // Precio de venta en base
-        const contractValue = project.sellPrice
-          ? convertAmountFallback(Number(project.sellPrice), project.sellCurrency, baseCurrency, rateMap)
-          : 0;
-
-        // Ingresos reconocidos
-        const revenueRecognized = project.revenueEntries.reduce((s, r) => {
-          return s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap);
-        }, 0);
-
-        // Forecast ajustado: descuenta horas ya aprobadas por período
-        let projectedCost = 0;
-        let projectedRevenue = revenueRecognized;
-
-        for (const forecast of project.forecasts) {
-          const rangeStart = new Date(forecast.startDate + "T00:00:00Z");
-          const rangeEnd   = new Date(forecast.endDate   + "T23:59:59Z");
-
-          const approvedInPeriod = approvedEntries
-            .filter(
-              (e) =>
-                e.consultantId === forecast.consultantId &&
-                e.workDate >= rangeStart &&
-                e.workDate <= rangeEnd,
-            )
-            .reduce((s, e) => s + Number(e.hours), 0);
-
-          projectedCost += getAdjustedForecastCost(
-            {
-              hoursProjected: Number(forecast.hoursProjected),
-              hourlyRate: forecast.hourlyRate ? Number(forecast.hourlyRate) : null,
-              sellRate: forecast.sellRate ? Number(forecast.sellRate) : null,
-              currency: forecast.currency,
-            },
-            {
-              hourlyRate: forecast.consultant.hourlyRate ? Number(forecast.consultant.hourlyRate) : null,
-              rateCurrency: forecast.consultant.rateCurrency,
-            },
-            approvedInPeriod,
-            rateMap,
-            baseCurrency,
-          );
-
-          projectedRevenue += getAdjustedForecastRevenue(
-            {
-              hoursProjected: Number(forecast.hoursProjected),
-              hourlyRate: forecast.hourlyRate ? Number(forecast.hourlyRate) : null,
-              sellRate: forecast.sellRate ? Number(forecast.sellRate) : null,
-              currency: forecast.currency,
-            },
-            approvedInPeriod,
-            rateMap,
-            baseCurrency,
-          );
-        }
-
-        const totalProjected = spent + projectedCost;
-        const projectedPct = budget > 0 ? Number(((totalProjected / budget) * 100).toFixed(2)) : 0;
-
-        // Margen bruto actual y proyectado
-        const grossMarginActual = revenueRecognized - spent;
-        const grossMarginActualPct =
-          revenueRecognized > 0
-            ? Number(((grossMarginActual / revenueRecognized) * 100).toFixed(2))
-            : null;
-
-        const grossMarginProjected = projectedRevenue - totalProjected;
-        const grossMarginProjectedPct =
-          projectedRevenue > 0
-            ? Number(((grossMarginProjected / projectedRevenue) * 100).toFixed(2))
-            : null;
-
-        // Alerta de desvío
-        const alertLevel =
-          projectedPct > 100 ? "exceeded" : projectedPct > 90 ? "warning" : "ok";
+        const spent = fin.totalCostActual;
+        const budget = fin.budget;
+        const totalProjected = fin.totalCostProjected;
+        const alertLevel = fin.alertLevel;
 
         // EVM
         const evm = project.startDate && project.endDate
@@ -175,22 +94,15 @@ export async function statsRoutes(app: FastifyInstance) {
             })
           : null;
 
-        // Riesgos de alto impacto abiertos
-        const openHighRisks = (project.risks ?? []).filter(
-          (r) => r.riskScore >= 6 && r.status === "OPEN",
-        ).length;
+        // Riesgos e hitos con el criterio homologado de health.ts
+        const openHighRisks = countOpenHighRisks(project.risks ?? []);
+        const delayedMilestones = countDelayedMilestones(project.milestones ?? [], now);
 
-        // Hitos atrasados
-        const today = new Date();
-        const delayedMilestones = (project.milestones ?? []).filter(
-          (m) => m.status !== "COMPLETED" && m.plannedDate < today,
-        ).length;
-
-        // RAG health
+        // RAG health — el umbral sale SIEMPRE de project.marginThreshold
         const healthStatus = computeHealthStatus({
           alertLevel,
-          grossMarginActualPct,
-          marginThreshold: 15,
+          grossMarginActualPct: fin.grossMarginActualPct,
+          marginThreshold: fin.marginThreshold,
           openHighRisks,
           delayedMilestones,
           spi: evm?.spi ?? null,
@@ -213,25 +125,26 @@ export async function statsRoutes(app: FastifyInstance) {
           budget,
           spent,
           remainingBudget: budget - spent,
-          usedBudgetPercent: budget > 0 ? Number(((spent / budget) * 100).toFixed(2)) : 0,
-          projectedCost,
+          usedBudgetPercent: fin.budgetConsumedPct,
+          projectedCost: fin.laborCostForecast,
           projectedTotal: totalProjected,
-          projectedPct,
-          estimateAtCompletion: totalProjected,
-          budgetVariance: budget - totalProjected,
+          projectedPct: fin.projectedPct,
+          estimateAtCompletion: fin.estimateAtCompletion,
+          budgetVariance: fin.budgetVariance,
           // Ingresos y margen
-          contractValue,
-          revenueRecognized,
-          grossMarginActual,
-          grossMarginActualPct,
-          grossMarginProjected,
-          grossMarginProjectedPct,
+          contractValue: fin.contractValue,
+          revenueRecognized: fin.revenueRecognized,
+          grossMarginActual: fin.grossMarginActual,
+          grossMarginActualPct: fin.grossMarginActualPct,
+          grossMarginProjected: fin.grossMarginProjected,
+          grossMarginProjectedPct: fin.grossMarginProjectedPct,
+          marginThreshold: fin.marginThreshold,
           // Horas
           totalHours,
-          approvedHours,
+          approvedHours: fin.approvedHours,
           // Desglose de gasto
-          laborCostActual,
-          expensesActual,
+          laborCostActual: fin.laborCostActual,
+          expensesActual: fin.expensesActual,
           // Alerta
           alertLevel,
           // EVM
@@ -312,6 +225,8 @@ export async function statsRoutes(app: FastifyInstance) {
       const fxConfigs = await prisma.fxConfig.findMany();
       const rateMap = buildRateMap(fxConfigs);
       const baseCurrency = query.baseCurrency ?? fxConfigs[0]?.baseCode ?? "USD";
+      // Un solo "ahora" por petición; las utilidades no leen el reloj.
+      const now = new Date();
 
       const projects = await prisma.project.findMany({
         where: {
@@ -338,37 +253,17 @@ export async function statsRoutes(app: FastifyInstance) {
           (e) => e.status === TimeEntryStatus.APPROVED,
         );
 
-        const laborCostActual = approvedEntries.reduce((s, e) => {
-          const rate = Number(e.consultant.hourlyRate ?? 0);
-          return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
-        }, 0);
+        // Mismo cálculo unificado que /overview y el detalle del proyecto.
+        // ANTES: este endpoint sumaba `hoursProjected * consultant.hourlyRate`
+        // sin descontar lo ya aprobado, ignorando `forecast.hourlyRate` y
+        // convirtiendo desde la moneda del consultor en vez de la del forecast.
+        const fin = computeProjectFinancials(
+          toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
+        );
 
-        const expensesActual = project.expenses.reduce((s, e) => {
-          return s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap);
-        }, 0);
-
-        const spent = laborCostActual + expensesActual;
-        const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap);
-
-        const revenueRecognized = project.revenueEntries.reduce((s, r) => {
-          return s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap);
-        }, 0);
-
-        const grossMarginActual = revenueRecognized - spent;
-        const grossMarginActualPct =
-          revenueRecognized > 0
-            ? Number(((grossMarginActual / revenueRecognized) * 100).toFixed(2))
-            : null;
-
-        // Costo proyectado: horas forecast pendientes de aprobación
-        const laborCostForecast = project.forecasts.reduce((s, f) => {
-          const rate = Number(f.consultant.hourlyRate ?? 0);
-          return s + convertAmountFallback(Number(f.hoursProjected) * rate, f.consultant.rateCurrency, baseCurrency, rateMap);
-        }, 0);
-        const totalProjected = spent + laborCostForecast;
-        const projectedPct = budget > 0 ? (totalProjected / budget) * 100 : 0;
-        const alertLevel =
-          projectedPct > 100 ? "exceeded" : projectedPct > 90 ? "warning" : "ok";
+        const spent = fin.totalCostActual;
+        const budget = fin.budget;
+        const alertLevel = fin.alertLevel;
 
         const evm =
           project.startDate && project.endDate
@@ -381,13 +276,8 @@ export async function statsRoutes(app: FastifyInstance) {
               })
             : null;
 
-        const today = new Date();
-        const openHighRisks = project.risks.filter(
-          (r) => r.riskScore >= 6 && r.status === "OPEN",
-        ).length;
-        const delayedMilestones = project.milestones.filter(
-          (m) => m.status !== "COMPLETED" && m.plannedDate < today,
-        ).length;
+        const openHighRisks = countOpenHighRisks(project.risks);
+        const delayedMilestones = countDelayedMilestones(project.milestones, now);
         const completedMilestones = project.milestones.filter(
           (m) => m.status === "COMPLETED",
         ).length;
@@ -400,8 +290,8 @@ export async function statsRoutes(app: FastifyInstance) {
 
         const healthStatus = computeHealthStatus({
           alertLevel,
-          grossMarginActualPct,
-          marginThreshold: 15,
+          grossMarginActualPct: fin.grossMarginActualPct,
+          marginThreshold: fin.marginThreshold,
           openHighRisks,
           delayedMilestones,
           spi: evm?.spi ?? null,
@@ -424,10 +314,12 @@ export async function statsRoutes(app: FastifyInstance) {
           displayCurrency: baseCurrency,
           budget,
           spent,
-          usedBudgetPercent: budget > 0 ? Number(((spent / budget) * 100).toFixed(2)) : 0,
-          revenueRecognized,
-          grossMarginActual,
-          grossMarginActualPct,
+          usedBudgetPercent: fin.budgetConsumedPct,
+          projectedPct: fin.projectedPct,
+          revenueRecognized: fin.revenueRecognized,
+          grossMarginActual: fin.grossMarginActual,
+          grossMarginActualPct: fin.grossMarginActualPct,
+          marginThreshold: fin.marginThreshold,
           alertLevel,
           evm,
           // Counts for dashboard badges

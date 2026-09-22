@@ -210,12 +210,12 @@ describe("calculateProfitability", () => {
     expect(result.grossMarginActual).toBeLessThan(0);
   });
 
-  it("grossMarginActualPct = 0 si no hay ingresos reconocidos", () => {
+  it("grossMarginActualPct = null si no hay ingresos reconocidos (no medible, no 0%)", () => {
     const result = calculateProfitability({
       ...baseInput,
       revenueEntries: [],
     });
-    expect(result.grossMarginActualPct).toBe(0);
+    expect(result.grossMarginActualPct).toBeNull();
   });
 
   it("convierte presupuesto multimoneda (COP → USD) usando FX", () => {

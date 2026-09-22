@@ -29,6 +29,39 @@ const projectManagerEmailSchema = z
   .nullish()
   .transform((valor) => (valor === "" ? null : valor));
 
+/**
+ * Umbrales porcentuales configurables por proyecto (`marginThreshold` y
+ * `budgetAlertPct`).
+ *
+ * Hasta R10 no estaban en este esquema, así que **no se podían asignar desde la
+ * aplicación**: la columna quedaba siempre nula y todo caía al valor por defecto
+ * (ver `DEFAULT_MARGIN_THRESHOLD_PCT` y `DEFAULT_BUDGET_ALERT_PCT` en
+ * `utils/financial.ts`). Es el mismo defecto que tenía `projectManagerEmail`
+ * antes de R7: el backend leía un campo que nadie podía escribir.
+ *
+ * El cero es un valor legítimo y NO cae al default.
+ *
+ * Los dos campos se tratan distinto a propósito, porque el esquema de datos los
+ * declara distinto: `marginThreshold` es `Decimal?` (nulable), así que una cadena
+ * vacía lo desasigna y vuelve a null; `budgetAlertPct` es `Decimal @default(90)`
+ * (no nulable), así que una cadena vacía significa "no tocar" y se deja que
+ * mande el valor que ya tuviera la fila.
+ */
+const umbralBase = z.coerce
+  .number()
+  .min(0, "el umbral no puede ser negativo")
+  .max(100, "el umbral no puede superar 100");
+
+const umbralNulableSchema = z
+  .union([z.literal(""), umbralBase])
+  .nullish()
+  .transform((valor) => (valor === "" ? null : valor));
+
+const umbralNoNulableSchema = z
+  .union([z.literal(""), umbralBase])
+  .nullish()
+  .transform((valor) => (valor === "" || valor === null ? undefined : valor));
+
 const projectPayloadSchema = z.object({
   name: z.string().trim().min(1),
   company: z.string().trim().min(1),
@@ -47,6 +80,8 @@ const projectPayloadSchema = z.object({
   sellPrice: z.coerce.number().positive().optional(),
   sellCurrency: z.string().trim().toUpperCase().length(3).default("USD"),
   projectManagerEmail: projectManagerEmailSchema,
+  marginThreshold: umbralNulableSchema,
+  budgetAlertPct: umbralNoNulableSchema,
 });
 
 const listProjectsQuerySchema = z.object({
@@ -119,6 +154,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
         projectManagerEmail: body.projectManagerEmail,
+        marginThreshold: body.marginThreshold,
+        budgetAlertPct: body.budgetAlertPct,
       },
     });
 
@@ -188,6 +225,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
         projectManagerEmail: body.projectManagerEmail,
+        marginThreshold: body.marginThreshold,
+        budgetAlertPct: body.budgetAlertPct,
       },
     });
 
@@ -279,6 +318,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         budgetCurrency: project.currency,
         sellPrice: project.sellPrice ? Number(project.sellPrice) : null,
         sellCurrency: project.sellCurrency,
+        marginThreshold: project.marginThreshold != null ? Number(project.marginThreshold) : null,
+        budgetAlertPct: project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
         revenueEntries: project.revenueEntries.map((r) => ({ amount: Number(r.amount), currency: r.currency })),
         approvedTimeEntries: project.timeEntries.map((e) => ({
           consultantId: e.consultantId,
@@ -302,10 +343,10 @@ export async function projectsRoutes(app: FastifyInstance) {
             rateCurrency: f.consultant.rateCurrency,
           },
         })),
-        fxConfigs: Array.from(rateMap.entries()).map(([key, rate]) => {
-          const [baseCode, quoteCode] = key.split("_");
-          return { baseCode, quoteCode, rate };
-        }),
+        // ANTES (bug §10.2 #4): se reconstruía el rateMap con `key.split("_")`
+        // cuando buildRateMap usa "->", así que TODAS las conversiones caían al
+        // fallback (monto sin convertir). Se pasan los FxConfig crudos.
+        fxConfigs,
         baseCurrency,
       });
 
