@@ -110,9 +110,9 @@ son preexistentes**, no los introdujeron esas ramas. Detalle en
 |---|---|---|---|---|
 | DEP-32 | P1 | **La conversión de moneda falla en silencio cuando no hay tasa.** `convertAmountFallback` devuelve el monto sin convertir en vez de señalarlo, así que en una base sin tasas cargadas los importes salen en su moneda original pero rotulados con la moneda base. Misma raíz que el punto 19 de la doc técnica §10, que lo describía solo para nómina. *(Corrección: la evidencia original de este ítem mezclaba este problema con DEP-35, que resultó ser la causa de lo que se veía en el tablero. Con tasas cargadas, la API **sí** convierte bien.)* | `backend/src/utils/currency.ts`; verificado que con tasas cargadas `/api/stats/overview` devuelve los valores convertidos correctos | Marcar en la respuesta los montos que no se pudieron convertir y señalarlos en la interfaz. |
 | ~~DEP-35~~ | **P0** | **RESUELTO en `fix/limpieza-frontend`** (commit 47d8a82). *El tablero mostraba cifras financieras equivocadas hasta que se tocaba el selector de moneda.* `DashboardTab` recibe `initialStats` por prop y lo usa solo como valor inicial de `useState`; cuando la petición de `App` termina, el componente **ignora la prop actualizada** y se queda con `null` para siempre. Entonces cae a `dashboardTotals`, que **suma presupuestos de distintas monedas como si fueran la misma unidad**. `setStats` solo se invoca desde `changeBaseCurrency`. Medido en local: al cargar muestra **US$ 660.090.000**; el valor correcto es **US$ 257.089**. Son **2.568 veces** de diferencia, y "Ingresos reconocidos" y "Margen bruto" salen en 0 teniendo datos. | `frontend/src/features/dashboard/DashboardTab.tsx:421` y `:459-466`; reproducido con navegador (verificado) | Sincronizar el estado con la prop (un `useEffect` sobre `initialStats`, o consumir la prop directamente sin estado local). Resuelto con un `useEffect` que sincroniza el estado con la prop comparando la moneda. **Queda abierto** que el cálculo de respaldo sigue sumando monedas mezcladas: si la petición falla, el tablero vuelve a mostrar un número equivocado y en silencio (ver DEP-36). |
-| DEP-33 | P1 | **Los enlaces profundos no funcionan.** Entrar directo a `/projects` o a cualquier ruta de pestaña (salvo `/profile`) redirige siempre a `/dashboard`. La navegación por el menú sí actualiza la URL, pero esa URL no se puede compartir ni recargar. | Efecto de enrutamiento de `frontend/src/App.tsx`: mientras `authUser` es `null` durante el arranque, redirige a `/` y se pierde el destino (verificado con Playwright en las 16 pantallas) | Guardar la ruta pedida antes de redirigir y restaurarla cuando termine la autenticación. |
-| DEP-34 | P3 | Tres advertencias de React en Actividades: `fill-opacity`, `stop-color` y `stop-opacity` deberían ir en camelCase en JSX. | Consola del navegador en `/activities` (verificado) | Renombrar a `fillOpacity`, `stopColor`, `stopOpacity`. |
-| DEP-36 | P1 | **El cálculo de respaldo del tablero suma monedas distintas.** `dashboardTotals` suma `p.budget` de todos los proyectos sin convertir, así que mezcla pesos y dólares como si fueran la misma unidad. Tras arreglar DEP-35 solo se usa si la petición de estadísticas falla — pero entonces muestra un número inventado en vez de un error, porque los hooks tampoco exponen el fallo. | `frontend/src/features/dashboard/DashboardTab.tsx:517` (verificado) | Ante un fallo de `/api/stats/overview`, mostrar estado de error en los indicadores en lugar de un total local sin convertir. Se cruza con el hallazgo de los hooks que se tragan los errores. |
+| ~~DEP-33~~ RESUELTO (fix/frontend-umbrales-y-ux) | P1 | **Los enlaces profundos no funcionan.** Entrar directo a `/projects` o a cualquier ruta de pestaña (salvo `/profile`) redirige siempre a `/dashboard`. La navegación por el menú sí actualiza la URL, pero esa URL no se puede compartir ni recargar. | Efecto de enrutamiento de `frontend/src/App.tsx`: mientras `authUser` es `null` durante el arranque, redirige a `/` y se pierde el destino (verificado con Playwright en las 16 pantallas) | Guardar la ruta pedida antes de redirigir y restaurarla cuando termine la autenticación. |
+| ~~DEP-34~~ RESUELTO (fix/frontend-umbrales-y-ux) | P3 | Tres advertencias de React en Actividades: `fill-opacity`, `stop-color` y `stop-opacity` deberían ir en camelCase en JSX. | Consola del navegador en `/activities` (verificado) | Renombrar a `fillOpacity`, `stopColor`, `stopOpacity`. |
+| ~~DEP-36~~ RESUELTO (fix/frontend-umbrales-y-ux) | P1 | **El cálculo de respaldo del tablero suma monedas distintas.** `dashboardTotals` suma `p.budget` de todos los proyectos sin convertir, así que mezcla pesos y dólares como si fueran la misma unidad. Tras arreglar DEP-35 solo se usa si la petición de estadísticas falla — pero entonces muestra un número inventado en vez de un error, porque los hooks tampoco exponen el fallo. | `frontend/src/features/dashboard/DashboardTab.tsx:517` (verificado) | Ante un fallo de `/api/stats/overview`, mostrar estado de error en los indicadores en lugar de un total local sin convertir. Se cruza con el hallazgo de los hooks que se tragan los errores. |
 
 ---
 
@@ -122,7 +122,7 @@ son preexistentes**, no los introdujeron esas ramas. Detalle en
 |---|---|---|---|---|
 | ~~DEP-37~~ RESUELTO (fix/pm-y-fugas-tarifas) | **P0** | **`projectManagerEmail` se lee en 9 sitios y no se escribe en ninguno.** No está en el esquema Zod de crear ni editar proyectos, no hay campo en el formulario del frontend y el seed no lo puebla: la columna solo puede tener valor si alguien lo escribe directo en la base. Consecuencias: la **aprobación de horas extra por el PM nunca puede ocurrir** (`isPM` siempre falso, solo aprueba ADMIN o una delegación), la validación de delegaciones falla igual, y el alcance por rol de `time-entries`, `extra-hours` y `activities` tiene la mitad "proyectos que gestiono" inerte. La documentación describe "Asignación de Project Manager (PM)" como parte del CRUD, pero no existe en el código. | Comprobado en base nueva: al crear un proyecto con `projectManagerEmail`, la columna queda vacía. Con el dato insertado a mano, el alcance del PM sí funciona (verificado) | Agregar el campo al esquema Zod de crear y editar, al formulario de proyectos y, idealmente, un selector de usuarios con rol PM. |
 | ~~DEP-38~~ RESUELTO (fix/pm-y-fugas-tarifas) | P1 | **La misma fuga de tarifas que se cerró en `time-entries` sigue abierta en otras rutas.** `GET /api/extra-hours` entrega el objeto `consultant` completo, con `hourlyRate`, a un VIEWER. Conviene revisar igual `activities`, `assignments`, `capacity` y `GET /api/consultants`. | `extra-hours.routes.ts` (verificado durante R5) | Aplicar el mismo `select` de Prisma que se usó en `time-entries`. |
-| DEP-39 | P2 | **`findFxRate` del frontend no triangula igual que el backend.** Solo triangula si la moneda de origen aparece como `baseCode`; `buildRateMap` del backend es bidireccional. Con `USD→COP` y `USD→MXN` cargadas, el backend resuelve `COP→MXN` y el conversor del frontend devuelve "sin tasa". | `frontend/src/utils/fxRate.ts`, fijado en una prueba que lo nombra como limitación (verificado) | Igualar el comportamiento al del backend. |
+| ~~DEP-39~~ RESUELTO (fix/frontend-umbrales-y-ux) | P2 | **`findFxRate` del frontend no triangula igual que el backend.** Solo triangula si la moneda de origen aparece como `baseCode`; `buildRateMap` del backend es bidireccional. Con `USD→COP` y `USD→MXN` cargadas, el backend resuelve `COP→MXN` y el conversor del frontend devuelve "sin tasa". | `frontend/src/utils/fxRate.ts`, fijado en una prueba que lo nombra como limitación (verificado) | Igualar el comportamiento al del backend. |
 | ~~DEP-40~~ RESUELTO (fix/campos-inescribibles-y-orden) | P3 | `approve` y `reject` de horas extra validan en orden distinto: approve comprueba el estado (409) antes que el mes cerrado (400), reject al revés. Ante una solicitud ya aprobada y en mes cerrado, devuelven códigos distintos. | `extra-hours.routes.ts`, anotado al extraer el helper en R6 | Unificar el orden. |
 | DEP-41 | P1 | **`CapacityConfig` no se puede configurar desde ningún lado.** El modelo tiene `hoursPerDay` (por defecto 8) y `workDaysPerWeek` (por defecto 5), por consultor o por país, y `capacity.routes.ts` los lee en cinco sitios para calcular la ocupación. Pero **no existe ningún endpoint ni formulario que los cree o edite**, así que la fila siempre es nula y toda la capacidad se calcula con 8 h / 5 días para todo el mundo, sin importar el país ni la jornada real del consultor. Es el mismo patrón que `projectManagerEmail` (R7), los umbrales (R10) e `identification` (R12). | `backend/prisma/schema.prisma` (modelo `CapacityConfig`) vs. cero escrituras en `backend/src` (verificado) | Crear el endpoint y la pantalla de configuración de jornada. Necesita decisión de producto sobre si se configura por país, por consultor o ambos. |
 | DEP-42 | P3 | **`Consultant.maxHoursPerDay` y `Consultant.skills` no los usa ni los escribe nadie.** `maxHoursPerDay` solo aparece en un `select` de Prisma y no entra en ningún cálculo; `skills` no está en el esquema Zod ni en la interfaz, pese a que la documentación describe "tags de habilidades". Campos muertos en el modelo. | Búsqueda sobre `backend/src` y `frontend/src` (verificado) | Implementarlos o retirarlos del modelo. |
@@ -140,34 +140,11 @@ son preexistentes**, no los introdujeron esas ramas. Detalle en
 
 ---
 
-## Qué queda abierto (11 ítems)
+## Qué queda abierto
 
-Ordenado por lo que más valor tiene arreglar primero.
+**Esta sección se movió.** La lista viva de pendientes, con el estado real y las decisiones
+que hacen falta, está en **`documentacion/PENDIENTES.md`**.
 
-| ID | P | Resumen | Por qué importa |
-|---|---|---|---|
-| DEP-33 | P1 | Los enlaces profundos no funcionan | Ninguna URL de la aplicación se puede compartir ni recargar |
-| DEP-36 | P1 | Si falla la petición de estadísticas, el tablero inventa un número | Muestra una suma de monedas mezcladas en vez de un error |
-| DEP-32 | P1 | La conversión de moneda falla en silencio sin tasas | Importes en la moneda equivocada, sin aviso |
-| DEP-22 | P1 | `SMTP_FROM` usa el dominio `synaptica.cc` y no `.co` | Si no es un dominio propio, todo correo sale con remitente ajeno |
-| DEP-39 | P2 | `findFxRate` del frontend no triangula como el backend | El conversor dice "sin tasa" donde el backend sí calcula |
-| DEP-05 | P2 | `AssignmentStatus.PARTIAL` nunca se escribe | 12 filtros cargan una condición imposible |
-| DEP-06 | P2 | `AlertType.CONSULTANT_OVERLOADED` nunca se genera | `capacity.ts` ya calcula el estado; conectarlo es trabajo corto |
-| DEP-40 | P3 | `approve` y `reject` validan en orden distinto | Códigos de error inconsistentes ante el mismo caso |
-| DEP-34 | P3 | Tres advertencias de React por atributos SVG | Cosmético |
-| DEP-08 | P3 | ~20 funciones de `api.ts` sin usar | Andamiaje de pantallas nunca construidas (hitos, riesgos, incidencias) |
-| DEP-14 | P3 | `TODO(backend)` duplicado en `periodUtils.ts` | Sin dueño |
-
-### Lo que NO está en este documento
-
-Sigue abierto en `DOCUMENTACION_TECNICA.md` §10, y pesa más que varios de los de arriba:
-
-- ~~**No hay scheduler**~~ **RESUELTO** en `feat/scheduler`: ciclo unificado, endpoint
-  `POST /api/jobs/run` con token compartido, cron horario en `render.yaml` e intervalo en
-  proceso opcional.
-- ~~**Auditoría parcial**~~ **RESUELTO** en `feat/auditoria-completa`: se auditan horas,
-  horas extra, gastos, ingresos, consultores, usuarios, actividades, estimaciones, bloqueos
-  de capacidad y la resolución de alertas, y se homologó la nomenclatura de `entity`.
-- **Sin paginación** en casi todos los listados.
-- **Tres cálculos distintos de rentabilidad**, con `marginThreshold` hardcodeado a 15 en dos
-  sitios, ignorando el valor configurado por proyecto.
+Este documento queda como **histórico de la depuración**: 42 ítems, 29 resueltos. Los
+tachados conservan su descripción original a propósito, para que se entienda qué se arregló
+y por qué.

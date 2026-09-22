@@ -202,7 +202,10 @@ permisos hardcodeada en `App.tsx` (`handleSwitchRole`, el simulador de rol para 
 6. **Auditoría parcial**: horas, horas extra, gastos, ingresos, consultores y usuarios no dejan rastro.
 7. Sin paginación en casi ningún `GET /` (excepto `/api/audit`).
 
-`documentacion/BACKLOG_DEPURACION.md` tiene 30 ítems de **limpieza** (código muerto, objetos
+**Lo que falta está en `documentacion/PENDIENTES.md`** (lista viva, con las decisiones de
+negocio que hacen falta y la trampa de los campos inescribibles que ya apareció cinco veces).
+
+`documentacion/BACKLOG_DEPURACION.md` es el histórico de la depuración: 42 ítems de **limpieza** (código muerto, objetos
 obsoletos, duplicación, configuración inconsistente) con evidencia archivo:línea y orden
 sugerido. Es la lista que hay que ir vaciando; no repite los §10 ni los de abajo.
 
