@@ -113,6 +113,112 @@
   --tint-pink-border: #fbcfe8;
   --tint-pink-text: #be185d;
 
+  /* ══════════════════════════════════════════════════════════════════════
+     ESCALA DE ESPACIADO
+     Seis pasos, no doce: con menos opciones es más difícil equivocarse y la
+     app respira igual en todas las pantallas. Úsalos en `gap`, `padding` y
+     `margin`; si necesitas un valor intermedio casi siempre es señal de que
+     el paso correcto es el de al lado, no uno nuevo.
+       1 → detalles pegados (icono + texto, chip interno)
+       2 → separación dentro de un control o celda
+       3 → separación entre campos de un formulario
+       4 → padding interior de una tarjeta
+       6 → separación entre bloques de una pantalla
+       8 → separación entre secciones mayores
+     ══════════════════════════════════════════════════════════════════════ */
+  --space-1: 0.25rem; /*  4px */
+  --space-2: 0.5rem;  /*  8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem;    /* 16px */
+  --space-6: 1.5rem;  /* 24px */
+  --space-8: 2rem;    /* 32px */
+
+  /* ══════════════════════════════════════════════════════════════════════
+     RADIOS
+     Uno por tamaño de elemento. El radio comunica jerarquía: cuanto mayor la
+     superficie, mayor el radio. No mezcles dos radios en el mismo elemento.
+     ══════════════════════════════════════════════════════════════════════ */
+  --radius-sm: 6px;      /* chips, barras de progreso, celdas, botones pequeños */
+  --radius-md: 10px;     /* controles de formulario y botones estándar */
+  --radius-lg: 14px;     /* tarjetas, paneles y modales */
+  --radius-pill: 9999px; /* píldoras y avatares */
+
+  /* ══════════════════════════════════════════════════════════════════════
+     SOMBRAS
+     Tres niveles de elevación, nunca negro puro: la sombra se tiñe con el
+     navy de marca para que no ensucie el fondo. En modo oscuro se
+     redefine `--shadow-color` (ver `body.dark` en App.css) porque una sombra
+     negra sobre fondo oscuro no se ve; allí la elevación la da sobre todo el
+     borde superior claro que ya trae `--shadow-md`/`--shadow-lg`.
+       sm → reposo: separa una tarjeta del fondo sin llamar la atención
+       md → hover de tarjeta, barras fijas, popovers
+       lg → capas flotantes: drawers, modales, menús desplegados
+     ══════════════════════════════════════════════════════════════════════ */
+  --shadow-color: 18 18 40; /* navy de marca, en componentes RGB */
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.08);
+  --shadow-md: 0 4px 12px rgb(var(--shadow-color) / 0.1);
+  --shadow-lg: 0 12px 32px rgb(var(--shadow-color) / 0.16);
+
+  /* ══════════════════════════════════════════════════════════════════════
+     EQUIVALENTES DE MARCA A LOS GRISES DE TAILWIND
+     Estos tokens existen para tener a qué sustituir los literales de Tailwind
+     que se colaron en los `.tsx` por copiar y pegar. La equivalencia es
+     directa: busca el literal, pon el token.
+       #6b7280 / #9ca3af  →  var(--text-muted)
+       #f9fafb / #f3f4f6  →  var(--surface-subtle)
+       #e5e7eb / #d1d5db  →  var(--border-subtle)
+     `--text-muted` está calculado para llegar a 4.5:1 sobre `--card-bg` en
+     ambos temas, así que sirve para texto pequeño; el gris de marca
+     `--color-sec-gray` (#767676) se queda en 4.3:1 y solo vale para bordes,
+     iconos y texto grande.
+     ══════════════════════════════════════════════════════════════════════ */
+  --text-muted: #6a6a6a;
+  --surface-subtle: #f6f7f9;
+  --border-subtle: var(--color-primary-10);
+
+  /* ══════════════════════════════════════════════════════════════════════
+     ESTADOS: TEXTO SOBRE SUPERFICIE Y RELLENO SÓLIDO
+     Las familias `--state-*-bg/border/text` que ya existían sirven para
+     mini-tarjetas y chips. Faltaban dos usos que cada pantalla resolvía con
+     literales de Tailwind:
+
+     a) `--state-*-strong`: color de TEXTO de un estado sobre `--bg`/`--card-bg`
+        (cifras de un KPI, celdas de una tabla). Son versiones oscurecidas para
+        cumplir 4.5:1 en claro y aclaradas para cumplirlo en oscuro. Sustituye
+        aquí los literales #ef4444, #f59e0b, #22c55e y #9ca3af cuando pintan
+        TEXTO.
+
+     b) `--state-*-solid` + `--state-*-on-solid`: relleno de un elemento cuyo
+        color ES el dato (barra de distribución, insignia del semáforo) y el
+        color de texto que encima de él contrasta. Ojo: el texto sobre sólido
+        NO siempre es blanco. Sobre el verde y el ámbar de marca el blanco se
+        queda en 2,6:1, así que encima va el navy; sobre el rojo sí va blanco.
+        Por eso hay un token por estado en vez de un `#fff` a mano: los 87
+        `#fff` incrustados en los `.tsx` son exactamente este error.
+
+     Regla que acompaña a estos tokens: el color nunca viaja solo. Toda barra,
+     punto o insignia de estado lleva además etiqueta o icono.
+     ══════════════════════════════════════════════════════════════════════ */
+  --state-success-strong: #4a7d1f;  /* verde de marca oscurecido: 5,0:1 sobre blanco */
+  --state-success-solid: var(--color-sec-green);
+  --state-success-on-solid: var(--color-primary);
+
+  --state-warning-strong: #8a5300;  /* ámbar de marca oscurecido: 6,4:1 sobre blanco */
+  --state-warning-solid: var(--color-accent);
+  --state-warning-on-solid: var(--color-primary);
+
+  --state-danger-strong: var(--color-sec-red);   /* 7,3:1 sobre blanco */
+  --state-danger-solid: var(--color-sec-red);
+  --state-danger-on-solid: #ffffff;              /* 7,3:1 sobre el rojo de marca */
+
+  --state-info-strong: var(--color-sec-blue);    /* 10:1 sobre blanco */
+  --state-info-solid: var(--color-sec-blue);
+  --state-info-on-solid: #ffffff;
+
+  --state-neutral-strong: var(--text-muted);
+  --state-neutral-solid: #5f5f5f;   /* gris de marca oscurecido: 6,5:1 con blanco encima */
+  --state-neutral-on-solid: #ffffff;
+
   --sans: "Manrope", "Segoe UI", sans-serif;
   --display: "Space Grotesk", "Manrope", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

@@ -1,75 +1,87 @@
 import { useState, useMemo } from "react";
 import { type HealthStatus } from "../../services/api";
 import { usePortfolio } from "../../hooks/usePortfolio";
-import { backendHealthToResult, textoCriteriosSalud, colorMargen } from "../../utils/projectHealth";
+import { textoCriteriosSalud, claseMargen, PRESENTACION_SALUD } from "../../utils/projectHealth";
 import { PROJECT_STATUS_LABELS, label } from "../../utils/statusLabels";
 import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
+
+/**
+ * Pantalla de referencia del sistema de diseño.
+ *
+ * Reglas que cumple y que el resto de pantallas debe adoptar (ver
+ * `documentacion/DISENO.md`):
+ *  - Cero colores literales: todo color sale de un token de `index.css`.
+ *  - Nada de `style={{ }}` para lo que se repite: los patrones viven como
+ *    clases en `App.css` (`.panel`, `.kpi-card`, `.meter`, `.status-badge`…).
+ *  - Espaciado y radios de la escala (`--space-*`, `--radius-*`).
+ *  - El color nunca viaja solo: cada indicador lleva icono y/o etiqueta.
+ */
 
 function fmt(n: number, currency = "USD") {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency, maximumFractionDigits: 0 }).format(n);
 }
 
+/** Tono del texto de un dato según su estado; se traduce a clase, no a color. */
+type Tone = "success" | "warning" | "danger" | "muted" | undefined;
+
 function RagBadge({ status, marginThreshold }: { status: HealthStatus; marginThreshold?: number | null }) {
-  const result = backendHealthToResult(status);
+  const p = PRESENTACION_SALUD[status] ?? PRESENTACION_SALUD.GREEN;
   return (
-    <span
-      style={{
-        display: "inline-block", padding: "0.15rem 0.55rem", borderRadius: "9999px",
-        background: result.color, color: "#fff", fontWeight: 700, fontSize: "0.7rem",
-      }}
-      title={textoCriteriosSalud(marginThreshold)}
-    >
-      {result.label}
+    <span className={`status-badge status-badge--${p.modificador}`} title={textoCriteriosSalud(marginThreshold)}>
+      <span className="status-badge__icon" aria-hidden="true">{p.icono}</span>
+      {p.etiqueta}
     </span>
   );
 }
 
-function KpiCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
+function KpiCard({ label, value, sub, tone }: { label: string; value: string | number; sub?: string; tone?: Tone }) {
   return (
-    <div style={{
-      background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e7eb)", borderRadius: "0.5rem",
-      padding: "1rem 1.25rem", minWidth: "10rem", flex: "1 1 10rem",
-    }}>
-      <div style={{ fontSize: "0.68rem", color: "var(--text-soft, #6b7280)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.3rem" }}>{label}</div>
-      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: accent ?? "inherit" }}>{value}</div>
-      {sub && <div style={{ fontSize: "0.7rem", color: "var(--text-soft, #9ca3af)", marginTop: "0.15rem" }}>{sub}</div>}
+    <div className="kpi-card">
+      <div className="kpi-card__label">{label}</div>
+      <div className={`kpi-card__value${tone ? ` tone-${tone}` : ""}`}>{value}</div>
+      {sub && <div className="kpi-card__sub">{sub}</div>}
     </div>
   );
 }
 
+/** Distribución de salud: barra apilada + leyenda con etiqueta de texto. */
 function HealthSummaryBar({ green, yellow, red, total }: { green: number; yellow: number; red: number; total: number }) {
   if (total === 0) return null;
+  const segmentos = [
+    { n: green, mod: "success", etiqueta: PRESENTACION_SALUD.GREEN.etiqueta },
+    { n: yellow, mod: "warning", etiqueta: PRESENTACION_SALUD.YELLOW.etiqueta },
+    { n: red, mod: "danger", etiqueta: PRESENTACION_SALUD.RED.etiqueta },
+  ];
   return (
-    <div style={{ display: "flex", height: "1.2rem", borderRadius: "0.35rem", overflow: "hidden", width: "100%" }}>
-      {green > 0 && (
-        <div style={{ flex: green, background: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", color: "#fff", fontWeight: 700 }}>
-          {green}
-        </div>
-      )}
-      {yellow > 0 && (
-        <div style={{ flex: yellow, background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", color: "#fff", fontWeight: 700 }}>
-          {yellow}
-        </div>
-      )}
-      {red > 0 && (
-        <div style={{ flex: red, background: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", color: "#fff", fontWeight: 700 }}>
-          {red}
-        </div>
-      )}
+    <div className="stack-bar" role="img" aria-label={segmentos.map((s) => `${s.etiqueta}: ${s.n}`).join(", ")}>
+      {segmentos
+        .filter((s) => s.n > 0)
+        .map((s) => (
+          <div
+            key={s.mod}
+            className={`stack-bar__seg stack-bar__seg--${s.mod}`}
+            style={{ flexGrow: s.n }}
+            title={`${s.etiqueta}: ${s.n}`}
+          >
+            {s.n}
+          </div>
+        ))}
     </div>
   );
 }
 
-function BudgetBar({ pct }: { pct: number }) {
+/** Medidor de porcentaje. El número siempre visible: el color solo refuerza. */
+function BudgetBar({ pct, etiqueta }: { pct: number; etiqueta: string }) {
   const capped = Math.min(pct, 100);
-  const color = pct > 100 ? "#ef4444" : pct > 90 ? "#f59e0b" : "#22c55e";
+  const mod = pct > 100 ? "danger" : pct > 90 ? "warning" : "success";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: "8rem" }}>
-      <div style={{ flex: 1, height: "0.45rem", background: "var(--border-color, #e5e7eb)", borderRadius: "9999px", overflow: "hidden" }}>
-        <div style={{ width: `${capped}%`, height: "100%", background: color }} />
+    <div className="meter">
+      <div className="meter__track">
+        <div className={`meter__fill meter__fill--${mod}`} style={{ width: `${capped}%` }} />
       </div>
-      <span style={{ fontSize: "0.65rem", color: "#6b7280", whiteSpace: "nowrap" }}>{pct.toFixed(0)}%</span>
+      <span className="meter__value">{pct.toFixed(0)}%</span>
+      <span className="sr-only">{`${etiqueta}: ${pct.toFixed(0)}%`}</span>
     </div>
   );
 }
@@ -93,13 +105,21 @@ function PortfolioSortTh({
   const active = sortField === field;
   return (
     <th
-      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+      className="is-sortable"
       onClick={() => onSort(field)}
       aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
     >
       {label} {active ? (sortDir === "asc" ? "↑" : "↓") : "⇅"}
     </th>
   );
+}
+
+/** Tono de CPI/SPI con los mismos cortes que tenía la pantalla. */
+function toneIndiceEvm(valor: number | null | undefined): Tone {
+  if (valor == null) return "muted";
+  if (valor < 0.85) return "danger";
+  if (valor < 1) return "warning";
+  return "success";
 }
 
 export function PortfolioTab({
@@ -129,8 +149,17 @@ export function PortfolioTab({
     return projects.map((p) => ({ value: p.projectId, label: p.projectName }));
   }, [projects]);
 
-  if (loading) return <div className="loading" style={{ padding: "2rem" }}>Cargando portafolio…</div>;
-  if (error) return <div style={{ padding: "2rem", color: "#ef4444" }}>{error}</div>;
+  if (loading) return <div className="panel">Cargando portafolio…</div>;
+  if (error) {
+    return (
+      <div className="notice notice--danger" role="alert">
+        <div className="notice__title">
+          <span aria-hidden="true">■</span> No se pudo cargar el portafolio
+        </div>
+        {error}
+      </div>
+    );
+  }
   if (!portfolio) return null;
 
   const { summary, baseCurrency } = portfolio;
@@ -199,57 +228,84 @@ export function PortfolioTab({
   const critical = projects.filter((p) => p.healthStatus === "RED").slice(0, 5);
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+    <section className="page-stack">
       <PageHeader
         icon="◈"
         title="Portafolio PMO"
         description="Supervisa el rendimiento consolidado del portafolio, indicadores EVM, salud de proyectos y análisis de riesgos."
         actions={
           <>
-            <button type="button" className="ghost" onClick={() => void reload()} style={{ fontSize: "0.85rem", padding: "0.5rem 1rem", borderRadius: "8px" }}>
+            <button type="button" className="ghost toolbar-btn" onClick={() => void reload()}>
               ↺ Actualizar
             </button>
-            <button type="button" onClick={exportCsv} style={{ fontSize: "0.85rem", padding: "0.5rem 1rem", borderRadius: "8px" }}>
+            <button type="button" className="toolbar-btn" onClick={exportCsv}>
               ↓ Exportar CSV
             </button>
           </>
         }
       />
 
-      {/* Summary KPI cards */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+      {/* Resumen del portafolio */}
+      <div className="kpi-grid">
         <KpiCard label="Total proyectos" value={summary.totalProjects} />
         <KpiCard label="Presupuesto total" value={fmt(summary.totalBudget, baseCurrency)} sub={baseCurrency} />
         <KpiCard label="Ejecutado total" value={fmt(summary.totalSpent, baseCurrency)} />
         <KpiCard label="Ingresos totales" value={fmt(summary.totalRevenue, baseCurrency)} />
-        <KpiCard label="Margen bruto" value={fmt(summary.totalGrossMargin, baseCurrency)} accent={summary.totalGrossMargin < 0 ? "#ef4444" : "#16a34a"} />
-        <KpiCard label="Proyectos críticos" value={summary.criticalCount} accent={summary.criticalCount > 0 ? "#ef4444" : undefined} sub="Salud = Crítico" />
-        <KpiCard label="Alertas activas" value={summary.alertCount} accent={summary.alertCount > 0 ? "#f59e0b" : undefined} />
+        <KpiCard
+          label="Margen bruto"
+          value={fmt(summary.totalGrossMargin, baseCurrency)}
+          tone={summary.totalGrossMargin < 0 ? "danger" : "success"}
+          sub={summary.totalGrossMargin < 0 ? "En pérdida" : "En positivo"}
+        />
+        <KpiCard
+          label="Proyectos críticos"
+          value={summary.criticalCount}
+          tone={summary.criticalCount > 0 ? "danger" : undefined}
+          sub="Salud = Crítico"
+        />
+        <KpiCard
+          label="Alertas activas"
+          value={summary.alertCount}
+          tone={summary.alertCount > 0 ? "warning" : undefined}
+          sub={summary.alertCount > 0 ? "Requieren revisión" : "Sin pendientes"}
+        />
       </div>
 
-      {/* Health breakdown bar */}
-      <div style={{ background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e7eb)", borderRadius: "0.5rem", padding: "1rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem", fontSize: "0.75rem" }}>
-          <span style={{ fontWeight: 600 }}>Distribución de salud</span>
-          <span style={{ color: "var(--text-soft, #6b7280)" }}>
-            🟢 {summary.byHealth.GREEN} &nbsp; 🟡 {summary.byHealth.YELLOW} &nbsp; 🔴 {summary.byHealth.RED}
+      {/* Distribución de salud */}
+      <div className="panel">
+        <div className="panel__head">
+          <span className="panel__title">Distribución de salud</span>
+          <span className="legend">
+            <span className="legend__item">
+              <span className="legend__dot legend__dot--success" aria-hidden="true" />
+              {PRESENTACION_SALUD.GREEN.etiqueta}: {summary.byHealth.GREEN}
+            </span>
+            <span className="legend__item">
+              <span className="legend__dot legend__dot--warning" aria-hidden="true" />
+              {PRESENTACION_SALUD.YELLOW.etiqueta}: {summary.byHealth.YELLOW}
+            </span>
+            <span className="legend__item">
+              <span className="legend__dot legend__dot--danger" aria-hidden="true" />
+              {PRESENTACION_SALUD.RED.etiqueta}: {summary.byHealth.RED}
+            </span>
           </span>
         </div>
         <HealthSummaryBar green={summary.byHealth.GREEN} yellow={summary.byHealth.YELLOW} red={summary.byHealth.RED} total={summary.totalProjects} />
       </div>
 
-      {/* Critical projects alert box */}
+      {/* Proyectos en estado crítico */}
       {critical.length > 0 && (
-        <div style={{ background: "var(--state-danger-bg)", border: "1px solid var(--state-danger-border)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
-          <div style={{ fontWeight: 700, color: "var(--state-danger-text)", marginBottom: "0.4rem", fontSize: "0.85rem" }}>
-            Proyectos en estado crítico (Salud Crítico)
+        <div className="notice notice--danger">
+          <div className="notice__title">
+            <span aria-hidden="true">{PRESENTACION_SALUD.RED.icono}</span>
+            Proyectos en estado crítico
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+          <div className="chip-row">
             {critical.map((p) => (
               <button
                 key={p.projectId}
                 type="button"
-                style={{ background: "var(--state-danger-bg)", border: "1px solid var(--state-danger-border)", borderRadius: "0.35rem", padding: "0.2rem 0.6rem", cursor: "pointer", fontSize: "0.75rem", color: "var(--state-danger-text)", fontWeight: 600 }}
+                className="chip-button"
                 onClick={() => onOpenProject?.(p.projectId)}
               >
                 {p.projectName}
@@ -259,55 +315,65 @@ export function PortfolioTab({
         </div>
       )}
 
-      {/* Filters */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", background: "var(--card-bg, #fff)", border: "1px solid var(--border-color, #e5e7eb)", borderRadius: "0.5rem", padding: "1rem" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Empresa</label>
-            <SearchableSelect
-              options={companyOptions}
-              value={companyFilter}
-              onChange={setCompanyFilter}
-              placeholder="Buscar o escribir empresa..."
-              emptyLabel="Todas las empresas"
-              allowFreeText={true}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Proyecto</label>
-            <SearchableSelect
-              options={projectOptions}
-              value={projectFilter}
-              onChange={setProjectFilter}
-              placeholder="Buscar o escribir proyecto..."
-              emptyLabel="Todos los proyectos"
-              allowFreeText={true}
-            />
-          </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Salud</label>
-            <select value={healthFilter} onChange={(e) => setHealthFilter(e.target.value as HealthStatus | "")} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
-              <option value="">Todas</option>
-              <option value="GREEN">Saludable</option>
-              <option value="YELLOW">Advertencia</option>
-              <option value="RED">Crítico</option>
-            </select>
-          </div>
-          <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Estado</label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
-              <option value="">Todos</option>
-              <option value="ACTIVE">Activo</option>
-              <option value="PAUSED">Pausado</option>
-              <option value="CLOSED">Cerrado</option>
-            </select>
+      {/* Filtros */}
+      <div className="panel">
+        <div className="panel__body">
+          <div className="field-grid">
+            <div>
+              <span className="field-label">Empresa</span>
+              <SearchableSelect
+                options={companyOptions}
+                value={companyFilter}
+                onChange={setCompanyFilter}
+                placeholder="Buscar o escribir empresa..."
+                emptyLabel="Todas las empresas"
+                allowFreeText={true}
+              />
+            </div>
+            <div>
+              <span className="field-label">Proyecto</span>
+              <SearchableSelect
+                options={projectOptions}
+                value={projectFilter}
+                onChange={setProjectFilter}
+                placeholder="Buscar o escribir proyecto..."
+                emptyLabel="Todos los proyectos"
+                allowFreeText={true}
+              />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="portfolio-salud">Salud</label>
+              <select
+                id="portfolio-salud"
+                className="select-control"
+                value={healthFilter}
+                onChange={(e) => setHealthFilter(e.target.value as HealthStatus | "")}
+              >
+                <option value="">Todas</option>
+                <option value="GREEN">{PRESENTACION_SALUD.GREEN.etiqueta}</option>
+                <option value="YELLOW">{PRESENTACION_SALUD.YELLOW.etiqueta}</option>
+                <option value="RED">{PRESENTACION_SALUD.RED.etiqueta}</option>
+              </select>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="portfolio-estado">Estado</label>
+              <select
+                id="portfolio-estado"
+                className="select-control"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="">Todos</option>
+                <option value="ACTIVE">Activo</option>
+                <option value="PAUSED">Pausado</option>
+                <option value="CLOSED">Cerrado</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Heatmap table */}
+      {/* Tabla de proyectos */}
       <div className="table-wrap">
         <table>
           <thead>
@@ -330,45 +396,48 @@ export function PortfolioTab({
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={13} style={{ textAlign: "center", color: "var(--text-soft)" }}>Sin proyectos</td>
+                <td colSpan={13} className="cell-empty">Sin proyectos</td>
               </tr>
             )}
             {sorted.map((p) => (
-              <tr key={p.projectId} style={{ background: p.healthStatus === "RED" ? "var(--state-danger-bg)" : p.healthStatus === "YELLOW" ? "var(--state-warning-bg)" : "inherit" }}>
+              <tr
+                key={p.projectId}
+                className={p.healthStatus === "RED" ? "row-danger" : p.healthStatus === "YELLOW" ? "row-warning" : undefined}
+              >
                 <td><RagBadge status={p.healthStatus} marginThreshold={p.marginThreshold} /></td>
-                <td style={{ fontWeight: 600 }}>{p.projectName}</td>
+                <td className="cell-strong">{p.projectName}</td>
                 <td>{p.company}</td>
-                <td style={{ fontSize: "0.75rem" }}>
+                <td className="cell-small">
                   {p.projectType === "TIME_AND_MATERIAL" ? "T&M" : p.projectType === "FIXED_PRICE" ? "FP" : "Staff"}
                 </td>
                 <td>
-                  <span className={`pill ${p.status === "ACTIVE" ? "ok" : p.status === "PAUSED" ? "warn" : "neutral"}`} style={{ fontSize: "0.7rem" }}>
+                  <span className={`pill ${p.status === "ACTIVE" ? "ok" : p.status === "PAUSED" ? "warn" : "neutral"}`}>
                     {label(PROJECT_STATUS_LABELS, p.status)}
                   </span>
                 </td>
-                <td><BudgetBar pct={p.usedBudgetPercent} /></td>
-                <td><BudgetBar pct={p.completionPct} /></td>
-                <td style={{ fontWeight: 600, color: p.evm?.cpi != null ? (p.evm.cpi < 0.85 ? "#ef4444" : p.evm.cpi < 1 ? "#f59e0b" : "#22c55e") : "#9ca3af" }}>
+                <td><BudgetBar pct={p.usedBudgetPercent} etiqueta="Uso de presupuesto" /></td>
+                <td><BudgetBar pct={p.completionPct} etiqueta="Avance" /></td>
+                <td className={`cell-num tone-${toneIndiceEvm(p.evm?.cpi)}`}>
                   {p.evm?.cpi != null ? p.evm.cpi.toFixed(2) : "—"}
                 </td>
-                <td style={{ fontWeight: 600, color: p.evm?.spi != null ? (p.evm.spi < 0.85 ? "#ef4444" : p.evm.spi < 1 ? "#f59e0b" : "#22c55e") : "#9ca3af" }}>
+                <td className={`cell-num tone-${toneIndiceEvm(p.evm?.spi)}`}>
                   {p.evm?.spi != null ? p.evm.spi.toFixed(2) : "—"}
                 </td>
                 <td
-                  style={{ color: colorMargen(p.grossMarginActualPct, p.marginThreshold), fontWeight: 600 }}
+                  className={`cell-num ${claseMargen(p.grossMarginActualPct, p.marginThreshold)}`}
                   title={`Umbral de margen del proyecto: ${p.marginThreshold}%`}
                 >
                   {p.grossMarginActualPct != null ? `${p.grossMarginActualPct.toFixed(1)}%` : "—"}
                 </td>
-                <td style={{ textAlign: "center", color: p.openHighRisks > 0 ? "#ef4444" : "#22c55e", fontWeight: 600 }}>
+                <td className={`cell-num cell-center ${p.openHighRisks > 0 ? "tone-danger" : "tone-success"}`}>
                   {p.openHighRisks}
                 </td>
-                <td style={{ textAlign: "center", color: p.openIssues > 0 ? "#f59e0b" : "#22c55e" }}>
+                <td className={`cell-num cell-center ${p.openIssues > 0 ? "tone-warning" : "tone-success"}`}>
                   {p.openIssues}
                 </td>
                 <td>
                   {onOpenProject && (
-                    <button type="button" style={{ fontSize: "0.75rem" }} onClick={() => onOpenProject(p.projectId)}>
+                    <button type="button" className="ghost toolbar-btn" onClick={() => onOpenProject(p.projectId)}>
                       Ver
                     </button>
                   )}
@@ -379,12 +448,12 @@ export function PortfolioTab({
         </table>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
-        <span style={{ fontSize: "0.7rem", color: "#9ca3af" }}>
+      <div className="table-foot">
+        <span>
           {sorted.length} de {projects.length} proyectos · Moneda base: {baseCurrency}
         </span>
         {sorted.length > 0 && (
-          <button type="button" className="ghost" onClick={exportCsv} style={{ fontSize: "0.7rem" }}>
+          <button type="button" className="ghost toolbar-btn" onClick={exportCsv}>
             Exportar {sorted.length} filas como CSV
           </button>
         )}

@@ -88,21 +88,42 @@ export function textoCriteriosSalud(marginThreshold?: number | null): string {
 }
 
 /**
- * Color del texto del margen bruto, contrastado contra el umbral **real** del
- * proyecto y no contra un literal. Devuelve el gris neutro cuando el margen no
- * es medible (sin ingresos reconocidos).
+ * Clase de tono del texto del margen bruto, contrastada contra el umbral
+ * **real** del proyecto y no contra un literal. Devuelve el tono neutro cuando
+ * el margen no es medible (sin ingresos reconocidos).
+ *
+ * Antes se llamaba `colorMargen` y devolvía literales de Tailwind (#ef4444,
+ * #f59e0b, #22c55e, #9ca3af) que se incrustaban en un `style` en línea: eso
+ * ignoraba el modo oscuro y la paleta de Synaptica. Ahora devuelve una de las
+ * clases `tone-*` de `App.css`, que resuelven su color por token
+ * (`--state-*-strong`) y tienen contraparte oscura.
  */
-export function colorMargen(
+export function claseMargen(
   grossMarginActualPct: number | null | undefined,
   marginThreshold?: number | null,
-): string {
-  if (grossMarginActualPct == null) return "#9ca3af";
+): "tone-success" | "tone-warning" | "tone-danger" | "tone-muted" {
+  if (grossMarginActualPct == null) return "tone-muted";
   const umbral =
     marginThreshold != null && Number.isFinite(marginThreshold)
       ? marginThreshold
       : UMBRAL_MARGEN_POR_DEFECTO;
   // Mismos cortes que `computeHealthStatus`: rojo bajo medio umbral, ámbar bajo umbral.
-  if (grossMarginActualPct < umbral * 0.5) return "#ef4444";
-  if (grossMarginActualPct < umbral) return "#f59e0b";
-  return "#22c55e";
+  if (grossMarginActualPct < umbral * 0.5) return "tone-danger";
+  if (grossMarginActualPct < umbral) return "tone-warning";
+  return "tone-success";
 }
+
+/**
+ * Presentación accesible del semáforo: además del color, un icono y una
+ * etiqueta que **describe el estado, no el color** ("Crítico", no "Rojo"), con
+ * las mismas palabras que usa el filtro de Salud de la pantalla de portafolio.
+ * El color por sí solo no es información suficiente (WCAG 1.4.1).
+ */
+export const PRESENTACION_SALUD: Record<
+  "GREEN" | "YELLOW" | "RED",
+  { etiqueta: string; icono: string; modificador: "success" | "warning" | "danger" }
+> = {
+  GREEN: { etiqueta: "Saludable", icono: "●", modificador: "success" },
+  YELLOW: { etiqueta: "Advertencia", icono: "▲", modificador: "warning" },
+  RED: { etiqueta: "Crítico", icono: "■", modificador: "danger" },
+};
