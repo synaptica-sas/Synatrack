@@ -3017,11 +3017,6 @@ body.dark .country-tab-btn.ghost:hover {
   white-space: nowrap;
 }
 
-.status-badge__icon {
-  font-size: 0.85em;
-  line-height: 1;
-}
-
 .status-badge--success { background: var(--state-success-solid); color: var(--state-success-on-solid); }
 .status-badge--warning { background: var(--state-warning-solid); color: var(--state-warning-on-solid); }
 .status-badge--danger  { background: var(--state-danger-solid);  color: var(--state-danger-on-solid); }

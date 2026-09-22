@@ -254,3 +254,18 @@ En `documentacion/capturas/`, generadas con Playwright sobre el entorno local:
   proyectos en verde, así que para estas capturas se interceptó la respuesta de
   `/api/stats/portfolio` y se forzaron un `YELLOW` y un `RED`. **Solo afecta a la captura**,
   no hay ningún cambio en la app ni en los datos.
+
+## Iconos de estado: cuándo sí y cuándo no
+
+La regla es que **el color nunca sea el único portador de información**. Lo que satisface esa
+regla es la **etiqueta de texto**, no necesariamente un icono.
+
+- **Insignia con etiqueta** (`.status-badge`): **sin icono**. "Saludable" ya dice el estado;
+  añadir un `●` dentro de una píldora rellena no aporta nada y se lee como una viñeta de
+  lista. Se probó con icono y se quitó por eso.
+- **Junto a un título** (el panel de proyectos críticos): **sí**, ahí el icono funciona como
+  marcador visual del encabezado.
+- **Leyenda de un gráfico**: **punto de color**, que es la convención para mapear color a
+  serie. No un glifo de texto.
+- **Contexto compacto sin espacio para texto**: ahí el icono es la única opción, y entonces
+  debe tener **forma distinta** entre estados (● ▲ ■), no solo color distinto.

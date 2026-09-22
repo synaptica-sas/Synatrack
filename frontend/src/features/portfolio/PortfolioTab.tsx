@@ -28,8 +28,11 @@ type Tone = "success" | "warning" | "danger" | "muted" | undefined;
 function RagBadge({ status, marginThreshold }: { status: HealthStatus; marginThreshold?: number | null }) {
   const p = PRESENTACION_SALUD[status] ?? PRESENTACION_SALUD.GREEN;
   return (
+    // La insignia NO lleva icono: la etiqueta ("Saludable", "Advertencia",
+    // "Crítico") ya es la pista que no depende del color, que es lo que pide la
+    // regla de accesibilidad. Un punto dentro de una píldora rellena no añade
+    // información y se lee como una viñeta de lista.
     <span className={`status-badge status-badge--${p.modificador}`} title={textoCriteriosSalud(marginThreshold)}>
-      <span className="status-badge__icon" aria-hidden="true">{p.icono}</span>
       {p.etiqueta}
     </span>
   );
