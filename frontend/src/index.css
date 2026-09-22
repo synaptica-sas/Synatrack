@@ -219,6 +219,37 @@
   --state-neutral-solid: #5f5f5f;   /* gris de marca oscurecido: 6,5:1 con blanco encima */
   --state-neutral-on-solid: #ffffff;
 
+  /* ══════════════════════════════════════════════════════════════════════
+     GRÁFICOS
+     El proyecto dibuja los gráficos a mano en SVG, y cada uno traía su propia
+     lista de literales (`#ff9c2c`, `#3b82f6`, `#e2e8f0`, `#64748b`…): una
+     tercera paleta accidental, sin modo oscuro y sin relación con la marca.
+
+     a) `--chart-1..7`: serie categórica, para cuando cada color representa una
+        categoría distinta (porciones del donut). Arranca por la marca y sigue
+        con los tintes ya definidos; el orden importa, porque los primeros son
+        los que más se ven. Nunca es el único portador: toda serie lleva su
+        etiqueta al lado.
+     b) `--chart-grid`, `--chart-axis`, `--chart-track`: el andamiaje del
+        gráfico (rejilla, textos de eje, pista de una barra). Va por detrás del
+        dato y por eso se define aparte de la serie.
+
+     Para el color de ESTADO dentro de un gráfico (presupuesto excedido, en
+     aviso, correcto) NO se usa esta serie: se usa `--state-*-solid`, que es el
+     mismo verde/ámbar/rojo que el resto de la aplicación.
+     ══════════════════════════════════════════════════════════════════════ */
+  --chart-1: var(--color-accent);
+  --chart-2: var(--color-sec-blue);
+  --chart-3: var(--color-sec-green);
+  --chart-4: var(--color-sec-red);
+  --chart-5: #7c3aed; /* mismo violeta que --tint-purple-text */
+  --chart-6: #0e7490; /* mismo cian que --tint-cyan-text */
+  --chart-7: var(--color-sec-gray);
+
+  --chart-grid: var(--color-primary-10);
+  --chart-axis: var(--text-muted);
+  --chart-track: #e5e6ec; /* pista de una barra: se distingue de --card-bg blanco */
+
   --sans: "Manrope", "Segoe UI", sans-serif;
   --display: "Space Grotesk", "Manrope", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

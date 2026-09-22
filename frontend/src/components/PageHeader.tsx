@@ -7,48 +7,28 @@ interface PageHeaderProps {
   actions?: React.ReactNode;
 }
 
+/**
+ * Encabezado común a las 16 pantallas.
+ *
+ * Sin estilos en línea y sin colores literales: todo vive en las clases
+ * `.page-header*` de `App.css`, construidas solo con tokens. Antes traía un
+ * marrón incrustado como respaldo de `--text-strong` que no es de la paleta de
+ * Synaptica y que en modo oscuro dejaba el título marrón sobre fondo navy.
+ *
+ * El icono es decorativo —el título ya nombra la pantalla—, así que se oculta
+ * a los lectores de pantalla en vez de leerse como un glifo suelto.
+ */
 export function PageHeader({ icon, title, description, actions }: PageHeaderProps) {
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      borderBottom: "1px solid var(--border-color)",
-      paddingBottom: "1rem",
-      marginBottom: "1.5rem",
-      flexWrap: "wrap",
-      gap: "1rem",
-      width: "100%"
-    }}>
-      <div>
-        <h2 style={{
-          fontFamily: "var(--display, inherit)",
-          fontSize: "1.6rem",
-          color: "var(--text-strong, #5f2f00)",
-          margin: 0,
-          display: "flex",
-          alignItems: "center",
-          gap: "0.6rem",
-          fontWeight: 700
-        }}>
-          <span style={{ fontSize: "1.7rem" }}>{icon}</span>
+    <div className="page-header">
+      <div className="page-header__text">
+        <h2 className="page-header__title">
+          <span className="page-header__icon" aria-hidden="true">{icon}</span>
           <span>{title}</span>
         </h2>
-        <p style={{
-          color: "var(--text-soft, #6b7280)",
-          fontSize: "0.85rem",
-          marginTop: "0.25rem",
-          marginBottom: 0,
-          lineHeight: "1.4"
-        }}>
-          {description}
-        </p>
+        <p className="page-header__description">{description}</p>
       </div>
-      {actions && (
-        <div style={{ display: "flex", gap: "0.8rem", alignItems: "center" }}>
-          {actions}
-        </div>
-      )}
+      {actions && <div className="page-header__actions">{actions}</div>}
     </div>
   );
 }

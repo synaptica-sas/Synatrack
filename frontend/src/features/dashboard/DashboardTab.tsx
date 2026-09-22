@@ -10,7 +10,7 @@ import { readPersistedRange, type DateRange } from "../../components/dateRangeUt
 import { SearchableSelect } from "../../components/SearchableSelect";
 import type { TabId, FinancialPanel } from "../../types";
 import { formatISODateRange } from "../../utils/periodUtils";
-import { backendHealthToResult, textoCriteriosSalud } from "../../utils/projectHealth";
+import { textoCriteriosSalud, PRESENTACION_SALUD } from "../../utils/projectHealth";
 import { AlertBadge } from "./AlertBadge";
 import {
   calcDelta,
@@ -85,40 +85,46 @@ function BudgetChart({ rows }: { rows: BudgetChartRow[] }) {
   const maxVal = Math.max(...rows.map((r) => Math.max(r.budget, r.projectedTotal)), 1);
   const scale = (v: number) => (v / maxVal) * CHART_WIDTH;
   const svgH = rows.length * (BAR_HEIGHT + BAR_GAP) + BAR_GAP + 20;
-  const color = (level: BudgetChartRow["alertLevel"]) =>
-    level === "exceeded" ? "#ef4444" : level === "warning" ? "#f59e0b" : "#16a34a";
+  /**
+   * El nivel de alerta se traduce a MODIFICADOR DE CLASE, no a un color: antes
+   * devolvía tres literales de la paleta por defecto de Tailwind incrustados en
+   * el atributo `fill`, invisibles para el modo oscuro.
+   */
+  const tono = (level: BudgetChartRow["alertLevel"]) =>
+    level === "exceeded" ? "danger" : level === "warning" ? "warning" : "success";
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${svgH}`} style={{ width: "100%", height: "auto", maxWidth: W, display: "block", fontFamily: "inherit" }}>
+    <div className="chart-scroll">
+      <svg viewBox={`0 0 ${W} ${svgH}`} className="chart-svg" style={{ maxWidth: W }}>
         {rows.map((row, i) => {
           const y = BAR_GAP + i * (BAR_HEIGHT + BAR_GAP);
-          const c = color(row.alertLevel);
+          const t = tono(row.alertLevel);
           const label = row.projectName.length > 18 ? row.projectName.slice(0, 17) + "…" : row.projectName;
           return (
             <g key={row.projectName}>
-              <text x={LABEL_WIDTH - 6} y={y + BAR_HEIGHT / 2 + 4} textAnchor="end" fontSize={11} fill="#374151">{label}</text>
-              <rect x={LABEL_WIDTH} y={y} width={scale(row.budget)} height={BAR_HEIGHT} rx={3} fill="#e5e7eb" />
-              <rect x={LABEL_WIDTH} y={y + 4} width={scale(row.spent)} height={BAR_HEIGHT - 8} rx={2} fill={c} opacity={0.85} />
+              <text x={LABEL_WIDTH - 6} y={y + BAR_HEIGHT / 2 + 4} textAnchor="end" fontSize={11} className="chart-label">{label}</text>
+              <rect x={LABEL_WIDTH} y={y} width={scale(row.budget)} height={BAR_HEIGHT} rx={3} className="chart-track" />
+              <rect x={LABEL_WIDTH} y={y + 4} width={scale(row.spent)} height={BAR_HEIGHT - 8} rx={2} className={`chart-fill--${t}`} />
               {scale(row.projectedTotal) !== scale(row.spent) && (
                 <line x1={LABEL_WIDTH + scale(row.projectedTotal)} y1={y + 2}
                   x2={LABEL_WIDTH + scale(row.projectedTotal)} y2={y + BAR_HEIGHT - 2}
-                  stroke={c} strokeWidth={2} strokeDasharray="3,2" />
+                  className={`chart-stroke--${t}`} strokeWidth={2} strokeDasharray="3,2" />
               )}
               <text x={LABEL_WIDTH + Math.max(scale(row.budget), scale(row.projectedTotal)) + 6}
-                y={y + BAR_HEIGHT / 2 + 4} fontSize={10} fill="#6b7280">
+                y={y + BAR_HEIGHT / 2 + 4} fontSize={10} className="chart-axis">
                 {row.budget > 0 ? `${((row.projectedTotal / row.budget) * 100).toFixed(0)}%` : "—"}
               </text>
             </g>
           );
         })}
+        {/* Leyenda: cada trazo lleva su etiqueta en texto, no solo su color. */}
         <g transform={`translate(${LABEL_WIDTH},${svgH - 14})`}>
-          <rect width={10} height={8} rx={2} fill="#e5e7eb" />
-          <text x={13} y={8} fontSize={9} fill="#6b7280">Presupuesto</text>
-          <rect x={78} width={10} height={8} rx={2} fill="#16a34a" opacity={0.85} />
-          <text x={91} y={8} fontSize={9} fill="#6b7280">Gasto real</text>
-          <line x1={158} y1={0} x2={158} y2={9} stroke="#6b7280" strokeWidth={2} strokeDasharray="3,2" />
-          <text x={162} y={8} fontSize={9} fill="#6b7280">Proyectado</text>
+          <rect width={10} height={8} rx={2} className="chart-track" />
+          <text x={13} y={8} fontSize={9} className="chart-axis">Presupuesto</text>
+          <rect x={78} width={10} height={8} rx={2} className="chart-fill--success" />
+          <text x={91} y={8} fontSize={9} className="chart-axis">Gasto real</text>
+          <line x1={158} y1={0} x2={158} y2={9} className="chart-grid" strokeWidth={2} strokeDasharray="3,2" />
+          <text x={162} y={8} fontSize={9} className="chart-axis">Proyectado</text>
         </g>
       </svg>
     </div>
@@ -143,48 +149,48 @@ function ExtraHoursTrendChart({ data }: { data: { month: string; hours: number }
   const areaPoints = `${getX(0)},${PAD_T + chartH} ${points} ${getX(11)},${PAD_T + chartH}`;
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, height: "auto", display: "block" }}>
+    <div className="chart-scroll">
+      <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" style={{ maxWidth: W }}>
         <defs>
           <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ff9c2c" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#ff9c2c" stopOpacity="0.0" />
+            <stop offset="0%" className="chart-grad-from" />
+            <stop offset="100%" className="chart-grad-to" />
           </linearGradient>
         </defs>
-        
-        {/* Grid Lines */}
+
+        {/* Rejilla */}
         {[0, 0.25, 0.5, 0.75, 1].map((p, i) => {
           const val = p * maxVal;
           const y = getY(val);
           return (
             <g key={i}>
-              <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="#e2e8f0" strokeDasharray="3 3" />
-              <text x={PAD_L - 8} y={y + 4} textAnchor="end" fontSize={9} fill="#64748b">{val.toFixed(0)}h</text>
+              <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} className="chart-grid" strokeDasharray="3 3" />
+              <text x={PAD_L - 8} y={y + 4} textAnchor="end" fontSize={9} className="chart-axis">{val.toFixed(0)}h</text>
             </g>
           );
         })}
 
-        {/* Area under the line */}
+        {/* Área bajo la línea */}
         <polygon points={areaPoints} fill="url(#lineGrad)" />
 
-        {/* Trend line */}
-        <polyline points={points} fill="none" stroke="#9a4f0f" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+        {/* Línea de tendencia */}
+        <polyline points={points} fill="none" className="chart-stroke--1" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
 
-        {/* Dots and tooltips */}
+        {/* Puntos y valor */}
         {data.map((d, i) => (
           <g key={i}>
-            <circle cx={getX(i)} cy={getY(d.hours)} r={4} fill="#ff9c2c" stroke="#9a4f0f" strokeWidth={2} />
+            <circle cx={getX(i)} cy={getY(d.hours)} r={4} className="chart-fill--1 chart-gap" strokeWidth={2} />
             {d.hours > 0 && (
-              <text x={getX(i)} y={getY(d.hours) - 8} textAnchor="middle" fontSize={8} fontWeight={700} fill="#5f2f00">
+              <text x={getX(i)} y={getY(d.hours) - 8} textAnchor="middle" fontSize={8} fontWeight={700} className="chart-value--1">
                 {d.hours.toFixed(0)}
               </text>
             )}
           </g>
         ))}
 
-        {/* X Labels */}
+        {/* Etiquetas del eje X */}
         {data.map((d, i) => (
-          <text key={i} x={getX(i)} y={H - PAD_B + 16} textAnchor="middle" fontSize={9} fill="#64748b">
+          <text key={i} x={getX(i)} y={H - PAD_B + 16} textAnchor="middle" fontSize={9} className="chart-axis">
             {d.month}
           </text>
         ))}
@@ -194,10 +200,15 @@ function ExtraHoursTrendChart({ data }: { data: { month: string; hours: number }
 }
 
 function ExpensesDonutChart({ data }: { data: { category: string; amount: number; pct: number }[] }) {
-  const colors = ["#ff9c2c", "#9a4f0f", "#3b82f6", "#10b981", "#8b5cf6", "#f43f5e", "#6b7280"];
-  
+  /**
+   * Serie categórica del sistema de diseño (`--chart-1..7` en `index.css`), no
+   * una lista de literales propia de esta pantalla. Cada porción lleva además
+   * su etiqueta en la leyenda: el color no es el único portador.
+   */
+  const SERIES = 7;
+
   if (data.length === 0) {
-    return <p style={{ color: "#9ca3af", fontSize: "0.85rem", textAlign: "center", padding: "2rem" }}>Sin gastos registrados</p>;
+    return <p className="chart-empty">Sin gastos registrados</p>;
   }
 
   let cumulativePercent = 0;
@@ -234,7 +245,7 @@ function ExpensesDonutChart({ data }: { data: { category: string; amount: number
 
     slices.push({
       pathData,
-      color: colors[i % colors.length],
+      serie: (i % SERIES) + 1,
       category: d.category,
       pct: d.pct,
       amount: d.amount
@@ -242,23 +253,24 @@ function ExpensesDonutChart({ data }: { data: { category: string; amount: number
   }
 
   return (
-    <div style={{ display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap" }}>
-      <svg width={160} height={200} style={{ display: "block" }}>
+    <div className="chart-legend-row">
+      <svg width={160} height={200} className="chart-svg chart-svg--fixed" role="img"
+        aria-label={slices.map((s) => `${s.category}: ${s.pct.toFixed(0)}%`).join(", ")}>
         {slices.map((slice, i) => (
-          <path key={i} d={slice.pathData} fill={slice.color} stroke="#fff" strokeWidth={1.5} />
+          <path key={i} d={slice.pathData} className={`chart-fill--${slice.serie} chart-gap`} strokeWidth={1.5} />
         ))}
-        <circle cx={80} cy={100} r={25} fill="#fff" />
+        <circle cx={80} cy={100} r={25} className="chart-hole" />
       </svg>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.75rem", flex: 1, minWidth: "120px" }}>
+      <div className="chart-legend">
         {slices.slice(0, 5).map((slice, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-            <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: slice.color, flexShrink: 0 }} />
-            <span style={{ fontWeight: 600, color: "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slice.category}:</span>
-            <span style={{ color: "var(--text-soft)" }}>${slice.amount.toLocaleString()} ({slice.pct.toFixed(0)}%)</span>
+          <div key={i} className="chart-legend__item">
+            <span className={`chart-swatch chart-swatch--${slice.serie}`} aria-hidden="true" />
+            <span className="chart-legend__name">{slice.category}:</span>
+            <span className="chart-legend__value">${slice.amount.toLocaleString()} ({slice.pct.toFixed(0)}%)</span>
           </div>
         ))}
         {slices.length > 5 && (
-          <div style={{ fontSize: "0.7rem", color: "var(--text-soft)", fontStyle: "italic" }}>
+          <div className="chart-legend__more">
             + {slices.length - 5} más categorías
           </div>
         )}
@@ -280,21 +292,21 @@ function ExtraHoursByConsultantChart({ data }: { data: { name: string; hours: nu
   const scale = (v: number) => (v / maxVal) * CHART_W;
 
   if (data.length === 0) {
-    return <p style={{ color: "#9ca3af", fontSize: "0.85rem", textAlign: "center", padding: "2rem" }}>Sin horas extras aprobadas</p>;
+    return <p className="chart-empty">Sin horas extras aprobadas</p>;
   }
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <svg width={W} height={H} style={{ display: "block" }}>
+    <div className="chart-scroll">
+      <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" style={{ maxWidth: W }}>
         {data.map((d, i) => {
           const y = BAR_GAP + i * (BAR_HEIGHT + BAR_GAP);
           return (
             <g key={i}>
-              <text x={LABEL_W - 6} y={y + BAR_HEIGHT / 2 + 4} textAnchor="end" fontSize={10} fill="var(--text-strong)">
+              <text x={LABEL_W - 6} y={y + BAR_HEIGHT / 2 + 4} textAnchor="end" fontSize={10} className="chart-label">
                 {d.name.length > 12 ? d.name.slice(0, 11) + "…" : d.name}
               </text>
-              <rect x={LABEL_W} y={y} width={scale(d.hours)} height={BAR_HEIGHT} rx={4} fill="#ff9c2c" />
-              <text x={LABEL_W + scale(d.hours) + 6} y={y + BAR_HEIGHT / 2 + 4} fontSize={10} fontWeight={700} fill="#9a4f0f">
+              <rect x={LABEL_W} y={y} width={scale(d.hours)} height={BAR_HEIGHT} rx={4} className="chart-fill--1" />
+              <text x={LABEL_W + scale(d.hours) + 6} y={y + BAR_HEIGHT / 2 + 4} fontSize={10} fontWeight={700} className="chart-value--1">
                 {d.hours.toFixed(1)}h
               </text>
             </g>
@@ -307,15 +319,23 @@ function ExtraHoursByConsultantChart({ data }: { data: { name: string; hours: nu
 
 // ── KPI Card component ───────────────────────────────────────────────────────
 
+/** Tono del dato según su estado; se traduce a clase `tone-*`, nunca a color. */
+type KpiTone = "success" | "warning" | "danger";
+
 function DashboardKpi({
-  label, value, delta, tooltip, onClick, accent, sub, error, loading,
+  label, value, delta, tooltip, onClick, tone, sub, error, loading,
 }: {
   label: string;
   value: string;
   delta?: DeltaResult;
   tooltip?: string;
   onClick?: () => void;
-  accent?: string;
+  /**
+   * Sustituye al antiguo `accent`, que recibía un color literal y lo metía en
+   * un `style` en línea: ignoraba el modo oscuro y repetía la paleta por
+   * defecto de Tailwind en siete puntos del archivo.
+   */
+  tone?: KpiTone;
   sub?: string;
   /** DEP-36: mensaje del fallo. Si viene, el indicador no muestra ninguna cifra. */
   error?: string | null;
@@ -329,10 +349,8 @@ function DashboardKpi({
           <span className="kpi-label">{label}</span>
           <span className="kpi-tooltip-btn" title={error} aria-label={`Detalle del error de ${label}`}>!</span>
         </div>
-        <p style={{ color: "var(--color-sec-red, #dc2626)" }}>Sin dato</p>
-        <p style={{ fontSize: "0.72rem", color: "var(--color-sec-red, #dc2626)", marginTop: "0.15rem", fontWeight: 600 }}>
-          Error al cargar
-        </p>
+        <p className="tone-danger">Sin dato</p>
+        <p className="kpi-sub kpi-sub--danger">Error al cargar</p>
       </article>
     );
   }
@@ -342,7 +360,7 @@ function DashboardKpi({
         <div className="kpi-header">
           <span className="kpi-label">{label}</span>
         </div>
-        <p style={{ color: "var(--text-soft)" }}>…</p>
+        <p className="kpi-loading">…</p>
       </article>
     );
   }
@@ -361,8 +379,8 @@ function DashboardKpi({
           <span className="kpi-tooltip-btn" title={tooltip} aria-label={`Información sobre ${label}`}>?</span>
         )}
       </div>
-      <p style={{ color: accent ?? "inherit" }}>{value}</p>
-      {sub && <p style={{ fontSize: "0.72rem", color: "#9ca3af", marginTop: "0.15rem", fontWeight: 600 }}>{sub}</p>}
+      <p className={tone ? `tone-${tone}` : undefined}>{value}</p>
+      {sub && <p className="kpi-sub">{sub}</p>}
       {delta && (
         <div className={`kpi-delta ${delta.dir}`}>
           {delta.dir === "up" ? "▲" : delta.dir === "down" ? "▼" : "—"}
@@ -370,9 +388,7 @@ function DashboardKpi({
         </div>
       )}
       {!delta && onClick && (
-        <div style={{ fontSize: "0.65rem", color: "#d1b08c", marginTop: "0.3rem" }}>
-          Click para ver detalle →
-        </div>
+        <div className="kpi-hint">Click para ver detalle →</div>
       )}
     </article>
   );
@@ -845,42 +861,28 @@ export function DashboardTab({
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="page-stack">
       <PageHeader
         icon="▦"
         title="Tablero de Control"
         description="Monitorea el estado financiero, la salud del portafolio, el rendimiento y las alertas en tiempo real."
         actions={
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <div style={{ position: "relative" }}>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setExportMenuOpen((o) => !o)}
-                style={{ fontSize: "0.85rem", padding: "0.5rem 1rem", borderRadius: "8px" }}
-              >
-                📥 Exportar
-              </button>
-              {exportMenuOpen && (
-                <div style={{
-                  position: "absolute",
-                  top: "100%",
-                  right: 0,
-                  background: "#fff",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: "8px",
-                  boxShadow: "0 4px 12px rgba(154,79,15,0.08)",
-                  zIndex: 50,
-                  display: "flex",
-                  flexDirection: "column",
-                  minWidth: "120px",
-                  marginTop: "0.25rem"
-                }}>
-                  <button type="button" className="ghost" onClick={() => { void exportExcel(); setExportMenuOpen(false); }} style={{ padding: "0.5rem 1rem", textAlign: "left", fontSize: "0.8rem", width: "100%", border: "none" }}>Excel (.xlsx)</button>
-                  <button type="button" className="ghost" onClick={() => { void exportPdf(); setExportMenuOpen(false); }} style={{ padding: "0.5rem 1rem", textAlign: "left", fontSize: "0.8rem", width: "100%", border: "none" }}>PDF (.pdf)</button>
-                </div>
-              )}
-            </div>
+          <div className="menu-anchor">
+            <button
+              type="button"
+              className="ghost toolbar-btn"
+              onClick={() => setExportMenuOpen((o) => !o)}
+              aria-expanded={exportMenuOpen}
+              aria-haspopup="menu"
+            >
+              📥 Exportar
+            </button>
+            {exportMenuOpen && (
+              <div className="menu-pop" role="menu">
+                <button type="button" role="menuitem" className="ghost menu-pop__item" onClick={() => { void exportExcel(); setExportMenuOpen(false); }}>Excel (.xlsx)</button>
+                <button type="button" role="menuitem" className="ghost menu-pop__item" onClick={() => { void exportPdf(); setExportMenuOpen(false); }}>PDF (.pdf)</button>
+              </div>
+            )}
           </div>
         }
       />
@@ -888,78 +890,83 @@ export function DashboardTab({
 
       {/* Tarea 3: Portfolio Health — arriba del todo */}
       <article className="card">
-        <h3 style={{ marginBottom: "0.6rem" }}>Salud del portafolio</h3>
-        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center", marginBottom: "0.6rem" }}>
-          {[
-            { label: "Saludable",   count: healthCounts.green,  color: "var(--state-success-solid)", bg: "var(--state-success-bg)", pct: healthCounts.total > 0 ? healthCounts.green / healthCounts.total * 100 : 0 },
-            { label: "Advertencia", count: healthCounts.yellow, color: "var(--state-warning-solid)", bg: "var(--state-warning-bg)", pct: healthCounts.total > 0 ? healthCounts.yellow / healthCounts.total * 100 : 0 },
-            { label: "Crítico",     count: healthCounts.red,    color: "var(--state-danger-solid)",  bg: "var(--state-danger-bg)", pct: healthCounts.total > 0 ? healthCounts.red / healthCounts.total * 100 : 0 },
-          ].map(({ label, count, color, bg, pct }) => (
-            <div key={label} style={{
-              display: "flex", flexDirection: "column", alignItems: "center",
-              padding: "0.5rem 1rem", borderRadius: "0.5rem", background: bg, minWidth: "5.5rem",
-            }}>
-              <span style={{ fontSize: "1.6rem", fontWeight: 800, color, lineHeight: 1 }}>{count}</span>
-              <span style={{ fontSize: "0.68rem", color, fontWeight: 700 }}>{label}</span>
-              <span style={{ fontSize: "0.62rem", color: "var(--text-soft)", marginTop: "0.1rem" }}>{pct.toFixed(0)}%</span>
-            </div>
-          ))}
+        <h3 className="card-title-tight">Salud del portafolio</h3>
+        <div className="health-tiles">
+          {([
+            { mod: "success", label: PRESENTACION_SALUD.GREEN.etiqueta,  count: healthCounts.green },
+            { mod: "warning", label: PRESENTACION_SALUD.YELLOW.etiqueta, count: healthCounts.yellow },
+            { mod: "danger",  label: PRESENTACION_SALUD.RED.etiqueta,    count: healthCounts.red },
+          ] as const).map(({ mod, label, count }) => {
+            const pct = healthCounts.total > 0 ? (count / healthCounts.total) * 100 : 0;
+            return (
+              <div key={label} className={`health-tile health-tile--${mod}`}>
+                <span className="health-tile__count">{count}</span>
+                <span className="health-tile__label">{label}</span>
+                <span className="health-tile__pct">{pct.toFixed(0)}%</span>
+              </div>
+            );
+          })}
           {healthCounts.total > 0 && (
-            <div style={{ flex: "1 1 14rem", height: "1.1rem", display: "flex", borderRadius: "9999px", overflow: "hidden", minWidth: "10rem" }}>
-              {healthCounts.green  > 0 && <div style={{ flex: healthCounts.green,  background: "#22c55e", transition: "flex 0.4s" }} />}
-              {healthCounts.yellow > 0 && <div style={{ flex: healthCounts.yellow, background: "#f59e0b", transition: "flex 0.4s" }} />}
-              {healthCounts.red    > 0 && <div style={{ flex: healthCounts.red,    background: "#ef4444", transition: "flex 0.4s" }} />}
+            // Misma barra apilada que Portafolio. El `flexGrow` es un valor
+            // calculado, que es el único uso legítimo de un estilo en línea.
+            <div
+              className="stack-bar"
+              role="img"
+              aria-label={`${PRESENTACION_SALUD.GREEN.etiqueta}: ${healthCounts.green}, ${PRESENTACION_SALUD.YELLOW.etiqueta}: ${healthCounts.yellow}, ${PRESENTACION_SALUD.RED.etiqueta}: ${healthCounts.red}`}
+            >
+              {healthCounts.green  > 0 && <div className="stack-bar__seg stack-bar__seg--success" style={{ flexGrow: healthCounts.green }} title={`${PRESENTACION_SALUD.GREEN.etiqueta}: ${healthCounts.green}`} />}
+              {healthCounts.yellow > 0 && <div className="stack-bar__seg stack-bar__seg--warning" style={{ flexGrow: healthCounts.yellow }} title={`${PRESENTACION_SALUD.YELLOW.etiqueta}: ${healthCounts.yellow}`} />}
+              {healthCounts.red    > 0 && <div className="stack-bar__seg stack-bar__seg--danger"  style={{ flexGrow: healthCounts.red }}    title={`${PRESENTACION_SALUD.RED.etiqueta}: ${healthCounts.red}`} />}
             </div>
           )}
         </div>
-        {/* Critical projects */}
+        {/* Proyectos en estado crítico */}
         {displayProjects.filter((p) => p.healthStatus === "RED").length > 0 && (
-          <div style={{ background: "var(--state-danger-bg)", border: "1px solid var(--state-danger-border)", borderRadius: "0.4rem", padding: "0.5rem 0.75rem", fontSize: "0.8rem" }}>
-            <span style={{ fontWeight: 700, color: "var(--state-danger-text)" }}>🔴 Proyectos críticos: </span>
-            {displayProjects.filter((p) => p.healthStatus === "RED").map((p) => (
-              <span key={p.projectId} style={{ color: "var(--state-danger-text)", marginRight: "0.75rem" }}>
-                {p.projectName} {p.evm?.cpi != null ? `(CPI ${p.evm.cpi.toFixed(2)})` : ""}
-              </span>
-            ))}
+          <div className="notice notice--danger">
+            <div className="notice__title">
+              <span aria-hidden="true">{PRESENTACION_SALUD.RED.icono}</span>
+              Proyectos en estado crítico
+            </div>
+            <div className="inline-list tone-danger">
+              {displayProjects.filter((p) => p.healthStatus === "RED").map((p) => (
+                <span key={p.projectId}>
+                  {p.projectName} {p.evm?.cpi != null ? `(CPI ${p.evm.cpi.toFixed(2)})` : ""}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </article>
 
       {/* Tareas 9 + 14: Mini-cards riesgos/issues/cambios + EVM */}
       <div className="grid three-col">
-        <article className="card" style={{ textAlign: "center", background: risksSummary.openHighRisks > 0 ? "var(--state-danger-bg)" : "var(--state-success-bg)", border: `1px solid ${risksSummary.openHighRisks > 0 ? "var(--state-danger-border)" : "var(--state-success-border)"}` }}>
-          <h3 style={{ fontSize: "0.78rem", marginBottom: "0.35rem" }}>⚠️ Riesgos altos abiertos</h3>
-          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.openHighRisks > 0 ? "var(--state-danger-text)" : "var(--state-success-text)", margin: 0 }}>
-            {risksSummary.openHighRisks}
-          </p>
-          <p style={{ fontSize: "0.68rem", color: "var(--state-neutral-text)", marginTop: "0.1rem" }}>Score ≥ 6</p>
+        <article className={`card stat-tile stat-tile--${risksSummary.openHighRisks > 0 ? "danger" : "success"}`}>
+          <h3>⚠️ Riesgos altos abiertos</h3>
+          <p className="stat-tile__value">{risksSummary.openHighRisks}</p>
+          <p className="stat-tile__sub">Score ≥ 6</p>
         </article>
-        <article className="card" style={{ textAlign: "center", background: risksSummary.openIssues > 0 ? "var(--state-warning-bg)" : "var(--state-success-bg)", border: `1px solid ${risksSummary.openIssues > 0 ? "var(--state-warning-border)" : "var(--state-success-border)"}` }}>
-          <h3 style={{ fontSize: "0.78rem", marginBottom: "0.35rem" }}>🐛 Incidentes abiertos</h3>
-          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.openIssues > 0 ? "var(--state-warning-text)" : "var(--state-success-text)", margin: 0 }}>
-            {risksSummary.openIssues}
-          </p>
-          <p style={{ fontSize: "0.68rem", color: "var(--state-neutral-text)", marginTop: "0.1rem" }}>En curso o sin resolver</p>
+        <article className={`card stat-tile stat-tile--${risksSummary.openIssues > 0 ? "warning" : "success"}`}>
+          <h3>🐛 Incidentes abiertos</h3>
+          <p className="stat-tile__value">{risksSummary.openIssues}</p>
+          <p className="stat-tile__sub">En curso o sin resolver</p>
         </article>
-        <article className="card" style={{ textAlign: "center", background: risksSummary.pendingChgs > 0 ? "var(--state-info-bg)" : "var(--state-neutral-bg)", border: `1px solid ${risksSummary.pendingChgs > 0 ? "var(--state-info-border)" : "var(--state-neutral-border)"}` }}>
-          <h3 style={{ fontSize: "0.78rem", marginBottom: "0.35rem" }}>📋 Cambios pendientes</h3>
-          <p style={{ fontSize: "1.6rem", fontWeight: 800, color: risksSummary.pendingChgs > 0 ? "var(--state-info-text)" : "var(--state-neutral-text)", margin: 0 }}>
-            {risksSummary.pendingChgs}
-          </p>
-          <p style={{ fontSize: "0.68rem", color: "var(--state-neutral-text)", marginTop: "0.1rem" }}>Solicitudes por aprobar</p>
+        <article className={`card stat-tile stat-tile--${risksSummary.pendingChgs > 0 ? "info" : "neutral"}`}>
+          <h3>📋 Cambios pendientes</h3>
+          <p className="stat-tile__value">{risksSummary.pendingChgs}</p>
+          <p className="stat-tile__sub">Solicitudes por aprobar</p>
         </article>
       </div>
 
       {/* ── Filtros (Tarea 4 DateRangePicker + Tarea 11 Vistas) ── */}
       <article className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <h3 style={{ margin: 0 }}>Filtros del tablero</h3>
+        <div className="card-head">
+          <h3>Filtros del tablero</h3>
 
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <div className="card-head__actions">
             {/* Botón Limpiar */}
             <button
               type="button"
-              className="ghost"
+              className="ghost toolbar-btn"
               onClick={() => {
                 setCompany("");
                 setProjectId("");
@@ -968,55 +975,48 @@ export function DashboardTab({
                 setDateRange({ from: "", to: "" });
                 setTablePage(1);
               }}
-              style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem", borderRadius: "8px", display: "flex", alignItems: "center", gap: "0.3rem", height: "34px" }}
             >
               🧹 Limpiar
             </button>
 
-            {/* Saved views */}
-            <div style={{ position: "relative" }}>
-              <button type="button" className="ghost"
+            {/* Vistas guardadas */}
+            <div className="menu-anchor">
+              <button type="button" className="ghost toolbar-btn"
                 onClick={() => setViewMenuOpen((o) => !o)}
-                style={{ fontSize: "0.8rem" }}>
+                aria-expanded={viewMenuOpen}
+                aria-haspopup="true">
                 📑 Mis vistas {savedViews.length > 0 ? `(${savedViews.length})` : ""}
               </button>
               {viewMenuOpen && (
-                <div style={{
-                  position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 100,
-                  background: "#fff", border: "1px solid var(--border-color)", borderRadius: "10px",
-                  boxShadow: "0 6px 20px rgba(15,23,42,0.1)", minWidth: "15rem",
-                  padding: "0.75rem",
-                }}>
+                <div className="menu-pop menu-pop--pad">
                   {savedViews.length === 0 ? (
-                    <p style={{ fontSize: "0.8rem", color: "#9ca3af", margin: 0 }}>Sin vistas guardadas</p>
+                    <p className="menu-pop__empty">Sin vistas guardadas</p>
                   ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginBottom: "0.5rem" }}>
+                    <div className="menu-pop__list">
                       {savedViews.map((v) => (
-                        <div key={v.name} style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
-                          <button type="button" className="ghost"
-                            onClick={() => applyView(v)}
-                            style={{ flex: 1, textAlign: "left", fontSize: "0.78rem" }}>
+                        <div key={v.name} className="menu-pop__row">
+                          <button type="button" className="ghost" onClick={() => applyView(v)}>
                             {v.name}
                           </button>
-                          <button type="button" className="ghost"
+                          <button type="button" className="ghost menu-pop__delete"
                             onClick={() => deleteView(v.name)}
-                            style={{ fontSize: "0.7rem", padding: "0.15rem 0.4rem", color: "#dc2626" }}>
+                            aria-label={`Eliminar la vista ${v.name}`}>
                             ✕
                           </button>
                         </div>
                       ))}
                     </div>
                   )}
-                  <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "0.5rem", display: "flex", gap: "0.3rem" }}>
+                  <div className="menu-pop__foot">
+                    <label className="sr-only" htmlFor="tablero-nombre-vista">Nombre de la vista</label>
                     <input
+                      id="tablero-nombre-vista"
                       placeholder="Nombre de la vista"
                       value={viewName}
                       onChange={(e) => setViewName(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") saveCurrentView(); }}
-                      style={{ fontSize: "0.78rem", padding: "0.35rem 0.5rem" }}
                     />
-                    <button type="button" onClick={saveCurrentView}
-                      style={{ fontSize: "0.78rem", padding: "0.35rem 0.6rem", whiteSpace: "nowrap" }}>
+                    <button type="button" onClick={saveCurrentView}>
                       Guardar
                     </button>
                   </div>
@@ -1026,9 +1026,9 @@ export function DashboardTab({
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", alignItems: "flex-end" }}>
+        <div className="field-grid field-grid--compact">
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Empresa</label>
+            <span className="field-label">Empresa</span>
             <SearchableSelect
               options={companyOptions}
               value={company}
@@ -1039,7 +1039,7 @@ export function DashboardTab({
             />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Proyecto</label>
+            <span className="field-label">Proyecto</span>
             <SearchableSelect
               options={projectOptions}
               value={projectId}
@@ -1050,11 +1050,12 @@ export function DashboardTab({
             />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Estado del Proyecto</label>
+            <label className="field-label" htmlFor="tablero-estado">Estado del Proyecto</label>
             <select
+              id="tablero-estado"
+              className="select-control"
               value={projectStatus}
               onChange={(e) => { setProjectStatus(e.target.value); setTablePage(1); }}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               <option value="">Todos los estados</option>
               <option value="ACTIVE">Activos</option>
@@ -1063,11 +1064,12 @@ export function DashboardTab({
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Tipo de Proyecto</label>
+            <label className="field-label" htmlFor="tablero-tipo">Tipo de Proyecto</label>
             <select
+              id="tablero-tipo"
+              className="select-control"
               value={projectType}
               onChange={(e) => { setProjectType(e.target.value); setTablePage(1); }}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               <option value="">Todos los tipos</option>
               <option value="FIXED_PRICE">Precio Fijo (Fixed Price)</option>
@@ -1076,18 +1078,19 @@ export function DashboardTab({
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Rango de Fechas</label>
+            <span className="field-label">Rango de Fechas</span>
             <DateRangePicker
               value={dateRange}
               onChange={(r) => { setDateRange(r); setTablePage(1); }}
             />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem" }}>Moneda Base</label>
+            <label className="field-label" htmlFor="tablero-moneda">Moneda Base</label>
             <select
+              id="tablero-moneda"
+              className="select-control"
               value={baseCurrency}
               onChange={(e) => void changeBaseCurrency(e.target.value)}
-              style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               {["COP","USD","EUR","MXN","PEN","CLP"].map((c) => <option key={c} value={c}>Ver en {c}</option>)}
             </select>
@@ -1095,7 +1098,7 @@ export function DashboardTab({
         </div>
 
         {stats && (
-          <p className="fx-note" style={{ marginTop: "0.5rem" }}>
+          <p className="fx-note fx-note--spaced">
             Montos en {stats.baseCurrency}.
             {fxConfigs.length === 0 && " Sin tasas configuradas — valores en moneda original."}
           </p>
@@ -1104,9 +1107,10 @@ export function DashboardTab({
 
       {/* Alert banner */}
       {totals.alertCount > 0 && (
-        <article className="card" style={{ background: "var(--state-warning-bg)", border: "1px solid var(--state-warning-border)" }}>
-          <h3 style={{ color: "var(--state-warning-text)", marginBottom: "0.4rem" }}>
-            ⚠️ Proyectos en riesgo ({totals.alertCount})
+        <article className="card notice--warning">
+          <h3 className="notice__title">
+            <span aria-hidden="true">{PRESENTACION_SALUD.YELLOW.icono}</span>
+            Proyectos en riesgo ({totals.alertCount})
           </h3>
           <div className="tag-list">
             {displayProjects.filter((p) => p.alertLevel !== "ok").map((p) => (
@@ -1120,11 +1124,12 @@ export function DashboardTab({
 
       {/* DEP-36: el fallo de las estadísticas se dice, no se disimula con un total local. */}
       {totalsFailed && (
-        <article className="card" style={{ background: "var(--state-error-bg, #fee2e2)", border: "1px solid var(--state-error-border, #fca5a5)" }}>
-          <h3 style={{ color: "var(--state-error-text, #991b1b)", marginBottom: "0.4rem" }}>
+        <article className="card notice--danger" role="alert">
+          <h3 className="notice__title">
+            <span aria-hidden="true">{PRESENTACION_SALUD.RED.icono}</span>
             No se pudieron cargar las estadísticas
           </h3>
-          <p style={{ fontSize: "0.8rem", color: "var(--state-error-text, #991b1b)", margin: 0 }}>
+          <p className="notice__text">
             Los indicadores no muestran cifras porque no hay dato del servidor. Detalle: {statsErrorMessage}
           </p>
         </article>
@@ -1166,7 +1171,7 @@ export function DashboardTab({
         <DashboardKpi
           label={`Margen bruto (${baseCurrency})`}
           value={fmt(totals.grossMargin, baseCurrency)}
-          accent={totals.grossMargin >= 0 ? "#16a34a" : "#dc2626"}
+          tone={totals.grossMargin >= 0 ? "success" : "danger"}
           tooltip="Ingresos reconocidos − Gasto real"
           onClick={() => onDrillTo?.("financial", "revenue")}
           error={totalsFailed ? statsErrorMessage : null}
@@ -1202,7 +1207,7 @@ export function DashboardTab({
           <DashboardKpi
             label="CPI promedio"
             value={totals.avgCpi.toFixed(2)}
-            accent={totals.avgCpi >= 1 ? "#16a34a" : totals.avgCpi >= 0.85 ? "#b45309" : "#dc2626"}
+            tone={totals.avgCpi >= 1 ? "success" : totals.avgCpi >= 0.85 ? "warning" : "danger"}
             tooltip="Cost Performance Index = EV / AC. ≥1: bajo presupuesto. <0.85: alerta de sobrecosto."
             onClick={() => onDrillTo?.("portfolio")}
           />
@@ -1211,7 +1216,7 @@ export function DashboardTab({
           <DashboardKpi
             label="SPI promedio"
             value={totals.avgSpi.toFixed(2)}
-            accent={totals.avgSpi >= 1 ? "#16a34a" : totals.avgSpi >= 0.85 ? "#b45309" : "#dc2626"}
+            tone={totals.avgSpi >= 1 ? "success" : totals.avgSpi >= 0.85 ? "warning" : "danger"}
             tooltip="Schedule Performance Index = EV / PV. ≥1: adelantado. <0.85: retrasado."
             onClick={() => onDrillTo?.("portfolio")}
           />
@@ -1220,7 +1225,7 @@ export function DashboardTab({
           <DashboardKpi
             label={`CV — Variación costo (${baseCurrency})`}
             value={fmt(evm.cv, baseCurrency)}
-            accent={evm.cv >= 0 ? "#16a34a" : "#dc2626"}
+            tone={evm.cv >= 0 ? "success" : "danger"}
             tooltip="Cost Variance = EV − AC. Positivo: bajo presupuesto. Negativo: sobrecosto actual."
             onClick={() => onDrillTo?.("portfolio")}
           />
@@ -1229,7 +1234,7 @@ export function DashboardTab({
           <DashboardKpi
             label={`EAC (${baseCurrency})`}
             value={fmt(evm.eac, baseCurrency)}
-            accent={evm.eac > totals.budget ? "#dc2626" : "#16a34a"}
+            tone={evm.eac > totals.budget ? "danger" : "success"}
             tooltip="Estimate At Completion = BAC / CPI. Estimación del costo total del portafolio al ritmo actual."
             onClick={() => onDrillTo?.("portfolio")}
           />
@@ -1238,7 +1243,7 @@ export function DashboardTab({
           <DashboardKpi
             label={`VAC (${baseCurrency})`}
             value={fmt(evm.vac, baseCurrency)}
-            accent={evm.vac >= 0 ? "#16a34a" : "#dc2626"}
+            tone={evm.vac >= 0 ? "success" : "danger"}
             tooltip="Variance At Completion = BAC − EAC. Positivo: ahorro esperado. Negativo: sobrecosto proyectado."
             onClick={() => onDrillTo?.("portfolio")}
           />
@@ -1247,7 +1252,7 @@ export function DashboardTab({
           <DashboardKpi
             label="TCPI"
             value={evm.tcpi.toFixed(2)}
-            accent={evm.tcpi <= 1 ? "#16a34a" : evm.tcpi <= 1.1 ? "#b45309" : "#dc2626"}
+            tone={evm.tcpi <= 1 ? "success" : evm.tcpi <= 1.1 ? "warning" : "danger"}
             tooltip="To Complete Performance Index = (BAC−EV)/(BAC−AC). Eficiencia requerida para terminar en presupuesto. ≤1: alcanzable."
             onClick={() => onDrillTo?.("portfolio")}
           />
@@ -1256,40 +1261,35 @@ export function DashboardTab({
 
       {/* ── Tabla de proyectos (Tarea 6) ── */}
       <article className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem", marginBottom: "0.75rem" }}>
-          <h3 style={{ margin: 0 }}>Resumen por proyecto</h3>
+        <div className="card-head">
+          <h3>Resumen por proyecto</h3>
 
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-            {/* Search */}
+          <div className="card-head__actions">
+            {/* Búsqueda */}
             <input
+              className="table-search"
               placeholder="Buscar proyecto o empresa…"
               value={tableSearch}
               onChange={(e) => { setTableSearch(e.target.value); setTablePage(1); }}
-              style={{ width: "16rem", padding: "0.4rem 0.65rem", fontSize: "0.82rem" }}
               aria-label="Buscar en tabla de proyectos"
             />
 
-            {/* Export button (Tarea 10) */}
-            <div style={{ position: "relative" }}>
-              <button type="button" className="ghost"
+            {/* Exportación */}
+            <div className="menu-anchor">
+              <button type="button" className="ghost toolbar-btn"
                 onClick={() => setExportMenuOpen((o) => !o)}
-                style={{ fontSize: "0.8rem" }}>
+                aria-expanded={exportMenuOpen}
+                aria-haspopup="menu">
                 ↓ Exportar ▾
               </button>
               {exportMenuOpen && (
-                <div style={{
-                  position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 100,
-                  background: "#fff", border: "1px solid var(--border-color)", borderRadius: "8px",
-                  boxShadow: "0 4px 14px rgba(15,23,42,0.1)", overflow: "hidden",
-                }}>
-                  <button type="button" className="ghost"
-                    onClick={() => { void exportExcel(); setExportMenuOpen(false); }}
-                    style={{ display: "block", width: "100%", borderRadius: 0, textAlign: "left", fontSize: "0.82rem" }}>
+                <div className="menu-pop" role="menu">
+                  <button type="button" role="menuitem" className="ghost menu-pop__item"
+                    onClick={() => { void exportExcel(); setExportMenuOpen(false); }}>
                     📊 Excel (.xlsx)
                   </button>
-                  <button type="button" className="ghost"
-                    onClick={() => { void exportPdf(); setExportMenuOpen(false); }}
-                    style={{ display: "block", width: "100%", borderRadius: 0, textAlign: "left", fontSize: "0.82rem", borderTop: "1px solid var(--border-color)" }}>
+                  <button type="button" role="menuitem" className="ghost menu-pop__item"
+                    onClick={() => { void exportPdf(); setExportMenuOpen(false); }}>
                     📄 PDF ejecutivo
                   </button>
                 </div>
@@ -1302,9 +1302,9 @@ export function DashboardTab({
           <table className="project-table">
             <thead>
               <tr>
-                <th className="sticky-0" style={{ width: "42px" }}>Salud</th>
-                <th className="sticky-1" style={{ width: "112px" }}>Empresa</th>
-                <th className="sticky-2" style={{ minWidth: "130px" }}>Proyecto</th>
+                <th className="sticky-0 col-health">Salud</th>
+                <th className="sticky-1 col-company">Empresa</th>
+                <th className="sticky-2 col-project">Proyecto</th>
                 <DashboardSortTh field="budget" label="Presupuesto" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <DashboardSortTh field="spent" label="Gasto real" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <DashboardSortTh field="remainingBudget" label="Disponible" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
@@ -1316,32 +1316,34 @@ export function DashboardTab({
             </thead>
             <tbody>
               {pagedProjects.length === 0 && (
-                <tr><td colSpan={10} style={{ textAlign: "center", color: "#9ca3af", padding: "1.5rem" }}>
+                <tr><td colSpan={10} className="cell-empty cell-empty--roomy">
                   Sin proyectos{tableSearch ? ` para "${tableSearch}"` : ""}
                 </td></tr>
               )}
               {pagedProjects.map((row) => {
                 const dc = row.displayCurrency || baseCurrency;
-                const healthResult = backendHealthToResult(row.healthStatus as "GREEN" | "YELLOW" | "RED");
+                // La columna de salud mide 42px: no cabe la etiqueta, así que el
+                // punto lleva dentro el icono de forma distinta (● ▲ ■) y el
+                // estado completo va en el `title` y en el `aria-label`.
+                const salud = PRESENTACION_SALUD[row.healthStatus as "GREEN" | "YELLOW" | "RED"] ?? PRESENTACION_SALUD.GREEN;
                 return (
                   <tr key={row.projectId}>
-                    <td className="sticky-0" style={{ textAlign: "center" }} data-label="Salud">
+                    <td className="sticky-0 cell-center" data-label="Salud">
                       <span
-                        style={{
-                          display: "inline-block", width: "0.7rem", height: "0.7rem",
-                          borderRadius: "50%", background: healthResult.color,
-                        }}
-                        title={`${healthResult.label} — ${textoCriteriosSalud(row.marginThreshold)}`}
-                        aria-label={`Salud: ${healthResult.label}`}
-                      />
+                        className={`health-dot health-dot--${salud.modificador}`}
+                        title={`${salud.etiqueta} — ${textoCriteriosSalud(row.marginThreshold)}`}
+                        aria-label={`Salud: ${salud.etiqueta}`}
+                      >
+                        <span aria-hidden="true">{salud.icono}</span>
+                      </span>
                     </td>
-                    <td className="sticky-1" style={{ fontWeight: 600, fontSize: "0.82rem" }} data-label="Empresa">{row.company}</td>
-                    <td className="sticky-2" style={{ fontWeight: 600 }} data-label="Proyecto">{row.projectName}</td>
+                    <td className="sticky-1 cell-strong cell-small" data-label="Empresa">{row.company}</td>
+                    <td className="sticky-2 cell-strong" data-label="Proyecto">{row.projectName}</td>
                     <td data-label="Presupuesto">{fmt(row.budget, dc)}</td>
                     <td data-label="Gasto real">{fmt(row.spent, dc)}</td>
-                    <td style={{ color: row.remainingBudget < 0 ? "#dc2626" : "inherit" }} data-label="Disponible">{fmt(row.remainingBudget, dc)}</td>
+                    <td className={row.remainingBudget < 0 ? "tone-danger" : undefined} data-label="Disponible">{fmt(row.remainingBudget, dc)}</td>
                     <td data-label="Ingresos">{fmt(row.revenueRecognized, dc)}</td>
-                    <td style={{ color: row.grossMarginActual >= 0 ? undefined : "#dc2626" }} data-label="Margen bruto">
+                    <td className={row.grossMarginActual >= 0 ? undefined : "tone-danger"} data-label="Margen bruto">
                       {`${fmt(row.grossMarginActual, dc)}${row.grossMarginActualPct != null ? ` (${row.grossMarginActualPct.toFixed(1)}%)` : ""}`}
                     </td>
                     <td data-label="Total proyectado">{`${fmt(row.projectedTotal, dc)} (${row.projectedPct.toFixed(1)}%)`}</td>
@@ -1355,40 +1357,38 @@ export function DashboardTab({
 
         {/* Paginación */}
         {totalPages > 1 && (
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--color-accent)" }}>
+          <div className="table-pager">
+            <span className="table-pager__status">
               Página {tablePage} de {totalPages} · {filteredProjects.length} proyectos
             </span>
-            <div style={{ display: "flex", gap: "0.3rem" }}>
+            <div className="table-pager__nav">
               <button type="button" className="ghost"
                 disabled={tablePage === 1}
                 onClick={() => setTablePage(1)}
-                style={{ fontSize: "0.75rem", padding: "0.3rem 0.5rem" }}>
+                aria-label="Primera página">
                 «
               </button>
               <button type="button" className="ghost"
                 disabled={tablePage === 1}
-                onClick={() => setTablePage((p) => p - 1)}
-                style={{ fontSize: "0.75rem", padding: "0.3rem 0.6rem" }}>
+                onClick={() => setTablePage((p) => p - 1)}>
                 Anterior
               </button>
               <button type="button" className="ghost"
                 disabled={tablePage === totalPages}
-                onClick={() => setTablePage((p) => p + 1)}
-                style={{ fontSize: "0.75rem", padding: "0.3rem 0.6rem" }}>
+                onClick={() => setTablePage((p) => p + 1)}>
                 Siguiente
               </button>
               <button type="button" className="ghost"
                 disabled={tablePage === totalPages}
                 onClick={() => setTablePage(totalPages)}
-                style={{ fontSize: "0.75rem", padding: "0.3rem 0.5rem" }}>
+                aria-label="Última página">
                 »
               </button>
             </div>
           </div>
         )}
         {totalPages <= 1 && filteredProjects.length > 0 && (
-          <p style={{ marginTop: "0.4rem", fontSize: "0.75rem", color: "var(--color-accent)" }}>
+          <p className="table-foot table-foot--tight">
             {filteredProjects.length} proyectos
           </p>
         )}
@@ -1403,7 +1403,7 @@ export function DashboardTab({
               <thead><tr><th>Consultor</th><th>Total horas</th><th>Detalle por proyecto</th></tr></thead>
               <tbody>
                 {dashboardHoursByConsultant.length === 0 && (
-                  <tr><td colSpan={3} style={{ textAlign: "center", color: "#9ca3af" }}>Sin horas en el período</td></tr>
+                  <tr><td colSpan={3} className="cell-empty">Sin horas en el período</td></tr>
                 )}
                 {dashboardHoursByConsultant.map((row) => (
                   <tr key={row.consultant}>
@@ -1431,7 +1431,7 @@ export function DashboardTab({
               <thead><tr><th>Consultor</th><th>Horas proyectadas</th><th>Detalle</th></tr></thead>
               <tbody>
                 {dashboardForecastByConsultant.length === 0 && (
-                  <tr><td colSpan={3} style={{ textAlign: "center", color: "#9ca3af" }}>Sin proyecciones en el período</td></tr>
+                  <tr><td colSpan={3} className="cell-empty">Sin proyecciones en el período</td></tr>
                 )}
                 {dashboardForecastByConsultant.map((row) => (
                   <tr key={row.consultant}>
@@ -1459,7 +1459,7 @@ export function DashboardTab({
         {displayProjects.length > 0 ? (
           <article className="card">
             <h3>Presupuesto vs Gasto real por proyecto</h3>
-            <div style={{ marginTop: "0.5rem" }}>
+            <div className="chart-block">
               <BudgetChart
                 rows={displayProjects.map((r) => ({
                   projectName: r.projectName,
@@ -1474,13 +1474,13 @@ export function DashboardTab({
         ) : (
           <article className="card">
             <h3>Presupuesto vs Gasto real por proyecto</h3>
-            <p style={{ color: "#9ca3af", fontSize: "0.85rem", textAlign: "center", padding: "2rem" }}>Sin datos para mostrar</p>
+            <p className="chart-empty">Sin datos para mostrar</p>
           </article>
         )}
 
         <article className="card">
           <h3>📊 Horas Extras Aprobadas por Consultor (Top 5)</h3>
-          <p style={{ fontSize: "0.78rem", color: "var(--text-soft)", marginBottom: "1rem" }}>
+          <p className="chart-caption">
             Comparativa de consultores con mayor volumen de horas extras aprobadas.
           </p>
           <ExtraHoursByConsultantChart data={extraHoursByConsultantData} />
@@ -1488,10 +1488,10 @@ export function DashboardTab({
       </section>
 
       {/* ── Métricas y Análisis Visual ── */}
-      <section className="grid two-col" style={{ marginTop: "1rem" }}>
+      <section className="grid two-col">
         <article className="card">
           <h3>📈 Tendencia Mensual de Horas Extras (Año en Curso)</h3>
-          <p style={{ fontSize: "0.78rem", color: "var(--text-soft)", marginBottom: "1rem" }}>
+          <p className="chart-caption">
             Muestra el consolidado de horas extras aprobadas mes a mes durante el presente año.
           </p>
           <ExtraHoursTrendChart data={monthlyExtraHoursData} />
@@ -1499,7 +1499,7 @@ export function DashboardTab({
         
         <article className="card">
           <h3>🍩 Distribución de Gastos por Categoría</h3>
-          <p style={{ fontSize: "0.78rem", color: "var(--text-soft)", marginBottom: "1rem" }}>
+          <p className="chart-caption">
             Desglose de gastos registrados en el período seleccionado.
           </p>
           <ExpensesDonutChart data={expensesCategoryData} />

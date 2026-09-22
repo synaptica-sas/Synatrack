@@ -122,7 +122,31 @@ Barras de distribución, insignias de semáforo, rellenos de medidor. `*-solid` 
 > token por estado en vez de un `#fff` escrito a mano. Los 87 `#fff` incrustados en los
 > `.tsx` son exactamente este error, y en modo oscuro dejan texto blanco sobre blanco.
 
-### 5.4 Contraste comprobado
+### 5.4 Color en los gráficos
+
+El proyecto dibuja los gráficos a mano en SVG y cada uno traía su propia lista de literales
+(`#ff9c2c`, `#3b82f6`, `#e2e8f0`, `#64748b`…): una **tercera** paleta accidental, sin modo
+oscuro y sin relación con la marca. Ahora hay dos familias de tokens:
+
+| Token | Para qué |
+|---|---|
+| `--chart-1` … `--chart-7` | Serie **categórica**: cuando cada color representa una categoría (porciones del donut). Arranca por la marca (ámbar, azul, verde, rojo) y sigue con los tintes violeta, cian y gris |
+| `--chart-grid`, `--chart-axis`, `--chart-track` | Andamiaje: rejilla, textos de eje y pista de una barra. Va por detrás del dato |
+
+Para el color de **estado** dentro de un gráfico (presupuesto excedido, en aviso, correcto)
+**no** se usa la serie categórica: se usa `--state-*-solid`, el mismo verde/ámbar/rojo que el
+resto de la aplicación. Un gráfico no inventa su propio semáforo.
+
+En modo oscuro la serie se aclara (el azul y el rojo de marca se apagan sobre navy) y
+`--chart-grid` pasa a ser un blanco translúcido.
+
+> **El color se pone con clase, no con el atributo `fill`.** `fill="#ff9c2c"` no puede
+> resolver un token ni tener contraparte oscura. Para eso están `.chart-fill--1..7`,
+> `.chart-stroke--*`, `.chart-grid`, `.chart-axis`, `.chart-label`, `.chart-track`,
+> `.chart-gap` y `.chart-hole`. Los dos últimos pintan del color de la tarjeta la separación
+> entre porciones y el hueco del donut, que antes eran dos `#fff` incrustados.
+
+### 5.5 Contraste comprobado
 
 | Combinación | Claro | Oscuro |
 |---|---|---|
@@ -162,6 +186,46 @@ Todas construidas solo con tokens. Están al final de `App.css`.
 | `.toolbar-btn` | Botón de la barra de acciones del encabezado |
 | `.sr-only` | Texto solo para lectores de pantalla |
 
+### Clases añadidas al migrar Encabezado, Alertas y Tablero
+
+| Clase | Para qué |
+|---|---|
+| `.page-header`, `__text`, `__title`, `__icon`, `__description`, `__actions` | Encabezado de pantalla. Lo usan las 16 pantallas; a 560px se apila y las acciones ocupan el ancho |
+| `.filter-row`, `.filter-row__grow`, `.filter-row__fixed` | Fila de filtros: un campo que crece y controles de ancho fijo; a 560px cada uno pasa a ocupar la fila |
+| `.count-badge` | Contador neutro junto a un título de grupo |
+| `.panel__title--heading` | `.panel__title` cuando el título es un encabezado real (`h3`) con icono |
+| `.empty-state`, `__icon`, `__title`, `__text` | "No hay nada que mostrar", que no es un error |
+| `.alert-groups`, `.alert-list`, `.alert-item` + `--danger/--warning/--info`, `__body`, `__meta`, `__project`, `__time`, `__message`, `__actions`, `__resolve` | Tarjeta de alerta de la bandeja |
+| `.card-head`, `.card-head__actions` | Cabecera de tarjeta: título a la izquierda, acciones a la derecha |
+| `.menu-anchor`, `.menu-pop` (+ `--pad`), `__item`, `__empty`, `__list`, `__row`, `__delete`, `__foot` | Menú desplegable anclado a un botón (exportar, vistas guardadas) |
+| `.health-tiles`, `.health-tile` + `--success/--warning/--danger`, `__count`, `__label`, `__pct` | Mosaico de recuento por estado de salud |
+| `.health-dot` + `--success/--warning/--danger` | Semáforo en una celda estrecha: lleva dentro el icono de forma distinta |
+| `.stat-tile` + `--success/--warning/--danger/--info/--neutral`, `__value`, `__sub` | Mini-tarjeta de recuento con tinte de estado |
+| `.table-pager`, `__status`, `__nav` | Paginación de tabla |
+| `.chart-scroll`, `.chart-svg` (+ `--fixed`), `.chart-legend-row`, `.chart-legend`, `__item`, `__name`, `__value`, `__more`, `.chart-swatch--1..7`, `.chart-empty`, `.chart-caption` | Envoltorio, leyenda y estados de un gráfico |
+| `.status-badge--info` | Faltaba el modificador de información en la insignia de estado |
+| `.notice__text` | Cuerpo de un aviso, debajo de su título |
+| `.inline-list` | Lista de nombres separados en línea dentro de un aviso |
+| `.kpi-sub`, `.kpi-sub--danger`, `.kpi-hint`, `.kpi-loading`, `.table-search`, `.card-title-tight`, `.field-grid--compact`, `.col-health/.col-company/.col-project`, `.cell-empty--roomy`, `.table-foot--tight`, `.chart-block`, `.fx-note--spaced` | Detalles sueltos que antes eran estilos en línea repetidos |
+
+### Especificidad: la trampa de `body.dark .card`
+
+Al migrar el Tablero salieron dos reglas heredadas que le ganan a cualquier clase de patrón:
+
+- `body.dark .card` pesa **(0,2,1)** —tres selectores, uno de ellos el elemento `body`—, así
+  que un `.card.stat-tile--danger` (0,2,0) **pierde** y el tinte de estado desaparecía en
+  modo oscuro. Por eso esas reglas se escriben con las tres clases:
+  `.card.stat-tile.stat-tile--danger`.
+- `body.dark .card p`, `body.dark .card span:not(.pill)` y `body.dark .card div` fuerzan
+  `color: inherit` con hasta **(0,3,2)**. Eso aplana toda la jerarquía de texto dentro de una
+  tarjeta en oscuro: el texto atenuado, el subtítulo de un KPI y la cifra de estado salen del
+  mismo blanco. No se tocaron porque las usan las dieciséis pantallas; en su lugar, al final
+  de `App.css` hay un bloque que devuelve su color a los patrones nuevos, a veces repitiendo
+  la clase (`.kpi-sub.kpi-sub`) para subir el peso **sin recurrir a `!important`**.
+
+Si añades un patrón que se use dentro de `.card`, compruébalo en modo oscuro antes de darlo
+por bueno: es el sitio donde más fácil se pierde el color.
+
 ### El semáforo, en concreto
 
 `utils/projectHealth.ts` expone `PRESENTACION_SALUD`, que traduce el `healthStatus` del
@@ -184,17 +248,28 @@ Tailwind; el cambio de nombre es deliberado para que nadie vuelva a meter un col
 
 ## 7. Estado de la migración
 
-Medido con `grep -o 'style={{'` y `grep -oiE '#[0-9a-f]{3,8}\b'` sobre `frontend/src/**/*.tsx`.
+Medido con `grep -o 'style={{'` y `grep -oiE '#[0-9a-f]{3,8}'` sobre `frontend/src/**/*.tsx`.
 
-| | Antes (rama `dev`) | Ahora |
+| | Antes (rama `dev`) | Tras Portafolio | Ahora |
+|---|---|---|---|
+| Colores literales en `.tsx` | 575 | 533 | **428** |
+| Estilos en línea en `.tsx` | 1576 | 1528 | **1372** |
+
+### Lo migrado en esta pasada
+
+| Archivo | Estilos en línea | Colores literales |
 |---|---|---|
-| Colores literales en `.tsx` | 575 | 536 |
-| Estilos en línea en `.tsx` | 1576 | 1528 |
+| `components/PageHeader.tsx` | 5 → **0** | 2 → **0** |
+| `features/alerts/AlertsTab.tsx` | 37 → **0** | 30 → **0** |
+| `features/dashboard/DashboardTab.tsx` | 120 → **6** | 73 → **0** |
 
-Todo el avance es de **una sola pantalla**, `PortfolioTab.tsx`: de 51 estilos en línea a 3
-(y uno de esos 3 es un ejemplo dentro de un comentario, así que quedan 2 reales, ambos
-valores calculados: el ancho del medidor y el `flexGrow` de un segmento), y de 39 colores
-literales a 0.
+Los 6 estilos que quedan en `DashboardTab` son **valores calculados**, que es el único uso
+legítimo: el `maxWidth` de cada uno de los tres SVG de ancho fluido y el `flexGrow` de los
+tres segmentos de la barra de salud.
+
+`PageHeader` es el de mayor rendimiento por línea: lo usan las 16 pantallas, así que
+arreglarlo las mejora todas a la vez. De paso se fue su respaldo marrón `#5f2f00`, que no es
+de la paleta de Synaptica.
 
 ### Pendiente de migrar, por orden de rentabilidad
 
@@ -204,46 +279,70 @@ literales a 0.
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
 | `features/extraHours/ExtraHoursTab.tsx` | 186 | 35 |
 | `features/capacity/CapacityTab.tsx` | 123 | 28 |
-| `features/dashboard/DashboardTab.tsx` | 120 | 76 |
 | `features/projects/ProjectDetailTab.tsx` | 95 | 65 |
 | `features/profile/ProfileTab.tsx` | 48 | 6 |
-| `features/alerts/AlertsTab.tsx` | 37 | 30 |
+| `components/AlertsPanel.tsx` (el cajón, no la pestaña) | ~20 | ~10 |
+| `features/dashboard/AlertBadge.tsx` | 1 | 6 |
 | `App.tsx` (landing y layout) | — | ~100 |
 
-Recomendación: empezar por **`AlertsTab`** (pequeña, muy densa en color, mismo vocabulario de
-estados que Portafolio) y luego por **`DashboardTab`**, que es la que más colores literales
-tiene por línea. `EstimationCalculatorTab` es la más grande y conviene dejarla para cuando el
-catálogo de patrones esté probado en tres o cuatro pantallas más.
+Con el catálogo de patrones ya probado en tres pantallas más, `CapacityTab` y
+`ProjectDetailTab` son las siguientes candidatas naturales: reutilizan tabla, KPIs y
+semáforo, que es justo lo que ya está resuelto. `EstimationCalculatorTab` sigue siendo la
+más grande y conviene dejarla para el final.
 
-También queda por migrar `components/PageHeader.tsx`, que sigue maquetado con estilos en
-línea y con un color de respaldo (`#5f2f00`) que no es de la marca; migrarlo beneficia a las
-16 pantallas de golpe.
+### Cosas que esta pasada NO tocó, a propósito
 
-### Cosas que este cambio NO tocó, a propósito
+- **Comportamiento.** Ni filtros, ni orden, ni paginación, ni exportaciones, ni la lógica
+  financiera del Tablero (el estado de error de `statsError` y la sincronización con
+  `initialStats` se dejaron intactas).
+- **`AlertBadge.tsx`**, aunque lo pinta el Tablero. Su prueba
+  (`src/test/AlertBadge.test.tsx`) **afirma los literales**: comprueba
+  `rgb(254, 226, 226)` y `rgb(153, 27, 27)` leyendo `span.style`. Migrarlo a `.status-badge`
+  rompe cinco de las 135 pruebas, y reescribir una prueba para que deje de comprobar lo que
+  comprueba no es una decisión de diseño. **Hay que decidirlo**: lo razonable es migrar el
+  componente y cambiar esas cinco pruebas para que afirmen la *clase* (`status-badge--danger`)
+  en vez del color, que es lo que el sistema de diseño garantiza.
+- **`headStyles: { fillColor: [234, 88, 12] }`** en la exportación a PDF del Tablero: es un
+  naranja que no es el de marca, pero vive en el PDF generado, no en la interfaz, y cambiarlo
+  altera un entregable que alguien puede estar comparando. Queda anotado.
+- **Las familias `--state-*-bg/border/text` originales**, por lo dicho en la pasada anterior.
 
-- **Comportamiento.** El filtrado, el ordenamiento y la exportación CSV de Portafolio son los
-  mismos; solo cambió la presentación.
-- **Las familias `--state-*-bg/border/text` originales.** Siguen con los valores de Tailwind
-  que ya tenían porque las usan muchas pantallas; sustituirlas es un cambio de un solo
-  commit pero hay que revisarlo pantalla por pantalla. Los tokens nuevos (`-strong`,
-  `-solid`, `-on-solid`) conviven con ellas sin romperlas.
-- **Los tres cálculos de rentabilidad divergentes** y demás deuda funcional: están en
-  `PENDIENTES.md` y en `DOCUMENTACION_TECNICA.md` §10.
+### Defectos encontrados y no corregidos (no son de diseño)
+
+1. **La pestaña de Alertas es inalcanzable.** `AlertsTab` se renderiza con
+   `activeTab === "alerts"` y tiene ruta `/alerts`, pero `alerts` no está en ningún grupo de
+   la barra lateral ni en `NON_SIDEBAR_TABS`, así que el efecto que valida la pestaña contra
+   los permisos la devuelve siempre a `dashboard`. El botón 🔔 Alertas de la cabecera abre el
+   **cajón** (`components/AlertsPanel.tsx`), no la pestaña. Para poder capturarla hubo que
+   añadir `alerts` a `NON_SIDEBAR_TABS` **solo durante la captura**; el cambio está revertido.
+2. **`body.dark div[style*="background: #fff"]…`**: un bloque de `App.css` que intentaba dar
+   modo oscuro a la pestaña de Alertas desde el atributo `style`. **Nunca llegó a aplicarse**:
+   el navegador normaliza `#fff` a `rgb(255, 255, 255)` en el atributo, así que el selector no
+   casaba. Se eliminó al migrar la pantalla. Las reglas equivalentes del cajón
+   (`.alert-card.sev-*`) sí siguen en uso y se conservan.
+
+### Defectos visuales encontrados y sí corregidos
+
+Los dos estaban en CSS compartido y rompían el Tablero a 400px; se arreglaron porque son
+presentación pura:
+
+1. `responsive.css` le pone `min-width: 600px` a **toda** `table` en móvil para que se pueda
+   desplazar en horizontal, pero `.project-table` deja de ser una tabla en móvil (se convierte
+   en una pila de tarjetas). Ese mínimo empujaba el valor de cada celda fuera de la pantalla y
+   solo quedaban visibles las etiquetas. Ahora el modo tarjeta fija `min-width: 0`.
+2. En ese mismo modo tarjeta, las celdas fijas pasaban a `position: static`, con lo que el
+   `::before` que dibuja la etiqueta perdía su contexto de posicionamiento y las tres primeras
+   (Salud, Empresa, Proyecto) aparecían amontonadas al pie de la tarjeta. Ahora es
+   `position: relative`.
 
 ### Decisiones que requieren criterio de negocio (no las inventé)
 
-1. **Las etiquetas del semáforo.** Puse "Saludable / Advertencia / Crítico" porque son las
-   que ya usaba el filtro de Salud de la propia pantalla, pero `backendHealthToResult` sigue
-   devolviendo "Verde / Amarillo / Rojo" y eso es lo que ven Tablero y Proyectos. **Hay que
-   decidir cuál es el vocabulario oficial** y unificarlo; dejarlo así es incoherente entre
-   pantallas.
-2. **Umbrales de CPI/SPI (0,85 y 1,00) y de uso de presupuesto (90% y 100%)** en Portafolio:
-   los respeté tal cual estaban, pero no coinciden con los que usa el backend para el
-   semáforo (0,75 y 0,9). Alguien de negocio debería decir cuáles son los buenos.
-3. **Qué hace exactamente "Alertas activas"** cuando vale 0: le puse el subtítulo "Sin
-   pendientes" por simetría con el resto de KPIs; si el dato significa otra cosa, cámbialo.
+Siguen abiertas las tres de la pasada anterior (etiquetas del semáforo ya unificadas, umbrales
+de CPI/SPI y significado de "Alertas activas"), más:
 
----
+4. **El vocabulario de severidad de las alertas.** La bandeja usa Crítico / Advertencia /
+   Info, y el filtro de la misma pantalla ofrece "Informativo". Se respetó tal cual para no
+   cambiar textos, pero conviene elegir uno.
 
 ## 8. Capturas
 
@@ -254,6 +353,19 @@ En `documentacion/capturas/`, generadas con Playwright sobre el entorno local:
   proyectos en verde, así que para estas capturas se interceptó la respuesta de
   `/api/stats/portfolio` y se forzaron un `YELLOW` y un `RED`. **Solo afecta a la captura**,
   no hay ningún cambio en la app ni en los datos.
+- `encabezado-antes-*` / `encabezado-despues-*`: el `PageHeader` en contexto (Portafolio),
+  claro y oscuro, a 400px.
+- `alertas-antes-*` / `alertas-despues-*`: el Centro de Alertas, claro y oscuro, a 400px.
+- `tablero-antes-*` / `tablero-despues-*`: el Tablero de Control, claro y oscuro, a 400px.
+
+Dos avisos sobre estas tres últimas, por honestidad:
+
+- Los datos demo **no traen ninguna alerta**, así que para que las tarjetas de severidad
+  salieran en la captura se interceptó `/api/alerts` en el navegador con seis alertas de
+  ejemplo. Solo afecta a la captura.
+- La pestaña de Alertas no se puede alcanzar navegando (ver §7, defecto 1), así que para
+  capturarla se añadió `alerts` a `NON_SIDEBAR_TABS` durante la sesión de captura y se
+  revirtió después. En el código entregado `NON_SIDEBAR_TABS` sigue siendo `["profile"]`.
 
 ## Iconos de estado: cuándo sí y cuándo no
 

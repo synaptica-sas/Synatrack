@@ -1722,6 +1722,12 @@ th.sortable:hover { background: var(--color-primary-10); }
   .project-table td {
     display: block !important;
     width: 100% !important;
+    /* `responsive.css` le pone `min-width: 600px` a toda `table` en móvil para
+       que se pueda desplazar en horizontal. Aquí la tabla ya NO es una tabla:
+       se convierte en una pila de tarjetas, así que ese mínimo solo conseguía
+       empujar el valor de cada celda fuera de la pantalla y dejar visibles
+       únicamente las etiquetas. */
+    min-width: 0 !important;
     box-sizing: border-box !important;
   }
 
@@ -1753,11 +1759,15 @@ th.sortable:hover { background: var(--color-primary-10); }
     border-bottom: none !important;
   }
 
-  /* Remove sticky styling on mobile card components */
+  /* En modo tarjeta las celdas fijas dejan de serlo, pero siguen necesitando
+     ser contexto de posicionamiento: la etiqueta de la celda es un `::before`
+     absoluto, y con `position: static` las tres primeras (Salud, Empresa y
+     Proyecto) se anclaban a un ancestro lejano y aparecían amontonadas al pie
+     de la tarjeta en vez de junto a su valor. */
   .project-table td.sticky-0,
   .project-table td.sticky-1,
   .project-table td.sticky-2 {
-    position: static !important;
+    position: relative !important;
     left: auto !important;
     background: transparent !important;
     box-shadow: none !important;
@@ -1897,6 +1907,21 @@ body.dark {
   --state-neutral-strong: var(--text-muted);
   --state-neutral-solid: #8a8a8a;
   --state-neutral-on-solid: var(--color-primary);
+
+  /* Gráficos: la serie categórica se aclara para separarse del fondo oscuro
+     (el azul y el rojo de marca se apagan sobre navy) y el andamiaje se
+     invierte: la rejilla pasa a ser un blanco translúcido. */
+  --chart-1: #f5b44e;
+  --chart-2: #5b86cc;
+  --chart-3: #8fd44a;
+  --chart-4: #e0538a;
+  --chart-5: #a78bfa;
+  --chart-6: #22d3ee;
+  --chart-7: #9aa6b8;
+
+  --chart-grid: rgba(255, 255, 255, 0.12);
+  --chart-axis: var(--text-muted);
+  --chart-track: #2a2a48;
 }
 
 body.dark .shell {
@@ -2393,31 +2418,6 @@ body.dark .alert-message-text {
 }
 body.dark .alert-project-name {
   color: #94a3b8 !important;
-}
-
-/* ── Alerts Tab Page Dark overrides ── */
-body.dark div[style*="background: #fff"][style*="border: 1px solid var(--border-color)"] {
-  background: #1e293b !important;
-  border-color: #334155 !important;
-  color: #f8fafc !important;
-}
-body.dark div[style*="background: #fff"][style*="border: 1px solid var(--border-color)"] h3 {
-  color: #f8fafc !important;
-}
-body.dark div[style*="background: #fff"][style*="border: 1px solid var(--border-color)"] p {
-  color: #94a3b8 !important;
-}
-body.dark div[style*="background: #fff"][style*="border: 1px solid var(--border-color)"] span[style*="background: #fff3e8"] {
-  background: #334155 !important;
-  color: #f8fafc !important;
-}
-body.dark div[style*="background: #fff"][style*="border: 1px solid var(--border-color)"] button[style*="background: #fff"] {
-  background: #0f172a !important;
-  border-color: #334155 !important;
-  color: #f8fafc !important;
-}
-body.dark div[style*="background: #fff"][style*="border: 1px solid var(--border-color)"] button[style*="background: #fff"]:hover {
-  background: #1e293b !important;
 }
 
 /* ── Month/Calendar dark mode cell styling ── */
@@ -3021,6 +3021,7 @@ body.dark .country-tab-btn.ghost:hover {
 .status-badge--warning { background: var(--state-warning-solid); color: var(--state-warning-on-solid); }
 .status-badge--danger  { background: var(--state-danger-solid);  color: var(--state-danger-on-solid); }
 .status-badge--neutral { background: var(--state-neutral-solid); color: var(--state-neutral-on-solid); }
+.status-badge--info    { background: var(--state-info-solid);    color: var(--state-info-on-solid); }
 
 /* ── Barra de distribución apilada ────────────────────────────────────── */
 .stack-bar {
@@ -3200,3 +3201,640 @@ tr.row-warning > td { background: var(--state-warning-bg); }
   white-space: nowrap;
   border: 0;
 }
+
+/* ── Encabezado de pantalla (`components/PageHeader.tsx`) ──────────────────
+   Lo usan las 16 pantallas. Antes estaba maquetado con cinco estilos en línea
+   y con `var(--text-strong, #5f2f00)`: ese respaldo marrón no es de la paleta
+   de Synaptica y se pintaba en cuanto el token no resolvía. */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  width: 100%;
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.page-header__text {
+  min-width: 0; /* deja que el texto se ajuste en vez de desbordar a 400px */
+}
+
+.page-header__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-strong);
+  text-wrap: balance;
+}
+
+.page-header__icon {
+  font-size: 1.7rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.page-header__description {
+  margin: var(--space-1) 0 0;
+  max-inline-size: 72ch;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3); /* ≥ 8px entre objetivos táctiles contiguos */
+}
+
+/* A 400px el encabezado se apila y las acciones ocupan el ancho completo:
+   con el título a 1,6rem y dos botones no cabe todo en una fila. */
+@media (max-width: 560px) {
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-header__title {
+    font-size: 1.35rem;
+  }
+
+  .page-header__actions .toolbar-btn,
+  .page-header__actions > button {
+    flex: 1 1 10rem;
+  }
+}
+
+/* ── Fila de filtros ──────────────────────────────────────────────────────
+   Un campo que crece y uno o varios controles de ancho fijo. A 400px cada
+   control pasa a ocupar la fila entera en vez de encogerse hasta ser
+   inusable. Los `label` asociados van en `.sr-only`: el marcador de posición
+   no es una etiqueta accesible. */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.filter-row__grow  { flex: 2 1 16rem; min-width: 0; }
+.filter-row__fixed { flex: 0 1 12rem; min-width: 0; }
+
+@media (max-width: 560px) {
+  .filter-row__grow,
+  .filter-row__fixed { flex: 1 1 100%; }
+}
+
+/* ── Contador junto a un título ───────────────────────────────────────────
+   Cuántos elementos trae el grupo. Neutro a propósito: el número es el dato,
+   y el estado ya lo llevan las insignias de dentro. */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--surface-subtle);
+  color: var(--text-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Variante de `.panel__title` cuando el título es un encabezado real (h3) y
+   no una etiqueta pequeña: mismo color, mayor tamaño y sitio para el icono. */
+.panel__title--heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--display);
+  font-size: 0.95rem;
+}
+
+/* ── Estado vacío ─────────────────────────────────────────────────────────
+   Para "no hay nada que mostrar", que no es un error. Reutilizable. */
+.empty-state {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--text);
+}
+
+.empty-state__icon  { font-size: 3rem; margin-bottom: var(--space-3); line-height: 1; }
+.empty-state__title { margin: 0; font-family: var(--display); font-size: 1.1rem; color: var(--text-strong); }
+.empty-state__text  { margin: var(--space-1) 0 0; font-size: 0.85rem; color: var(--text-muted); }
+
+/* ── Alerta de la bandeja ─────────────────────────────────────────────────
+   El tinte de fondo y el borde salen de `--state-*-bg/-border`, que ya tienen
+   contraparte oscura; antes eran seis literales claros (#fee2e2, #fef9c3…)
+   que en modo oscuro quedaban como parches blancos. La severidad la nombra la
+   insignia de texto, el color solo refuerza. */
+.alert-groups,
+.alert-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.alert-groups { gap: var(--space-4); }
+.alert-list   { gap: var(--space-2); }
+
+.alert-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+}
+
+.alert-item--danger  { background: var(--state-danger-bg);  border-color: var(--state-danger-border); }
+.alert-item--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
+.alert-item--info    { background: var(--state-info-bg);    border-color: var(--state-info-border); }
+
+.alert-item__body { flex: 1 1 18rem; min-width: 0; }
+
+.alert-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.alert-item__project {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.alert-item__time {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.alert-item__message {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.alert-item__actions { display: flex; gap: var(--space-2); }
+
+.alert-item__resolve {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-height: 2rem; /* objetivo táctil de 32px, por encima de los 24px de WCAG 2.2 */
+}
+
+@media (max-width: 560px) {
+  /* Apilada, la acción se alinea a la derecha en vez de ocupar todo el ancho:
+     con seis alertas seguidas, seis botones a ancho completo pesan más que el
+     propio mensaje. */
+  .alert-item__actions { width: 100%; justify-content: flex-end; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GRÁFICOS DIBUJADOS A MANO (SVG)
+   El color se pone con CLASE, no con el atributo `fill`/`stroke`: así sale de
+   un token, tiene contraparte oscura y no hay que repetirlo en cada `<rect>`.
+   Un `fill="#ff9c2c"` es además invisible para el modo oscuro, que es justo lo
+   que les pasaba a los cuatro gráficos del tablero.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Andamiaje: va por detrás del dato. */
+.chart-grid    { stroke: var(--chart-grid); }
+.chart-axis    { fill: var(--chart-axis); }
+.chart-label   { fill: var(--text-strong); }
+.chart-track   { fill: var(--chart-track); }
+/* Separación entre porciones contiguas: del color de la tarjeta, para que el
+   corte se lea como un hueco y no como una línea más del gráfico. */
+.chart-gap     { stroke: var(--card-bg); }
+.chart-hole    { fill: var(--card-bg); }
+
+/* Serie categórica: cada color es una categoría. Siempre con su etiqueta. */
+.chart-fill--1 { fill: var(--chart-1); }
+.chart-fill--2 { fill: var(--chart-2); }
+.chart-fill--3 { fill: var(--chart-3); }
+.chart-fill--4 { fill: var(--chart-4); }
+.chart-fill--5 { fill: var(--chart-5); }
+.chart-fill--6 { fill: var(--chart-6); }
+.chart-fill--7 { fill: var(--chart-7); }
+
+.chart-stroke--1 { stroke: var(--chart-1); }
+
+/* Color de ESTADO dentro de un gráfico: el mismo verde/ámbar/rojo que el resto
+   de la aplicación, no la serie categórica. */
+.chart-fill--success { fill: var(--state-success-solid); }
+.chart-fill--warning { fill: var(--state-warning-solid); }
+.chart-fill--danger  { fill: var(--state-danger-solid); }
+
+.chart-stroke--success { stroke: var(--state-success-solid); }
+.chart-stroke--warning { stroke: var(--state-warning-solid); }
+.chart-stroke--danger  { stroke: var(--state-danger-solid); }
+
+/* Texto del valor de una serie: legible sobre la tarjeta en ambos temas. */
+.chart-value--1 { fill: var(--state-warning-strong); }
+
+/* Degradado del área bajo la línea de tendencia. */
+.chart-grad-from { stop-color: var(--chart-1); stop-opacity: 0.4; }
+.chart-grad-to   { stop-color: var(--chart-1); stop-opacity: 0; }
+
+/* Contenedor: un gráfico ancho se desplaza dentro de su caja en vez de
+   desbordar la pantalla a 400px. */
+.chart-scroll { overflow-x: auto; }
+
+.chart-svg { display: block; width: 100%; height: auto; font-family: inherit; }
+
+.chart-legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.chart-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 12rem;
+  font-size: 0.75rem;
+}
+
+.chart-legend__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.chart-legend__name {
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-legend__value { color: var(--text-soft); }
+.chart-legend__more  { font-size: 0.7rem; color: var(--text-muted); font-style: italic; }
+
+.chart-swatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+.chart-swatch--1 { background: var(--chart-1); }
+.chart-swatch--2 { background: var(--chart-2); }
+.chart-swatch--3 { background: var(--chart-3); }
+.chart-swatch--4 { background: var(--chart-4); }
+.chart-swatch--5 { background: var(--chart-5); }
+.chart-swatch--6 { background: var(--chart-6); }
+.chart-swatch--7 { background: var(--chart-7); }
+
+/* "Sin nada que dibujar" dentro de una tarjeta de gráfico. */
+.chart-empty {
+  margin: 0;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.chart-caption {
+  margin: 0 0 var(--space-4);
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PATRONES DEL TABLERO
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Cabecera de tarjeta: título a la izquierda, acciones a la derecha ───── */
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.card-head h3 { margin: 0; }
+
+.card-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ── Menú desplegable anclado a un botón ─────────────────────────────────── */
+.menu-anchor { position: relative; }
+
+.menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-1));
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-width: 10rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.menu-pop--pad {
+  padding: var(--space-3);
+  min-width: 15rem;
+  gap: var(--space-2);
+  overflow: visible;
+}
+
+.menu-pop__item {
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  text-align: left;
+  font-size: 0.82rem;
+  padding: var(--space-2) var(--space-4);
+  min-height: 2.25rem; /* objetivo táctil holgado */
+}
+
+.menu-pop__item + .menu-pop__item { border-top: 1px solid var(--border-color); }
+
+.menu-pop__empty { margin: 0; font-size: 0.8rem; color: var(--text-muted); }
+
+.menu-pop__list { display: flex; flex-direction: column; gap: var(--space-1); }
+.menu-pop__row { display: flex; align-items: center; gap: var(--space-1); }
+.menu-pop__row > button:first-child { flex: 1; text-align: left; font-size: 0.78rem; }
+
+.menu-pop__delete {
+  font-size: 0.7rem;
+  padding: var(--space-1) var(--space-2);
+  color: var(--state-danger-strong);
+  min-width: 1.75rem;
+}
+
+.menu-pop__foot {
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-2);
+  display: flex;
+  gap: var(--space-1);
+}
+
+.menu-pop__foot input  { font-size: 0.78rem; padding: var(--space-1) var(--space-2); }
+.menu-pop__foot button { font-size: 0.78rem; padding: var(--space-1) var(--space-2); white-space: nowrap; }
+
+/* ── Mosaico de recuento por estado (salud del portafolio) ───────────────── */
+.health-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.health-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 5.5rem;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+}
+
+.health-tile__count { font-size: 1.6rem; font-weight: 800; line-height: 1; }
+.health-tile__label { font-size: 0.68rem; font-weight: 700; }
+.health-tile__pct   { font-size: 0.62rem; color: var(--text-soft); margin-top: 0.1rem; }
+
+.health-tile--success { background: var(--state-success-bg); }
+.health-tile--warning { background: var(--state-warning-bg); }
+.health-tile--danger  { background: var(--state-danger-bg); }
+
+.health-tile--success .health-tile__count,
+.health-tile--success .health-tile__label { color: var(--state-success-strong); }
+.health-tile--warning .health-tile__count,
+.health-tile--warning .health-tile__label { color: var(--state-warning-strong); }
+.health-tile--danger  .health-tile__count,
+.health-tile--danger  .health-tile__label { color: var(--state-danger-strong); }
+
+.health-tiles .stack-bar {
+  flex: 1 1 14rem;
+  min-width: 10rem;
+  height: 1.1rem;
+  border-radius: var(--radius-pill);
+}
+
+/* Punto de salud en una celda de tabla. Lleva dentro el icono de forma
+   distinta (● ▲ ■): en una columna de 42px no cabe la etiqueta, y el color
+   por sí solo no es información. */
+.health-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+.health-dot--success { background: var(--state-success-solid); color: var(--state-success-on-solid); }
+.health-dot--warning { background: var(--state-warning-solid); color: var(--state-warning-on-solid); }
+.health-dot--danger  { background: var(--state-danger-solid);  color: var(--state-danger-on-solid); }
+
+/* ── Mini-tarjeta de recuento con tinte de estado ────────────────────────── */
+.stat-tile {
+  text-align: center;
+  border: 1px solid;
+}
+
+.stat-tile h3 { font-size: 0.78rem; margin-bottom: var(--space-1); }
+
+.stat-tile__value { font-size: 1.6rem; font-weight: 800; margin: 0; line-height: 1.1; }
+.stat-tile__sub   { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.1rem; }
+
+/* Las tres clases van juntas a propósito. `body.dark .card` pesa (0,2,1) por
+   el elemento `body`, así que un `.card.stat-tile--success` (0,2,0) perdía y
+   el tinte de estado desaparecía en modo oscuro. Con `.stat-tile` en medio
+   son (0,3,0) y ganan sin recurrir a `!important`. */
+.card.stat-tile.stat-tile--success { background: var(--state-success-bg); border-color: var(--state-success-border); }
+.card.stat-tile.stat-tile--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
+.card.stat-tile.stat-tile--danger  { background: var(--state-danger-bg);  border-color: var(--state-danger-border); }
+.card.stat-tile.stat-tile--info    { background: var(--state-info-bg);    border-color: var(--state-info-border); }
+.card.stat-tile.stat-tile--neutral { background: var(--state-neutral-bg); border-color: var(--state-neutral-border); }
+
+.stat-tile--success .stat-tile__value { color: var(--state-success-strong); }
+.stat-tile--warning .stat-tile__value { color: var(--state-warning-strong); }
+.stat-tile--danger  .stat-tile__value { color: var(--state-danger-strong); }
+.stat-tile--info    .stat-tile__value { color: var(--state-info-strong); }
+.stat-tile--neutral .stat-tile__value { color: var(--state-neutral-strong); }
+
+/* ── Paginación de tabla ─────────────────────────────────────────────────── */
+.table-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.table-pager__status { font-size: 0.78rem; color: var(--text-muted); }
+.table-pager__nav { display: flex; gap: var(--space-1); }
+
+.table-pager__nav button {
+  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-2);
+  min-width: 2rem;
+  min-height: 2rem; /* objetivo táctil */
+}
+
+/* ── Detalles sueltos del tablero ────────────────────────────────────────── */
+.table-search {
+  width: 16rem;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.82rem;
+}
+
+.kpi-hint { font-size: 0.65rem; color: var(--text-muted); margin-top: var(--space-1); }
+.kpi-sub  { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.15rem; font-weight: 600; }
+.kpi-sub--danger { color: var(--state-danger-strong); }
+
+/* Lista de nombres separados en línea dentro de un aviso. */
+.inline-list { font-size: 0.8rem; }
+.inline-list > span + span { margin-left: var(--space-3); }
+
+/* ── Ajustes finos que salieron de migrar el Tablero ─────────────────────── */
+
+/* Tono de dato dentro de una `.kpi`: `.kpi p` y `body.dark .kpi p` fijan el
+   color con más peso que `.tone-*`, así que el tono necesita su propia regla
+   en lugar de bajarles la especificidad a ellas y arriesgar otras pantallas. */
+.kpi p.tone-success, body.dark .kpi p.tone-success { color: var(--state-success-strong); }
+.kpi p.tone-warning, body.dark .kpi p.tone-warning { color: var(--state-warning-strong); }
+.kpi p.tone-danger,  body.dark .kpi p.tone-danger  { color: var(--state-danger-strong); }
+
+.kpi-loading { color: var(--text-soft); }
+
+/* Título de tarjeta pegado a su contenido. */
+.card-title-tight { margin-bottom: var(--space-2); }
+
+/* Rejilla de filtros más apretada: en el Tablero son seis campos cortos y con
+   el mínimo de 15rem de `.field-grid` se quedaban en dos columnas de sobra. */
+.field-grid--compact {
+  grid-template-columns: repeat(auto-fit, minmax(11.25rem, 1fr));
+  align-items: flex-end;
+}
+
+.fx-note--spaced { margin-top: var(--space-2); }
+
+/* Texto del cuerpo de un aviso, debajo de su título. */
+.notice__text { margin: 0; font-size: 0.8rem; line-height: 1.45; }
+.notice--danger  .notice__text { color: var(--state-danger-strong); }
+.notice--warning .notice__text { color: var(--state-warning-strong); }
+
+/* Una `.card` que además es aviso: el tinte del estado tiene que ganarle al
+   fondo de tarjeta, también en modo oscuro (`body.dark .card` pesa 0,2,0). */
+.card.notice--danger.notice--danger   { background: var(--state-danger-bg);  border: 1px solid var(--state-danger-border); }
+.card.notice--warning.notice--warning { background: var(--state-warning-bg); border: 1px solid var(--state-warning-border); }
+.card.notice--danger  h3.notice__title { color: var(--state-danger-strong); }
+.card.notice--warning h3.notice__title { color: var(--state-warning-strong); }
+
+/* Anchos de columna de la tabla de proyectos. */
+.col-health  { width: 42px; }
+.col-company { width: 112px; }
+.col-project { min-width: 130px; }
+
+.cell-empty--roomy { padding: var(--space-6); }
+
+.table-foot--tight { margin-top: var(--space-1); font-size: 0.75rem; }
+
+.chart-block { margin-top: var(--space-2); }
+
+/* Un SVG de tamaño fijo (el donut) no debe estirarse como los de ancho fluido. */
+.chart-svg--fixed { width: 160px; flex-shrink: 0; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MODO OSCURO DENTRO DE UNA `.card`
+   `body.dark .card p`, `body.dark .card span:not(.pill)` y `body.dark .card
+   div` fuerzan `color: inherit` con especificidad (0,3,2). Eso aplana toda la
+   jerarquía de texto dentro de una tarjeta en modo oscuro: el texto atenuado,
+   el subtítulo de un KPI y la cifra de estado salen todos del mismo blanco.
+
+   No se tocan esas reglas porque las usan las dieciséis pantallas. En su lugar
+   los patrones nuevos recuperan su color con una especificidad mayor. Donde la
+   clase aparece dos veces es a propósito: sube el peso sin añadir un `!important`
+   ni acoplarse a la estructura del marcado.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Recuento por estado de salud. */
+body.dark .card .health-tile--success .health-tile__count,
+body.dark .card .health-tile--success .health-tile__label { color: var(--state-success-strong); }
+body.dark .card .health-tile--warning .health-tile__count,
+body.dark .card .health-tile--warning .health-tile__label { color: var(--state-warning-strong); }
+body.dark .card .health-tile--danger  .health-tile__count,
+body.dark .card .health-tile--danger  .health-tile__label { color: var(--state-danger-strong); }
+body.dark .card .health-tile__pct.health-tile__pct { color: var(--text-soft); }
+
+/* Mini-tarjeta de recuento. */
+body.dark .card.stat-tile--success .stat-tile__value { color: var(--state-success-strong); }
+body.dark .card.stat-tile--warning .stat-tile__value { color: var(--state-warning-strong); }
+body.dark .card.stat-tile--danger  .stat-tile__value { color: var(--state-danger-strong); }
+body.dark .card.stat-tile--info    .stat-tile__value { color: var(--state-info-strong); }
+body.dark .card.stat-tile--neutral .stat-tile__value { color: var(--state-neutral-strong); }
+body.dark .card.stat-tile .stat-tile__sub { color: var(--text-muted); }
+
+/* Texto secundario y de gráficos. */
+body.dark .card .kpi-sub.kpi-sub          { color: var(--text-muted); }
+body.dark .card .kpi-sub--danger.kpi-sub  { color: var(--state-danger-strong); }
+body.dark .card .kpi-hint.kpi-hint        { color: var(--text-muted); }
+body.dark .card .kpi-loading.kpi-loading  { color: var(--text-soft); }
+body.dark .card .chart-caption.chart-caption          { color: var(--text-soft); }
+body.dark .card .chart-empty.chart-empty              { color: var(--text-muted); }
+body.dark .card .chart-legend__name.chart-legend__name   { color: var(--text-strong); }
+body.dark .card .chart-legend__value.chart-legend__value { color: var(--text-soft); }
+body.dark .card .chart-legend__more.chart-legend__more   { color: var(--text-muted); }
+body.dark .card .table-pager__status.table-pager__status { color: var(--text-muted); }
+body.dark .card .table-foot.table-foot                   { color: var(--text-muted); }
+body.dark .card .menu-pop__empty.menu-pop__empty         { color: var(--text-muted); }
+
+/* Avisos dentro de una tarjeta. */
+body.dark .card.notice--danger  .notice__text.notice__text { color: var(--state-danger-strong); }
+body.dark .card.notice--warning .notice__text.notice__text { color: var(--state-warning-strong); }
+body.dark .card .inline-list.tone-danger  { color: var(--state-danger-strong); }
+body.dark .card .inline-list.tone-danger span { color: inherit; }
+
+/* Tono de dato en una celda de tabla: `body.dark td` también pesa más. */
+body.dark td.tone-success { color: var(--state-success-strong); }
+body.dark td.tone-warning { color: var(--state-warning-strong); }
+body.dark td.tone-danger  { color: var(--state-danger-strong); }
