@@ -8,7 +8,7 @@ import {
 import { DateRangePicker } from "../../components/DateRangePicker";
 import { readPersistedRange, type DateRange } from "../../components/dateRangeUtils";
 import { SearchableSelect } from "../../components/SearchableSelect";
-import type { TabId } from "../../types";
+import type { TabId, FinancialPanel } from "../../types";
 import { formatISODateRange } from "../../utils/periodUtils";
 import { backendHealthToResult, HEALTH_CRITERIA_TOOLTIP } from "../../utils/projectHealth";
 import { AlertBadge } from "./AlertBadge";
@@ -416,7 +416,7 @@ export function DashboardTab({
   initialStats: StatsOverview | null;
   initialBaseCurrency: string;
   onError: (msg: string) => void;
-  onDrillTo?: (tab: TabId) => void;
+  onDrillTo?: (tab: TabId, financialPanel?: FinancialPanel) => void;
 }) {
   const [stats, setStats] = useState<StatsOverview | null>(initialStats);
   const [baseCurrency, setBaseCurrency] = useState(initialBaseCurrency);
@@ -1126,20 +1126,20 @@ export function DashboardTab({
               ? `Costo laboral: ${fmt(totals.laborCostActual, baseCurrency)} | Gastos directos: ${fmt(totals.expensesActual ?? 0, baseCurrency)} | Total: ${fmt(totals.spent, baseCurrency)}`
               : "Total de gastos aprobados en el período (costo laboral + gastos directos)"
           }
-          onClick={() => onDrillTo?.("expenses")}
+          onClick={() => onDrillTo?.("financial", "expenses")}
         />
         <DashboardKpi
           label={`Ingresos reconocidos (${baseCurrency})`}
           value={fmt(totals.revenue, baseCurrency)}
           tooltip={totals.revenue === 0 ? "Sin ingresos reconocidos. Revisar hitos de facturación o entradas de ingreso." : "Ingresos formalmente reconocidos en el período"}
-          onClick={() => onDrillTo?.("revenue")}
+          onClick={() => onDrillTo?.("financial", "revenue")}
         />
         <DashboardKpi
           label={`Margen bruto (${baseCurrency})`}
           value={fmt(totals.grossMargin, baseCurrency)}
           accent={totals.grossMargin >= 0 ? "#16a34a" : "#dc2626"}
           tooltip="Ingresos reconocidos − Gasto real"
-          onClick={() => onDrillTo?.("revenue")}
+          onClick={() => onDrillTo?.("financial", "revenue")}
         />
         <DashboardKpi
           label={`Costo proyectado (${baseCurrency})`}

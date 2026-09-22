@@ -23,9 +23,7 @@ import { ProjectsTab } from "./features/projects/ProjectsTab";
 import { ProjectDetailTab } from "./features/projects/ProjectDetailTab";
 import { ConsultantsTab } from "./features/consultants/ConsultantsTab";
 import { TimeEntriesTab } from "./features/timeEntries/TimeEntriesTab";
-import { ExpensesTab } from "./features/expenses/ExpensesTab";
 import { ForecastsTab } from "./features/forecasts/ForecastsTab";
-import { RevenueTab } from "./features/revenue/RevenueTab";
 import { FxTab } from "./features/fx/FxTab";
 import { AdminTab } from "./features/admin/AdminTab";
 import { AuditTab } from "./features/audit/AuditTab";
@@ -39,7 +37,8 @@ import { ProfileTab } from "./features/profile/ProfileTab";
 import { ExtraHoursTab } from "./features/extraHours/ExtraHoursTab";
 import { EstimationCalculatorTab } from "./features/estimations/EstimationCalculatorTab";
 import { ActivitiesTab } from "./features/activities/ActivitiesTab";
-import type { TabId } from "./types";
+import type { TabId, FinancialPanel } from "./types";
+import { FinancialTab } from "./features/financial/FinancialTab";
 import { RagChat } from "./components/RagChat";
 import "./App.css";
 import "./responsive.css";
@@ -50,7 +49,7 @@ import "./responsive.css";
 
 const SIDEBAR_GROUPS: {
   label: string;
-  tabs: { id: TabId; label: string; icon: string; permission?: string }[];
+  tabs: { id: TabId; label: string; icon: string; permission?: string | string[] }[];
 }[] = [
   {
     label: "Gobierno",
@@ -68,13 +67,12 @@ const SIDEBAR_GROUPS: {
       { id: "timeEntries",  label: "Horas",          icon: "⊙", permission: "time:read" },
       { id: "activities",   label: "Actividades",   icon: "▤", permission: "time:read" },
       { id: "extraHours",   label: "Horas Extra",    icon: "⧗", permission: "extrahours:read" },
-      { id: "expenses",     label: "Gastos",         icon: "⊟", permission: "expenses:read" },
     ],
   },
   {
     label: "Financiero",
     tabs: [
-      { id: "revenue",    label: "Ingresos",      icon: "⊕", permission: "revenue:read" },
+      { id: "financial",  label: "Ingresos/Gastos", icon: "⊕", permission: ["expenses:read", "revenue:read"] },
       { id: "forecasts",  label: "Proyecciones",  icon: "◷", permission: "forecasts:read" },
       { id: "estimations", label: "Estimaciones",  icon: "⚖", permission: "estimations:read" },
       { id: "fx",         label: "Tasas FX",      icon: "⊗", permission: "fx:read" },
@@ -235,8 +233,7 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   timeEntries: "/time-entries",
   activities: "/activities",
   extraHours: "/extra-hours",
-  expenses: "/expenses",
-  revenue: "/revenue",
+  financial: "/financial",
   forecasts: "/forecasts",
   estimations: "/estimations",
   fx: "/fx",
@@ -247,9 +244,14 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   alerts: "/alerts",
 };
 
-const PATH_TAB_MAP: Record<string, TabId> = Object.fromEntries(
-  Object.entries(TAB_PATH_MAP).map(([tab, path]) => [path, tab as TabId])
-);
+const PATH_TAB_MAP: Record<string, TabId> = {
+  ...Object.fromEntries(
+    Object.entries(TAB_PATH_MAP).map(([tab, path]) => [path, tab as TabId])
+  ),
+  // Alias de rutas antiguas: Gastos e Ingresos ahora viven dentro de "Financiero".
+  "/expenses": "financial",
+  "/revenue": "financial",
+};
 
 // ── Landing Page ────────────────────────────────────────────────────────────
 
@@ -946,6 +948,10 @@ function App() {
     const path = (window.location.pathname || "/").toLowerCase();
     return PATH_TAB_MAP[path] || "dashboard";
   });
+  const [financialPanel, setFinancialPanel] = useState<FinancialPanel>(() => {
+    const path = (window.location.pathname || "/").toLowerCase();
+    return path === "/revenue" ? "revenue" : "expenses";
+  });
   const [preselectedCapacityConsultantId, setPreselectedCapacityConsultantId] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [originalUser, setOriginalUser] = useState<AuthUser | null>(null);
@@ -1122,7 +1128,12 @@ function App() {
   const visibleGroups = useMemo(() =>
     SIDEBAR_GROUPS.map((g) => ({
       ...g,
-      tabs: g.tabs.filter((t) => !t.permission || permissions.includes(t.permission)),
+      tabs: g.tabs.filter((t) =>
+        !t.permission ||
+        (Array.isArray(t.permission)
+          ? t.permission.some((p) => permissions.includes(p))
+          : permissions.includes(t.permission)),
+      ),
     })).filter((g) => g.tabs.length > 0),
   [permissions]);
 
@@ -1290,7 +1301,8 @@ function App() {
   }
 
   /** Drill-through: navigate to another tab from a KPI click */
-  function drillTo(tab: TabId) {
+  function drillTo(tab: TabId, financialPanelTarget?: FinancialPanel) {
+    if (financialPanelTarget) setFinancialPanel(financialPanelTarget);
     setActiveTab(tab);
   }
 
@@ -1753,20 +1765,6 @@ function App() {
                 />
               )}
 
-              {activeTab === "expenses" && (
-                <ExpensesTab
-                  expenses={expensesHook.expenses}
-                  projects={projectsHook.projects}
-                  forecasts={forecastsHook.forecasts}
-                  loading={expensesHook.loading}
-                  canWrite={can("expenses:write")}
-                  onReload={expensesHook.reload}
-                  onError={handleError}
-                  fxConfigs={fxHook.fxConfigs}
-                  baseCurrency="USD"
-                />
-              )}
-
               {activeTab === "forecasts" && (
                 <ForecastsTab
                   forecasts={forecastsHook.forecasts}
@@ -1779,13 +1777,24 @@ function App() {
                 />
               )}
 
-              {activeTab === "revenue" && (
-                <RevenueTab
+              {activeTab === "financial" && (
+                <FinancialTab
+                  panel={financialPanel}
+                  onPanelChange={setFinancialPanel}
+                  canExpenses={can("expenses:read")}
+                  canRevenue={can("revenue:read")}
+                  expenses={expensesHook.expenses}
                   revenueEntries={revenueHook.revenueEntries}
                   projects={projectsHook.projects}
-                  loading={revenueHook.loading}
-                  canWrite={can("revenue:write")}
-                  onReload={revenueHook.reload}
+                  forecasts={forecastsHook.forecasts}
+                  fxConfigs={fxHook.fxConfigs}
+                  baseCurrency="USD"
+                  expensesLoading={expensesHook.loading}
+                  revenueLoading={revenueHook.loading}
+                  canWriteExpenses={can("expenses:write")}
+                  canWriteRevenue={can("revenue:write")}
+                  onReloadExpenses={expensesHook.reload}
+                  onReloadRevenue={revenueHook.reload}
                   onError={handleError}
                 />
               )}
