@@ -528,6 +528,7 @@ export async function createConsultant(payload: {
   rateCurrency?: string;
   country?: string;
   seniority?: string;
+  identification?: string | null;
   costPerMonth?: number;
   active: boolean;
   allowWeekendWork?: boolean;
@@ -548,6 +549,7 @@ export async function updateConsultant(
     rateCurrency?: string;
     country?: string;
     seniority?: string;
+    identification?: string | null;
     costPerMonth?: number;
     active: boolean;
     allowWeekendWork?: boolean;

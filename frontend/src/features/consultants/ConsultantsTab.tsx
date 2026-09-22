@@ -52,6 +52,7 @@ type EditForm = {
   rateCurrency: string;
   country: string;
   seniority: string;
+  identification: string;
   active: boolean;
   allowWeekendWork: boolean;
   isInternal: boolean;
@@ -66,6 +67,7 @@ const emptyForm = {
   rateCurrency: "USD",
   country: "",
   seniority: "",
+  identification: "",
   active: true,
   allowWeekendWork: false,
   isInternal: true,
@@ -207,6 +209,7 @@ export function ConsultantsTab({
         rateCurrency: form.rateCurrency,
         country: form.country || undefined,
         seniority: form.seniority || undefined,
+        identification: form.identification.trim() || null,
         active: form.active,
         allowWeekendWork: form.allowWeekendWork,
         isInternal: form.isInternal,
@@ -240,6 +243,7 @@ export function ConsultantsTab({
         rateCurrency: editForm.rateCurrency,
         country: editForm.country || undefined,
         seniority: editForm.seniority || undefined,
+        identification: editForm.identification.trim() || null,
         active: editForm.active,
         allowWeekendWork: editForm.allowWeekendWork,
         isInternal: editForm.isInternal,
@@ -269,6 +273,7 @@ export function ConsultantsTab({
         rateCurrency: consultant.rateCurrency || "USD",
         country: consultant.country || undefined,
         seniority: consultant.seniority || undefined,
+        identification: consultant.identification ?? "",
         active: !consultant.active,
         allowWeekendWork: consultant.allowWeekendWork || false,
         isInternal: consultant.isInternal ?? true,
@@ -327,6 +332,15 @@ export function ConsultantsTab({
                 <option value="" disabled hidden>Seniority...</option>
                 {seniorityOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
+              {/* Documento: se muestra en la tabla de nómina de horas extra y se
+                  exporta en su CSV. Hasta ahora no había forma de rellenarlo. */}
+              <input
+                type="text"
+                value={form.identification}
+                onChange={(e) => setForm((p) => ({ ...p, identification: e.target.value }))}
+                placeholder="Documento de identidad (opcional)"
+                maxLength={40}
+              />
             </div>
 
             <div className="consultant-form-row row-3">
@@ -495,6 +509,7 @@ export function ConsultantsTab({
                                         rateCurrency: c.rateCurrency || "USD",
                                         country: c.country || "",
                                         seniority: c.seniority || "",
+                                        identification: c.identification ?? "",
                                         active: c.active,
                                         allowWeekendWork: c.allowWeekendWork || false,
                                         isInternal: c.isInternal !== false,

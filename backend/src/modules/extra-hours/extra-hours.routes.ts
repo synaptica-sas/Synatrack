@@ -890,6 +890,14 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: "Solicitud no encontrada" });
       }
 
+      // DEP-40: el estado se comprueba ANTES que el mes cerrado, igual que en
+      // `approve`. Antes iba al revés, así que una solicitud ya aprobada en un mes
+      // cerrado devolvía 409 al aprobarla y 400 al rechazarla. Además evita una
+      // consulta a la base cuando el estado ya descarta la operación.
+      if (existing.status === ExtraHourStatus.APPROVED || existing.status === ExtraHourStatus.REJECTED) {
+        return reply.status(409).send({ message: "Solo solicitudes pendientes pueden ser rechazadas" });
+      }
+
       if (existing.projectId) {
         const entryYear = existing.date.getUTCFullYear();
         const entryMonth = existing.date.getUTCMonth() + 1;
@@ -907,10 +915,6 @@ export async function extraHoursRoutes(app: FastifyInstance) {
             message: "No se pueden realizar cambios en solicitudes pertenecientes a un mes cerrado.",
           });
         }
-      }
-
-      if (existing.status === ExtraHourStatus.APPROVED || existing.status === ExtraHourStatus.REJECTED) {
-        return reply.status(409).send({ message: "Solo solicitudes pendientes pueden ser rechazadas" });
       }
 
       // Validar quién tiene permiso de rechazar. Mismo helper que `approve`

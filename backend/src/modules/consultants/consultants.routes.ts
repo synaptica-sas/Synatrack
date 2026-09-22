@@ -17,6 +17,16 @@ const consultantPayloadSchema = z.object({
   rateCurrency: z.string().trim().toUpperCase().length(3).default("USD"),
   country: z.string().trim().optional().transform(val => val ? normalizeCountry(val) : "Default"),
   seniority: z.string().trim().optional(),
+  // Documento de identidad. Se muestra en la tabla de nómina de horas extra y se
+  // exporta en su CSV, pero hasta ahora no estaba en este esquema, así que no
+  // había forma de rellenarlo desde la aplicación y siempre salía "No asignado".
+  // Es el mismo defecto que tenían projectManagerEmail (R7) y los umbrales (R10):
+  // el backend leía un campo que nadie podía escribir.
+  // Cadena vacía se normaliza a null, que es como se borra.
+  identification: z
+    .union([z.literal(""), z.string().trim().max(40, "el documento no puede superar 40 caracteres")])
+    .nullish()
+    .transform((valor) => (valor === "" ? null : valor)),
   costPerMonth: z.coerce.number().nonnegative().optional(),
   active: z.coerce.boolean().default(true),
   allowWeekendWork: z.coerce.boolean().default(false),
@@ -106,6 +116,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
         rateCurrency: payload.rateCurrency,
         country: payload.country,
         seniority: payload.seniority,
+        identification: payload.identification,
         costPerMonth: payload.costPerMonth,
         active: payload.active,
         allowWeekendWork: payload.allowWeekendWork,
@@ -156,6 +167,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
         rateCurrency: payload.rateCurrency,
         country: payload.country,
         seniority: payload.seniority,
+        identification: payload.identification,
         costPerMonth: payload.costPerMonth,
         active: payload.active,
         allowWeekendWork: payload.allowWeekendWork,
