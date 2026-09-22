@@ -33,11 +33,23 @@ export type ProjectHealthResult = {
   icon: string;
 };
 
+/**
+ * Vocabulario único del semáforo. Las etiquetas **nombran el estado, no el color**
+ * ("Crítico", no "Rojo"): el color por sí solo no es accesible para quien no
+ * distingue rojo y verde, y además "Verde" no dice nada sobre qué está pasando.
+ *
+ * Antes convivían dos vocabularios —este con nombres de color y el de Portafolio
+ * con nombres de estado—, de modo que la misma salud se llamaba distinto según la
+ * pantalla. Se unificó en el de estado (decisión de Juan, 2026-09-22).
+ *
+ * Los iconos tienen **forma distinta** a propósito, para que el estado se
+ * distinga sin depender del color.
+ */
 const HEALTH_MAP: Record<HealthLevel, Omit<ProjectHealthResult, "nivel">> = {
-  VERDE:    { label: "Verde",   color: "#6bb42d", pillClass: "ok",    icon: "●" },
-  AMARILLO: { label: "Amarillo", color: "#f1a323", pillClass: "warn",  icon: "●" },
-  ROJO:     { label: "Rojo",    color: "#a8194c", pillClass: "error", icon: "●" },
-  CRITICO:  { label: "Crítico", color: "#a8194c", pillClass: "error", icon: "▲" },
+  VERDE:    { label: "Saludable",   color: "var(--state-success-solid)", pillClass: "ok",    icon: "●" },
+  AMARILLO: { label: "Advertencia", color: "var(--state-warning-solid)", pillClass: "warn",  icon: "▲" },
+  ROJO:     { label: "Crítico",     color: "var(--state-danger-solid)",  pillClass: "error", icon: "■" },
+  CRITICO:  { label: "Crítico",     color: "var(--state-danger-solid)",  pillClass: "error", icon: "■" },
 };
 
 /**

@@ -56,6 +56,7 @@ Nada de esto se puede resolver leyendo código.
 | D-4 | **¿Los ingresos se categorizan?** `FinancialEntry.category` solo se usa en gastos y queda nulo en ingresos, sin que el esquema lo impida. | Cambio de modelo si la respuesta es sí |
 | D-5 | **¿La jornada laboral se configura por país, por consultor o ambos?** Necesario para poder arreglar DEP-41. | Define el diseño |
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
+| D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con 0,85 / 1,00 y 90 % / 100 %, pero el backend calcula la salud con 0,75 y 0,9. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
 
 ---
 
@@ -90,6 +91,10 @@ calculado difiere del guardado, hace un `update` dentro de un `GET`, y sin audit
 **Los deltas «vs período anterior» del tablero comparan peras con manzanas.** Un total del
 servidor ya convertido contra una suma local en monedas mezcladas. Arreglarlo bien exige que
 `/stats/overview` devuelva los totales del período anterior.
+
+**Los umbrales de Portafolio no coinciden con los del backend** (ver D-7). Es un defecto
+funcional, no visual: se detectó al rediseñar la pantalla y se dejó sin tocar a propósito,
+porque elegir los umbrales buenos es decisión de negocio.
 
 **DEP-05 y DEP-06 — Enums muertos.** `AssignmentStatus.PARTIAL` nunca se escribe pero
 aparece en 12 filtros de lectura; `AlertType.CONSULTANT_OVERLOADED` nunca se genera, aunque

@@ -419,9 +419,9 @@ export function ProjectsTab({
                   style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
                 >
                   <option value="">Todas</option>
-                  <option value="GREEN">Verde (OK)</option>
-                  <option value="YELLOW">Amarillo (WARN)</option>
-                  <option value="RED">Rojo (CRIT)</option>
+                  <option value="GREEN">Saludable</option>
+                  <option value="YELLOW">Advertencia</option>
+                  <option value="RED">Crítico</option>
                 </select>
               </div>
             </div>

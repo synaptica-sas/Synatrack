@@ -891,9 +891,9 @@ export function DashboardTab({
         <h3 style={{ marginBottom: "0.6rem" }}>Salud del portafolio</h3>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center", marginBottom: "0.6rem" }}>
           {[
-            { label: "Verde",    count: healthCounts.green,  color: "#22c55e", bg: "var(--state-success-bg)", pct: healthCounts.total > 0 ? healthCounts.green / healthCounts.total * 100 : 0 },
-            { label: "Amarillo", count: healthCounts.yellow, color: "#f59e0b", bg: "var(--state-warning-bg)", pct: healthCounts.total > 0 ? healthCounts.yellow / healthCounts.total * 100 : 0 },
-            { label: "Rojo",     count: healthCounts.red,    color: "#ef4444", bg: "var(--state-danger-bg)", pct: healthCounts.total > 0 ? healthCounts.red / healthCounts.total * 100 : 0 },
+            { label: "Saludable",   count: healthCounts.green,  color: "var(--state-success-solid)", bg: "var(--state-success-bg)", pct: healthCounts.total > 0 ? healthCounts.green / healthCounts.total * 100 : 0 },
+            { label: "Advertencia", count: healthCounts.yellow, color: "var(--state-warning-solid)", bg: "var(--state-warning-bg)", pct: healthCounts.total > 0 ? healthCounts.yellow / healthCounts.total * 100 : 0 },
+            { label: "Crítico",     count: healthCounts.red,    color: "var(--state-danger-solid)",  bg: "var(--state-danger-bg)", pct: healthCounts.total > 0 ? healthCounts.red / healthCounts.total * 100 : 0 },
           ].map(({ label, count, color, bg, pct }) => (
             <div key={label} style={{
               display: "flex", flexDirection: "column", alignItems: "center",
