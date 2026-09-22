@@ -17,10 +17,17 @@ principios de septiembre, así que **todo lo arreglado no le sirve a nadie todav
 drift del esquema, las fugas de tarifas, la suplantación al registrar horas, el cron de
 tasas de cambio apuntando a un host inexistente, la auditoría, el planificador de tareas.
 
-Antes de desplegar hay que:
+**El procedimiento completo, con los comandos ya ensayados, está en
+`documentacion/DESPLIEGUE.md`.** Decisión tomada: como lo que hay en producción son datos de
+prueba, la base de Supabase se rehace desde cero en vez de intentar reconciliar su historial
+de migraciones.
 
-- [ ] Aplicar las migraciones en **Supabase**. La del drift es idempotente, así que es
-      segura; la de `FinancialEntry` copia los datos antes de borrar las tablas viejas.
+Resumen de lo que hay que hacer:
+
+- [ ] Rehacer la base de **Supabase**: no se construyó con las migraciones de este repo
+      (se usó `db push` desde Railway), así que `migrate deploy` falla contra ella.
+- [ ] **Cargar las tasas de cambio** con `POST /api/fx/sync` justo después. El seed deja
+      cero, y sin ellas los importes salen en la moneda equivocada.
 - [ ] Confirmar que Render acepta **Node 24** (`NODE_VERSION` en `render.yaml`). Es
       reversible en una línea si algo falla.
 - [ ] Asegurarse de que las variables `AUTH_DEV_*` **no existan** en producción. Son el
