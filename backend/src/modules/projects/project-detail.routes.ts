@@ -34,8 +34,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
             where: { status: "APPROVED" },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: true,
-          revenueEntries: true,
+          financialEntries: true,
           forecasts: { include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } } },
         },
       });
@@ -237,7 +236,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
             orderBy: { workDate: "asc" },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: { orderBy: { expenseDate: "asc" } },
+          financialEntries: { where: { type: "EXPENSE" }, orderBy: { entryDate: "asc" } },
         },
       });
 
@@ -264,8 +263,8 @@ export async function projectDetailRoutes(app: FastifyInstance) {
         const cost = convertAmountFallback(Number(entry.hours) * rate, entry.consultant.rateCurrency, baseCurrency, rateMap);
         costByDate.set(dateKey, (costByDate.get(dateKey) ?? 0) + cost);
       }
-      for (const expense of project.expenses) {
-        const dateKey = expense.expenseDate.toISOString().slice(0, 10);
+      for (const expense of project.financialEntries) {
+        const dateKey = expense.entryDate.toISOString().slice(0, 10);
         const cost = convertAmountFallback(Number(expense.amount), expense.currency, baseCurrency, rateMap);
         costByDate.set(dateKey, (costByDate.get(dateKey) ?? 0) + cost);
       }

@@ -5,7 +5,7 @@ import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { buildRateMap } from "../../utils/currency.js";
-import { calculateProfitability } from "../../utils/financial.js";
+import { calculateProfitability, splitFinancialEntries } from "../../utils/financial.js";
 
 /**
  * Correo del Project Manager del proyecto (DEP-37).
@@ -299,11 +299,10 @@ export async function projectsRoutes(app: FastifyInstance) {
             where: { status: "APPROVED" },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: true,
+          financialEntries: true,
           forecasts: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          revenueEntries: true,
         },
       });
 
@@ -313,6 +312,9 @@ export async function projectsRoutes(app: FastifyInstance) {
       const baseCurrency = qBase ?? fxConfigs[0]?.baseCode ?? "USD";
       const rateMap = buildRateMap(fxConfigs);
 
+      // Partición por `type` con el mismo helper que usa el cálculo unificado.
+      const { expenses, revenueEntries } = splitFinancialEntries(project.financialEntries);
+
       const profitability = calculateProfitability({
         budget: Number(project.budget),
         budgetCurrency: project.currency,
@@ -320,7 +322,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         sellCurrency: project.sellCurrency,
         marginThreshold: project.marginThreshold != null ? Number(project.marginThreshold) : null,
         budgetAlertPct: project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
-        revenueEntries: project.revenueEntries.map((r) => ({ amount: Number(r.amount), currency: r.currency })),
+        revenueEntries,
         approvedTimeEntries: project.timeEntries.map((e) => ({
           consultantId: e.consultantId,
           hours: Number(e.hours),
@@ -329,7 +331,7 @@ export async function projectsRoutes(app: FastifyInstance) {
           hourlyRate: e.consultant.hourlyRate ? Number(e.consultant.hourlyRate) : null,
           rateCurrency: e.consultant.rateCurrency,
         })),
-        expenses: project.expenses.map((e) => ({ amount: Number(e.amount), currency: e.currency })),
+        expenses,
         forecasts: project.forecasts.map((f) => ({
           consultantId: f.consultantId,
           hoursProjected: Number(f.hoursProjected),

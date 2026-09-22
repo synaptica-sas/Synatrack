@@ -361,6 +361,38 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
 // ─── Adaptador de filas Prisma → insumo del cálculo ─────────────────────────
 
 /**
+ * Fila cruda de `FinancialEntry` tal como la devuelve Prisma (los `Decimal`
+ * llegan como objeto, por eso `amount` es `unknown`).
+ */
+export type FinancialEntryRow = {
+  type: "EXPENSE" | "REVENUE";
+  amount: unknown;
+  currency: string;
+};
+
+/**
+ * ÚNICO sitio donde se parte `FinancialEntry` por su discriminador `type`.
+ *
+ * El modelo de datos fusionó `Expense` y `RevenueEntry` en una sola tabla, pero
+ * el cálculo financiero sigue necesitando las dos listas por separado (un gasto
+ * resta y un ingreso suma). En vez de repetir el `filter((e) => e.type === ...)`
+ * en cada ruta, la partición vive aquí, junto al cálculo que la consume.
+ */
+export function splitFinancialEntries(entries: FinancialEntryRow[]): {
+  expenses: ExpenseInput[];
+  revenueEntries: RevenueEntryInput[];
+} {
+  const expenses: ExpenseInput[] = [];
+  const revenueEntries: RevenueEntryInput[] = [];
+  for (const entry of entries) {
+    const row = { amount: Number(entry.amount), currency: entry.currency };
+    if (entry.type === "EXPENSE") expenses.push(row);
+    else revenueEntries.push(row);
+  }
+  return { expenses, revenueEntries };
+}
+
+/**
  * Adapta las filas de Prisma al insumo del cálculo unificado de `financial.ts`.
  * Vive aquí (capa de ruta) para que la utilidad siga siendo pura.
  */
@@ -371,8 +403,7 @@ type ProjectRowForFinancials = {
   sellCurrency: string;
   marginThreshold: unknown;
   budgetAlertPct: unknown;
-  revenueEntries: Array<{ amount: unknown; currency: string }>;
-  expenses: Array<{ amount: unknown; currency: string }>;
+  financialEntries: FinancialEntryRow[];
   forecasts: Array<{
     consultantId: string;
     hoursProjected: unknown;
@@ -396,6 +427,7 @@ export function toFinancialsInput(
   rateMap: Map<string, number>,
   baseCurrency: string,
 ): ProjectFinancialsInput {
+  const split = splitFinancialEntries(project.financialEntries);
   return {
     budget: Number(project.budget),
     budgetCurrency: project.currency,
@@ -403,7 +435,7 @@ export function toFinancialsInput(
     sellCurrency: project.sellCurrency,
     marginThreshold: project.marginThreshold != null ? Number(project.marginThreshold) : null,
     budgetAlertPct: project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
-    revenueEntries: project.revenueEntries.map((r) => ({ amount: Number(r.amount), currency: r.currency })),
+    revenueEntries: split.revenueEntries,
     approvedTimeEntries: approvedEntries.map((e) => ({
       consultantId: e.consultantId,
       hours: Number(e.hours),
@@ -411,7 +443,7 @@ export function toFinancialsInput(
       hourlyRate: e.consultant.hourlyRate != null ? Number(e.consultant.hourlyRate) : null,
       rateCurrency: e.consultant.rateCurrency,
     })),
-    expenses: project.expenses.map((e) => ({ amount: Number(e.amount), currency: e.currency })),
+    expenses: split.expenses,
     forecasts: project.forecasts.map((f) => ({
       consultantId: f.consultantId,
       hoursProjected: Number(f.hoursProjected),

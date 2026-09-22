@@ -11,8 +11,7 @@ const NAV_LINKS: { label: string; tab: TabId }[] = [
   { label: "Proyectos",    tab: "projects" },
   { label: "Portafolio",   tab: "portfolio" },
   { label: "Consultores",  tab: "consultants" },
-  { label: "Gastos",       tab: "expenses" },
-  { label: "Ingresos",     tab: "revenue" },
+  { label: "Ingresos/Gastos", tab: "financial" },
   { label: "Proyecciones", tab: "forecasts" },
   { label: "Capacidad",    tab: "capacity" },
 ];

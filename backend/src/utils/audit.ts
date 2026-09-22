@@ -21,8 +21,14 @@ export const AUDIT_ENTITIES = {
   consultant: "consultant",
   timeEntry: "timeEntry",
   extraHourEntry: "extraHourEntry",
+  // `Expense` y `RevenueEntry` se fusionaron en el modelo `FinancialEntry` con
+  // un discriminador `type`. Se conservan los dos valores separados porque son
+  // dos operaciones de negocio distintas (un gasto no es un ingreso) y el filtro
+  // de `GET /api/audit` los distingue; `financialEntry` es el paraguas que
+  // devuelve ambos (ver ALIAS_HISTORICOS_ENTIDAD).
   expense: "expense",
   revenueEntry: "revenueEntry",
+  financialEntry: "financialEntry",
   forecast: "forecast",
   assignment: "assignment",
   changeRequest: "changeRequest",
@@ -46,6 +52,9 @@ export type AuditEntity = (typeof AUDIT_ENTITIES)[keyof typeof AUDIT_ENTITIES];
 export const ALIAS_HISTORICOS_ENTIDAD: Partial<Record<AuditEntity, readonly string[]>> = {
   project: ["Project"],
   forecast: ["Forecast"],
+  // No es un alias "histórico" sino jerárquico: al fusionarse las tablas,
+  // `entity=financialEntry` debe devolver gastos e ingresos juntos.
+  financialEntry: ["expense", "revenueEntry"],
 };
 
 /**

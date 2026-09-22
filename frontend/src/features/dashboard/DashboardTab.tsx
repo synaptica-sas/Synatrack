@@ -8,7 +8,7 @@ import {
 import { DateRangePicker } from "../../components/DateRangePicker";
 import { readPersistedRange, type DateRange } from "../../components/dateRangeUtils";
 import { SearchableSelect } from "../../components/SearchableSelect";
-import type { TabId } from "../../types";
+import type { TabId, FinancialPanel } from "../../types";
 import { formatISODateRange } from "../../utils/periodUtils";
 import { backendHealthToResult, textoCriteriosSalud } from "../../utils/projectHealth";
 import { AlertBadge } from "./AlertBadge";
@@ -450,7 +450,7 @@ export function DashboardTab({
   /** Petición de estadísticas en curso. Sirve para no confundir "cargando" con "falló". */
   statsLoading: boolean;
   onError: (msg: string) => void;
-  onDrillTo?: (tab: TabId) => void;
+  onDrillTo?: (tab: TabId, financialPanel?: FinancialPanel) => void;
 }) {
   const [stats, setStats] = useState<StatsOverview | null>(initialStats);
   const [baseCurrency, setBaseCurrency] = useState(initialBaseCurrency);
@@ -1151,7 +1151,7 @@ export function DashboardTab({
               ? `Costo laboral: ${fmt(totals.laborCostActual, baseCurrency)} | Gastos directos: ${fmt(totals.expensesActual ?? 0, baseCurrency)} | Total: ${fmt(totals.spent, baseCurrency)}`
               : "Total de gastos aprobados en el período (costo laboral + gastos directos)"
           }
-          onClick={() => onDrillTo?.("expenses")}
+          onClick={() => onDrillTo?.("financial", "expenses")}
           error={totalsFailed ? statsErrorMessage : null}
           loading={totalsPending || statsLoading}
         />
@@ -1159,18 +1159,18 @@ export function DashboardTab({
           label={`Ingresos reconocidos (${baseCurrency})`}
           value={fmt(totals.revenue, baseCurrency)}
           tooltip={totals.revenue === 0 ? "Sin ingresos reconocidos. Revisar hitos de facturación o entradas de ingreso." : "Ingresos formalmente reconocidos en el período"}
+          onClick={() => onDrillTo?.("financial", "revenue")}
           error={totalsFailed ? statsErrorMessage : null}
           loading={totalsPending || statsLoading}
-          onClick={() => onDrillTo?.("revenue")}
         />
         <DashboardKpi
           label={`Margen bruto (${baseCurrency})`}
           value={fmt(totals.grossMargin, baseCurrency)}
           accent={totals.grossMargin >= 0 ? "#16a34a" : "#dc2626"}
           tooltip="Ingresos reconocidos − Gasto real"
+          onClick={() => onDrillTo?.("financial", "revenue")}
           error={totalsFailed ? statsErrorMessage : null}
           loading={totalsPending || statsLoading}
-          onClick={() => onDrillTo?.("revenue")}
         />
         <DashboardKpi
           label={`Costo proyectado (${baseCurrency})`}

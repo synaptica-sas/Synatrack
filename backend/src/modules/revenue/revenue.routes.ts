@@ -16,6 +16,13 @@ const revenuePayloadSchema = z.object({
 const idParamsSchema = z.object({ id: z.string().min(1) });
 const projectIdParamsSchema = z.object({ projectId: z.string().min(1) });
 
+// FinancialEntry -> forma pública de RevenueEntry: oculta `type` y `category`
+// (esta última solo existe para EXPENSE), para no cambiar el contrato del frontend.
+function toRevenueDto<T extends { type: unknown; category: unknown }>(row: T) {
+  const { type, category, ...rest } = row;
+  return rest;
+}
+
 export async function revenueRoutes(app: FastifyInstance) {
   // GET /api/revenue?projectId=... — listado por proyecto
   app.get(
@@ -29,13 +36,13 @@ export async function revenueRoutes(app: FastifyInstance) {
     async (request) => {
       const { projectId } = projectIdParamsSchema.partial().parse(request.query);
 
-      const entries = await prisma.revenueEntry.findMany({
-        where: projectId ? { projectId } : undefined,
+      const entries = await prisma.financialEntry.findMany({
+        where: { type: "REVENUE", projectId },
         include: { project: { select: { id: true, name: true, currency: true } } },
         orderBy: { entryDate: "desc" },
       });
 
-      return { data: entries };
+      return { data: entries.map(toRevenueDto) };
     },
   );
 
@@ -53,7 +60,7 @@ export async function revenueRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: "Proyecto no encontrado" });
       }
 
-      const entry = await prisma.revenueEntry.create({ data: payload });
+      const entry = await prisma.financialEntry.create({ data: { ...payload, type: "REVENUE" } });
 
       await writeAudit(prisma, {
         entity: AUDIT_ENTITIES.revenueEntry,
@@ -64,7 +71,7 @@ export async function revenueRoutes(app: FastifyInstance) {
         request,
       });
 
-      return reply.status(201).send({ data: entry });
+      return reply.status(201).send({ data: toRevenueDto(entry) });
     },
   );
 
@@ -78,8 +85,8 @@ export async function revenueRoutes(app: FastifyInstance) {
       const { id } = idParamsSchema.parse(request.params);
       const payload = revenuePayloadSchema.parse(request.body);
 
-      const existing = await prisma.revenueEntry.findUnique({ where: { id } });
-      if (!existing) {
+      const existing = await prisma.financialEntry.findUnique({ where: { id } });
+      if (!existing || existing.type !== "REVENUE") {
         return reply.status(404).send({ message: "Ingreso no encontrado" });
       }
 
@@ -89,7 +96,7 @@ export async function revenueRoutes(app: FastifyInstance) {
       }
 
       try {
-        const entry = await prisma.revenueEntry.update({ where: { id }, data: payload });
+        const entry = await prisma.financialEntry.update({ where: { id }, data: payload });
 
         await writeAudit(prisma, {
           entity: AUDIT_ENTITIES.revenueEntry,
@@ -101,7 +108,7 @@ export async function revenueRoutes(app: FastifyInstance) {
           request,
         });
 
-        return { data: entry };
+        return { data: toRevenueDto(entry) };
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
         if (code === "P2003" || code === "P2014") {
@@ -121,13 +128,13 @@ export async function revenueRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = idParamsSchema.parse(request.params);
 
-      const existing = await prisma.revenueEntry.findUnique({ where: { id } });
-      if (!existing) {
+      const existing = await prisma.financialEntry.findUnique({ where: { id } });
+      if (!existing || existing.type !== "REVENUE") {
         return reply.status(404).send({ message: "Ingreso no encontrado" });
       }
 
       try {
-        await prisma.revenueEntry.delete({ where: { id } });
+        await prisma.financialEntry.delete({ where: { id } });
 
         await writeAudit(prisma, {
           entity: AUDIT_ENTITIES.revenueEntry,

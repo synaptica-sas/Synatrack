@@ -54,13 +54,20 @@ export async function statsRoutes(app: FastifyInstance) {
             where: { workDate: { gte: query.from, lte: query.to } },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: {
-            where: { expenseDate: { gte: query.from, lte: query.to } },
+          // Los gastos se filtran por el rango from/to del tablero (comportamiento
+          // propio de /overview); los ingresos se toman completos, como antes de
+          // la fusión de tablas. El filtro sigue en Prisma, no en JS.
+          financialEntries: {
+            where: {
+              OR: [
+                { type: "REVENUE" },
+                { type: "EXPENSE", entryDate: { gte: query.from, lte: query.to } },
+              ],
+            },
           },
           forecasts: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          revenueEntries: true,
           milestones: { select: { status: true, plannedDate: true, weight: true } },
           risks: { select: { riskScore: true, status: true } },
         },
@@ -237,11 +244,10 @@ export async function statsRoutes(app: FastifyInstance) {
           timeEntries: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: true,
+          financialEntries: true,
           forecasts: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          revenueEntries: true,
           milestones: { select: { status: true, plannedDate: true, weight: true } },
           risks: { select: { riskScore: true, status: true } },
           issues: { select: { status: true, severity: true } },

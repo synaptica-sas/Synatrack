@@ -415,8 +415,12 @@ describe("toFinancialsInput", () => {
         sellCurrency: "USD",
         marginThreshold: "25.00",
         budgetAlertPct: "90.00",
-        revenueEntries: [{ amount: "1000.00", currency: "USD" }],
-        expenses: [{ amount: "50.00", currency: "USD" }],
+        // Tras la fusión de tablas, gastos e ingresos llegan en una sola relación
+        // con discriminador `type`; la partición la hace `splitFinancialEntries`.
+        financialEntries: [
+          { type: "REVENUE" as const, amount: "1000.00", currency: "USD" },
+          { type: "EXPENSE" as const, amount: "50.00", currency: "USD" },
+        ],
         forecasts: [],
       },
       [
@@ -436,6 +440,8 @@ describe("toFinancialsInput", () => {
     expect(input.marginThreshold).toBe(25);
     expect(input.approvedTimeEntries[0]!.hours).toBe(8);
     expect(input.approvedTimeEntries[0]!.hourlyRate).toBeNull();
+    expect(input.revenueEntries).toEqual([{ amount: 1000, currency: "USD" }]);
+    expect(input.expenses).toEqual([{ amount: 50, currency: "USD" }]);
   });
 
   it("marginThreshold = 0 en BD NO se convierte en el default (0 es un valor válido)", () => {
@@ -447,8 +453,7 @@ describe("toFinancialsInput", () => {
         sellCurrency: "USD",
         marginThreshold: "0.00",
         budgetAlertPct: null,
-        revenueEntries: [],
-        expenses: [],
+        financialEntries: [],
         forecasts: [],
       },
       [],

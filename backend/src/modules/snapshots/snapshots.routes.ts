@@ -54,11 +54,11 @@ export async function snapshotsRoutes(app: FastifyInstance) {
           },
           include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
         }),
-        prisma.expense.findMany({
-          where: { projectId, expenseDate: { gte: startOfMonth, lte: endOfMonth } },
+        prisma.financialEntry.findMany({
+          where: { projectId, type: "EXPENSE", entryDate: { gte: startOfMonth, lte: endOfMonth } },
         }),
-        prisma.revenueEntry.findMany({
-          where: { projectId, entryDate: { gte: startOfMonth, lte: endOfMonth } },
+        prisma.financialEntry.findMany({
+          where: { projectId, type: "REVENUE", entryDate: { gte: startOfMonth, lte: endOfMonth } },
         }),
       ]);
 

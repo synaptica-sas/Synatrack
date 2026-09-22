@@ -77,7 +77,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         where: { status: "APPROVED" },
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
-      expenses: true,
+      financialEntries: { where: { type: "EXPENSE" } },
     },
   });
 
@@ -90,7 +90,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
       return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
     }, 0);
 
-    const expensesCost = project.expenses.reduce(
+    const expensesCost = project.financialEntries.reduce(
       (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap),
       0,
     );
@@ -132,8 +132,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         where: { status: "APPROVED" },
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
-      expenses: true,
-      revenueEntries: true,
+      financialEntries: true,
       forecasts: {
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
