@@ -30,6 +30,8 @@
   "type": "module",
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/rate-limit": "^11.2.0",
     "@prisma/client": "^6.16.3",
     "dotenv": "^17.4.1",
     "fastify": "^5.8.4",
