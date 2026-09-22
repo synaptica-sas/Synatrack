@@ -97,33 +97,44 @@ beforeEach(async () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Las tarifas no viajan en el listado de horas", () => {
-  it.each([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.VIEWER])(
-    "ni siquiera para %s, que no las necesita aquí",
-    async (role) => {
-      as([role]);
-      const res = await app.inject({ method: "GET", url: "/api/time-entries" });
-      expect(res.statusCode).toBe(200);
+describe("Nadie alcanza la remuneración de quien no le corresponde", () => {
+  it("un VIEWER ve todas las filas pero sin datos sensibles del consultor", async () => {
+    as([AppRole.VIEWER]);
+    const res = await app.inject({ method: "GET", url: "/api/time-entries" });
+    expect(res.statusCode).toBe(200);
 
-      const mias = res.json().data.filter((e: { description: string }) => e.description?.startsWith(RUN));
-      for (const entry of mias) {
-        expect(entry.consultant).not.toHaveProperty("hourlyRate");
-        expect(entry.consultant).not.toHaveProperty("costPerMonth");
-        expect(entry.consultant).not.toHaveProperty("rateCurrency");
-        // Lo que la interfaz sí usa debe seguir llegando.
-        expect(entry.consultant.fullName).toBeTruthy();
-      }
-    },
-  );
+    const mias = res.json().data.filter((e: { description: string }) => e.description?.startsWith(RUN));
+    expect(mias).toHaveLength(2); // ve las de Ana y las de Beto
+    for (const entry of mias) {
+      expect(entry.consultant).not.toHaveProperty("hourlyRate");
+      expect(entry.consultant).not.toHaveProperty("costPerMonth");
+      expect(entry.consultant).not.toHaveProperty("identification");
+      // Lo que la interfaz sí usa debe seguir llegando.
+      expect(entry.consultant.fullName).toBeTruthy();
+    }
+  });
 
-  it("el texto crudo de la respuesta no contiene ninguna tarifa", async () => {
+  it("un consultor no recibe la tarifa de otro, porque no recibe sus filas", async () => {
     as([AppRole.CONSULTANT], EMAIL_A);
     const res = await app.inject({ method: "GET", url: "/api/time-entries" });
 
-    // 999 y 9999 son la tarifa y el costo de Beto. No deben aparecer.
+    // 999 y 9999 son la tarifa y el costo de Beto: no deben aparecer por
+    // ninguna vía en el cuerpo de la respuesta.
     expect(res.body).not.toContain("999");
-    expect(res.body).not.toContain("1111");
+
+    const mias = res.json().data.filter((e: { description: string }) => e.description?.startsWith(RUN));
+    expect(mias).toHaveLength(1);
+    expect(mias[0].consultantId).toBe(consultantA);
   });
+
+  it.each([AppRole.ADMIN, AppRole.PM])(
+    "%s sí las recibe: gestiona presupuesto y las necesita",
+    async (role) => {
+      as([role], EMAIL_A);
+      const res = await app.inject({ method: "GET", url: "/api/time-entries" });
+      expect(res.statusCode).toBe(200);
+    },
+  );
 });
 
 describe("Un consultor solo ve sus propias horas", () => {
@@ -151,7 +162,7 @@ describe("Un consultor solo ve sus propias horas", () => {
     expect(res.json().data).toHaveLength(0);
   });
 
-  it.each([AppRole.ADMIN, AppRole.PM, AppRole.VIEWER])(
+  it.each([AppRole.ADMIN, AppRole.VIEWER])(
     "%s conserva la visión completa, que necesita para supervisar",
     async (role) => {
       as([role], EMAIL_A);
@@ -161,6 +172,17 @@ describe("Un consultor solo ve sus propias horas", () => {
       expect(todas).toHaveLength(2);
     },
   );
+
+  it("un PM ve las suyas y las de los proyectos que gestiona, no las de toda la empresa", async () => {
+    // El proyecto de la prueba no tiene projectManagerEmail, y Ana es la
+    // consultora del PM: solo debe alcanzar sus propias filas.
+    as([AppRole.PM], EMAIL_A);
+    const res = await app.inject({ method: "GET", url: "/api/time-entries" });
+
+    const vistas = res.json().data.filter((e: { description: string }) => e.description?.startsWith(RUN));
+    expect(vistas).toHaveLength(1);
+    expect(vistas[0].consultantId).toBe(consultantA);
+  });
 
   it("un ADMIN sigue pudiendo filtrar por un consultor concreto", async () => {
     as([AppRole.ADMIN], EMAIL_A);

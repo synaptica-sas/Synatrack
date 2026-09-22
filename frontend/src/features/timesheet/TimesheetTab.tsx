@@ -69,7 +69,6 @@ export function TimesheetTab({
   loading,
   canWrite,
   canReview,
-  reviewerName,
   onReload,
   onError,
 }: {
@@ -79,7 +78,6 @@ export function TimesheetTab({
   loading: boolean;
   canWrite: boolean;
   canReview: boolean;
-  reviewerName: string;
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
 }) {
@@ -363,10 +361,12 @@ export function TimesheetTab({
 
   async function handleReview(id: string, action: "approve" | "reject") {
     try {
+      // La identidad del revisor la toma el backend del token: el cliente no
+      // la envía ni podría falsificarla.
       if (action === "approve") {
-        await approveTimeEntry(id, reviewerName);
+        await approveTimeEntry(id);
       } else {
-        await rejectTimeEntry(id, reviewerName, "No cumple criterio");
+        await rejectTimeEntry(id, "No cumple criterio");
       }
       await onReload();
       await reloadWeek();

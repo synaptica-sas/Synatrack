@@ -233,7 +233,9 @@ describe("Un consultor solo puede imputar horas a su propio nombre", () => {
       payload: { projectId, workDate: "2026-09-21", hours: 1 },
     });
 
-    expect(res.statusCode).toBe(400);
+    // 403 y no 400: no es que la petición esté mal formada, es que ese usuario
+    // no tiene derecho a registrar horas a nombre de nadie.
+    expect(res.statusCode).toBe(403);
     expect(res.json().message).toContain("no esta vinculado a ningun consultor");
   });
 });

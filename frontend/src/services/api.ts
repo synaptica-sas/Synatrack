@@ -117,22 +117,6 @@ export type TimeEntrySource = "MANUAL" | "TIMESHEET" | "TIMER";
 
 export type TimeEntryActivityRef = { id: string; title: string };
 
-/**
- * Consultor tal y como viaja dentro de un registro de horas: sin tarifas ni
- * costos. El servidor no los envia en este listado a proposito, porque lo
- * puede leer cualquier consultor. Para el dato economico esta el directorio de
- * consultores, que exige el permiso `consultants:read`.
- */
-export type TimeEntryConsultant = {
-  id: string;
-  fullName: string;
-  email: string | null;
-  role: string;
-  country: string | null;
-  active: boolean;
-  isInternal?: boolean;
-};
-
 export type TimeEntry = {
   id: string;
   projectId: string;
