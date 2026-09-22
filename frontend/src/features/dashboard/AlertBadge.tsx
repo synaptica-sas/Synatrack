@@ -1,18 +1,26 @@
+/**
+ * Insignia del nivel de consumo de presupuesto de un proyecto.
+ *
+ * Usa las clases `.status-badge` de `App.css`, construidas sobre los tokens
+ * `--state-*`, en vez de colores literales: así hereda el modo oscuro y el
+ * contraste ya verificados, y un cambio de paleta no obliga a tocar este
+ * archivo.
+ *
+ * No lleva icono: la etiqueta ("Superado", "Cerca del límite", "En rango") ya es
+ * la pista que no depende del color, que es lo que pide la regla de
+ * accesibilidad. Ver la convención en `documentacion/DISENO.md`.
+ */
+const NIVELES = {
+  exceeded: { modificador: "danger", texto: "Superado" },
+  warning: { modificador: "warning", texto: "Cerca del límite" },
+  ok: { modificador: "success", texto: "En rango" },
+} as const;
+
 export function AlertBadge({ level }: { level: "ok" | "warning" | "exceeded" }) {
-  const map = {
-    exceeded: { bg: "#fee2e2", color: "#991b1b", icon: "●", text: "Superado" },
-    warning:  { bg: "#fef9c3", color: "#92400e", icon: "●", text: "Cerca límite" },
-    ok:       { bg: "#dcfce7", color: "#166534", icon: "●", text: "OK" },
-  };
-  const s = map[level];
+  const nivel = NIVELES[level];
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: "0.25rem",
-      background: s.bg, color: s.color,
-      borderRadius: "9999px", padding: "0.2rem 0.6rem",
-      fontSize: "0.72rem", fontWeight: 700,
-    }}>
-      {s.icon} {s.text}
+    <span className={`status-badge status-badge--${nivel.modificador}`}>
+      {nivel.texto}
     </span>
   );
 }
