@@ -76,7 +76,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         where: { status: "APPROVED" },
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
-      expenses: true,
+      financialEntries: { where: { type: "EXPENSE" } },
     },
   });
 
@@ -89,7 +89,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
       return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
     }, 0);
 
-    const expensesCost = project.expenses.reduce(
+    const expensesCost = project.financialEntries.reduce(
       (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap),
       0,
     );
@@ -131,8 +131,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         where: { status: "APPROVED" },
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
-      expenses: true,
-      revenueEntries: true,
+      financialEntries: true,
     },
   });
 
@@ -144,16 +143,15 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
       return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
     }, 0);
 
-    const expensesCost = project.expenses.reduce(
-      (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap),
-      0,
-    );
+    const expensesCost = project.financialEntries
+      .filter((e) => e.type === "EXPENSE")
+      .reduce((s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap), 0);
 
     const spent = laborCost + expensesCost;
 
-    const revenueRecognized = project.revenueEntries.reduce((s, r) => {
-      return s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap);
-    }, 0);
+    const revenueRecognized = project.financialEntries
+      .filter((e) => e.type === "REVENUE")
+      .reduce((s, r) => s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap), 0);
 
     // Margin alert (threshold 15%)
     if (revenueRecognized > 0) {

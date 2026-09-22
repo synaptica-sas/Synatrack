@@ -20,6 +20,13 @@ const expensePayloadSchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
+// FinancialEntry -> forma pública de Expense: expone `expenseDate` (no `entryDate`)
+// y oculta el discriminador `type`, para no cambiar el contrato que ya consume el frontend.
+function toExpenseDto<T extends { entryDate: Date; type: unknown }>(row: T) {
+  const { entryDate, type, ...rest } = row;
+  return { ...rest, expenseDate: entryDate };
+}
+
 export async function expensesRoutes(app: FastifyInstance) {
   app.get(
     "/",
@@ -27,12 +34,13 @@ export async function expensesRoutes(app: FastifyInstance) {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])],
     },
     async () => {
-    const expenses = await prisma.expense.findMany({
-      include: { project: true },
-      orderBy: { expenseDate: "desc" },
-    });
+      const expenses = await prisma.financialEntry.findMany({
+        where: { type: "EXPENSE" },
+        include: { project: true },
+        orderBy: { entryDate: "desc" },
+      });
 
-      return { data: expenses };
+      return { data: expenses.map(toExpenseDto) };
     },
   );
 
@@ -42,27 +50,27 @@ export async function expensesRoutes(app: FastifyInstance) {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])],
     },
     async (request, reply) => {
-    const payload = expensePayloadSchema.parse(request.body);
+      const { expenseDate, ...payload } = expensePayloadSchema.parse(request.body);
 
-    const project = await prisma.project.findUnique({ where: { id: payload.projectId } });
-    if (!project) {
-      return reply.status(400).send({ message: "Invalid projectId" });
-    }
+      const project = await prisma.project.findUnique({ where: { id: payload.projectId } });
+      if (!project) {
+        return reply.status(400).send({ message: "Invalid projectId" });
+      }
 
-    const expense = await prisma.expense.create({
-      data: payload,
-    });
+      const expense = await prisma.financialEntry.create({
+        data: { ...payload, type: "EXPENSE", entryDate: expenseDate },
+      });
 
-    await writeAudit(prisma, {
-      entity: AUDIT_ENTITIES.expense,
-      entityId: expense.id,
-      action: "CREATE",
-      changedBy: request.authUser!.email,
-      after: expense as unknown as Record<string, unknown>,
-      request,
-    });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.expense,
+        entityId: expense.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: expense as unknown as Record<string, unknown>,
+        request,
+      });
 
-      return reply.status(201).send({ data: expense });
+      return reply.status(201).send({ data: toExpenseDto(expense) });
     },
   );
 
@@ -72,35 +80,35 @@ export async function expensesRoutes(app: FastifyInstance) {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])],
     },
     async (request, reply) => {
-    const { id } = idParamsSchema.parse(request.params);
-    const payload = expensePayloadSchema.parse(request.body);
+      const { id } = idParamsSchema.parse(request.params);
+      const { expenseDate, ...payload } = expensePayloadSchema.parse(request.body);
 
-    const existing = await prisma.expense.findUnique({ where: { id } });
-    if (!existing) {
-      return reply.status(404).send({ message: "Expense not found" });
-    }
+      const existing = await prisma.financialEntry.findUnique({ where: { id } });
+      if (!existing || existing.type !== "EXPENSE") {
+        return reply.status(404).send({ message: "Expense not found" });
+      }
 
-    const project = await prisma.project.findUnique({ where: { id: payload.projectId } });
-    if (!project) {
-      return reply.status(400).send({ message: "Invalid projectId" });
-    }
+      const project = await prisma.project.findUnique({ where: { id: payload.projectId } });
+      if (!project) {
+        return reply.status(400).send({ message: "Invalid projectId" });
+      }
 
-    const expense = await prisma.expense.update({
-      where: { id },
-      data: payload,
-    });
+      const expense = await prisma.financialEntry.update({
+        where: { id },
+        data: { ...payload, entryDate: expenseDate },
+      });
 
-    await writeAudit(prisma, {
-      entity: AUDIT_ENTITIES.expense,
-      entityId: expense.id,
-      action: "UPDATE",
-      changedBy: request.authUser!.email,
-      before: existing as unknown as Record<string, unknown>,
-      after: expense as unknown as Record<string, unknown>,
-      request,
-    });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.expense,
+        entityId: expense.id,
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        before: existing as unknown as Record<string, unknown>,
+        after: expense as unknown as Record<string, unknown>,
+        request,
+      });
 
-      return { data: expense };
+      return { data: toExpenseDto(expense) };
     },
   );
 
@@ -112,13 +120,13 @@ export async function expensesRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = idParamsSchema.parse(request.params);
 
-      const existing = await prisma.expense.findUnique({ where: { id } });
-      if (!existing) {
+      const existing = await prisma.financialEntry.findUnique({ where: { id } });
+      if (!existing || existing.type !== "EXPENSE") {
         return reply.status(404).send({ message: "Expense not found" });
       }
 
       try {
-        await prisma.expense.delete({ where: { id } });
+        await prisma.financialEntry.delete({ where: { id } });
 
         await writeAudit(prisma, {
           entity: AUDIT_ENTITIES.expense,

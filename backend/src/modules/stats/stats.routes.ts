@@ -52,19 +52,25 @@ export async function statsRoutes(app: FastifyInstance) {
             where: { workDate: { gte: query.from, lte: query.to } },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: {
-            where: { expenseDate: { gte: query.from, lte: query.to } },
-          },
+          financialEntries: true,
           forecasts: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          revenueEntries: true,
           milestones: { select: { status: true, plannedDate: true, weight: true } },
           risks: { select: { riskScore: true, status: true } },
         },
       });
 
       const byProject = projects.map((project) => {
+        // Gastos filtrados por rango de fecha (comportamiento previo, replicado en JS
+        // porque ahora vienen de la misma relación que los ingresos, que no se filtran).
+        const expensesInRange = project.financialEntries.filter((e) => {
+          if (e.type !== "EXPENSE") return false;
+          if (query.from && e.entryDate < query.from) return false;
+          if (query.to && e.entryDate > query.to) return false;
+          return true;
+        });
+        const revenueEntries = project.financialEntries.filter((e) => e.type === "REVENUE");
         const approvedEntries = project.timeEntries.filter(
           (e) => e.status === TimeEntryStatus.APPROVED,
         );
@@ -79,7 +85,7 @@ export async function statsRoutes(app: FastifyInstance) {
         }, 0);
 
         // Gastos reales en base
-        const expensesActual = project.expenses.reduce((s, e) => {
+        const expensesActual = expensesInRange.reduce((s, e) => {
           return s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap);
         }, 0);
 
@@ -94,7 +100,7 @@ export async function statsRoutes(app: FastifyInstance) {
           : 0;
 
         // Ingresos reconocidos
-        const revenueRecognized = project.revenueEntries.reduce((s, r) => {
+        const revenueRecognized = revenueEntries.reduce((s, r) => {
           return s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap);
         }, 0);
 
@@ -322,11 +328,10 @@ export async function statsRoutes(app: FastifyInstance) {
           timeEntries: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: true,
+          financialEntries: true,
           forecasts: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          revenueEntries: true,
           milestones: { select: { status: true, plannedDate: true, weight: true } },
           risks: { select: { riskScore: true, status: true } },
           issues: { select: { status: true, severity: true } },
@@ -343,16 +348,20 @@ export async function statsRoutes(app: FastifyInstance) {
           return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
         }, 0);
 
-        const expensesActual = project.expenses.reduce((s, e) => {
-          return s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap);
-        }, 0);
+        const expensesActual = project.financialEntries
+          .filter((e) => e.type === "EXPENSE")
+          .reduce((s, e) => {
+            return s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap);
+          }, 0);
 
         const spent = laborCostActual + expensesActual;
         const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap);
 
-        const revenueRecognized = project.revenueEntries.reduce((s, r) => {
-          return s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap);
-        }, 0);
+        const revenueRecognized = project.financialEntries
+          .filter((e) => e.type === "REVENUE")
+          .reduce((s, r) => {
+            return s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap);
+          }, 0);
 
         const grossMarginActual = revenueRecognized - spent;
         const grossMarginActualPct =

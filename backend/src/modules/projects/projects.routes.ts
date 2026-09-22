@@ -260,11 +260,10 @@ export async function projectsRoutes(app: FastifyInstance) {
             where: { status: "APPROVED" },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          expenses: true,
+          financialEntries: true,
           forecasts: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
-          revenueEntries: true,
         },
       });
 
@@ -279,7 +278,9 @@ export async function projectsRoutes(app: FastifyInstance) {
         budgetCurrency: project.currency,
         sellPrice: project.sellPrice ? Number(project.sellPrice) : null,
         sellCurrency: project.sellCurrency,
-        revenueEntries: project.revenueEntries.map((r) => ({ amount: Number(r.amount), currency: r.currency })),
+        revenueEntries: project.financialEntries
+          .filter((e) => e.type === "REVENUE")
+          .map((r) => ({ amount: Number(r.amount), currency: r.currency })),
         approvedTimeEntries: project.timeEntries.map((e) => ({
           consultantId: e.consultantId,
           hours: Number(e.hours),
@@ -288,7 +289,9 @@ export async function projectsRoutes(app: FastifyInstance) {
           hourlyRate: e.consultant.hourlyRate ? Number(e.consultant.hourlyRate) : null,
           rateCurrency: e.consultant.rateCurrency,
         })),
-        expenses: project.expenses.map((e) => ({ amount: Number(e.amount), currency: e.currency })),
+        expenses: project.financialEntries
+          .filter((e) => e.type === "EXPENSE")
+          .map((e) => ({ amount: Number(e.amount), currency: e.currency })),
         forecasts: project.forecasts.map((f) => ({
           consultantId: f.consultantId,
           hoursProjected: Number(f.hoursProjected),
@@ -303,7 +306,7 @@ export async function projectsRoutes(app: FastifyInstance) {
           },
         })),
         fxConfigs: Array.from(rateMap.entries()).map(([key, rate]) => {
-          const [baseCode, quoteCode] = key.split("_");
+          const [baseCode, quoteCode] = key.split("->");
           return { baseCode, quoteCode, rate };
         }),
         baseCurrency,

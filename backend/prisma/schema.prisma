@@ -171,9 +171,8 @@ model Project {
   updatedAt            DateTime      @updatedAt
 
   timeEntries    TimeEntry[]
-  expenses       Expense[]
+  financialEntries FinancialEntry[]
   forecasts      Forecast[]
-  revenueEntries RevenueEntry[]
   assignments    Assignment[]
   snapshots      MonthlySnapshot[]
   alerts         Alert[]
@@ -241,21 +240,32 @@ model TimeEntry {
   @@index([workDate])
 }
 
-model Expense {
-  id          String   @id @default(cuid())
+enum FinancialEntryType {
+  EXPENSE
+  REVENUE
+}
+
+// Movimientos financieros por proyecto: gastos e ingresos unificados en una sola
+// tabla (discriminador `type`) para facilitar la reportería conjunta. Las rutas
+// /api/expenses y /api/revenue siguen siendo independientes, cada una filtrando
+// por su `type`.
+model FinancialEntry {
+  id          String             @id @default(cuid())
   projectId   String
-  expenseDate DateTime
-  category    String
-  amount      Decimal  @db.Decimal(14, 2)
+  type        FinancialEntryType
+  entryDate   DateTime
+  category    String?            // solo aplica a EXPENSE; null en REVENUE
+  amount      Decimal            @db.Decimal(14, 2)
   currency    String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
-  @@index([expenseDate])
+  @@index([entryDate])
+  @@index([type])
 }
 
 model Forecast {
@@ -277,23 +287,6 @@ model Forecast {
 
   @@index([projectId])
   @@index([consultantId])
-}
-
-// Ingresos reconocidos por proyecto (hitos, facturación, etc.)
-model RevenueEntry {
-  id          String   @id @default(cuid())
-  projectId   String
-  entryDate   DateTime
-  amount      Decimal  @db.Decimal(14, 2)
-  currency    String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-  @@index([entryDate])
 }
 
 // ─── FX ────────────────────────────────────────────────────────────────────────
