@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { runAlertEngine } from "./alerts.service.js";
 
 const listQuerySchema = z.object({
@@ -55,6 +56,16 @@ export async function alertsRoutes(app: FastifyInstance) {
       const updated = await prisma.alert.update({
         where: { id },
         data: { resolvedAt: new Date(), resolvedBy: request.authUser!.email },
+      });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.alert,
+        entityId: updated.id,
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        before: alert as unknown as Record<string, unknown>,
+        after: updated as unknown as Record<string, unknown>,
+        request,
       });
 
       return { data: updated };

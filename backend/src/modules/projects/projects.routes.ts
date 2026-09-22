@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { writeAudit } from "../../utils/audit.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { buildRateMap } from "../../utils/currency.js";
 import { calculateProfitability } from "../../utils/financial.js";
 
@@ -123,7 +123,7 @@ export async function projectsRoutes(app: FastifyInstance) {
     });
 
     await writeAudit(prisma, {
-      entity: "Project",
+      entity: AUDIT_ENTITIES.project,
       entityId: project.id,
       action: "CREATE",
       changedBy: request.authUser?.email ?? "system",
@@ -192,7 +192,7 @@ export async function projectsRoutes(app: FastifyInstance) {
     });
 
     await writeAudit(prisma, {
-      entity: "Project",
+      entity: AUDIT_ENTITIES.project,
       entityId: project.id,
       action: "UPDATE",
       changedBy: request.authUser?.email ?? "system",
@@ -231,7 +231,7 @@ export async function projectsRoutes(app: FastifyInstance) {
     }
 
     await writeAudit(prisma, {
-      entity: "Project",
+      entity: AUDIT_ENTITIES.project,
       entityId: id,
       action: "DELETE",
       changedBy: request.authUser?.email ?? "system",

@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { writeAudit } from "../../utils/audit.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 const isoDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "date must use format YYYY-MM-DD");
 
 const forecastPayloadSchema = z.object({
@@ -109,7 +109,7 @@ export async function forecastsRoutes(app: FastifyInstance) {
     });
 
     await writeAudit(prisma, {
-      entity: "Forecast",
+      entity: AUDIT_ENTITIES.forecast,
       entityId: forecast.id,
       action: "CREATE",
       changedBy: request.authUser?.email ?? "system",
@@ -154,7 +154,7 @@ export async function forecastsRoutes(app: FastifyInstance) {
     });
 
     await writeAudit(prisma, {
-      entity: "Forecast",
+      entity: AUDIT_ENTITIES.forecast,
       entityId: forecast.id,
       action: "UPDATE",
       changedBy: request.authUser?.email ?? "system",

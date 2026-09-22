@@ -3,6 +3,7 @@ import { AppRole } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
 
 const activityPayloadSchema = z.object({
@@ -205,6 +206,15 @@ export async function activitiesRoutes(app: FastifyInstance) {
         },
       });
 
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.activity,
+        entityId: activity.id,
+        action: "CREATE",
+        changedBy: email,
+        after: activity as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(201).send({ data: activity });
     },
   );
@@ -274,6 +284,16 @@ export async function activitiesRoutes(app: FastifyInstance) {
         },
       });
 
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.activity,
+        entityId: updated.id,
+        action: "UPDATE",
+        changedBy: email,
+        before: existing as unknown as Record<string, unknown>,
+        after: updated as unknown as Record<string, unknown>,
+        request,
+      });
+
       return { data: updated };
     },
   );
@@ -310,6 +330,16 @@ export async function activitiesRoutes(app: FastifyInstance) {
       }
 
       await prisma.activity.delete({ where: { id } });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.activity,
+        entityId: id,
+        action: "DELETE",
+        changedBy: email,
+        before: existing as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(204).send();
     },
   );

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { consultantSinDatosSensiblesSelect } from "../../utils/consultant-scope.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const timeEntryPayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -160,6 +161,15 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       },
     });
 
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.timeEntry,
+      entityId: entry.id,
+      action: "CREATE",
+      changedBy: user.email,
+      after: entry as unknown as Record<string, unknown>,
+      request,
+    });
+
       return reply.status(201).send({ data: entry });
     },
   );
@@ -191,6 +201,16 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
         approvedBy: revisor,
         rejectionNote: null,
       },
+    });
+
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.timeEntry,
+      entityId: entry.id,
+      action: "APPROVE",
+      changedBy: revisor,
+      before: existing as unknown as Record<string, unknown>,
+      after: entry as unknown as Record<string, unknown>,
+      request,
     });
 
       return { data: entry };
@@ -225,6 +245,16 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
         approvedBy: revisor,
         rejectionNote: payload.rejectionNote,
       },
+    });
+
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.timeEntry,
+      entityId: entry.id,
+      action: "REJECT",
+      changedBy: revisor,
+      before: existing as unknown as Record<string, unknown>,
+      after: entry as unknown as Record<string, unknown>,
+      request,
     });
 
       return { data: entry };
@@ -265,6 +295,16 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
 
       try {
         await prisma.timeEntry.delete({ where: { id } });
+
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.timeEntry,
+          entityId: id,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          request,
+        });
+
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;

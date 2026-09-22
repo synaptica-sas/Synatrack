@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { writeAudit } from "../../utils/audit.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const assignmentPayloadSchema = z
   .object({
@@ -121,7 +121,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
       });
 
       await writeAudit(prisma, {
-        entity: "assignment",
+        entity: AUDIT_ENTITIES.assignment,
         entityId: assignment.id,
         action: "CREATE",
         changedBy: performedBy,
@@ -209,7 +209,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
         });
 
         await writeAudit(prisma, {
-          entity: "assignment",
+          entity: AUDIT_ENTITIES.assignment,
           entityId: id,
           action: "UPDATE",
           changedBy: performedBy,
@@ -247,7 +247,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
       });
 
       await writeAudit(prisma, {
-        entity: "assignment",
+        entity: AUDIT_ENTITIES.assignment,
         entityId: id,
         action: "COMPLETE",
         changedBy: request.authUser!.email,
@@ -275,7 +275,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
       const assignment = await prisma.assignment.update({ where: { id }, data: { status: "CANCELLED" } });
 
       await writeAudit(prisma, {
-        entity: "assignment",
+        entity: AUDIT_ENTITIES.assignment,
         entityId: id,
         action: "CANCEL",
         changedBy: request.authUser!.email,
@@ -304,7 +304,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
         await prisma.assignment.delete({ where: { id } });
 
         await writeAudit(prisma, {
-          entity: "assignment",
+          entity: AUDIT_ENTITIES.assignment,
           entityId: id,
           action: "DELETE",
           changedBy: request.authUser!.email,

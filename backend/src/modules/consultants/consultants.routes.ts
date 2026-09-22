@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
 
 import { normalizeCountry } from "../../utils/country.js";
@@ -112,6 +113,20 @@ export async function consultantsRoutes(app: FastifyInstance) {
       },
     });
 
+    // El `after` incluye `hourlyRate` y `costPerMonth` a propósito: la tarifa es
+    // justamente el dato que se quiere poder auditar, porque cambia todos los
+    // costos calculados del portafolio. `GET /api/audit` ya está restringido a
+    // ADMIN / FINANCE / PM, los mismos roles que pueden ver tarifas en el
+    // listado de consultores, así que no se abre ninguna vía nueva de fuga.
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.consultant,
+      entityId: consultant.id,
+      action: "CREATE",
+      changedBy: request.authUser!.email,
+      after: consultant as unknown as Record<string, unknown>,
+      request,
+    });
+
       return reply.status(201).send({ data: consultant });
     },
   );
@@ -146,6 +161,18 @@ export async function consultantsRoutes(app: FastifyInstance) {
         allowWeekendWork: payload.allowWeekendWork,
         isInternal: payload.isInternal,
       },
+    });
+
+    // Igual que en la creación: el `diff` deja ver el cambio de tarifa, que es
+    // el motivo principal para auditar este endpoint.
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.consultant,
+      entityId: consultant.id,
+      action: "UPDATE",
+      changedBy: request.authUser!.email,
+      before: existing as unknown as Record<string, unknown>,
+      after: consultant as unknown as Record<string, unknown>,
+      request,
     });
 
       return { data: consultant };
@@ -190,6 +217,16 @@ export async function consultantsRoutes(app: FastifyInstance) {
           prisma.capacityConfig.deleteMany({ where: { consultantId: id } }),
           prisma.consultant.delete({ where: { id } }),
         ]);
+
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.consultant,
+          entityId: id,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          request,
+        });
+
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
@@ -247,6 +284,16 @@ export async function consultantsRoutes(app: FastifyInstance) {
           prisma.capacityConfig.deleteMany({ where: { consultantId: id } }),
           prisma.consultant.delete({ where: { id } }),
         ]);
+
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.consultant,
+          entityId: id,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          request,
+        });
+
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
