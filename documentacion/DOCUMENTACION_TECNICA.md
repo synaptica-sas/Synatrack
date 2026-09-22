@@ -3,7 +3,7 @@
 > **Audiencia**: desarrolladores que se incorporan al proyecto.
 > **Objetivo**: que cualquier desarrollador pueda entender el sistema completo y continuar su desarrollo sin depender de explicaciones adicionales.
 > **Última actualización**: 2026-07-27.
-> Este documento complementa (no reemplaza) a [`DOCUMENTACION_APLICACION.md`](DOCUMENTACION_APLICACION.md) (funcional), [`DOCUMENTACION_CORREOS.md`](DOCUMENTACION_CORREOS.md) (notificaciones), [`VISTAS.md`](VISTAS.md) (vistas de negocio), [`ARQUITECTURA.md`](ARQUITECTURA.md) (versión sencilla) y [`DEPLOYMENT.md`](DEPLOYMENT.md) (guía operativa de despliegue). Aquí se documenta la arquitectura técnica en profundidad.
+> Este documento complementa (no reemplaza) a [`DOCUMENTACION_APLICACION.md`](DOCUMENTACION_APLICACION.md) (funcional), [`DOCUMENTACION_CORREOS.md`](DOCUMENTACION_CORREOS.md) (notificaciones), [`VISTAS.md`](VISTAS.md) (vistas de negocio), [`ARQUITECTURA.md`](ARQUITECTURA.md) (versión sencilla) y [`DESPLIEGUE.md`](DESPLIEGUE.md) (guía operativa de despliegue). Aquí se documenta la arquitectura técnica en profundidad.
 
 ---
 
