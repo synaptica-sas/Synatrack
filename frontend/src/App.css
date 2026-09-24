@@ -3444,6 +3444,9 @@ tr.row-warning > td { background: var(--state-warning-bg); }
 .chart-fill--7 { fill: var(--chart-7); }
 
 .chart-stroke--1 { stroke: var(--chart-1); }
+.chart-stroke--2 { stroke: var(--chart-2); }
+.chart-stroke--3 { stroke: var(--chart-3); }
+.chart-stroke--4 { stroke: var(--chart-4); }
 
 /* Color de ESTADO dentro de un gráfico: el mismo verde/ámbar/rojo que el resto
    de la aplicación, no la serie categórica. */
@@ -3838,3 +3841,578 @@ body.dark .card .inline-list.tone-danger span { color: inherit; }
 body.dark td.tone-success { color: var(--state-success-strong); }
 body.dark td.tone-warning { color: var(--state-warning-strong); }
 body.dark td.tone-danger  { color: var(--state-danger-strong); }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PATRONES AÑADIDOS AL MIGRAR DETALLE DE PROYECTO, PROYECCIONES Y PERFIL
+   Mismas reglas que el resto de «PATRONES BASE»: solo tokens, contraparte
+   oscura garantizada y el color nunca como único portador de información.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Navegación de sub-pestañas dentro de una pantalla ──────────────────────
+   Antes era un `nav` con el borde inferior en literal (#e5e7eb) y el activo en
+   `var(--accent, #3b82f6)`: `--accent` no existe en ningún sitio, así que
+   SIEMPRE caía al azul por defecto de Tailwind. El activo se marca ahora con
+   el ámbar de marca y, además del color, con peso tipográfico y subrayado. */
+.subtabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 2px solid var(--border-color);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.subtab {
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: -2px;
+  min-height: 2.5rem; /* objetivo táctil */
+  white-space: nowrap;
+}
+
+.subtab:hover:not(.is-active) {
+  color: var(--text-strong);
+  background: var(--surface-subtle);
+}
+
+.subtab.is-active {
+  color: var(--state-warning-strong);
+  border-bottom-color: var(--color-accent);
+  font-weight: 700;
+}
+
+body.dark .subtab           { color: var(--text-soft); background: transparent; }
+body.dark .subtab.is-active { color: var(--state-warning-strong); }
+
+/* ── Chip de estado sobre superficie ────────────────────────────────────────
+   Hermano de `.status-badge`: aquel rellena con el color sólido porque el
+   color ES el dato (semáforo); este es para celdas de tabla, donde una columna
+   entera de píldoras sólidas grita más que el propio dato. Fondo de tinte,
+   borde y texto `--state-*-strong` (contrastado a 4,5:1). La etiqueta de texto
+   va siempre dentro: el tinte solo refuerza.
+   `--filled` es el escalón superior (severidad Crítica frente a Alta): misma
+   familia de color, más peso visual, sin inventar un matiz nuevo. */
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.1rem var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.state-chip--success { background: var(--state-success-bg); border-color: var(--state-success-border); color: var(--state-success-strong); }
+.state-chip--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); color: var(--state-warning-strong); }
+.state-chip--danger  { background: var(--state-danger-bg);  border-color: var(--state-danger-border);  color: var(--state-danger-strong); }
+.state-chip--info    { background: var(--state-info-bg);    border-color: var(--state-info-border);    color: var(--state-info-strong); }
+.state-chip--neutral { background: var(--state-neutral-bg); border-color: var(--state-neutral-border); color: var(--state-neutral-strong); }
+
+.state-chip--danger.state-chip--filled  { background: var(--state-danger-solid);  border-color: var(--state-danger-solid);  color: var(--state-danger-on-solid); }
+.state-chip--warning.state-chip--filled { background: var(--state-warning-solid); border-color: var(--state-warning-solid); color: var(--state-warning-on-solid); }
+
+/* Dentro de una `.card`, `body.dark .card span:not(.pill)` fuerza
+   `color: inherit` con (0,3,2) y aplana el chip; dentro de una tabla lo hace
+   `body.dark td`. Hay que devolverle el color repitiendo la clase, igual que
+   ya se hizo con `.stat-tile`, y sin recurrir a `!important`. */
+body.dark .card .state-chip--success.state-chip--success { color: var(--state-success-strong); }
+body.dark .card .state-chip--warning.state-chip--warning { color: var(--state-warning-strong); }
+body.dark .card .state-chip--danger.state-chip--danger   { color: var(--state-danger-strong); }
+body.dark .card .state-chip--info.state-chip--info       { color: var(--state-info-strong); }
+body.dark .card .state-chip--neutral.state-chip--neutral { color: var(--state-neutral-strong); }
+body.dark .card .state-chip--danger.state-chip--filled   { color: var(--state-danger-on-solid); }
+body.dark .card .state-chip--warning.state-chip--filled  { color: var(--state-warning-on-solid); }
+body.dark td .state-chip--success.state-chip--success { color: var(--state-success-strong); }
+body.dark td .state-chip--warning.state-chip--warning { color: var(--state-warning-strong); }
+body.dark td .state-chip--danger.state-chip--danger   { color: var(--state-danger-strong); }
+body.dark td .state-chip--info.state-chip--info       { color: var(--state-info-strong); }
+body.dark td .state-chip--neutral.state-chip--neutral { color: var(--state-neutral-strong); }
+body.dark td .state-chip--danger.state-chip--filled   { color: var(--state-danger-on-solid); }
+
+/* ── Disco con una cifra dentro (score de riesgo) ────────────────────────────
+   La cifra visible es la información; el relleno solo la clasifica, así que
+   cumple la regla sin necesidad de icono. */
+.score-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.score-dot--success { background: var(--state-success-solid); color: var(--state-success-on-solid); }
+.score-dot--warning { background: var(--state-warning-solid); color: var(--state-warning-on-solid); }
+.score-dot--danger  { background: var(--state-danger-solid);  color: var(--state-danger-on-solid); }
+
+body.dark td .score-dot--success { color: var(--state-success-on-solid); }
+body.dark td .score-dot--warning { color: var(--state-warning-on-solid); }
+body.dark td .score-dot--danger  { color: var(--state-danger-on-solid); }
+
+/* ── Formulario en línea (alta rápida sobre una tabla) ───────────────────────
+   Cada campo lleva SIEMPRE su etiqueta visible: el `placeholder` desaparece al
+   escribir y deja al usuario sin saber qué contiene el campo (regla de
+   formularios de la skill, severidad alta). Debajo caben ayuda y error. */
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.inline-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.inline-form__field--wide   { flex: 3 1 14rem; }
+.inline-form__field--mid    { flex: 1 1 10rem; }
+.inline-form__field--narrow { flex: 0 1 7.5rem; }
+.inline-form__field > input,
+.inline-form__field > select { width: 100%; }
+
+.inline-form__submit { flex: 0 0 auto; min-height: 2.5rem; }
+
+@media (max-width: 560px) {
+  .inline-form__field,
+  .inline-form__field--wide,
+  .inline-form__field--mid,
+  .inline-form__field--narrow { flex: 1 1 100%; }
+  .inline-form__submit { width: 100%; }
+}
+
+/* ── Ayuda y error de un campo ───────────────────────────────────────────────
+   El error va JUNTO al campo que lo provoca, no en un resumen lejano, y lleva
+   un signo además del color. */
+.field-help {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.field-error {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--state-danger-strong);
+  line-height: 1.35;
+}
+
+.field-warning {
+  font-size: 0.72rem;
+  color: var(--state-warning-strong);
+  line-height: 1.35;
+}
+
+.field-required { color: var(--state-danger-strong); }
+
+body.dark .card .field-help.field-help       { color: var(--text-muted); }
+body.dark .card .field-error.field-error     { color: var(--state-danger-strong); }
+body.dark .card .field-warning.field-warning { color: var(--state-warning-strong); }
+
+/* ── Lista de definiciones en línea (comparación contra línea base) ────────── */
+.def-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  font-size: 0.8rem;
+}
+
+.def-list__term  { color: var(--text-muted); margin-right: var(--space-1); }
+.def-list__value { color: var(--text); font-weight: 600; }
+
+body.dark .card .def-list__term.def-list__term   { color: var(--text-muted); }
+body.dark .card .def-list__value.def-list__value { color: var(--text); }
+
+/* ── Línea de tiempo (bitácora de auditoría) ─────────────────────────────────
+   Antes traía su propio degradado azul (`var(--accent, #3b82f6)`, token que no
+   existe) y seis grises de Tailwind incrustados, sin modo oscuro: el `pre`
+   quedaba con texto gris sobre fondo casi blanco. */
+.timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding-left: var(--space-8);
+}
+
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 0.44rem;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 2px;
+  background: linear-gradient(to bottom, var(--color-accent), var(--border-color));
+}
+
+.timeline__item { position: relative; display: flex; flex-direction: column; gap: var(--space-2); }
+
+.timeline__dot {
+  position: absolute;
+  left: calc(var(--space-8) * -1);
+  top: 0.25rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  border: 3px solid var(--color-accent);
+  box-shadow: 0 0 0 4px var(--color-accent-15);
+}
+
+.timeline__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.timeline__time { font-size: 0.78rem; font-weight: 700; color: var(--text-soft); }
+
+.timeline__actor {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-strong);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  padding: 0.15rem var(--space-2);
+  border-radius: var(--radius-pill);
+}
+
+.timeline__card {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.timeline__title {
+  margin: 0 0 var(--space-2);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  text-transform: capitalize;
+}
+
+.timeline__detail {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  background: var(--card-bg);
+  border: 1px solid var(--border-subtle);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.timeline__note { margin: 0; font-size: 0.78rem; color: var(--text-muted); }
+
+body.dark .timeline__time.timeline__time     { color: var(--text-soft); }
+body.dark .timeline__actor.timeline__actor   { color: var(--text-strong); }
+body.dark .timeline__detail.timeline__detail { color: var(--text); }
+body.dark .timeline__note.timeline__note     { color: var(--text-muted); }
+
+/* ── Bloques de composición ────────────────────────────────────────────────── */
+.section-stack { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.section-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin-bottom: var(--space-2);
+}
+
+body.dark .card .section-title.section-title { color: var(--text-strong); }
+
+/* Dos columnas que colapsan en una (fase del proyecto + línea base). */
+.split-row { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.split-row > * { flex: 1 1 16rem; min-width: 0; }
+.split-row select { width: 100%; }
+
+/* ── Perfil ─────────────────────────────────────────────────────────────────
+   La pantalla era casi toda `style={{ }}`: avatar, mantra, chips de habilidad
+   y desplegable de sugerencias. Todo tokenizado y con modo oscuro real. */
+.profile-page {
+  width: min(50rem, 100%);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.profile-mantra {
+  padding: var(--space-8) var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--surface-subtle);
+  box-shadow: var(--shadow-sm);
+  text-align: center;
+}
+
+.profile-mantra__quote { color: var(--state-warning-strong); font-size: 1.5rem; line-height: 1; }
+
+.profile-mantra__text {
+  font-family: var(--display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--text-strong);
+  margin: var(--space-2) auto;
+  line-height: 1.4;
+  max-width: 37.5rem;
+}
+
+.profile-card { padding: var(--space-8); }
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.profile-avatar {
+  position: relative;
+  width: 8.125rem;
+  height: 8.125rem;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--gradient-accent);
+  border: 4px solid var(--card-bg);
+  box-shadow: 0 8px 24px var(--color-accent-30);
+  color: var(--state-warning-on-solid);
+  font-weight: 800;
+  font-size: 2.8rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.profile-avatar__initials { transition: opacity 0.25s ease; }
+
+.profile-avatar__overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--color-primary-80);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  color: #ffffff; /* sobre el navy al 80%: contraste 14:1 */
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.profile-avatar__overlay-icon { font-size: 1.5rem; }
+
+.profile-avatar:hover .profile-avatar__overlay,
+.profile-avatar:focus-visible .profile-avatar__overlay { opacity: 1; }
+.profile-avatar:hover .profile-avatar__initials,
+.profile-avatar:focus-visible .profile-avatar__initials { opacity: 0.1; }
+
+.profile-identity__name {
+  font-family: var(--display);
+  font-size: 1.8rem;
+  color: var(--text-strong);
+  margin: 0;
+  font-weight: 700;
+}
+
+.profile-identity__email { color: var(--text-soft); font-size: 0.9rem; margin: var(--space-1) 0; }
+.profile-identity__roles { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
+
+.profile-preview {
+  width: 6.875rem;
+  height: 6.875rem;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--gradient-accent);
+  border: 3px solid var(--color-accent-20);
+  display: grid;
+  place-items: center;
+  color: var(--state-warning-on-solid);
+  font-weight: 800;
+  font-size: 2.3rem;
+  margin: 0 auto var(--space-6);
+}
+
+.profile-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+.profile-form { display: flex; flex-direction: column; gap: var(--space-6); }
+
+.profile-form__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-6);
+}
+
+.profile-field { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.profile-section {
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.profile-actions { display: flex; justify-content: flex-end; }
+
+.profile-modal__options { display: flex; flex-direction: column; gap: var(--space-4); margin-bottom: var(--space-6); }
+.profile-modal__upload { width: 100%; border-style: dashed; font-weight: 700; font-size: 0.9rem; }
+.profile-modal__title { margin: 0 0 var(--space-4); font-size: 1.2rem; font-weight: 700; }
+.profile-modal__file { display: none; }
+
+/* Chips de habilidad: el nombre es el dato, el ámbar solo los agrupa. */
+.skill-chips { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--color-accent-10);
+  color: var(--text);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: 0.82rem;
+  font-weight: 700;
+  border: 1px solid var(--color-accent-20);
+}
+
+.skill-chip__remove {
+  all: unset;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: var(--state-danger-strong);
+  font-weight: 700;
+  padding: 0 var(--space-1);
+  min-width: 1.25rem;
+  text-align: center;
+}
+
+.skill-chip__remove:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+.skill-empty { font-size: 0.85rem; color: var(--text-muted); font-style: italic; }
+
+.skill-picker { position: relative; }
+
+.skill-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
+  max-height: 12.5rem;
+  overflow-y: auto;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skill-suggestions__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-strong);
+  min-height: 2.5rem; /* objetivo táctil */
+}
+
+.skill-suggestions__item:hover,
+.skill-suggestions__item:focus-visible { background: var(--color-accent-10); }
+
+body.dark .card .skill-chip.skill-chip   { color: var(--text); }
+body.dark .card .skill-empty.skill-empty { color: var(--text-muted); }
+
+/* Aviso de éxito en línea (guardado del perfil). */
+.inline-success {
+  padding: var(--space-3) var(--space-4);
+  background: var(--state-success-bg);
+  border: 1px solid var(--state-success-border);
+  color: var(--state-success-strong);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+body.dark .card .inline-success.inline-success { color: var(--state-success-strong); }
+
+/* ── Proyecciones ───────────────────────────────────────────────────────────
+   Medidor compacto de horas aprobadas frente a proyectadas dentro de una
+   celda. Reutiliza `.meter__track` y `.meter__fill--*`; solo cambia la escala. */
+.meter--compact { min-width: 8rem; gap: var(--space-1); }
+.meter--compact .meter__track { height: 0.375rem; }
+.meter--compact .meter__value { font-size: 0.7rem; min-width: 0; white-space: nowrap; }
+.meter__value--danger { color: var(--state-danger-strong); }
+
+body.dark td .meter__value--danger.meter__value--danger { color: var(--state-danger-strong); }
+
+/* Caja de formulario sobre la tabla. */
+.form-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+}
+
+.form-panel__foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.form-panel__foot > :first-child { flex: 1 1 12rem; }
+
+/* Fila de atajos de período. */
+.preset-row { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-bottom: var(--space-3); }
+.preset-row button { font-size: 0.72rem; padding: var(--space-1) var(--space-2); min-height: 2rem; }
+
+/* Celda estrecha de fecha y rejilla de campos del formulario de proyección. */
+.cell-date { font-size: 0.8rem; white-space: nowrap; }
+
+.form-row-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.form-row-grid--wide { grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); }

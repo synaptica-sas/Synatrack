@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_TYPE_LABELS, RISK_STATUS_LABELS, ASSIGNMENT_STATUS_LABELS, ISSUE_SEVERITY_LABELS, ISSUE_STATUS_LABELS, label } from "../../utils/statusLabels";
+import { PRESENTACION_SALUD, textoCriteriosSalud } from "../../utils/projectHealth";
 import { CountryFlag } from "../../components/CountryFlag";
 import {
   getProjectDetail,
@@ -40,6 +41,22 @@ import {
 } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
 
+/**
+ * Detalle de proyecto, migrado al sistema de tokens (ver `documentacion/DISENO.md`).
+ *
+ * Lo que había antes: 95 estilos en línea y 65 colores literales, la mayor
+ * concentración de color a mano que quedaba en la aplicación. Tres paletas
+ * conviviendo (la de marca, la de Tailwind y la de los gráficos), el semáforo
+ * imprimiendo el enum crudo del backend ("GREEN") y `var(--accent, …)` con
+ * respaldo azul repetido en cinco sitios: ese token **no existe**, así que el
+ * subrayado de la pestaña activa y la línea de tiempo siempre caían al azul por
+ * defecto de Tailwind.
+ *
+ * Lo que hay ahora: las clases de patrón de `App.css`. Los únicos `style` que
+ * quedan son valores calculados (posiciones del SVG y el ancho de una barra),
+ * que es el único uso admitido.
+ */
+
 type SubTab = "resumen" | "hitos" | "recursos" | "riesgos" | "issues" | "cambios" | "historial";
 
 function fmt(n: number, currency = "USD") {
@@ -51,49 +68,55 @@ function pct(n: number | null | undefined) {
   return `${n.toFixed(2)}`;
 }
 
-function RagDot({ status }: { status: HealthStatus | null | undefined }) {
-  if (!status) return <span style={{ color: "var(--color-sec-gray)" }}>—</span>;
-  const colors: Record<HealthStatus, string> = { GREEN: "var(--color-sec-green)", YELLOW: "var(--color-accent)", RED: "var(--color-sec-red)" };
+/**
+ * Semáforo de salud. Usa el vocabulario unificado de `PRESENTACION_SALUD`
+ * (Saludable / Advertencia / Crítico): antes esta pantalla pintaba el enum
+ * crudo del backend —"GREEN", "YELLOW", "RED"— que además de ser inglés es un
+ * nombre de color, justo lo que la regla de accesibilidad pide evitar.
+ * La etiqueta es la pista que no depende del color; la insignia no lleva icono
+ * por la misma razón que en Portafolio.
+ */
+function RagBadge({ status, marginThreshold }: { status: HealthStatus | null | undefined; marginThreshold?: number | null }) {
+  if (!status) return <span className="tone-muted">—</span>;
+  const p = PRESENTACION_SALUD[status] ?? PRESENTACION_SALUD.GREEN;
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: "0.35rem",
-      fontWeight: 700, color: colors[status], fontSize: "0.85rem",
-    }}>
-      <span style={{
-        width: "0.75rem", height: "0.75rem", borderRadius: "50%",
-        background: colors[status], display: "inline-block",
-      }} />
-      {status}
+    <span className={`status-badge status-badge--${p.modificador}`} title={textoCriteriosSalud(marginThreshold)}>
+      {p.etiqueta}
     </span>
   );
 }
 
 function KpiCard({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
   return (
-    <div style={{
-      background: "#fff", border: "1px solid var(--border-color)", borderRadius: "0.5rem",
-      padding: "0.75rem 1rem", minWidth: "9rem",
-    }}>
-      <div style={{ fontSize: "0.7rem", color: "var(--color-sec-gray)", marginBottom: "0.25rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-      <div style={{ fontSize: "1.15rem", fontWeight: 700 }}>{value}</div>
-      {sub && <div style={{ fontSize: "0.7rem", color: "var(--color-sec-gray)", marginTop: "0.1rem" }}>{sub}</div>}
+    <div className="kpi-card">
+      <div className="kpi-card__label">{label}</div>
+      <div className="kpi-card__value">{value}</div>
+      {sub && <div className="kpi-card__sub">{sub}</div>}
     </div>
   );
 }
 
-function BudgetBar({ pct: p }: { pct: number }) {
+/** Medidor de porcentaje con el número siempre visible; el color solo refuerza. */
+function BudgetBar({ pct: p, etiqueta }: { pct: number; etiqueta: string }) {
   const capped = Math.min(p, 100);
-  const color = p > 100 ? "var(--color-sec-red)" : p > 90 ? "var(--color-accent)" : "var(--color-sec-green)";
+  const mod = p > 100 ? "danger" : p > 90 ? "warning" : "success";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-      <div style={{ flex: 1, height: "0.6rem", background: "var(--color-primary-10)", borderRadius: "9999px", overflow: "hidden" }}>
-        <div style={{ width: `${capped}%`, height: "100%", background: color }} />
+    <div className="meter">
+      <div className="meter__track">
+        <div className={`meter__fill meter__fill--${mod}`} style={{ width: `${capped}%` }} />
       </div>
-      <span style={{ fontSize: "0.75rem", color: "var(--text)", minWidth: "3rem", textAlign: "right" }}>{p.toFixed(1)}%</span>
+      <span className="meter__value">{p.toFixed(1)}%</span>
+      <span className="sr-only">{`${etiqueta}: ${p.toFixed(1)}%`}</span>
     </div>
   );
 }
 
+/**
+ * Curva S de EVM. El color ya no viaja en atributos `fill`/`stroke` (que no
+ * pueden resolver un token ni tener contraparte oscura) sino en las clases
+ * `.chart-*`. La leyenda sale del SVG a HTML para poder usar `.chart-legend`,
+ * que es la misma de las demás pantallas.
+ */
 function BurndownChart({ timeline }: { timeline: ProjectTimeline }) {
   const { actualCost, plannedValue, bac } = timeline;
 
@@ -103,7 +126,7 @@ function BurndownChart({ timeline }: { timeline: ProjectTimeline }) {
   ).sort();
 
   if (allMonths.length === 0) {
-    return <p style={{ color: "var(--color-sec-gray)", fontSize: "0.8rem", margin: 0 }}>Sin datos de costos aún.</p>;
+    return <p className="chart-empty">Sin datos de costos aún.</p>;
   }
 
   const pvMap = new Map(plannedValue.map((x) => [x.month, x.pv]));
@@ -113,7 +136,7 @@ function BurndownChart({ timeline }: { timeline: ProjectTimeline }) {
 
   // SVG dimensions
   const W = 560;
-  const H = 220;
+  const H = 200;
   const PAD_LEFT = 64;
   const PAD_RIGHT = 16;
   const PAD_TOP = 16;
@@ -144,69 +167,81 @@ function BurndownChart({ timeline }: { timeline: ProjectTimeline }) {
   const cur = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 
   return (
-    <div style={{ overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: W, height: "auto", display: "block" }}>
-        {/* Y grid lines + labels */}
-        {ticks.map((t) => (
-          <g key={t}>
-            <line
-              x1={PAD_LEFT} y1={yPos(t)} x2={W - PAD_RIGHT} y2={yPos(t)}
-              stroke="#e5e7eb" strokeWidth={1}
-            />
-            <text x={PAD_LEFT - 6} y={yPos(t) + 4} textAnchor="end" fontSize={10} fill="#9ca3af">
-              {cur.format(t)}
-            </text>
-          </g>
-        ))}
+    <>
+      <div className="chart-scroll">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="chart-svg"
+          style={{ maxWidth: W }}
+          role="img"
+          aria-label="Curva S: valor planeado frente a costo real por mes"
+        >
+          {/* Y grid lines + labels */}
+          {ticks.map((t) => (
+            <g key={t}>
+              <line
+                x1={PAD_LEFT} y1={yPos(t)} x2={W - PAD_RIGHT} y2={yPos(t)}
+                className="chart-grid" strokeWidth={1}
+              />
+              <text x={PAD_LEFT - 6} y={yPos(t) + 4} textAnchor="end" fontSize={10} className="chart-axis">
+                {cur.format(t)}
+              </text>
+            </g>
+          ))}
 
-        {/* BAC line */}
-        <line
-          x1={PAD_LEFT} y1={yPos(bac)} x2={W - PAD_RIGHT} y2={yPos(bac)}
-          stroke="#d1d5db" strokeWidth={1} strokeDasharray="4 2"
-        />
-        <text x={W - PAD_RIGHT - 2} y={yPos(bac) - 4} textAnchor="end" fontSize={9} fill="#9ca3af">BAC</text>
+          {/* BAC line */}
+          <line
+            x1={PAD_LEFT} y1={yPos(bac)} x2={W - PAD_RIGHT} y2={yPos(bac)}
+            className="chart-grid" strokeWidth={1} strokeDasharray="4 2"
+          />
+          <text x={W - PAD_RIGHT - 2} y={yPos(bac) - 4} textAnchor="end" fontSize={9} className="chart-axis">BAC</text>
 
-        {/* Planned Value line (blue) */}
-        {pvPoints && (
-          <polyline points={pvPoints} fill="none" stroke="#3b82f6" strokeWidth={2} strokeLinejoin="round" />
-        )}
+          {/* Valor planeado (serie categórica 2: azul de marca) */}
+          {pvPoints && (
+            <polyline points={pvPoints} fill="none" className="chart-stroke--2" strokeWidth={2} strokeLinejoin="round" />
+          )}
 
-        {/* Actual Cost line (orange) */}
-        {acPoints && (
-          <polyline points={acPoints} fill="none" stroke="#f97316" strokeWidth={2.5} strokeLinejoin="round" />
-        )}
+          {/* Costo real (serie categórica 1: ámbar de marca) */}
+          {acPoints && (
+            <polyline points={acPoints} fill="none" className="chart-stroke--1" strokeWidth={2.5} strokeLinejoin="round" />
+          )}
 
-        {/* Dots for AC */}
-        {allMonths.map((m, i) => {
-          const val = acMap.get(m);
-          return val != null ? (
-            <circle key={m} cx={xPos(i)} cy={yPos(val)} r={3} fill="#f97316" />
-          ) : null;
-        })}
+          {/* Dots for AC */}
+          {allMonths.map((m, i) => {
+            const val = acMap.get(m);
+            return val != null ? (
+              <circle key={m} cx={xPos(i)} cy={yPos(val)} r={3} className="chart-fill--1" />
+            ) : null;
+          })}
 
-        {/* X-axis labels (every other month to avoid crowding) */}
-        {allMonths.map((m, i) => {
-          if (allMonths.length > 8 && i % 2 !== 0) return null;
-          return (
-            <text key={m} x={xPos(i)} y={H - PAD_BOTTOM + 14} textAnchor="middle" fontSize={9} fill="#9ca3af">
-              {m.slice(2)}
-            </text>
-          );
-        })}
+          {/* X-axis labels (every other month to avoid crowding) */}
+          {allMonths.map((m, i) => {
+            if (allMonths.length > 8 && i % 2 !== 0) return null;
+            return (
+              <text key={m} x={xPos(i)} y={H - PAD_BOTTOM + 14} textAnchor="middle" fontSize={9} className="chart-axis">
+                {m.slice(2)}
+              </text>
+            );
+          })}
 
-        {/* Axes */}
-        <line x1={PAD_LEFT} y1={PAD_TOP} x2={PAD_LEFT} y2={PAD_TOP + chartH} stroke="#d1d5db" strokeWidth={1} />
-        <line x1={PAD_LEFT} y1={PAD_TOP + chartH} x2={W - PAD_RIGHT} y2={PAD_TOP + chartH} stroke="#d1d5db" strokeWidth={1} />
+          {/* Axes */}
+          <line x1={PAD_LEFT} y1={PAD_TOP} x2={PAD_LEFT} y2={PAD_TOP + chartH} className="chart-grid" strokeWidth={1} />
+          <line x1={PAD_LEFT} y1={PAD_TOP + chartH} x2={W - PAD_RIGHT} y2={PAD_TOP + chartH} className="chart-grid" strokeWidth={1} />
+        </svg>
+      </div>
 
-        {/* Legend */}
-        <g transform={`translate(${PAD_LEFT + 8}, ${H - 12})`}>
-          <rect x={0} y={-7} width={12} height={3} fill="#3b82f6" />
-          <text x={16} y={0} fontSize={9} fill="#6b7280">Valor planeado (PV)</text>
-          <rect x={120} y={-7} width={12} height={3} fill="#f97316" />
-          <text x={136} y={0} fontSize={9} fill="#6b7280">Costo real (AC)</text>
-        </g>
-      </svg>
-    </div>
+      {/* Leyenda: cada color lleva su etiqueta al lado, nunca viaja solo. */}
+      <div className="chart-legend">
+        <span className="chart-legend__item">
+          <span className="chart-swatch chart-swatch--2" aria-hidden="true" />
+          <span className="chart-legend__name">Valor planeado (PV)</span>
+        </span>
+        <span className="chart-legend__item">
+          <span className="chart-swatch chart-swatch--1" aria-hidden="true" />
+          <span className="chart-legend__name">Costo real (AC)</span>
+        </span>
+      </div>
+    </>
   );
 }
 
@@ -251,10 +286,10 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       {/* KPI Row */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-        <KpiCard label="Salud" value={<RagDot status={project.healthStatus} />} />
+      <div className="kpi-grid">
+        <KpiCard label="Salud" value={<RagBadge status={project.healthStatus} />} />
         <KpiCard label="Avance" value={`${Number(project.completionPct ?? 0).toFixed(1)}%`} />
         <KpiCard label="CPI" value={evm?.cpi != null ? pct(evm.cpi) : "—"} sub="≥1 bajo presupuesto" />
         <KpiCard label="SPI" value={evm?.spi != null ? pct(evm.spi) : "—"} sub="≥1 adelantado" />
@@ -267,20 +302,21 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
       </div>
 
       {/* Budget bar */}
-      <div style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
-        <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.4rem" }}>Uso de presupuesto</div>
-        <BudgetBar pct={financials.usedBudgetPercent} />
+      <div className="panel">
+        <div className="section-title">Uso de presupuesto</div>
+        <BudgetBar pct={financials.usedBudgetPercent} etiqueta="Uso de presupuesto" />
       </div>
 
       {/* Phase & baseline */}
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-        <div style={{ flex: "1 1 16rem" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.35rem" }}>Fase del proyecto</div>
+      <div className="split-row">
+        <div>
+          <label className="field-label" htmlFor="proyecto-fase">Fase del proyecto</label>
           <select
+            id="proyecto-fase"
+            className="select-control"
             value={project.phase ?? ""}
             onChange={(e) => void handlePhaseChange(e.target.value as ProjectPhase)}
             disabled={!canWrite || phaseChanging}
-            style={{ width: "100%" }}
           >
             <option value="">Sin fase</option>
             <option value="INITIATION">Iniciación</option>
@@ -290,14 +326,14 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
             <option value="CLOSING">Cierre</option>
           </select>
         </div>
-        <div style={{ flex: "1 1 16rem" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.35rem" }}>Línea base</div>
+        <div>
+          <span className="field-label">Línea base</span>
           {hasBaseline ? (
-            <div style={{ fontSize: "0.8rem", color: "var(--text)" }}>
-              <span style={{ color: "var(--color-sec-green)", fontWeight: 600 }}>Establecida</span>
-              {" — "}{new Date(project.baselineSetAt!).toLocaleDateString("es-CO")}
-              {project.baselineSetBy ? ` por ${project.baselineSetBy}` : ""}
-            </div>
+            <p className="field-help">
+              <span className="state-chip state-chip--success">Establecida</span>
+              {" "}{new Date(project.baselineSetAt!).toLocaleDateString("es-CO")}
+              {project.baselineSetBy ? ` · por ${project.baselineSetBy}` : ""}
+            </p>
           ) : (
             <button type="button" disabled={!canWrite || settingBaseline} onClick={() => void handleSetBaseline()}>
               {settingBaseline ? "Estableciendo…" : "Establecer línea base"}
@@ -308,28 +344,46 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
 
       {/* Baseline comparison */}
       {hasBaseline && (
-        <div style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
-          <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.4rem" }}>Comparación vs línea base</div>
-          <div style={{ display: "flex", gap: "2rem", flexWrap: "wrap", fontSize: "0.8rem" }}>
-            <div><span style={{ color: "var(--color-sec-gray)" }}>Presupuesto base:</span> {fmt(Number(project.baselineBudget ?? 0), project.currency)}</div>
-            <div><span style={{ color: "var(--color-sec-gray)" }}>Inicio base:</span> {project.baselineStartDate ? new Date(project.baselineStartDate).toLocaleDateString("es-CO") : "—"}</div>
-            <div><span style={{ color: "var(--color-sec-gray)" }}>Fin base:</span> {project.baselineEndDate ? new Date(project.baselineEndDate).toLocaleDateString("es-CO") : "—"}</div>
+        <div className="panel">
+          <div className="section-title">Comparación vs línea base</div>
+          <div className="def-list">
+            <span>
+              <span className="def-list__term">Presupuesto base:</span>
+              <span className="def-list__value">{fmt(Number(project.baselineBudget ?? 0), project.currency)}</span>
+            </span>
+            <span>
+              <span className="def-list__term">Inicio base:</span>
+              <span className="def-list__value">{project.baselineStartDate ? new Date(project.baselineStartDate).toLocaleDateString("es-CO") : "—"}</span>
+            </span>
+            <span>
+              <span className="def-list__term">Fin base:</span>
+              <span className="def-list__value">{project.baselineEndDate ? new Date(project.baselineEndDate).toLocaleDateString("es-CO") : "—"}</span>
+            </span>
           </div>
         </div>
       )}
 
       {/* EVM Burndown chart */}
-      <div style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "0.5rem", padding: "0.75rem 1rem" }}>
-        <div style={{ fontSize: "0.75rem", fontWeight: 600, marginBottom: "0.5rem" }}>Curva S — Valor planeado vs Costo real (EVM)</div>
+      <div className="panel">
+        <div className="section-title">Curva S — Valor planeado vs Costo real (EVM)</div>
         {timeline ? (
           <BurndownChart timeline={timeline} />
         ) : (
-          <p style={{ color: "var(--color-sec-gray)", fontSize: "0.8rem", margin: 0 }}>Cargando datos de cronograma…</p>
+          <p className="chart-empty">Cargando datos de cronograma…</p>
         )}
       </div>
     </div>
   );
 }
+
+/** Estado de un hito: etiqueta + tinte de estado. La etiqueta manda. */
+const HITO_PRESENTACION: Record<MilestoneStatus, { etiqueta: string; modificador: string }> = {
+  PLANNED:     { etiqueta: "Planeado",   modificador: "neutral" },
+  IN_PROGRESS: { etiqueta: "En curso",   modificador: "info" },
+  COMPLETED:   { etiqueta: "Completado", modificador: "success" },
+  DELAYED:     { etiqueta: "Retrasado",  modificador: "danger" },
+  CANCELLED:   { etiqueta: "Cancelado",  modificador: "neutral" },
+};
 
 function HitosTab({ projectId, milestones, canWrite, onReload }: {
   projectId: string;
@@ -356,19 +410,28 @@ function HitosTab({ projectId, milestones, canWrite, onReload }: {
     }
   }
 
-  const statusLabel: Record<MilestoneStatus, string> = {
-    PLANNED: "Planeado", IN_PROGRESS: "En curso", COMPLETED: "Completado",
-    DELAYED: "Retrasado", CANCELLED: "Cancelado",
-  };
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       {canWrite && (
-        <form onSubmit={(e) => void handleCreate(e)} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-          <input placeholder="Nombre del hito" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required style={{ flex: "2 1 12rem" }} />
-          <input type="date" value={form.plannedDate} onChange={(e) => setForm((p) => ({ ...p, plannedDate: e.target.value }))} required style={{ flex: "1 1 9rem" }} />
-          <input type="number" placeholder="Peso (0-100)" value={form.weight} onChange={(e) => setForm((p) => ({ ...p, weight: e.target.value }))} min={0} max={100} style={{ flex: "0 0 7rem" }} />
-          <button type="submit" disabled={submitting}>{submitting ? "Creando…" : "Agregar hito"}</button>
+        <form onSubmit={(e) => void handleCreate(e)} className="inline-form">
+          <div className="inline-form__field inline-form__field--wide">
+            <label className="field-label" htmlFor="hito-nombre">
+              Nombre del hito <span className="field-required" aria-hidden="true">*</span>
+            </label>
+            <input id="hito-nombre" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
+          </div>
+          <div className="inline-form__field inline-form__field--mid">
+            <label className="field-label" htmlFor="hito-fecha">
+              Fecha planeada <span className="field-required" aria-hidden="true">*</span>
+            </label>
+            <input id="hito-fecha" type="date" value={form.plannedDate} onChange={(e) => setForm((p) => ({ ...p, plannedDate: e.target.value }))} required />
+          </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="hito-peso">Peso</label>
+            <input id="hito-peso" type="number" value={form.weight} onChange={(e) => setForm((p) => ({ ...p, weight: e.target.value }))} min={0} max={100} aria-describedby="hito-peso-ayuda" />
+            <span className="field-help" id="hito-peso-ayuda">De 0 a 100</span>
+          </div>
+          <button type="submit" className="inline-form__submit" disabled={submitting}>{submitting ? "Creando…" : "Agregar hito"}</button>
         </form>
       )}
       <div className="table-wrap">
@@ -378,39 +441,36 @@ function HitosTab({ projectId, milestones, canWrite, onReload }: {
           </thead>
           <tbody>
             {milestones.length === 0 && (
-              <tr><td colSpan={canWrite ? 6 : 5} style={{ textAlign: "center", color: "#9ca3af" }}>Sin hitos registrados</td></tr>
+              <tr><td colSpan={canWrite ? 6 : 5} className="cell-empty cell-empty--roomy">Sin hitos registrados</td></tr>
             )}
-            {milestones.map((m) => (
-              <tr key={m.id}>
-                <td>{m.name}</td>
-                <td>{new Date(m.plannedDate).toLocaleDateString("es-CO")}</td>
-                <td>{m.actualDate ? new Date(m.actualDate).toLocaleDateString("es-CO") : "—"}</td>
-                <td>{m.weight}</td>
-                <td>
-                  <span style={{
-                    padding: "0.1rem 0.5rem", borderRadius: "9999px", fontSize: "0.7rem", fontWeight: 600,
-                    background: m.status === "COMPLETED" ? "#dcfce7" : m.status === "DELAYED" ? "#fef2f2" : m.status === "IN_PROGRESS" ? "#dbeafe" : "#f3f4f6",
-                    color: m.status === "COMPLETED" ? "#16a34a" : m.status === "DELAYED" ? "#dc2626" : m.status === "IN_PROGRESS" ? "#2563eb" : "#374151",
-                  }}>
-                    {statusLabel[m.status]}
-                  </span>
-                </td>
-                {canWrite && (
+            {milestones.map((m) => {
+              const p = HITO_PRESENTACION[m.status] ?? HITO_PRESENTACION.PLANNED;
+              return (
+                <tr key={m.id}>
+                  <td>{m.name}</td>
+                  <td className="cell-date">{new Date(m.plannedDate).toLocaleDateString("es-CO")}</td>
+                  <td className="cell-date">{m.actualDate ? new Date(m.actualDate).toLocaleDateString("es-CO") : "—"}</td>
+                  <td className="cell-num">{m.weight}</td>
                   <td>
-                    <div className="inline-actions">
-                      {m.status !== "COMPLETED" && (
-                        <button type="button" onClick={async () => { await completeMilestone(projectId, m.id); showToast("Hito completado", "success"); onReload(); }}>
-                          Completar
-                        </button>
-                      )}
-                      <button type="button" className="ghost" onClick={async () => { await deleteMilestone(projectId, m.id); showToast("Hito eliminado", "info"); onReload(); }}>
-                        Eliminar
-                      </button>
-                    </div>
+                    <span className={`state-chip state-chip--${p.modificador}`}>{p.etiqueta}</span>
                   </td>
-                )}
-              </tr>
-            ))}
+                  {canWrite && (
+                    <td>
+                      <div className="inline-actions">
+                        {m.status !== "COMPLETED" && (
+                          <button type="button" onClick={async () => { await completeMilestone(projectId, m.id); showToast("Hito completado", "success"); onReload(); }}>
+                            Completar
+                          </button>
+                        )}
+                        <button type="button" className="ghost" onClick={async () => { await deleteMilestone(projectId, m.id); showToast("Hito eliminado", "info"); onReload(); }}>
+                          Eliminar
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -450,7 +510,13 @@ function RiesgosTab({ projectId, risks, canWrite, onReload }: {
     }
   }
 
-  const scoreColor = (score: number) => score >= 6 ? "#ef4444" : score >= 3 ? "#f59e0b" : "#22c55e";
+  /**
+   * Tono del score P×I con los mismos cortes que tenía la pantalla (≥6 alto,
+   * ≥3 medio). El número va siempre dentro del disco: el color clasifica, la
+   * cifra informa.
+   */
+  const scoreMod = (score: number) => (score >= 6 ? "danger" : score >= 3 ? "warning" : "success");
+  const scoreEtiqueta = (score: number) => (score >= 6 ? "alto" : score >= 3 ? "medio" : "bajo");
 
   const statusOpts: { value: RiskStatus; label: string }[] = [
     { value: "OPEN", label: "Abierto" }, { value: "MITIGATED", label: "Mitigado" },
@@ -458,25 +524,36 @@ function RiesgosTab({ projectId, risks, canWrite, onReload }: {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       {canWrite && (
-        <form onSubmit={(e) => void handleCreate(e)} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-          <input placeholder="Título del riesgo" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required style={{ flex: "2 1 14rem" }} />
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <label style={{ fontSize: "0.7rem", color: "#6b7280" }}>Probabilidad (1-3)</label>
-            <select value={form.probability} onChange={(e) => setForm((p) => ({ ...p, probability: e.target.value }))}>
+        <form onSubmit={(e) => void handleCreate(e)} className="inline-form">
+          <div className="inline-form__field inline-form__field--wide">
+            <label className="field-label" htmlFor="riesgo-titulo">
+              Título del riesgo <span className="field-required" aria-hidden="true">*</span>
+            </label>
+            <input id="riesgo-titulo" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required />
+          </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="riesgo-probabilidad">Probabilidad</label>
+            <select id="riesgo-probabilidad" className="select-control" value={form.probability} onChange={(e) => setForm((p) => ({ ...p, probability: e.target.value }))}>
               <option value="1">1 – Baja</option><option value="2">2 – Media</option><option value="3">3 – Alta</option>
             </select>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <label style={{ fontSize: "0.7rem", color: "#6b7280" }}>Impacto (1-3)</label>
-            <select value={form.impact} onChange={(e) => setForm((p) => ({ ...p, impact: e.target.value }))}>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="riesgo-impacto">Impacto</label>
+            <select id="riesgo-impacto" className="select-control" value={form.impact} onChange={(e) => setForm((p) => ({ ...p, impact: e.target.value }))}>
               <option value="1">1 – Bajo</option><option value="2">2 – Medio</option><option value="3">3 – Alto</option>
             </select>
           </div>
-          <input placeholder="Categoría" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))} style={{ flex: "1 1 8rem" }} />
-          <input placeholder="Responsable" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} style={{ flex: "1 1 8rem" }} />
-          <button type="submit" disabled={submitting}>{submitting ? "Creando…" : "Agregar riesgo"}</button>
+          <div className="inline-form__field inline-form__field--mid">
+            <label className="field-label" htmlFor="riesgo-categoria">Categoría</label>
+            <input id="riesgo-categoria" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))} />
+          </div>
+          <div className="inline-form__field inline-form__field--mid">
+            <label className="field-label" htmlFor="riesgo-responsable">Responsable</label>
+            <input id="riesgo-responsable" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} />
+          </div>
+          <button type="submit" className="inline-form__submit" disabled={submitting}>{submitting ? "Creando…" : "Agregar riesgo"}</button>
         </form>
       )}
       <div className="table-wrap">
@@ -486,32 +563,36 @@ function RiesgosTab({ projectId, risks, canWrite, onReload }: {
           </thead>
           <tbody>
             {risks.length === 0 && (
-              <tr><td colSpan={canWrite ? 7 : 6} style={{ textAlign: "center", color: "#9ca3af" }}>Sin riesgos registrados</td></tr>
+              <tr><td colSpan={canWrite ? 7 : 6} className="cell-empty cell-empty--roomy">Sin riesgos registrados</td></tr>
             )}
             {risks.map((r) => (
               <tr key={r.id}>
                 <td>
-                  <span style={{
-                    display: "inline-block", width: "1.6rem", height: "1.6rem", borderRadius: "50%",
-                    background: scoreColor(r.riskScore), color: "#fff",
-                    fontWeight: 700, fontSize: "0.75rem", lineHeight: "1.6rem", textAlign: "center",
-                  }}>
+                  <span
+                    className={`score-dot score-dot--${scoreMod(r.riskScore)}`}
+                    title={`Riesgo ${scoreEtiqueta(r.riskScore)} (score ${r.riskScore})`}
+                  >
                     {r.riskScore}
                   </span>
+                  <span className="sr-only">{` Riesgo ${scoreEtiqueta(r.riskScore)}`}</span>
                 </td>
                 <td>{r.title}</td>
-                <td style={{ fontSize: "0.75rem" }}>{r.probability} × {r.impact}</td>
+                <td className="cell-small">{r.probability} × {r.impact}</td>
                 <td>{r.category ?? "—"}</td>
                 <td>{r.owner ?? "—"}</td>
                 <td>
                   {canWrite ? (
-                    <select
-                      value={r.status}
-                      onChange={async (e) => { await updateRiskStatus(projectId, r.id, e.target.value as RiskStatus); showToast("Estado actualizado", "success"); onReload(); }}
-                      style={{ fontSize: "0.75rem" }}
-                    >
-                      {statusOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                    <>
+                      <label className="sr-only" htmlFor={`riesgo-estado-${r.id}`}>Estado del riesgo {r.title}</label>
+                      <select
+                        id={`riesgo-estado-${r.id}`}
+                        className="select-control cell-small"
+                        value={r.status}
+                        onChange={async (e) => { await updateRiskStatus(projectId, r.id, e.target.value as RiskStatus); showToast("Estado actualizado", "success"); onReload(); }}
+                      >
+                        {statusOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </>
                   ) : (
                     <span>{label(RISK_STATUS_LABELS, r.status)}</span>
                   )}
@@ -532,20 +613,30 @@ function RiesgosTab({ projectId, risks, canWrite, onReload }: {
   );
 }
 
+/** Estado de una asignación: tono de texto, no color incrustado. */
+const ASIGNACION_TONO: Record<string, string> = {
+  ACTIVE: "tone-success",
+  PLANNED: "tone-info",
+  PARTIAL: "tone-warning",
+  COMPLETED: "tone-muted",
+  CANCELLED: "tone-danger",
+};
+
 function RecursosTab({ assignments }: { assignments: ProjectDetail["assignments"] }) {
   if (assignments.length === 0) {
-    return <p style={{ color: "#9ca3af", textAlign: "center", padding: "1rem" }}>Sin asignaciones activas</p>;
+    return (
+      <div className="empty-state">
+        <div className="empty-state__icon" aria-hidden="true">👥</div>
+        <p className="empty-state__title">Sin asignaciones activas</p>
+        <p className="empty-state__text">Este proyecto todavía no tiene consultores asignados.</p>
+      </div>
+    );
   }
 
   const allocationLabel = (a: ProjectDetail["assignments"][number]) => {
     if (a.allocationMode === "PERCENTAGE" && a.allocationPct != null) return `${a.allocationPct}%`;
     if (a.allocationMode === "HOURS" && a.hoursPerPeriod != null) return `${a.hoursPerPeriod}h/${a.periodUnit ?? "periodo"}`;
     return "—";
-  };
-
-  const statusColor: Record<string, string> = {
-    ACTIVE: "#22c55e", PLANNED: "#3b82f6", PARTIAL: "#f59e0b",
-    COMPLETED: "#9ca3af", CANCELLED: "#ef4444",
   };
 
   return (
@@ -565,20 +656,15 @@ function RecursosTab({ assignments }: { assignments: ProjectDetail["assignments"
         <tbody>
           {assignments.map((a) => (
             <tr key={a.id}>
-              <td style={{ fontWeight: 600 }}>{a.consultant?.fullName ?? "—"}</td>
+              <td className="cell-strong">{a.consultant?.fullName ?? "—"}</td>
               <td>{a.consultant?.role ?? a.role ?? "—"}</td>
               <td>{a.consultant?.country ? <CountryFlag country={a.consultant.country} /> : "—"}</td>
-              <td>
-                <span style={{
-                  fontWeight: 600, fontSize: "0.75rem",
-                  color: statusColor[a.status] ?? "#374151",
-                }}>
-                  {label(ASSIGNMENT_STATUS_LABELS, a.status)}
-                </span>
+              <td className={`cell-small cell-strong ${ASIGNACION_TONO[a.status] ?? "tone-muted"}`}>
+                {label(ASSIGNMENT_STATUS_LABELS, a.status)}
               </td>
               <td>{allocationLabel(a)}</td>
-              <td>{new Date(a.startDate).toLocaleDateString("es-CO")}</td>
-              <td>{new Date(a.endDate).toLocaleDateString("es-CO")}</td>
+              <td className="cell-date">{new Date(a.startDate).toLocaleDateString("es-CO")}</td>
+              <td className="cell-date">{new Date(a.endDate).toLocaleDateString("es-CO")}</td>
             </tr>
           ))}
         </tbody>
@@ -586,6 +672,19 @@ function RecursosTab({ assignments }: { assignments: ProjectDetail["assignments"
     </div>
   );
 }
+
+/**
+ * Severidad de una incidencia. Antes la Crítica se pintaba con un violeta
+ * categórico usado como estado, lo que rompía la regla de que un estado no
+ * inventa su propio semáforo. Ahora la escalada de Alta a Crítica se
+ * expresa dentro de la misma familia roja pasando de tinte a relleno sólido.
+ */
+const SEVERIDAD_PRESENTACION: Record<IssueSeverity, string> = {
+  LOW: "state-chip--neutral",
+  MEDIUM: "state-chip--warning",
+  HIGH: "state-chip--danger",
+  CRITICAL: "state-chip--danger state-chip--filled",
+};
 
 function IssuesTab({ projectId, issues, canWrite, onReload }: {
   projectId: string;
@@ -622,21 +721,28 @@ function IssuesTab({ projectId, issues, canWrite, onReload }: {
     onReload();
   }
 
-  const severityColor: Record<IssueSeverity, string> = {
-    LOW: "#6b7280", MEDIUM: "#f59e0b", HIGH: "#ef4444", CRITICAL: "#7c3aed",
-  };
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       {canWrite && (
-        <form onSubmit={(e) => void handleCreate(e)} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-          <input placeholder="Título del issue" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required style={{ flex: "2 1 14rem" }} />
-          <select value={form.severity} onChange={(e) => setForm((p) => ({ ...p, severity: e.target.value as IssueSeverity }))}>
-            <option value="LOW">Baja</option><option value="MEDIUM">Media</option>
-            <option value="HIGH">Alta</option><option value="CRITICAL">Crítica</option>
-          </select>
-          <input placeholder="Responsable" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} style={{ flex: "1 1 8rem" }} />
-          <button type="submit" disabled={submitting}>{submitting ? "Creando…" : "Agregar issue"}</button>
+        <form onSubmit={(e) => void handleCreate(e)} className="inline-form">
+          <div className="inline-form__field inline-form__field--wide">
+            <label className="field-label" htmlFor="issue-titulo">
+              Título de la incidencia <span className="field-required" aria-hidden="true">*</span>
+            </label>
+            <input id="issue-titulo" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required />
+          </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="issue-severidad">Severidad</label>
+            <select id="issue-severidad" className="select-control" value={form.severity} onChange={(e) => setForm((p) => ({ ...p, severity: e.target.value as IssueSeverity }))}>
+              <option value="LOW">Baja</option><option value="MEDIUM">Media</option>
+              <option value="HIGH">Alta</option><option value="CRITICAL">Crítica</option>
+            </select>
+          </div>
+          <div className="inline-form__field inline-form__field--mid">
+            <label className="field-label" htmlFor="issue-responsable">Responsable</label>
+            <input id="issue-responsable" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} />
+          </div>
+          <button type="submit" className="inline-form__submit" disabled={submitting}>{submitting ? "Creando…" : "Agregar issue"}</button>
         </form>
       )}
       <div className="table-wrap">
@@ -646,12 +752,12 @@ function IssuesTab({ projectId, issues, canWrite, onReload }: {
           </thead>
           <tbody>
             {issues.length === 0 && (
-              <tr><td colSpan={canWrite ? 5 : 4} style={{ textAlign: "center", color: "#9ca3af" }}>Sin issues registrados</td></tr>
+              <tr><td colSpan={canWrite ? 5 : 4} className="cell-empty cell-empty--roomy">Sin issues registrados</td></tr>
             )}
             {issues.map((issue) => (
               <tr key={issue.id}>
                 <td>
-                  <span style={{ fontWeight: 700, fontSize: "0.75rem", color: severityColor[issue.severity] }}>
+                  <span className={`state-chip ${SEVERIDAD_PRESENTACION[issue.severity] ?? "state-chip--neutral"}`}>
                     {label(ISSUE_SEVERITY_LABELS, issue.severity)}
                   </span>
                 </td>
@@ -663,8 +769,9 @@ function IssuesTab({ projectId, issues, canWrite, onReload }: {
                     <div className="inline-actions">
                       {issue.status !== "RESOLVED" && issue.status !== "CLOSED" && (
                         resolving === issue.id ? (
-                          <div style={{ display: "flex", gap: "0.3rem" }}>
-                            <input placeholder="Resolución" value={resolution} onChange={(e) => setResolution(e.target.value)} style={{ fontSize: "0.75rem" }} />
+                          <div className="inline-actions">
+                            <label className="sr-only" htmlFor={`issue-resolucion-${issue.id}`}>Resolución de {issue.title}</label>
+                            <input id={`issue-resolucion-${issue.id}`} placeholder="Resolución" value={resolution} onChange={(e) => setResolution(e.target.value)} className="cell-small" />
                             <button type="button" onClick={() => void handleResolve(issue.id)}>OK</button>
                             <button type="button" className="ghost" onClick={() => setResolving(null)}>✕</button>
                           </div>
@@ -686,6 +793,13 @@ function IssuesTab({ projectId, issues, canWrite, onReload }: {
     </div>
   );
 }
+
+/** Estado de una solicitud de cambio: tinte de estado + etiqueta. */
+const CAMBIO_MODIFICADOR: Record<string, string> = {
+  PENDING: "warning",
+  APPROVED: "success",
+  REJECTED: "danger",
+};
 
 function CambiosTab({ projectId, changeRequests, canWrite, onReload }: {
   projectId: string;
@@ -718,23 +832,38 @@ function CambiosTab({ projectId, changeRequests, canWrite, onReload }: {
     }
   }
 
-  const statusColor: Record<string, string> = {
-    PENDING: "#f59e0b", APPROVED: "#22c55e", REJECTED: "#ef4444",
-  };
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       {canWrite && (
-        <form onSubmit={(e) => void handleCreate(e)} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-          <input placeholder="Título del cambio" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required style={{ flex: "2 1 14rem" }} />
-          <input placeholder="Descripción" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} required style={{ flex: "2 1 14rem" }} />
-          <select value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as ChangeRequestType }))}>
-            <option value="SCOPE">Alcance</option><option value="BUDGET">Presupuesto</option>
-            <option value="SCHEDULE">Cronograma</option><option value="OTHER">Otro</option>
-          </select>
-          <input type="number" placeholder="Impacto presupuesto" value={form.impactBudget} onChange={(e) => setForm((p) => ({ ...p, impactBudget: e.target.value }))} style={{ flex: "0 0 9rem" }} />
-          <input type="number" placeholder="Impacto días" value={form.impactDays} onChange={(e) => setForm((p) => ({ ...p, impactDays: e.target.value }))} style={{ flex: "0 0 7rem" }} />
-          <button type="submit" disabled={submitting}>{submitting ? "Creando…" : "Solicitar cambio"}</button>
+        <form onSubmit={(e) => void handleCreate(e)} className="inline-form">
+          <div className="inline-form__field inline-form__field--wide">
+            <label className="field-label" htmlFor="cambio-titulo">
+              Título del cambio <span className="field-required" aria-hidden="true">*</span>
+            </label>
+            <input id="cambio-titulo" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} required />
+          </div>
+          <div className="inline-form__field inline-form__field--wide">
+            <label className="field-label" htmlFor="cambio-descripcion">
+              Descripción <span className="field-required" aria-hidden="true">*</span>
+            </label>
+            <input id="cambio-descripcion" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} required />
+          </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="cambio-tipo">Tipo</label>
+            <select id="cambio-tipo" className="select-control" value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value as ChangeRequestType }))}>
+              <option value="SCOPE">Alcance</option><option value="BUDGET">Presupuesto</option>
+              <option value="SCHEDULE">Cronograma</option><option value="OTHER">Otro</option>
+            </select>
+          </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="cambio-impacto-presupuesto">Impacto $</label>
+            <input id="cambio-impacto-presupuesto" type="number" value={form.impactBudget} onChange={(e) => setForm((p) => ({ ...p, impactBudget: e.target.value }))} />
+          </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="cambio-impacto-dias">Impacto días</label>
+            <input id="cambio-impacto-dias" type="number" value={form.impactDays} onChange={(e) => setForm((p) => ({ ...p, impactDays: e.target.value }))} />
+          </div>
+          <button type="submit" className="inline-form__submit" disabled={submitting}>{submitting ? "Creando…" : "Solicitar cambio"}</button>
         </form>
       )}
       <div className="table-wrap">
@@ -744,20 +873,20 @@ function CambiosTab({ projectId, changeRequests, canWrite, onReload }: {
           </thead>
           <tbody>
             {changeRequests.length === 0 && (
-              <tr><td colSpan={canWrite ? 7 : 6} style={{ textAlign: "center", color: "#9ca3af" }}>Sin solicitudes de cambio</td></tr>
+              <tr><td colSpan={canWrite ? 7 : 6} className="cell-empty cell-empty--roomy">Sin solicitudes de cambio</td></tr>
             )}
             {changeRequests.map((cr) => (
               <tr key={cr.id}>
-                <td style={{ fontSize: "0.75rem" }}>{label(CHANGE_REQUEST_TYPE_LABELS, cr.type)}</td>
+                <td className="cell-small">{label(CHANGE_REQUEST_TYPE_LABELS, cr.type)}</td>
                 <td>{cr.title}</td>
-                <td>{cr.impactBudget ? Number(cr.impactBudget).toLocaleString() : "—"}</td>
-                <td>{cr.impactDays ?? "—"}</td>
+                <td className="cell-num">{cr.impactBudget ? Number(cr.impactBudget).toLocaleString() : "—"}</td>
+                <td className="cell-num">{cr.impactDays ?? "—"}</td>
                 <td>
-                  <span style={{ fontWeight: 700, fontSize: "0.75rem", color: statusColor[cr.status] ?? "#374151" }}>
+                  <span className={`state-chip state-chip--${CAMBIO_MODIFICADOR[cr.status] ?? "neutral"}`}>
                     {label(CHANGE_REQUEST_STATUS_LABELS, cr.status)}
                   </span>
                 </td>
-                <td style={{ fontSize: "0.75rem" }}>{cr.requestedBy}</td>
+                <td className="cell-small">{cr.requestedBy}</td>
                 {canWrite && (
                   <td>
                     <div className="inline-actions">
@@ -810,110 +939,64 @@ function HistorialTab({ projectId, onError }: { projectId: string; onError: (msg
   }, [projectId, onError]);
 
   if (loading) return <p className="loading">Cargando bitácora de auditoría...</p>;
-  if (logs.length === 0) return <p style={{ fontStyle: "italic", color: "var(--text-soft)", textAlign: "center", padding: "2rem" }}>No hay registros de auditoría para este proyecto.</p>;
+  if (logs.length === 0) {
+    return (
+      <div className="empty-state">
+        <div className="empty-state__icon" aria-hidden="true">🗒️</div>
+        <p className="empty-state__title">Sin registros de auditoría</p>
+        <p className="empty-state__text">Este proyecto todavía no tiene cambios registrados en la bitácora.</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", padding: "1rem 0" }}>
-      <div style={{ position: "relative", paddingLeft: "2.5rem", display: "flex", flexDirection: "column", gap: "2.5rem" }}>
-        {/* Vertical Line */}
-        <div style={{
-          position: "absolute",
-          left: "11px",
-          top: "8px",
-          bottom: "8px",
-          width: "2px",
-          background: "linear-gradient(to bottom, var(--accent, #3b82f6), #cbd5e1)"
-        }} />
+    <div className="timeline">
+      {logs.map((log) => {
+        const date = new Date(log.createdAt).toLocaleString("es-CO", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit"
+        });
 
-        {logs.map((log) => {
-          const date = new Date(log.createdAt).toLocaleString("es-CO", {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit"
-          });
-
-          // Format diff/detail if present
-          let detailsText = "";
-          if (log.diff) {
-            try {
-              const diffObj = typeof log.diff === "string" ? JSON.parse(log.diff) : log.diff;
-              detailsText = Object.keys(diffObj)
-                .map((key) => `• Modificado "${key}": ${JSON.stringify(diffObj[key])}`)
-                .join("\n");
-            } catch {
-              detailsText = JSON.stringify(log.diff);
-            }
+        // Format diff/detail if present
+        let detailsText = "";
+        if (log.diff) {
+          try {
+            const diffObj = typeof log.diff === "string" ? JSON.parse(log.diff) : log.diff;
+            detailsText = Object.keys(diffObj)
+              .map((key) => `• Modificado "${key}": ${JSON.stringify(diffObj[key])}`)
+              .join("\n");
+          } catch {
+            detailsText = JSON.stringify(log.diff);
           }
+        }
 
-          return (
-            <div key={log.id} style={{ position: "relative", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {/* Dot indicator */}
-              <div style={{
-                position: "absolute",
-                left: "-33px",
-                top: "4px",
-                width: "16px",
-                height: "16px",
-                borderRadius: "50%",
-                background: "#fff",
-                border: "3px solid var(--accent, #3b82f6)",
-                boxShadow: "0 0 0 4px rgba(59, 130, 246, 0.15)",
-                zIndex: 2
-              }} />
+        return (
+          <div key={log.id} className="timeline__item">
+            <span className="timeline__dot" aria-hidden="true" />
 
-              {/* Time header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
-                <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-soft)" }}>
-                  📅 {date}
-                </span>
-                <span style={{
-                  fontSize: "0.72rem",
-                  fontWeight: 600,
-                  color: "#1e293b",
-                  background: "#e2e8f0",
-                  padding: "0.15rem 0.5rem",
-                  borderRadius: "20px"
-                }}>
-                  👤 {log.changedBy}
-                </span>
-              </div>
-
-              {/* Card wrapper */}
-              <div className="card" style={{
-                padding: "1rem",
-                borderRadius: "10px",
-                border: "1px solid #cbd5e1",
-                background: "#f8fafc",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
-                margin: 0
-              }}>
-                <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "0.88rem", fontWeight: 700, color: "var(--text-strong)", textTransform: "capitalize" }}>
-                  Acción: {log.action.toLowerCase().replace(/_/g, " ")}
-                </h4>
-                {detailsText ? (
-                  <pre style={{
-                    margin: 0,
-                    fontSize: "0.78rem",
-                    color: "#475569",
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "var(--font-mono, monospace)",
-                    background: "#f1f5f9",
-                    padding: "0.5rem",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e1"
-                  }}>{detailsText}</pre>
-                ) : (
-                  <p style={{ margin: 0, fontSize: "0.78rem", color: "#64748b" }}>
-                    Modificación de entidad {log.entity} sin detalles específicos de diferencias.
-                  </p>
-                )}
-              </div>
+            <div className="timeline__head">
+              <span className="timeline__time">📅 {date}</span>
+              <span className="timeline__actor">👤 {log.changedBy}</span>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="timeline__card">
+              <h4 className="timeline__title">
+                Acción: {log.action.toLowerCase().replace(/_/g, " ")}
+              </h4>
+              {detailsText ? (
+                <pre className="timeline__detail">{detailsText}</pre>
+              ) : (
+                <p className="timeline__note">
+                  Modificación de entidad {log.entity} sin detalles específicos de diferencias.
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -948,8 +1031,17 @@ export function ProjectDetailTab({
 
   useEffect(() => { void load(); }, [load]);
 
-  if (loading) return <div className="loading" style={{ padding: "2rem" }}>Cargando detalle…</div>;
-  if (!detail) return <div style={{ padding: "2rem", color: "#ef4444" }}>No se pudo cargar el proyecto.</div>;
+  if (loading) return <div className="panel">Cargando detalle…</div>;
+  if (!detail) {
+    return (
+      <div className="notice notice--danger" role="alert">
+        <div className="notice__title">
+          <span aria-hidden="true">■</span> No se pudo cargar el proyecto
+        </div>
+        <p className="notice__text">Vuelve al listado e inténtalo de nuevo.</p>
+      </div>
+    );
+  }
 
   const tabs: { key: SubTab; label: string }[] = [
     { key: "resumen", label: "Resumen" },
@@ -962,39 +1054,30 @@ export function ProjectDetailTab({
   ];
 
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <section className="page-stack">
       <PageHeader
         icon="📁"
         title={detail.project.name}
         description={`${detail.project.company} · Tipo: ${detail.project.projectType} · Fase: ${detail.project.phase ?? "Sin definir"}`}
         actions={
           <>
-            <button type="button" className="ghost" onClick={onBack} style={{ fontSize: "0.85rem", padding: "0.5rem 1rem", borderRadius: "8px" }}>
+            <button type="button" className="ghost toolbar-btn" onClick={onBack}>
               ← Volver
             </button>
-            <RagDot status={detail.project.healthStatus} />
+            <RagBadge status={detail.project.healthStatus} />
           </>
         }
       />
 
       {/* Sub-tabs nav */}
-      <nav style={{ display: "flex", gap: "0.25rem", borderBottom: "2px solid #e5e7eb", paddingBottom: "0" }}>
+      <nav className="subtabs" aria-label="Secciones del proyecto">
         {tabs.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => setActiveTab(t.key)}
-            style={{
-              padding: "0.4rem 0.85rem",
-              border: "none",
-              borderBottom: activeTab === t.key ? "2px solid var(--accent, #3b82f6)" : "2px solid transparent",
-              background: "transparent",
-              cursor: "pointer",
-              fontWeight: activeTab === t.key ? 700 : 400,
-              color: activeTab === t.key ? "var(--accent, #3b82f6)" : "#374151",
-              fontSize: "0.82rem",
-              marginBottom: "-2px",
-            }}
+            className={`subtab${activeTab === t.key ? " is-active" : ""}`}
+            aria-current={activeTab === t.key ? "page" : undefined}
           >
             {t.label}
           </button>
