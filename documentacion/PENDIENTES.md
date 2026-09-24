@@ -58,7 +58,7 @@ Nada de esto se puede resolver leyendo código.
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
 | D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con 0,85 / 1,00 y 90 % / 100 %, pero el backend calcula la salud con 0,75 y 0,9. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
 
-## 3. Migración visual del frontend (tarea abierta, lista para retomar)
+## 2. Migración visual del frontend (tarea abierta, lista para retomar)
 
 Hay un sistema de diseño completo y seis pantallas ya migradas que sirven de referencia. Lo
 que falta es aplicar lo mismo al resto. **Es trabajo acotado y repetitivo, apto para
@@ -183,7 +183,7 @@ revisar.
 
 ---
 
-## 4. Una trampa que ya apareció cinco veces
+## 3. Una trampa que ya apareció cinco veces
 
 **Campos que el backend lee y que nadie puede escribir.** El modelo declara la columna, el
 código la consulta, pero no está en ningún esquema Zod ni en ningún formulario, así que
@@ -199,7 +199,7 @@ cambio.** Y si encuentras código que lee un campo, comprueba que exista forma d
 
 ---
 
-## 5. Cómo verificar lo que hagas
+## 4. Cómo verificar lo que hagas
 
 El proyecto tiene con qué demostrar que un cambio funciona; úsalo.
 
