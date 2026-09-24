@@ -56,6 +56,9 @@ Nada de esto se puede resolver leyendo código.
 | D-4 | **¿Los ingresos se categorizan?** `FinancialEntry.category` solo se usa en gastos y queda nulo en ingresos, sin que el esquema lo impida. | Cambio de modelo si la respuesta es sí |
 | D-5 | **¿La jornada laboral se configura por país, por consultor o ambos?** Necesario para poder arreglar DEP-41. | Define el diseño |
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
+| D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con **0,85 / 1,00** y **90 % / 100 %**, pero `utils/health.ts` calcula la salud con **0,75** y **0,9**. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
+| D-8 | **¿Se va a usar el módulo de Actividades?** El cronómetro y el timesheet permiten enlazar cada registro a una `Activity` para poder comparar horas estimadas con reales, pero no hay ninguna creada: el desplegable solo ofrece "Sin tarea" y parece roto. O se empieza a usar, o se retira el selector de las dos pantallas. | Decisión de producto |
+| D-9 | **¿Las horas de sábado y domingo cuentan en el informe semanal?** Hoy el informe cubre de lunes a viernes y avisa aparte si hay horas en fin de semana, para no ocultarlas. Pero `Consultant.allowWeekendWork` existe, así que trabajar en fin de semana está contemplado: hay que decidir si entran en los totales o se siguen tratando como excepción. | Depende de cómo se factura y se controla la jornada |
 
 ---
 
@@ -101,6 +104,13 @@ moneda original pero rotulados con la moneda base. Afecta especialmente a la nó
 
 **`GET /api/projects/:id/detail` escribe dentro de una lectura.** Si el `healthStatus`
 calculado difiere del guardado, hace un `update` dentro de un `GET`, y sin auditarlo.
+
+**Los umbrales de Portafolio no coinciden con los del backend (ver D-7).** Es un defecto
+funcional, no visual: se detectó al rediseñar la pantalla y se dejó sin tocar a propósito,
+porque elegir los umbrales buenos es decisión de negocio. Un proyecto con CPI 0,80 sale con
+la celda en **rojo** (`PortfolioTab.tsx`, < 0,85) mientras el semáforo de su propia fila es
+**ámbar** (`health.ts`, 0,80 no baja de 0,75); con CPI 0,95 la celda va **ámbar** y la fila
+**verde**.
 
 **Los deltas «vs período anterior» del tablero comparan peras con manzanas.** Un total del
 servidor ya convertido contra una suma local en monedas mezcladas. Arreglarlo bien exige que
