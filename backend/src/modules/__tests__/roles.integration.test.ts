@@ -199,7 +199,7 @@ describe("Quién puede entrar a cada ruta", () => {
 });
 
 describe("Un consultor solo puede imputar horas a su propio nombre", () => {
-  it("ignora el consultantId de otra persona y se lo imputa a sí mismo", async () => {
+  it("pedir el consultantId de otro se rechaza, no se reasigna en silencio", async () => {
     as([AppRole.CONSULTANT], EMAIL_A);
     const res = await app.inject({
       method: "POST",
@@ -207,10 +207,10 @@ describe("Un consultor solo puede imputar horas a su propio nombre", () => {
       payload: { projectId, consultantId: consultantB, workDate: "2026-09-21", hours: 3 },
     });
 
-    expect(res.statusCode).toBe(201);
-    // Pidió imputárselas a Beto; deben quedar a nombre de Ana.
-    expect(res.json().data.consultantId).toBe(consultantA);
-    expect(res.json().data.consultantId).not.toBe(consultantB);
+    // 403 y no un 201 con las horas rebajadas a nombre propio: reasignar sin
+    // avisar haría creer que se registraron las horas del compañero.
+    expect(res.statusCode).toBe(403);
+    expect(res.json().message).toContain("tu propio nombre");
   });
 
   it.each([AppRole.ADMIN, AppRole.PM])("%s sí puede imputar a nombre de otro", async (role) => {
@@ -236,7 +236,7 @@ describe("Un consultor solo puede imputar horas a su propio nombre", () => {
     // 403 y no 400: no es que la petición esté mal formada, es que ese usuario
     // no tiene derecho a registrar horas a nombre de nadie.
     expect(res.statusCode).toBe(403);
-    expect(res.json().message).toContain("no esta vinculado a ningun consultor");
+    expect(res.json().message).toContain("No hay un consultor asociado al correo");
   });
 });
 
@@ -384,7 +384,7 @@ describe("Llevar el cronómetro a nombre de otro consultor", () => {
     expect(parado.json().data.consultantId).toBe(consultantB);
   });
 
-  it("un CONSULTANT no puede arrancarlo a nombre de otro: se lo queda él", async () => {
+  it("un CONSULTANT no puede arrancarlo a nombre de otro", async () => {
     as([AppRole.CONSULTANT], EMAIL_A);
 
     const res = await app.inject({
@@ -393,8 +393,9 @@ describe("Llevar el cronómetro a nombre de otro consultor", () => {
       payload: { projectId, consultantId: consultantB },
     });
 
-    expect(res.statusCode).toBe(201);
-    expect(res.json().data.consultantId).toBe(consultantA);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain("tu propio nombre");
+    expect(await prisma.runningTimer.findUnique({ where: { consultantId: consultantB } })).toBeNull();
   });
 
   it("un CONSULTANT tampoco puede detener el cronómetro de otro", async () => {
@@ -404,8 +405,10 @@ describe("Llevar el cronómetro a nombre de otro consultor", () => {
     as([AppRole.CONSULTANT], EMAIL_A);
     const res = await app.inject({ method: "POST", url: "/api/timer/stop", payload: { consultantId: consultantB } });
 
-    // Se resuelve a su propio cronómetro, que no existe: no llega al de Beto.
-    expect(res.statusCode).toBe(404);
+    // Se rechaza de forma explícita en vez de resolver al cronómetro propio:
+    // así queda claro que no se detuvo el de nadie.
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toContain("tu propio nombre");
     expect(await prisma.runningTimer.findUnique({ where: { consultantId: consultantB } })).not.toBeNull();
   });
 
@@ -414,7 +417,7 @@ describe("Llevar el cronómetro a nombre de otro consultor", () => {
     await app.inject({ method: "POST", url: "/api/timer/start", payload: { projectId, consultantId: consultantB } });
 
     as([AppRole.CONSULTANT], EMAIL_A);
-    expect((await app.inject({ method: "DELETE", url: `/api/timer?consultantId=${consultantB}` })).statusCode).toBe(404);
+    expect((await app.inject({ method: "DELETE", url: `/api/timer?consultantId=${consultantB}` })).statusCode).toBe(400);
 
     as([AppRole.ADMIN], EMAIL_A);
     expect((await app.inject({ method: "DELETE", url: `/api/timer?consultantId=${consultantB}` })).statusCode).toBe(204);

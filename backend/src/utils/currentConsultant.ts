@@ -21,11 +21,17 @@ export async function findMyConsultant(request: FastifyRequest) {
 }
 
 /**
- * Resuelve sobre que consultor puede operar la peticion.
+ * Resuelve sobre qué consultor puede operar la petición.
  *
- * Un ADMIN o PM puede cargar horas a nombre de otro (pasando `consultantId`);
- * cualquier otro rol queda atado a su propio consultor, aunque mande un
- * `consultantId` distinto en el cuerpo de la peticion.
+ * Un ADMIN o PM puede cargar horas a nombre de otro pasando `consultantId`; es
+ * un flujo legítimo de la PMO. Cualquier otro rol queda atado a su propio
+ * consultor.
+ *
+ * Cuando alguien sin ese permiso pide el id de otra persona se devuelve un
+ * error, **no** se reasigna en silencio a sí mismo: rebajar la petición sin
+ * avisar hace creer que se registraron las horas del compañero cuando en
+ * realidad se registraron las propias. Omitir el campo sí resuelve al consultor
+ * propio, que es como lo usan el timesheet y el cronómetro.
  */
 export async function resolveTargetConsultantId(
   request: FastifyRequest,
@@ -46,9 +52,12 @@ export async function resolveTargetConsultantId(
   const mine = await findMyConsultant(request);
   if (!mine) {
     return {
-      error:
-        "Tu usuario no esta vinculado a ningun consultor. Pide a un administrador que cree tu ficha de consultor con este mismo correo.",
+      error: `No hay un consultor asociado al correo ${request.authUser?.email ?? ""}, así que no se pueden registrar horas a tu nombre. Pide a un administrador que cree tu ficha de consultor.`,
     };
+  }
+
+  if (requestedConsultantId && requestedConsultantId !== mine.id) {
+    return { error: "Solo puedes registrar horas a tu propio nombre." };
   }
 
   return { consultantId: mine.id };

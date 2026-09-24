@@ -2,7 +2,7 @@
 
 Lista viva de lo que falta. Si vas a tomar algo, empieza por aquí.
 
-**Actualizado:** 2026-09-22 · **Rama con todo lo hecho:** `dev`
+**Actualizado:** 2026-09-24 · **Rama con todo lo hecho:** `dev`
 
 Para el detalle de cada arreglo ya hecho, ver `documentacion/cambios/`.
 Para el histórico completo de la depuración, `documentacion/BACKLOG_DEPURACION.md`
@@ -12,7 +12,7 @@ Para el histórico completo de la depuración, `documentacion/BACKLOG_DEPURACION
 
 ## 0. Lo primero: nada de esto está en producción
 
-`dev` va **35 commits por delante de `main`**. Producción sigue en el estado de
+`dev` va **45 commits por delante de `main`**. Producción sigue en el estado de
 principios de septiembre, así que **todo lo arreglado no le sirve a nadie todavía**: el
 drift del esquema, las fugas de tarifas, la suplantación al registrar horas, el cron de
 tasas de cambio apuntando a un host inexistente, la auditoría, el planificador de tareas.
@@ -70,6 +70,11 @@ formulario que los escriba**, así que la fila siempre es nula y toda la capacid
 con 8 h y 5 días para todo el mundo, sin importar el país ni la jornada real.
 Bloqueado por D-5.
 
+Desde el 2026-09-24 hay **un consumidor más**: `frontend/src/features/reports/reportUtils.ts`
+declara `DAILY_LIMIT = 8` para decidir qué parte de cada barra del informe sale en rojo. Es
+la misma jornada fija, ahora también en una pantalla que la gente mira. Cuando D-5 se
+decida, hay que conectar los dos sitios, no solo `capacity.routes.ts`.
+
 **Sin paginación.** Casi todos los `GET /` devuelven el conjunto completo
 (`time-entries`, `extra-hours`, `consultants`, `projects`…). Solo `/api/audit` pagina, y
 puede servir de plantilla. A medida que crezcan los datos, esto se vuelve el cuello de
@@ -77,6 +82,16 @@ botella; `AuditLog` además crece más rápido desde que guarda `before` y `afte
 
 **El TLS del correo está debilitado.** `utils/notifications.ts` usa
 `rejectUnauthorized: false` y `ciphers: "SSLv3"`. Bloqueado por D-6.
+
+**Dos pruebas de integración están en el sitio equivocado.**
+`src/modules/__tests__/roles.integration.test.ts` y `security.integration.test.ts` viven
+dentro de `src/`, así que las recoge `npm test` -- que por diseño es **solo cálculo puro y
+sin base de datos** (ver el comentario de `vitest.config.ts`). Consecuencias: `npm test` ya
+no corre sin Postgres, y esas pruebas escriben contra la `DATABASE_URL` que esté configurada,
+que puede ser la base de desarrollo; `vitest.routes.config.ts` dice explícitamente *"Base
+DEDICADA a pruebas; nunca `app_gestion_demo`"*. Además mockean `authenticate` en vez de usar
+el simulador de rol por encabezado, y solapan cobertura con `tests/routes/`. **Hay que
+moverlas a `tests/routes/` y adaptarlas a esa infraestructura.**
 
 ### Medio
 
@@ -107,9 +122,11 @@ retención para `AuditLog`.
 
 ### Bajo
 
-- **DEP-42** — `Consultant.maxHoursPerDay` no entra en ningún cálculo y `skills` no existe
-  ni en el esquema ni en la interfaz, pese a que la documentación describe "tags de
-  habilidades". Campos muertos: implementarlos o retirarlos.
+- **DEP-42** — `Consultant.maxHoursPerDay` no entra en ningún cálculo: solo aparece en la
+  proyección de `utils/consultant-scope.ts`. Campo muerto: implementarlo o retirarlo.
+  *(Corregido el 2026-09-24: la otra mitad de este ítem ya no aplica. `skills` **sí** existe
+  en el esquema — `Consultant` y `User` — y se usa en `ProfileTab`, `CapacityTab` y
+  `RagChat`.)*
 - **DEP-08** — Unas 20 funciones de `services/api.ts` sin usar (hitos, riesgos,
   incidencias). Son andamiaje de pantallas nunca construidas: primero decidir producto.
 - **DEP-14** — `TODO(backend)` duplicado en `periodUtils.ts` sobre rangos ISO.
@@ -129,6 +146,13 @@ Ya pasó con `projectManagerEmail` (la aprobación de horas extra por el PM era 
 (el documento salía siempre "No asignado" en la nómina) y `CapacityConfig` (DEP-41, todavía
 abierto).
 
+**Y una variante nueva (sexta vez), esta al revés:** en lugar de leer un campo que nadie
+escribe, se escribió un valor fijo en el código donde ya existía la columna para
+configurarlo. El informe de horas usa `DAILY_LIMIT = 8` en el frontend teniendo
+`CapacityConfig.hoursPerDay` en el modelo. El efecto es el mismo -- la configuración no
+manda -- y cuesta más de encontrar, porque no hay ninguna columna nula que delate el
+problema.
+
 **Si agregas un campo al modelo, agrégalo también al esquema Zod y al formulario en el mismo
 cambio.** Y si encuentras código que lee un campo, comprueba que exista forma de escribirlo.
 
@@ -139,11 +163,15 @@ cambio.** Y si encuentras código que lee un campo, comprueba que exista forma d
 El proyecto tiene con qué demostrar que un cambio funciona; úsalo.
 
 ```bash
-cd backend && npm test          # 195 pruebas unitarias (cálculo puro)
+cd backend && npm test          # 257 (ojo: incluye 2 ficheros mal ubicados que piden base)
 cd backend && npm run test:routes   # 78 pruebas de ruta, con base y autorización reales
-cd frontend && npm test         # 135 pruebas
+cd frontend && npm test         # 155 pruebas
 cd frontend && npx tsc -b --noEmit  # ojo: `tsc --noEmit` a secas NO verifica nada aquí
 ```
+
+**`npm run test:routes` es el que hay que mirar antes de tocar autorización.** Fue el que
+cazó que el Timesheet había rebajado en silencio el 403 de `POST /api/time-entries` a un 201
+con las horas reasignadas al propio solicitante. `npm test` pasaba igual.
 
 Para probar comportamiento por rol hay un **simulador**: variables `AUTH_DEV_EMAIL` y
 `AUTH_DEV_ROLES`, o los encabezados `x-dev-email` y `x-dev-roles` con
