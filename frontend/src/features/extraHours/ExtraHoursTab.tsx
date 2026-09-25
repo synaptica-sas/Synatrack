@@ -709,13 +709,19 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   };
 
 
-  const getStatusLabel = (status: string) => {
+  /**
+   * Estado de una solicitud: etiqueta visible + modificador de `.state-chip`.
+   * Antes devolvía dos colores sueltos (`bg`/`color`) que se inyectaban como
+   * estilo en línea y no tenían contraparte en modo oscuro. La etiqueta es la
+   * que comunica el estado; el tinte solo lo refuerza.
+   */
+  const getStatusLabel = (status: string): { label: string; tone: string } => {
     switch (status) {
-      case "PENDING_PM": return { label: "Pte. PM (Nivel 1)", bg: "var(--color-accent-10)", color: "var(--color-accent)" };
-      case "PENDING_FINANCE": return { label: "Pte. Nómina (Nivel 2)", bg: "var(--color-blue-10)", color: "var(--color-sec-blue)" };
-      case "APPROVED": return { label: "Aprobada total", bg: "var(--color-green-10)", color: "var(--color-sec-green)" };
-      case "REJECTED": return { label: "Rechazada", bg: "var(--color-red-10)", color: "var(--color-sec-red)" };
-      default: return { label: status, bg: "var(--color-primary-05)", color: "var(--text)" };
+      case "PENDING_PM": return { label: "Pte. PM (Nivel 1)", tone: "warning" };
+      case "PENDING_FINANCE": return { label: "Pte. Nómina (Nivel 2)", tone: "info" };
+      case "APPROVED": return { label: "Aprobada total", tone: "success" };
+      case "REJECTED": return { label: "Rechazada", tone: "danger" };
+      default: return { label: status, tone: "neutral" };
     }
   };
 
@@ -727,25 +733,11 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   const financePendingEntries = entries.filter((e) => e.status === "PENDING_FINANCE");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", padding: "1rem 2rem" }}>
-      
+    <div className="page-stack page-stack--padded">
+
       {/* Success banner */}
       {successMessage && (
-        <div style={{
-          position: "fixed",
-          top: "20px",
-          right: "20px",
-          background: "#10b981",
-          color: "#fff",
-          padding: "0.75rem 1.5rem",
-          borderRadius: "8px",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-          zIndex: 9999,
-          fontWeight: 700,
-          fontSize: "0.85rem",
-          transition: "all 0.3s ease",
-          animation: "slideIn 0.3s ease forwards"
-        }}>
+        <div className="success-banner" role="status">
           ✅ {successMessage}
         </div>
       )}
@@ -760,32 +752,29 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         }
         actions={
           configModeOnly ? (
-            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+            <>
               <button
                 type="button"
-                className={activeSubTab === "config" ? "" : "ghost"}
+                className={activeSubTab === "config" ? "toolbar-btn" : "toolbar-btn ghost"}
                 onClick={() => setActiveSubTab("config")}
-                style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
               >
                 ⚙ Parámetros y Recargos
               </button>
               <button
                 type="button"
-                className={activeSubTab === "holidays" ? "" : "ghost"}
+                className={activeSubTab === "holidays" ? "toolbar-btn" : "toolbar-btn ghost"}
                 onClick={() => setActiveSubTab("holidays")}
-                style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
               >
                 📅 Calendario y Festivos
               </button>
-            </div>
+            </>
           ) : (
-            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+            <>
               {can("extrahours:write") && (
                 <button
                   type="button"
-                  className={activeSubTab === "report" ? "" : "ghost"}
+                  className={activeSubTab === "report" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("report")}
-                  style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
                 >
                   📝 Reportar y Mis Solicitudes
                 </button>
@@ -794,9 +783,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               {can("extrahours:review") && (
                 <button
                   type="button"
-                  className={activeSubTab === "pm" ? "" : "ghost"}
+                  className={activeSubTab === "pm" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("pm")}
-                  style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
                 >
                   👥 Aprobaciones PM ({pmPendingEntries.length})
                 </button>
@@ -805,9 +793,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               {can("extrahours:review") && (authUser?.roles.includes("FINANCE") || authUser?.roles.includes("ADMIN")) && (
                 <button
                   type="button"
-                  className={activeSubTab === "finance" ? "" : "ghost"}
+                  className={activeSubTab === "finance" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("finance")}
-                  style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
                 >
                   💰 Aprobaciones Nómina ({financePendingEntries.length})
                 </button>
@@ -816,9 +803,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               {(authUser?.roles.includes("FINANCE") || authUser?.roles.includes("ADMIN")) && (
                 <button
                   type="button"
-                  className={activeSubTab === "payroll" ? "" : "ghost"}
+                  className={activeSubTab === "payroll" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("payroll")}
-                  style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
                 >
                   📁 Cierre de Nómina
                 </button>
@@ -826,14 +812,13 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               {(can("projects:write") || authUser?.roles.includes("ADMIN")) && (
                 <button
                   type="button"
-                  className={activeSubTab === "delegations" ? "" : "ghost"}
+                  className={activeSubTab === "delegations" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => { setActiveSubTab("delegations"); void loadDelegationsList(); }}
-                  style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
                 >
                   🤝 Delegaciones
                 </button>
               )}
-            </div>
+            </>
           )
         }
       />
@@ -841,26 +826,25 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
       {/* Rejection Modal overlay */}
       {rejectionTargetId && createPortal(
         <div className="modal-overlay">
-          <form onSubmit={handleRejectSubmit} className="modal-card" style={{ maxWidth: "450px" }}>
+          <form onSubmit={handleRejectSubmit} className="modal-card modal-card--sm">
             <div className="modal-header">
               <h3>Rechazar Solicitud de Horas Extra</h3>
-              <button type="button" className="ghost" onClick={() => setRejectionTargetId(null)} style={{ padding: "0.2rem 0.5rem" }}>✕</button>
+              <button type="button" className="ghost modal-close" onClick={() => setRejectionTargetId(null)}>✕</button>
             </div>
             <div className="form-grid">
               <div>
-                <label className="form-label" style={{ fontSize: "0.85rem", fontWeight: 700 }}>Motivo de Rechazo *</label>
+                <label className="form-label form-label--sm">Motivo de Rechazo *</label>
                 <textarea
                   required
                   placeholder="Por favor explica brevemente por qué rechazas la solicitud..."
                   value={rejectionNote}
                   onChange={(e) => setRejectionNote(e.target.value)}
-                  style={{ width: "100%", padding: "0.5rem" }}
                 />
               </div>
             </div>
-            <div className="modal-actions" style={{ marginTop: "1rem" }}>
+            <div className="modal-actions modal-actions--spaced">
               <button type="button" className="ghost" onClick={() => setRejectionTargetId(null)}>Cancelar</button>
-              <button type="submit" style={{ background: "var(--color-sec-red)", borderColor: "var(--color-sec-red)" }}>Rechazar Solicitud</button>
+              <button type="submit" className="btn-danger">Rechazar Solicitud</button>
             </div>
           </form>
         </div>,
@@ -881,19 +865,19 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
       {/* --- REPORT SUB-TAB --- */}
       {activeSubTab === "report" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1.9fr", gap: "2rem", alignItems: "start" }}>
-          
+        <div className="two-pane">
+
           {/* Form and Preview */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
-              <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.05rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+          <div className="page-stack">
+            <div className="card glass-card card--roomy">
+              <h3 className="card-title">
                 Registrar Solicitud
               </h3>
-              
-              <form onSubmit={handleReportSubmit} className="form-grid" style={{ gap: "0.8rem" }}>
+
+              <form onSubmit={handleReportSubmit} className="form-grid form-grid--tight">
                 {authUser?.roles.includes("ADMIN") ? (
                   <div>
-                    <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Consultor *</label>
+                    <label className="form-label form-label--sm">Consultor *</label>
                     <select
                       value={reportConsultantId}
                       onChange={(e) => setReportConsultantId(e.target.value)}
@@ -907,18 +891,18 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   </div>
                 ) : (
                   <div>
-                    <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Consultor</label>
+                    <label className="form-label form-label--sm">Consultor</label>
                     <input
                       type="text"
                       readOnly
+                      className="input-readonly"
                       value={myConsultant ? `${myConsultant.fullName} (${displayCountryWithFlag(myConsultant.country || "Default")})` : authUser?.displayName || ""}
-                      style={{ background: "#f3f4f6", cursor: "not-allowed" }}
                     />
                   </div>
                 )}
 
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Proyecto *</label>
+                  <label className="form-label form-label--sm">Proyecto *</label>
                   <select
                     value={reportProjectId}
                     onChange={(e) => setReportProjectId(e.target.value)}
@@ -932,7 +916,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 </div>
 
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Fecha *</label>
+                  <label className="form-label form-label--sm">Fecha *</label>
                   <input
                     type="date"
                     value={reportDate}
@@ -941,9 +925,9 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                <div className="field-pair">
                   <div>
-                    <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Hora Inicio *</label>
+                    <label className="form-label form-label--sm">Hora Inicio *</label>
                     <input
                       type="time"
                       value={reportStartTime}
@@ -952,7 +936,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     />
                   </div>
                   <div>
-                    <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Hora Fin *</label>
+                    <label className="form-label form-label--sm">Hora Fin *</label>
                     <input
                       type="time"
                       value={reportEndTime}
@@ -963,7 +947,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 </div>
 
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Observaciones / Tarea Realizada</label>
+                  <label className="form-label form-label--sm">Observaciones / Tarea Realizada</label>
                   <textarea
                     rows={2}
                     value={reportObservations}
@@ -974,9 +958,12 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
                 {/* Warnings warning box */}
                 {formWarnings.length > 0 && (
-                  <div style={{ padding: "0.5rem 0.75rem", background: "var(--color-accent-10)", border: "1px solid var(--color-accent-20)", color: "var(--text)", borderRadius: "8px", fontSize: "0.8rem" }}>
-                    ⚠️ <strong>Límite advertencia:</strong>
-                    <ul style={{ margin: "0.25rem 0 0 0", paddingLeft: "1.2rem" }}>
+                  <div className="notice notice--warning" role="status">
+                    <div className="notice__title">
+                      <span aria-hidden="true">⚠️</span>
+                      <strong>Límite advertencia:</strong>
+                    </div>
+                    <ul className="notice__list">
                       {formWarnings.map((w, idx) => <li key={idx}>{w}</li>)}
                     </ul>
                   </div>
@@ -984,8 +971,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
                 <button
                   type="submit"
+                  className="btn-block"
                   disabled={reporting || previewLoading}
-                  style={{ marginTop: "0.5rem", width: "100%", background: "var(--gradient-accent)", border: "none" }}
                 >
                   {reporting ? "Registrando..." : "Enviar a Aprobación"}
                 </button>
@@ -994,9 +981,9 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
             {/* Live calculation details card */}
             {previewResult && (
-              <div className="card" style={{ padding: "1.25rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "rgba(241, 163, 35, 0.03)" }}>
-                <h4 style={{ margin: "0 0 0.5rem 0", color: "var(--color-accent)", fontSize: "0.9rem", fontWeight: 700 }}>🧮 Simulación en Vivo (Cálculo Backend)</h4>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", fontSize: "0.8rem", color: "var(--text-soft)" }}>
+              <div className="card preview-card">
+                <h4 className="preview-card__title">🧮 Simulación en Vivo (Cálculo Backend)</h4>
+                <div className="preview-grid">
                   <div>Horas Totales: <strong>{previewResult.totalHours} hrs</strong></div>
                   <div>¿Día Festivo?: <strong>{previewResult.isHoliday ? "Sí" : "No"}</strong></div>
                   <div>Diurnas / Nocturnas: <strong>{previewResult.diurnal} / {previewResult.nocturnal}</strong></div>
@@ -1015,13 +1002,13 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     if (ctry === "Colombia") {
                       const isAfterLaw = previewResult.divisorUsed === 210;
                       return (
-                        <div style={{ gridColumn: "span 2", padding: "0.3rem 0.5rem", background: isAfterLaw ? "var(--color-green-10)" : "var(--color-blue-10)", border: `1px solid ${isAfterLaw ? "var(--color-sec-green)" : "var(--color-sec-blue)"}`, color: isAfterLaw ? "var(--color-sec-green)" : "var(--color-sec-blue)", borderRadius: "6px", fontSize: "0.72rem", marginTop: "0.2rem" }}>
+                        <div className={`preview-note preview-note--${isAfterLaw ? "success" : "info"}`}>
                           ℹ️ Colombia: Se aplica la jornada de <strong>{isAfterLaw ? "42 hs (Ley 2101 - Jul 2026)" : "44 hs (Reglamento Anterior)"}</strong>
                         </div>
                       );
                     } else if (ctry === "Ecuador") {
                       return (
-                        <div style={{ gridColumn: "span 2", padding: "0.3rem 0.5rem", background: "var(--color-blue-10)", border: "1px solid var(--color-sec-blue)", color: "var(--color-sec-blue)", borderRadius: "6px", fontSize: "0.72rem", marginTop: "0.2rem" }}>
+                        <div className="preview-note preview-note--info">
                           ℹ️ Ecuador: Código del Trabajo (Horas Suplementarias 50% / Extraordinarias 100% sobre divisor 240)
                         </div>
                       );
@@ -1029,8 +1016,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     return null;
                   })()}
 
-                  <div style={{ gridColumn: "span 2", borderTop: "1px dashed var(--border-color)", paddingTop: "0.4rem", marginTop: "0.2rem" }}>
-                    Valor Estimado Pago: <strong style={{ color: "var(--color-accent)", fontSize: "0.95rem" }}>${previewResult.totalAmount.toLocaleString("es-CO")}</strong>
+                  <div className="preview-total">
+                    Valor Estimado Pago: <strong className="preview-total__amount">${previewResult.totalAmount.toLocaleString("es-CO")}</strong>
                   </div>
                 </div>
               </div>
@@ -1038,13 +1025,13 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
           </div>
 
           {/* List of my entries */}
-          <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "1rem" }}>
-              <h3 style={{ margin: 0, fontSize: "1.05rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+          <div className="card card--roomy">
+            <div className="card-head">
+              <h3 className="card-title card-title--tight">
                 Historial de Solicitudes
               </h3>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", minWidth: "250px" }}>
-                <label style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-soft)", whiteSpace: "nowrap" }}>Filtrar Consultor:</label>
+              <div className="inline-filter">
+                <label className="inline-filter__label">Filtrar Consultor:</label>
                 <SearchableSelect
                   options={consultants.map((c) => ({ value: c.id, label: c.fullName }))}
                   value={historyConsultantFilter}
@@ -1058,7 +1045,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             {loadingEntries ? (
               <p className="loading">Cargando...</p>
             ) : entries.length === 0 ? (
-              <p style={{ fontStyle: "italic", color: "var(--text-soft)", fontSize: "0.85rem" }}>No se han registrado solicitudes todavía.</p>
+              <p className="empty-note">No se han registrado solicitudes todavía.</p>
             ) : (
               <div className="table-wrap">
                 <table>
@@ -1085,7 +1072,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                       if (filtered.length === 0) {
                         return (
                           <tr>
-                            <td colSpan={8} style={{ textAlign: "center", fontStyle: "italic", color: "var(--text-soft)", padding: "1.5rem" }}>
+                            <td colSpan={8} className="cell-empty cell-empty--roomy">
                               No se encontraron solicitudes para el consultor seleccionado.
                             </td>
                           </tr>
@@ -1101,23 +1088,23 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                             <td>{entry.date.slice(0, 10)}</td>
                             <td><strong>{entry.project?.name || "Sin proyecto"}</strong></td>
                             <td>{entry.consultant?.fullName}</td>
-                            <td style={{ fontSize: "0.75rem" }}>{entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}</td>
+                            <td className="cell-small">{entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}</td>
                             <td>
                               <strong>{Number(entry.totalHours).toFixed(1)}</strong>
-                              <span style={{ fontSize: "0.7rem", color: "#888", display: "block" }}>
+                              <span className="cell-meta">
                                 D:{Number(entry.diurnal).toFixed(1)} N:{Number(entry.nocturnal).toFixed(1)} F:{Number(Number(entry.diurnalHoliday) + Number(entry.nocturnalHoliday)).toFixed(1)}
                               </span>
                             </td>
                             <td>
                               <strong>${Number(entry.totalAmount).toLocaleString("es-CO")}</strong>
-                              <span style={{ fontSize: "0.7rem", color: "#888", display: "block" }}>{entry.consultant?.rateCurrency || "COP"}</span>
+                              <span className="cell-meta">{entry.consultant?.rateCurrency || "COP"}</span>
                             </td>
                             <td>
-                              <span className="pill" style={{ background: stat.bg, color: stat.color, fontSize: "0.72rem", padding: "0.15rem 0.45rem", fontWeight: 700 }}>
+                              <span className={`state-chip state-chip--${stat.tone}`}>
                                 {stat.label}
                               </span>
                               {entry.rejectionNote && (
-                                <span style={{ display: "block", color: "var(--color-sec-red)", fontSize: "0.7rem", marginTop: "0.2rem", maxWidth: "150px" }}>
+                                <span className="cell-reject-note">
                                   Motivo: {entry.rejectionNote}
                                 </span>
                               )}
@@ -1126,14 +1113,14 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                               {canDelete ? (
                                 <button
                                   type="button"
+                                  className="btn-icon-danger"
                                   onClick={() => setDeleteTargetId(entry.id)}
-                                  style={{ background: "none", color: "var(--color-sec-red)", border: "none", cursor: "pointer", fontSize: "0.95rem" }}
                                   title="Eliminar solicitud"
                                 >
                                   🗑
                                 </button>
                               ) : (
-                                <span style={{ color: "#aaa", fontSize: "0.8rem" }}>—</span>
+                                <span className="cell-dash">—</span>
                               )}
                             </td>
                           </tr>
@@ -1151,16 +1138,16 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
       {/* --- PM APPROVALS SUB-TAB --- */}
       {activeSubTab === "pm" && (
-        <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-          <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.05rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+        <div className="card card--roomy">
+          <h3 className="card-title">
             Buzón de Aprobaciones del Supervisor (Nivel 1)
           </h3>
-          <p style={{ color: "var(--text-soft)", fontSize: "0.82rem", marginBottom: "1rem" }}>
+          <p className="card-lead">
             Revisa y valida de forma operativa las horas extra registradas en tus proyectos. Luego pasarán a Nómina.
           </p>
 
           {pmPendingEntries.length === 0 ? (
-            <p style={{ color: "var(--text-soft)", fontStyle: "italic", fontSize: "0.85rem" }}>No hay solicitudes pendientes por aprobación PM.</p>
+            <p className="empty-note">No hay solicitudes pendientes por aprobación PM.</p>
           ) : (
             <div className="table-wrap">
               <table>
@@ -1185,32 +1172,31 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                       <td>{entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}</td>
                       <td>
                         <strong>{Number(entry.totalHours).toFixed(1)}</strong>
-                        <span style={{ fontSize: "0.7rem", color: "#888", display: "block" }}>
+                        <span className="cell-meta">
                           D:{Number(entry.diurnal).toFixed(1)} N:{Number(entry.nocturnal).toFixed(1)} F:{Number(Number(entry.diurnalHoliday) + Number(entry.nocturnalHoliday)).toFixed(1)}
                         </span>
                       </td>
                       <td>
                         <strong>${Number(entry.totalAmount).toLocaleString("es-CO")}</strong>
-                        <span style={{ fontSize: "0.7rem", color: "#888", display: "block" }}>{entry.consultant?.rateCurrency || "COP"}</span>
+                        <span className="cell-meta">{entry.consultant?.rateCurrency || "COP"}</span>
                       </td>
                       <td>
-                        <span style={{ fontSize: "0.8rem", color: "var(--text-soft)" }}>{entry.observations || "Sin observaciones"}</span>
+                        <span className="cell-note">{entry.observations || "Sin observaciones"}</span>
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: "0.4rem" }}>
+                        <div className="inline-actions">
                           <button
                             type="button"
+                            className="btn-sm btn-success"
                             disabled={approvingId === entry.id}
                             onClick={() => void handleApprove(entry.id)}
-                            style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem", background: "var(--color-sec-green)", borderColor: "var(--color-sec-green)" }}
                           >
                             {approvingId === entry.id ? "Aprobando..." : "✓ Aprobar"}
                           </button>
                           <button
                             type="button"
-                            className="ghost"
+                            className="btn-sm btn-danger-soft"
                             onClick={() => { setRejectionTargetId(entry.id); setRejectionNote(""); }}
-                            style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem", borderColor: "var(--color-sec-red)", color: "var(--color-sec-red)", background: "var(--color-red-10)" }}
                           >
                             ✕ Rechazar
                           </button>
@@ -1227,16 +1213,16 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
       {/* --- FINANCE/PAYROLL APPROVALS SUB-TAB --- */}
       {activeSubTab === "finance" && (
-        <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-          <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.05rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+        <div className="card card--roomy">
+          <h3 className="card-title">
             Buzón de Aprobaciones de Nómina / Recursos Humanos (Nivel 2)
           </h3>
-          <p style={{ color: "var(--text-soft)", fontSize: "0.82rem", marginBottom: "1rem" }}>
+          <p className="card-lead">
             Valida financieramente para consolidar en el pago final.
           </p>
 
           {financePendingEntries.length === 0 ? (
-            <p style={{ color: "var(--text-soft)", fontStyle: "italic", fontSize: "0.85rem" }}>No hay solicitudes pendientes de validación final.</p>
+            <p className="empty-note">No hay solicitudes pendientes de validación final.</p>
           ) : (
             <div className="table-wrap">
               <table>
@@ -1266,32 +1252,31 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                       <td>{entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}</td>
                       <td>
                         <strong>{Number(entry.totalHours).toFixed(1)}</strong>
-                        <span style={{ fontSize: "0.7rem", color: "#888", display: "block" }}>
+                        <span className="cell-meta">
                           D:{Number(entry.diurnal).toFixed(1)} N:{Number(entry.nocturnal).toFixed(1)} F:{Number(Number(entry.diurnalHoliday) + Number(entry.nocturnalHoliday)).toFixed(1)}
                         </span>
                       </td>
                       <td>
                         <strong>${Number(entry.totalAmount).toLocaleString("es-CO")}</strong>
-                        <span style={{ fontSize: "0.7rem", color: "#888", display: "block" }}>{entry.consultant?.rateCurrency || "COP"}</span>
+                        <span className="cell-meta">{entry.consultant?.rateCurrency || "COP"}</span>
                       </td>
                       <td>
-                        <span style={{ fontSize: "0.8rem", color: "var(--text-soft)" }}>{entry.observations || "Sin observaciones"}</span>
+                        <span className="cell-note">{entry.observations || "Sin observaciones"}</span>
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: "0.4rem" }}>
+                        <div className="inline-actions">
                           <button
                             type="button"
+                            className="btn-sm btn-success"
                             disabled={approvingId === entry.id}
                             onClick={() => void handleApprove(entry.id)}
-                            style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem", background: "var(--color-sec-green)", borderColor: "var(--color-sec-green)" }}
                           >
                             {approvingId === entry.id ? "Aprobando..." : "✓ Aprobar Pago"}
                           </button>
                           <button
                             type="button"
-                            className="ghost"
+                            className="btn-sm btn-danger-soft"
                             onClick={() => { setRejectionTargetId(entry.id); setRejectionNote(""); }}
-                            style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem", borderColor: "var(--color-sec-red)", color: "var(--color-sec-red)", background: "var(--color-red-10)" }}
                           >
                             ✕ Rechazar
                           </button>
@@ -1308,41 +1293,41 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
       {/* --- PAYROLL CLOSURE SUB-TAB --- */}
       {activeSubTab === "payroll" && (
-        <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-          <h3 style={{ margin: "0 0 1rem 0", fontSize: "1.05rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+        <div className="card card--roomy">
+          <h3 className="card-title">
             Cierre Consolidado de Nómina Mensual
           </h3>
-          <p style={{ color: "var(--text-soft)", fontSize: "0.82rem", marginBottom: "1rem" }}>
+          <p className="card-lead">
             Filtra por periodo para descargar el reporte CSV de horas aprobadas consolidado en bimoneda local y USD.
           </p>
 
-          <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", minWidth: "120px" }}>
-              <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Año</label>
+          <div className="inline-form inline-form--spaced">
+            <div className="inline-form__field inline-form__field--narrow">
+              <label className="form-label form-label--sm">Año</label>
               <select value={payrollYear} onChange={(e) => setPayrollYear(Number(e.target.value))}>
                 {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", minWidth: "150px" }}>
-              <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Mes</label>
+            <div className="inline-form__field inline-form__field--mid">
+              <label className="form-label form-label--sm">Mes</label>
               <select value={payrollMonth} onChange={(e) => setPayrollMonth(Number(e.target.value))}>
                 {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                   <option key={m} value={m}>{new Date(2000, m - 1).toLocaleString("es-CO", { month: "long" })}</option>
                 ))}
               </select>
             </div>
-            <button type="button" onClick={handleLoadPayroll} disabled={loadingPayroll} style={{ padding: "0.55rem 1.2rem", background: "var(--gradient-accent)", border: "none" }}>
+            <button type="button" className="inline-form__submit" onClick={handleLoadPayroll} disabled={loadingPayroll}>
               {loadingPayroll ? "Consolidando..." : "🔍 Consolidar Horas"}
             </button>
             {payrollRows.length > 0 && (
-              <button type="button" className="ghost" onClick={handleExportPayrollCSV} style={{ padding: "0.55rem 1.2rem", borderColor: "var(--border-color)" }}>
+              <button type="button" className="ghost inline-form__submit" onClick={handleExportPayrollCSV}>
                 ⬇ Descargar Reporte CSV
               </button>
             )}
           </div>
 
           {payrollRows.length === 0 ? (
-            <p style={{ color: "var(--text-soft)", fontStyle: "italic", fontSize: "0.85rem" }}>No se han consultado cierres de nómina para este periodo o no hay horas aprobadas.</p>
+            <p className="empty-note">No se han consultado cierres de nómina para este periodo o no hay horas aprobadas.</p>
           ) : (
             <div className="table-wrap">
               <table>
@@ -1374,7 +1359,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                       <td>{row.diurnalHoliday}</td>
                       <td>{row.nocturnalHoliday}</td>
                       <td><strong>${row.totalAmountLocal.toLocaleString("es-CO")}</strong></td>
-                      <td><strong style={{ color: "var(--color-accent)" }}>${row.totalAmountUSD.toLocaleString("es-CO", { maximumFractionDigits: 2 })} USD</strong></td>
+                      <td><strong className="tone-warning">${row.totalAmountUSD.toLocaleString("es-CO", { maximumFractionDigits: 2 })} USD</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1386,20 +1371,20 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
       {/* --- CONFIGURATION SUB-TAB (Multi-Country Selector & Forms) --- */}
       {activeSubTab === "config" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          
+        <div className="page-stack">
+
           {/* Header */}
-          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
-            <h3 style={{ margin: 0, fontSize: "1.15rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+          <div className="card glass-card card--roomy">
+            <h3 className="section-intro__title">
               ⚙ Configuración Multipaís de Horas Extra
             </h3>
-            <p style={{ color: "var(--text-soft)", fontSize: "0.82rem", marginTop: "0.25rem" }}>
+            <p className="section-intro__text">
               Define y edita los multiplicadores, límites semanales y jornada diurna de forma independiente para cada país en el que opere la empresa.
             </p>
           </div>
 
           {/* Country Selection Tabs (Pills) */}
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", borderBottom: "1px dashed var(--border-color)", paddingBottom: "1rem" }}>
+          <div className="country-tabs">
             {(supportedCountries.length > 0 ? supportedCountries : Object.keys(LEGISLATIONS)).map((cName) => {
               const leg = LEGISLATIONS[cName] || {
                 country: cName,
@@ -1413,16 +1398,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   type="button"
                   className={`country-tab-btn ${selectedCountryConfig === cName ? "active" : "ghost"}`}
                   onClick={() => setSelectedCountryConfig(cName)}
-                  style={{
-                    fontSize: "0.85rem",
-                    padding: "0.45rem 1rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.4rem",
-                    borderRadius: "20px"
-                  }}
                 >
-                  <span style={{ fontSize: "1.1rem" }}>{leg.flag}</span>
+                  <span className="country-tab-btn__flag" aria-hidden="true">{leg.flag}</span>
                   <span>{leg.country}</span>
                 </button>
               );
@@ -1430,7 +1407,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
           </div>
 
           {/* Grid Layout (Legislation helper + Edit Form) */}
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.8fr", gap: "2rem", alignItems: "start" }}>
+          <div className="two-pane">
             
             {/* Left Column: Legislation Helper */}
             {(() => {
@@ -1442,19 +1419,19 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               };
               return (
                 <div className="legislation-card">
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                    <span style={{ fontSize: "1.5rem" }}>{activeLeg.flag}</span>
-                    <h4 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>
+                  <div className="legislation-card__head">
+                    <span className="legislation-card__flag" aria-hidden="true">{activeLeg.flag}</span>
+                    <h4>
                       Legislación: {activeLeg.country}
                     </h4>
                   </div>
-                  <p style={{ fontSize: "0.82rem", lineHeight: 1.5, marginBottom: "1.25rem" }}>
+                  <p>
                     {activeLeg.desc}
                   </p>
-                  
-                  <ul style={{ paddingLeft: "1.2rem", margin: 0, display: "flex", flexDirection: "column", gap: "0.6rem", fontSize: "0.78rem" }}>
+
+                  <ul>
                     {activeLeg.points.map((pt, idx) => (
-                      <li key={idx} style={{ lineHeight: 1.4 }}>{pt}</li>
+                      <li key={idx}>{pt}</li>
                     ))}
                   </ul>
                 </div>
@@ -1462,12 +1439,12 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             })()}
 
             {/* Right Column: Edit Form */}
-            <form onSubmit={handleSaveConfig} className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff", display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <h4 style={{ margin: 0, paddingBottom: "0.5rem", borderBottom: "1px solid #f3f4f6", fontSize: "0.95rem", color: "var(--text-strong)" }}>
+            <form onSubmit={handleSaveConfig} className="card card--roomy card--stack">
+              <h4 className="card-title card-title--rule">
                 Editar Parámetros - {selectedCountryConfig}
               </h4>
 
-              <div className="form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div className="field-grid">
                 
                 <div>
                   <label className="form-label">
@@ -1640,43 +1617,18 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
               </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "1rem", marginTop: "1rem", flexWrap: "wrap", width: "100%" }}>
+              <div className="form-actions">
                 <button
                   type="button"
+                  className="btn-danger-soft"
                   onClick={handleRestoreDefaults}
                   disabled={savingConfig}
-                  style={{
-                    background: "var(--color-red-10)",
-                    color: "var(--color-sec-red)",
-                    border: "1px solid var(--color-sec-red)",
-                    padding: "0.5rem 1.25rem",
-                    borderRadius: "8px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "all 0.2s ease"
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.background = "var(--color-red-20)";
-                    e.currentTarget.style.borderColor = "var(--color-sec-red)";
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)";
-                    e.currentTarget.style.borderColor = "#fecaca";
-                  }}
                 >
                   Volver a predeterminados
                 </button>
                 <button
                   type="submit"
                   disabled={savingConfig}
-                  style={{
-                    background: "var(--gradient-accent)",
-                    border: "none",
-                    fontWeight: 600,
-                    padding: "0.5rem 1.25rem",
-                    borderRadius: "8px",
-                    color: "white"
-                  }}
                 >
                   {savingConfig ? "Guardando..." : "Guardar Configuración"}
                 </button>
@@ -1690,33 +1642,33 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
       {/* --- HOLIDAYS SUB-TAB (Official Calendar & Corporate Non-Working Days) --- */}
       {activeSubTab === "holidays" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          
+        <div className="page-stack">
+
           {/* Header */}
-          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
-            <h3 style={{ margin: 0, fontSize: "1.15rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+          <div className="card glass-card card--roomy">
+            <h3 className="section-intro__title">
               📅 Gestión de Días No Laborables y Festivos
             </h3>
-            <p style={{ color: "var(--text-soft)", fontSize: "0.82rem", marginTop: "0.25rem" }}>
+            <p className="section-intro__text">
               Visualiza los calendarios oficiales de festivos nacionales por país y registra los días festivos especiales de la empresa (feriados corporativos).
             </p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.8fr", gap: "2rem", alignItems: "start" }}>
-            
+          <div className="two-pane">
+
             {/* Left Column: Official Holiday Calendar */}
-            <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-              <h4 style={{ margin: 0, paddingBottom: "0.5rem", borderBottom: "1px solid #f3f4f6", fontSize: "0.95rem", color: "var(--text-strong)" }}>
+            <div className="card card--roomy">
+              <h4 className="card-title card-title--rule">
                 🗓️ Calendario de Festivos Oficiales
               </h4>
-              
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginTop: "1rem", marginBottom: "1.25rem" }}>
+
+              <div className="field-pair field-pair--spaced">
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.78rem" }}>País</label>
+                  <label className="form-label form-label--sm">País</label>
                   <select
+                    className="control-sm"
                     value={calendarCountry}
                     onChange={(e) => setCalendarCountry(e.target.value)}
-                    style={{ fontSize: "0.85rem", padding: "0.35rem 0.5rem" }}
                   >
                     {supportedCountries.filter(c => c !== "Default").map(c => {
                       const leg = LEGISLATIONS[c];
@@ -1726,23 +1678,23 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   </select>
                 </div>
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.78rem" }}>Año</label>
+                  <label className="form-label form-label--sm">Año</label>
                   <input
                     type="number"
+                    className="control-sm"
                     min={2020}
                     max={2030}
                     value={calendarYear}
                     onChange={(e) => setCalendarYear(Number(e.target.value))}
-                    style={{ fontSize: "0.85rem", padding: "0.35rem 0.5rem" }}
                   />
                 </div>
               </div>
 
-              <div style={{ maxHeight: "350px", overflowY: "auto", border: "1px solid #f3f4f6", borderRadius: "8px", padding: "0.5rem" }}>
+              <div className="holiday-list">
                 {loadingHolidaysList ? (
-                  <div style={{ padding: "1rem", textAlign: "center", color: "#6b7280", fontSize: "0.85rem" }}>Cargando feriados...</div>
+                  <div className="empty-note empty-note--center">Cargando feriados...</div>
                 ) : holidaysList.length === 0 ? (
-                  <div style={{ padding: "1rem", textAlign: "center", color: "#6b7280", fontSize: "0.85rem" }}>No hay feriados para este año y país.</div>
+                  <div className="empty-note empty-note--center">No hay feriados para este año y país.</div>
                 ) : (
                   holidaysList.map((h, index) => {
                     const [y, m, d] = h.date.split("-");
@@ -1754,28 +1706,14 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                       timeZone: "UTC"
                     });
                     return (
-                      <div
-                        key={index}
-                        style={{
-                          padding: "0.5rem 0.75rem",
-                          borderBottom: "1px solid #f3f4f6",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          fontSize: "0.78rem"
-                        }}
-                      >
-                        <span style={{ fontWeight: 600, color: "var(--text-strong)", textTransform: "capitalize" }}>
+                      <div key={index} className="holiday-list__row">
+                        <span className="holiday-list__date">
                           {formattedDate}
                         </span>
-                        <span style={{ 
-                          color: h.isCustom ? "var(--color-sec-green)" : "var(--color-accent)", 
-                          background: h.isCustom ? "var(--color-green-10)" : "var(--color-accent-10)", 
-                          padding: "0.15rem 0.4rem", 
-                          borderRadius: "12px", 
-                          fontSize: "0.72rem", 
-                          border: h.isCustom ? "1px solid var(--color-sec-green)" : "1px solid var(--color-accent-20)" 
-                        }}>
+                        {/* Corporativo (verde) frente a oficial (ámbar): la misma
+                            pareja de colores que ya tenía, ahora con su icono y
+                            con contraste y modo oscuro resueltos por el chip. */}
+                        <span className={`state-chip state-chip--${h.isCustom ? "success" : "warning"}`}>
                           {h.name} {h.isCustom ? "🌐" : "🏛️"}
                         </span>
                       </div>
@@ -1786,42 +1724,42 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             </div>
 
             {/* Right Column: Custom Holiday Administration */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              
+            <div className="page-stack">
+
               {/* Form to Create Custom Holiday */}
-              <form onSubmit={handleAddHoliday} className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-                <h4 style={{ margin: 0, paddingBottom: "0.5rem", borderBottom: "1px solid #f3f4f6", fontSize: "0.95rem", color: "var(--text-strong)" }}>
+              <form onSubmit={handleAddHoliday} className="card card--roomy">
+                <h4 className="card-title card-title--rule">
                   ➕ Agregar Feriado Corporativo / Especial
                 </h4>
-                
-                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: "0.75rem", marginTop: "1rem", alignItems: "end" }}>
+
+                <div className="form-row-3">
                   <div>
-                    <label className="form-label" style={{ fontSize: "0.78rem" }}>Nombre del Evento *</label>
+                    <label className="form-label form-label--sm">Nombre del Evento *</label>
                     <input
                       type="text"
+                      className="control-sm"
                       required
                       placeholder="Ej. Aniversario Synaptica"
                       value={holidayName}
                       onChange={(e) => setHolidayName(e.target.value)}
-                      style={{ fontSize: "0.85rem", padding: "0.35rem 0.5rem" }}
                     />
                   </div>
                   <div>
-                    <label className="form-label" style={{ fontSize: "0.78rem" }}>Fecha *</label>
+                    <label className="form-label form-label--sm">Fecha *</label>
                     <input
                       type="date"
+                      className="control-sm"
                       required
                       value={holidayDate}
                       onChange={(e) => setHolidayDate(e.target.value)}
-                      style={{ fontSize: "0.85rem", padding: "0.35rem 0.5rem" }}
                     />
                   </div>
                   <div>
-                    <label className="form-label" style={{ fontSize: "0.78rem" }}>País / Alcance</label>
+                    <label className="form-label form-label--sm">País / Alcance</label>
                     <select
+                      className="control-sm"
                       value={holidayCountry}
                       onChange={(e) => setHolidayCountry(e.target.value)}
-                      style={{ fontSize: "0.85rem", padding: "0.35rem 0.5rem" }}
                     >
                       <option value="All">Todos (Corporativo) 🌐</option>
                       {supportedCountries.filter(c => c !== "Default").map(c => {
@@ -1832,19 +1770,11 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1rem" }}>
+                <div className="form-actions">
                   <button
                     type="submit"
+                    className="btn-compact"
                     disabled={savingHoliday}
-                    style={{
-                      background: "var(--gradient-accent)",
-                      border: "none",
-                      padding: "0.45rem 1rem",
-                      fontSize: "0.8rem",
-                      color: "white",
-                      borderRadius: "8px",
-                      cursor: "pointer"
-                    }}
                   >
                     {savingHoliday ? "Guardando..." : "Agregar Feriado"}
                   </button>
@@ -1852,28 +1782,28 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               </form>
 
               {/* Table of Custom Holidays */}
-              <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-                <h4 style={{ margin: 0, paddingBottom: "0.5rem", borderBottom: "1px solid #f3f4f6", fontSize: "0.95rem", color: "var(--text-strong)" }}>
+              <div className="card card--roomy">
+                <h4 className="card-title card-title--rule">
                   📋 Feriados Corporativos Registrados
                 </h4>
 
-                <div style={{ marginTop: "1rem" }} className="table-container">
+                <div className="table-wrap table-wrap--spaced">
                   {loadingHolidays ? (
-                    <p style={{ textAlign: "center", color: "var(--text-soft)", fontSize: "0.8rem", padding: "1rem" }}>
+                    <p className="empty-note empty-note--center">
                       Cargando feriados...
                     </p>
                   ) : customHolidays.length === 0 ? (
-                    <p style={{ textAlign: "center", color: "var(--text-soft)", fontSize: "0.8rem", padding: "1.5rem" }}>
+                    <p className="empty-note empty-note--center">
                       No hay feriados corporativos especiales registrados.
                     </p>
                   ) : (
-                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <table>
                       <thead>
-                        <tr style={{ borderBottom: "1px solid #e2e8f0", textAlign: "left" }}>
-                          <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600 }}>Nombre</th>
-                          <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600 }}>Fecha</th>
-                          <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600 }}>Alcance</th>
-                          <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600, textAlign: "right" }}>Acciones</th>
+                        <tr>
+                          <th>Nombre</th>
+                          <th>Fecha</th>
+                          <th>Alcance</th>
+                          <th className="cell-right">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1886,10 +1816,10 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                             timeZone: "UTC"
                           });
                           return (
-                            <tr key={h.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                              <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-strong)", fontWeight: 600 }}>{h.name}</td>
-                              <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-normal)" }}>{formattedDate}</td>
-                              <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-normal)" }}>
+                            <tr key={h.id}>
+                              <td className="cell-strong">{h.name}</td>
+                              <td>{formattedDate}</td>
+                              <td>
                                 {h.country === "All" ? "🌐 Todos" : (
                                   <span>
                                     {h.country === "Colombia" && "🇨🇴 "}
@@ -1901,19 +1831,11 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                                   </span>
                                 )}
                               </td>
-                              <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", textAlign: "right" }}>
+                              <td className="cell-right">
                                 <button
                                   type="button"
-                                  className="ghost"
+                                  className="btn-icon-danger btn-sm"
                                   onClick={() => handleDeleteHoliday(h.id)}
-                                  style={{
-                                    color: "var(--color-sec-red)",
-                                    padding: "0.25rem 0.5rem",
-                                    fontSize: "0.75rem",
-                                    border: "none",
-                                    background: "none",
-                                    cursor: "pointer"
-                                  }}
                                 >
                                   🗑️ Eliminar
                                 </button>
@@ -1936,29 +1858,29 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
       {/* --- DELEGATIONS SUB-TAB --- */}
       {activeSubTab === "delegations" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          
+        <div className="page-stack">
+
           {/* Header */}
-          <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
-            <h3 style={{ margin: 0, fontSize: "1.15rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+          <div className="card glass-card card--roomy">
+            <h3 className="section-intro__title">
               🤝 Delegación de Aprobaciones
             </h3>
-            <p style={{ color: "var(--text-soft)", fontSize: "0.82rem", marginTop: "0.25rem" }}>
+            <p className="section-intro__text">
               Permite a los Directores de Proyecto (PM) delegar temporalmente la aprobación Nivel 1 a un consultor normal para un proyecto y rango de fechas específico.
             </p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.8fr", gap: "2rem", alignItems: "start" }}>
-            
+          <div className="two-pane">
+
             {/* Left Column: Create Delegation */}
-            <form onSubmit={handleAddDelegation} className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff", display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <h4 style={{ margin: 0, paddingBottom: "0.5rem", borderBottom: "1px solid #f3f4f6", fontSize: "0.95rem", color: "var(--text-strong)" }}>
+            <form onSubmit={handleAddDelegation} className="card card--roomy card--stack">
+              <h4 className="card-title card-title--rule">
                 ➕ Registrar Nueva Delegación
               </h4>
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
+
+              <div className="form-stack">
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Proyecto *</label>
+                  <label className="form-label form-label--sm">Proyecto *</label>
                   <select
                     value={delegateProjectId}
                     onChange={(e) => setDelegateProjectId(e.target.value)}
@@ -1972,7 +1894,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 </div>
 
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Delegar a (Consultor) *</label>
+                  <label className="form-label form-label--sm">Delegar a (Consultor) *</label>
                   <select
                     value={delegateToEmail || ""}
                     onChange={(e) => setDelegateToEmail(e.target.value)}
@@ -1988,7 +1910,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 </div>
 
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Fecha Inicio *</label>
+                  <label className="form-label form-label--sm">Fecha Inicio *</label>
                   <input
                     type="date"
                     required
@@ -1998,7 +1920,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 </div>
 
                 <div>
-                  <label className="form-label" style={{ fontSize: "0.8rem", fontWeight: 700 }}>Fecha Fin *</label>
+                  <label className="form-label form-label--sm">Fecha Fin *</label>
                   <input
                     type="date"
                     required
@@ -2010,47 +1932,37 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
               <button
                 type="submit"
+                className="btn-block"
                 disabled={savingDelegation}
-                style={{
-                  background: "var(--gradient-accent)",
-                  border: "none",
-                  marginTop: "0.5rem",
-                  width: "100%",
-                  color: "white",
-                  borderRadius: "8px",
-                  padding: "0.55rem",
-                  fontWeight: 600,
-                  cursor: "pointer"
-                }}
               >
                 {savingDelegation ? "Guardando..." : "Delegar Aprobación"}
               </button>
             </form>
 
             {/* Right Column: Delegations List */}
-            <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-              <h4 style={{ margin: 0, paddingBottom: "0.5rem", borderBottom: "1px solid #f3f4f6", fontSize: "0.95rem", color: "var(--text-strong)" }}>
+            <div className="card card--roomy">
+              <h4 className="card-title card-title--rule">
                 📋 Delegaciones Activas y Registradas
               </h4>
 
-              <div style={{ marginTop: "1rem" }} className="table-container">
+              <div className="table-wrap table-wrap--spaced">
                 {loadingDelegations ? (
-                  <p style={{ textAlign: "center", color: "var(--text-soft)", fontSize: "0.8rem", padding: "1rem" }}>
+                  <p className="empty-note empty-note--center">
                     Cargando delegaciones...
                   </p>
                 ) : delegations.length === 0 ? (
-                  <p style={{ textAlign: "center", color: "var(--text-soft)", fontSize: "0.8rem", padding: "1.5rem" }}>
+                  <p className="empty-note empty-note--center">
                     No hay delegaciones de aprobación registradas.
                   </p>
                 ) : (
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <table>
                     <thead>
-                      <tr style={{ borderBottom: "1px solid #e2e8f0", textAlign: "left" }}>
-                        <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600 }}>Proyecto</th>
-                        <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600 }}>Delegado Por</th>
-                        <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600 }}>Delegado A</th>
-                        <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600 }}>Rango</th>
-                        <th style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)", fontWeight: 600, textAlign: "right" }}>Acciones</th>
+                      <tr>
+                        <th>Proyecto</th>
+                        <th>Delegado Por</th>
+                        <th>Delegado A</th>
+                        <th>Rango</th>
+                        <th className="cell-right">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2059,24 +1971,16 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                         const startFormatted = new Date(d.startDate).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
                         const endFormatted = new Date(d.endDate).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
                         return (
-                          <tr key={d.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                            <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-strong)", fontWeight: 600 }}>{project ? project.name : d.projectId}</td>
-                            <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-normal)" }}>{d.fromUserEmail}</td>
-                            <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-normal)", fontWeight: 600 }}>{d.toUserEmail}</td>
-                            <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", color: "var(--text-soft)" }}>{startFormatted} al {endFormatted}</td>
-                            <td style={{ padding: "0.5rem 0.75rem", fontSize: "0.78rem", textAlign: "right" }}>
+                          <tr key={d.id}>
+                            <td className="cell-strong">{project ? project.name : d.projectId}</td>
+                            <td>{d.fromUserEmail}</td>
+                            <td className="cell-strong">{d.toUserEmail}</td>
+                            <td className="cell-date">{startFormatted} al {endFormatted}</td>
+                            <td className="cell-right">
                               <button
                                 type="button"
-                                className="ghost"
+                                className="btn-icon-danger btn-sm"
                                 onClick={() => handleDeleteDelegation(d.id)}
-                                style={{
-                                  color: "var(--color-sec-red)",
-                                  padding: "0.25rem 0.5rem",
-                                  fontSize: "0.75rem",
-                                  border: "none",
-                                  background: "none",
-                                  cursor: "pointer"
-                                }}
                               >
                                 🗑️ Eliminar
                               </button>

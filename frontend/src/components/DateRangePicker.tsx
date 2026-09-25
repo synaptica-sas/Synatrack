@@ -60,36 +60,22 @@ export function DateRangePicker({
   })();
 
   return (
-    <div ref={ref} style={{ position: "relative", minWidth: "12rem" }}>
+    <div ref={ref} className="date-range-picker">
       <button
         type="button"
-        className="ghost"
+        className={`ghost date-range-picker__trigger${activePreset ? " is-active" : ""}`}
         onClick={() => setOpen((o) => !o)}
-        style={{
-          width: "100%", textAlign: "left", display: "flex", justifyContent: "space-between",
-          alignItems: "center", gap: "0.4rem", fontSize: "0.875rem",
-          borderColor: activePreset ? "#f97316" : undefined,
-          color: activePreset ? "#ea580c" : undefined,
-        }}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
         <span>📅 {displayLabel}</span>
-        <span style={{ fontSize: "0.65rem" }}>{open ? "▲" : "▼"}</span>
+        <span className="date-range-picker__chevron">{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
-        <div
-          role="listbox"
-          style={{
-            position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 200,
-            background: "#fff", border: "1px solid var(--border-color)", borderRadius: "12px",
-            boxShadow: "0 8px 24px rgba(15,23,42,0.12)", minWidth: "16rem",
-            padding: "0.5rem",
-          }}
-        >
+        <div role="listbox" className="date-range-picker__panel">
           {/* Presets */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.3rem", marginBottom: "0.5rem" }}>
+          <div className="date-range-picker__presets">
             {PRESETS.map((p) => (
               <button
                 key={p}
@@ -97,17 +83,7 @@ export function DateRangePicker({
                 role="option"
                 aria-selected={activePreset === p}
                 onClick={() => applyPreset(p)}
-                style={{
-                  background: activePreset === p ? "linear-gradient(135deg,#ff8b3d,#ea580c)" : "#fff6ef",
-                  color: activePreset === p ? "#fff" : "#9a3412",
-                  border: "1px solid #f8c39b",
-                  borderRadius: "8px",
-                  padding: "0.35rem 0.5rem",
-                  fontSize: "0.75rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  textAlign: "center",
-                }}
+                className={`date-range-picker__preset${activePreset === p ? " is-active" : ""}`}
               >
                 {presetLabel(p)}
               </button>
@@ -115,27 +91,25 @@ export function DateRangePicker({
           </div>
 
           {/* Custom */}
-          <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "0.5rem" }}>
-            <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.35rem" }}>
-              Personalizado
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem" }}>
+          <div className="date-range-picker__custom">
+            <div className="date-range-picker__section-label">Personalizado</div>
+            <div className="date-range-picker__custom-grid">
               <div>
-                <label style={{ fontSize: "0.65rem", color: "#6b7280", display: "block", marginBottom: "0.15rem" }}>Desde</label>
+                <label className="date-range-picker__field-label">Desde</label>
                 <input
                   type="date"
                   value={value.from}
                   onChange={(e) => applyCustom("from", e.target.value)}
-                  style={{ fontSize: "0.8rem", padding: "0.35rem 0.5rem" }}
+                  className="date-range-picker__date-input"
                 />
               </div>
               <div>
-                <label style={{ fontSize: "0.65rem", color: "#6b7280", display: "block", marginBottom: "0.15rem" }}>Hasta</label>
+                <label className="date-range-picker__field-label">Hasta</label>
                 <input
                   type="date"
                   value={value.to}
                   onChange={(e) => applyCustom("to", e.target.value)}
-                  style={{ fontSize: "0.8rem", padding: "0.35rem 0.5rem" }}
+                  className="date-range-picker__date-input"
                 />
               </div>
             </div>
@@ -143,15 +117,7 @@ export function DateRangePicker({
 
           {/* Clear */}
           {(value.from || value.to) && (
-            <button
-              type="button"
-              onClick={clear}
-              style={{
-                marginTop: "0.4rem", width: "100%", background: "none",
-                border: "1px solid var(--border-color)", color: "#9a3412",
-                fontSize: "0.75rem", padding: "0.3rem",
-              }}
-            >
+            <button type="button" onClick={clear} className="date-range-picker__clear">
               Limpiar fechas
             </button>
           )}

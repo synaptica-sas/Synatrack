@@ -176,6 +176,11 @@
   --surface-subtle: #f6f7f9;
   --border-subtle: var(--color-primary-10);
 
+  /* Texto sobre una superficie oscura fija (el degradado `--gradient-primary`,
+     usado en cabeceras/burbujas de chat), no un token de estado: el fondo ya
+     es oscuro en los dos temas, así que no necesita contraparte en modo oscuro. */
+  --text-on-dark: #ffffff;
+
   /* ══════════════════════════════════════════════════════════════════════
      ESTADOS: TEXTO SOBRE SUPERFICIE Y RELLENO SÓLIDO
      Las familias `--state-*-bg/border/text` que ya existían sirven para

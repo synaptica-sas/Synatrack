@@ -175,36 +175,78 @@ grep -c 'style={{' frontend/src/features/<pantalla>.tsx
 |---|---|---|
 | `features/estimations/EstimationCalculatorTab.tsx` | 272 | 82 |
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
-| `features/extraHours/ExtraHoursTab.tsx` | 186 | 35 |
-| `features/capacity/CapacityTab.tsx` | 123 | 28 |
 | `features/profile/ProfileTab.tsx` | 48 | 6 |
 | `features/forecasts/ForecastsTab.tsx` | 39 | 19 |
 | `features/consultants/ConsultantsTab.tsx` | 39 | 0 |
 | `features/admin/AdminTab.tsx` | 26 | 0 |
-| `components/AlertsPanel.tsx` | 25 | 16 |
 | `features/projects/ProjectsTab.tsx` | 24 | 3 |
 | `features/expenses/GastosSummaryTable.tsx` | 23 | 0 |
-| `components/RagChat.tsx` | 18 | 16 |
 | `features/expenses/GastosFilters.tsx` | 18 | 6 |
-| `components/DateRangePicker.tsx` | 14 | 12 |
 | `features/expenses/ExpensesTab.tsx` | 14 | 1 |
 | `components/SearchableSelect.tsx` | 13 | 2 |
 | `features/audit/AuditTab.tsx` | 12 | 4 |
 | `features/expenses/GastosDetailRow.tsx` | 9 | 0 |
 | `features/fx/FxTab.tsx` | 8 | 0 |
-| `components/Toast.tsx` | 5 | 14 |
-| `components/ValidationErrorBox.tsx` | 5 | 7 |
+
+**Ya migrados** (puntos 1, 2 y 3 del orden recomendado):
+
+- `components/Toast.tsx` y `components/ValidationErrorBox.tsx` — reusan `.notice`/
+  `--state-*-bg/border/strong` y `.toast`/`.toast--*` (clases nuevas, mismo lenguaje de color
+  que `.state-chip`).
+- `components/AlertsPanel.tsx` (el cajón, no la pestaña) — las tarjetas de alerta ahora
+  comparten literalmente las clases `.alert-item`/`.status-badge` de
+  `features/alerts/AlertsTab.tsx`, en vez de tener su propio mapa `SEV_COLOR` divergente. El
+  marco del cajón (botón con contador, telón, panel deslizante, grupos plegables) es CSS
+  nuevo (`.alert-panel*`), y se retiró el fondo cálido `#fff8f0`/texto `#5f2f00` del
+  encabezado (mismo hallazgo de color fuera de marca que ya se había corregido en
+  `PageHeader`). De paso se eliminó ~50 líneas de parches `!important` en `App.css` que
+  apuntaban a las clases viejas del cajón y quedaban muertas tras el cambio.
+
+- `components/DateRangePicker.tsx` y `components/RagChat.tsx` — el naranja de Tailwind de los
+  presets del selector de fechas (`#f97316`/`#ea580c`/fondo `#fff6ef`) se sustituye por el
+  mismo lenguaje `--state-warning-*`/`.state-chip--filled` que ya usan otras pantallas; el
+  estado activo del botón reusa la convención de `.subtab.is-active` (borde `--color-accent`,
+  texto `--state-warning-strong`). En `RagChat`, el degradado navy→azul de Tailwind
+  (`#234175`→`#3b82f6`) resultó ser el mismo que ya usa el botón flotante 🤖 sin migrar
+  (comentado "Corporate Blue Gradient" en `App.css`); se creó `--gradient-primary`
+  (navy→azul de marca, ya existía a medias en `index.css` sin usarse) y un token nuevo,
+  `--text-on-dark`, para el texto blanco sobre ese degradado — documentado en `index.css`
+  junto a los demás tokens de color.
+
+Los cinco: 0 estilos en línea y 0 colores literales. Verificado con Playwright en claro y
+oscuro además de `tsc`/`lint`/`build`/tests: el cajón de alertas se probó con 3 alertas de
+ejemplo (una por severidad, inyectadas interceptando `/api/alerts` en el navegador, sin tocar
+datos reales) confirmando tinte + borde + insignia con etiqueta en los tres estados, en ambos
+temas. El selector de fechas y el chat se probaron de punta a punta en la app real (Ingresos/
+Gastos y el botón flotante 🤖), incluido el estado activo del preset. `Toast`/`ValidationErrorBox`
+se verificaron inyectando temporalmente en el DOM el mismo marcado que producen (los flujos de
+UI para dispararlos de verdad chocan con la validación
+nativa del formulario antes de llegar al servidor). Capturas en
+`documentacion/capturas/alertas-cajon-despues-*`, `toast-notice-despues-*`,
+`daterange-despues-*` y `ragchat-despues-*`.
 
 ### Orden recomendado, y por qué
 
 No por tamaño, sino por impacto:
 
-1. **`components/Toast.tsx` y `components/ValidationErrorBox.tsx`** — diminutos, pero tienen
-   más color literal que código y **aparecen encima de cualquier pantalla**: se ven cada vez
-   que se guarda algo o falla una validación.
-2. **`components/AlertsPanel.tsx`** — el cajón de la campana, que se abre desde todas partes.
-3. **`components/DateRangePicker.tsx` y `components/RagChat.tsx`** — compartidos.
-4. **Horas Extra** y **Capacidad** — las de mayor uso diario entre las grandes.
+1. ~~`components/Toast.tsx` y `components/ValidationErrorBox.tsx`~~ **— hecho.** Eran
+   diminutos, pero tenían más color literal que código y aparecen encima de cualquier
+   pantalla: se ven cada vez que se guarda algo o falla una validación.
+2. ~~`components/AlertsPanel.tsx`~~ **— hecho.** El cajón de la campana, que se abre desde
+   todas partes.
+3. ~~`components/DateRangePicker.tsx` y `components/RagChat.tsx`~~ **— hecho.** Compartidos.
+4. ~~**Horas Extra** y **Capacidad**~~ **— hecho.** Horas Extra: 186 → 0 estilos en línea,
+   35 → 0 colores literales. Capacidad: 123 → 1 (el valor calculado del medidor, legítimo),
+   28 → 0. Las dos se migraron con agentes en paralelo sobre el mismo `App.css`; no hubo
+   colisión de clases (prefijos `capacity-*` vs. nombres genéricos reutilizables), pero
+   ninguno de los dos actualizó esta tabla ni la de `DISENO.md` §7 por evitar pisarse — se
+   reconcilió a mano después. El detalle de las clases nuevas y los defectos encontrados
+   (banner sin keyframe, hover en JS que dejaba el botón de otro color, sub-pestañas sin CSS,
+   etc.) está en `DISENO.md` §6, secciones "Clases añadidas al migrar Horas Extra" y
+   "...Planificación de Capacidad". Verificado en la app real con Playwright, claro y oscuro,
+   sin errores de consola: reporte y configuración multipaís (fichas de legislación) de Horas
+   Extra, y las cuatro sub-pestañas de Capacidad. Capturas en
+   `documentacion/capturas/extrahoras-*-despues-*` y `capacidad-*-despues-*`.
 5. **Actividades** y **Estimaciones** al final: son las más grandes (más de 2.000 líneas) y
    las de uso más esporádico. **Léelas por rangos, no enteras.**
 

@@ -2368,57 +2368,10 @@ body.dark .role-badge.role-viewer {
   border-color: #374151 !important;
 }
 
-/* ── Alerts Panel (Drawer) Dark Overrides ── */
-body.dark aside[role="dialog"][aria-label="Panel de alertas"] {
-  background: #0f172a !important;
-  border-left: 1px solid #1e293b !important;
-  box-shadow: -6px 0 28px rgba(0,0,0,0.4) !important;
-}
-
-body.dark aside[role="dialog"][aria-label="Panel de alertas"] > div:first-child {
-  background: #1e293b !important;
-  border-bottom: 1px solid #334155 !important;
-}
-
-body.dark aside[role="dialog"][aria-label="Panel de alertas"] h2 {
-  color: #f8fafc !important;
-}
-
-body.dark aside[role="dialog"][aria-label="Panel de alertas"] p {
-  color: #94a3b8 !important;
-}
-
-body.dark .alert-group-header {
-  background: #1e293b !important;
-  border-color: #334155 !important;
-  color: #e2e8f0 !important;
-}
-
-body.dark .alert-empty-state {
-  color: #94a3b8 !important;
-}
-
-/* ── Alerts Severity Overrides (Both Drawer and Tab) ── */
-body.dark .alert-card.sev-critical {
-  background: #2d1212 !important;
-  border-color: rgba(220, 38, 38, 0.3) !important;
-}
-body.dark .alert-card.sev-warning {
-  background: #221600 !important;
-  border-color: rgba(146, 64, 14, 0.3) !important;
-}
-body.dark .alert-card.sev-info {
-  background: #0f172a !important;
-  border-color: rgba(29, 78, 216, 0.3) !important;
-}
-
-/* ── Alert message text legibility ── */
-body.dark .alert-message-text {
-  color: #cbd5e1 !important;
-}
-body.dark .alert-project-name {
-  color: #94a3b8 !important;
-}
+/* El cajón de alertas (components/AlertsPanel.tsx) ya no necesita parches
+   de modo oscuro aquí: usa `.alert-panel`/`.alert-item`/`.status-badge`,
+   que resuelven sus tokens `--state-*`/`--card-bg` solos. Ver App.css,
+   sección "Cajón de alertas", junto a `.alert-item`. */
 
 /* ── Month/Calendar dark mode cell styling ── */
 body.dark .month-day-cell {
@@ -2811,61 +2764,64 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
   display: none !important;
 }
 
-/* ── Legislation Card & Custom Country Tabs ── */
+/* ── Ficha de legislación y pestañas de país (Horas Extra) ──────────────────
+   Antes traía siete literales (#fde68a, #725a48, #475569, #f8fafc, #64748b,
+   #e2e8f0, #cbd5e1) y su modo oscuro se resolvía con nueve `!important`. Con
+   los tokens de estado la contraparte oscura sale sola y no hace falta
+   duplicar ninguna regla. */
 .legislation-card {
-  background: var(--color-accent-05);
-  border: 1px solid #fde68a;
-  border-radius: 14px;
-  padding: 1.5rem;
-  box-shadow: 0 4px 12px rgba(154, 79, 15, 0.04);
+  background: var(--state-warning-bg);
+  border: 1px solid var(--state-warning-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
 }
+
+.legislation-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.legislation-card__flag { font-size: 1.5rem; }
+
 .legislation-card h4 {
-  color: var(--color-sec-blue);
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--state-warning-strong);
 }
+
 .legislation-card p {
-  color: #725a48;
+  margin: 0 0 var(--space-6);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text);
 }
+
 .legislation-card ul {
-  color: #475569;
+  margin: 0;
+  padding-left: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.78rem;
+  color: var(--text-soft);
 }
+
+.legislation-card li { line-height: 1.4; }
 
 .country-tab-btn.ghost {
-  background: #f8fafc;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-}
-.country-tab-btn.ghost:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-  border-color: #cbd5e1;
+  background: var(--surface-subtle);
+  color: var(--text-soft);
+  border: 1px solid var(--border-color);
 }
 
-/* Dark mode overrides for Legislation Card & Custom Country Tabs */
-body.dark .legislation-card {
-  background: #151c2c !important;
-  border: 1px solid #222f47 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
-}
-body.dark .legislation-card h4 {
-  color: var(--color-accent) !important;
-}
-body.dark .legislation-card p {
-  color: #cbd5e1 !important;
-}
-body.dark .legislation-card ul,
-body.dark .legislation-card li {
-  color: #94a3b8 !important;
-}
-
-body.dark .country-tab-btn.ghost {
-  background: #1e293b !important;
-  color: #cbd5e1 !important;
-  border-color: #334155 !important;
-}
-body.dark .country-tab-btn.ghost:hover {
-  background: #2d3748 !important;
-  color: #f8fafc !important;
-  border-color: #475569 !important;
+.country-tab-btn.ghost:hover:not(:disabled) {
+  background: var(--color-primary-10);
+  color: var(--text-strong);
+  border-color: var(--color-sec-blue);
 }
 
 /* ── 5-Day Weekday Layout Override ── */
@@ -3125,6 +3081,111 @@ body.dark .country-tab-btn.ghost:hover {
 
 .notice--danger .notice__title  { color: var(--state-danger-strong); }
 .notice--warning .notice__title { color: var(--state-warning-strong); }
+
+/* Acento de borde izquierdo (caja de errores de validación) */
+.notice--accent { border-left-width: 4px; border-left-style: solid; border-left-color: var(--state-danger-strong); }
+
+/* Insignia redonda "es el dato" dentro de un `.notice__title` (círculo sólido,
+   no el tinte bg/border/strong de la caja): mismo par solid/on-solid que
+   `.status-badge`. */
+.notice__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.notice--danger .notice__badge { background: var(--state-danger-solid); color: var(--state-danger-on-solid); }
+
+.notice__list {
+  margin: 0;
+  padding: 0 0 0 var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.notice--danger  .notice__list { color: var(--state-danger-strong); }
+.notice--warning .notice__list { color: var(--state-warning-strong); }
+
+/* ── Notificaciones flotantes (toast) ─────────────────────────────────────
+   Mismo lenguaje de color que `.notice`/`.state-chip` (tinte bg + borde +
+   texto `--state-*-strong`), en una pila fija con botón de cierre. */
+.toast-container {
+  position: fixed;
+  bottom: var(--space-6);
+  right: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 9999;
+  max-width: 22rem;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  animation: toast-slide-in 0.2s ease;
+}
+
+.toast--success { background: var(--state-success-bg); border-color: var(--state-success-border); }
+.toast--error   { background: var(--state-danger-bg);  border-color: var(--state-danger-border); }
+.toast--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
+.toast--info    { background: var(--state-info-bg);    border-color: var(--state-info-border); }
+
+.toast__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.toast--success .toast__icon { background: var(--state-success-border); color: var(--state-success-strong); }
+.toast--error   .toast__icon { background: var(--state-danger-border);  color: var(--state-danger-strong); }
+.toast--warning .toast__icon { background: var(--state-warning-border); color: var(--state-warning-strong); }
+.toast--info    .toast__icon { background: var(--state-info-border);    color: var(--state-info-strong); }
+
+.toast__message {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text);
+  line-height: 1.4;
+  white-space: pre-line;
+}
+
+.toast__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* ── Fila de chips pulsables ──────────────────────────────────────────── */
 .chip-row {
@@ -3414,6 +3475,331 @@ tr.row-warning > td { background: var(--state-warning-bg); }
      propio mensaje. */
   .alert-item__actions { width: 100%; justify-content: flex-end; }
 }
+
+/* ── Cajón de alertas (el botón de campana y su panel deslizante) ──────────
+   Las tarjetas de dentro reusan `.alert-item`/`.status-badge` de arriba, que
+   ya son las mismas que usa el Centro de Alertas. Lo nuevo es solo el marco:
+   botón con contador, telón y panel. El fondo cálido `#fff8f0` y el texto
+   `#5f2f00` del encabezado no eran de la marca (mismo hallazgo que en
+   PageHeader, ver DISENO.md) y se sustituyen por los tokens estándar. */
+.alert-panel__trigger { position: relative; }
+
+.alert-panel__count {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.2rem;
+  border-radius: var(--radius-pill);
+  background: var(--state-danger-solid);
+  color: var(--state-danger-on-solid);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.alert-panel__backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--color-primary-30);
+  z-index: 300;
+}
+
+.alert-panel {
+  position: fixed;
+  top: 0;
+  right: -26rem;
+  width: min(25rem, 100vw);
+  height: 100dvh;
+  background: var(--card-bg);
+  border-left: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+  z-index: 301;
+  display: flex;
+  flex-direction: column;
+  transition: right 0.25s ease;
+}
+
+.alert-panel.open { right: 0; }
+
+.alert-panel__head {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.alert-panel__head h2 { margin: 0; font-size: 1rem; color: var(--text-strong); }
+.alert-panel__head p  { margin: 0; font-size: 0.75rem; color: var(--text-muted); }
+.alert-panel__head-actions { display: flex; gap: var(--space-2); align-items: center; flex-shrink: 0; }
+
+.alert-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+
+.alert-panel__group + .alert-panel__group { margin-top: var(--space-3); }
+
+.alert-panel__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-strong);
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.alert-panel__toggle-label { display: flex; align-items: center; gap: var(--space-2); }
+.alert-panel__toggle-chevron { font-size: 0.65rem; color: var(--text-muted); }
+
+.alert-panel__items { margin-top: var(--space-2); }
+
+/* ── Selector de rango de fechas ────────────────────────────────────────────
+   Los presets reusan el lenguaje de `.state-chip` (tinte ámbar + relleno
+   sólido cuando está activo) en vez del naranja de Tailwind que traía antes,
+   que no era el ámbar de marca. */
+.date-range-picker { position: relative; min-width: 12rem; }
+
+.date-range-picker__trigger {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.date-range-picker__trigger.is-active {
+  border-color: var(--color-accent);
+  color: var(--state-warning-strong);
+}
+
+.date-range-picker__chevron { font-size: 0.65rem; }
+
+.date-range-picker__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  min-width: 16rem;
+  padding: var(--space-2);
+}
+
+.date-range-picker__presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.date-range-picker__preset {
+  background: var(--state-warning-bg);
+  color: var(--state-warning-strong);
+  border: 1px solid var(--state-warning-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.date-range-picker__preset.is-active {
+  background: var(--state-warning-solid);
+  color: var(--state-warning-on-solid);
+  border-color: var(--state-warning-solid);
+}
+
+.date-range-picker__custom {
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-2);
+}
+
+.date-range-picker__section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-bottom: var(--space-2);
+}
+
+.date-range-picker__custom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.date-range-picker__field-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.date-range-picker__date-input { font-size: 0.8rem; padding: var(--space-2) var(--space-2); }
+
+.date-range-picker__clear {
+  margin-top: var(--space-2);
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--state-warning-strong);
+  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* ── Asistente RAG (burbuja de chat) ─────────────────────────────────────────
+   El degradado navy→azul y el navy plano de los mensajes de usuario reusan
+   `--gradient-primary` (ya definido para cabeceras); antes mezclaban el navy
+   de marca con un azul de Tailwind que no era `--color-sec-blue`. */
+.rag-chat {
+  position: fixed;
+  bottom: 85px;
+  right: 20px;
+  width: 350px;
+  height: 450px;
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  z-index: 10000;
+  overflow: hidden;
+  animation: fadeInUp 0.25s ease forwards;
+}
+
+.rag-chat__head {
+  background: var(--gradient-primary);
+  color: var(--text-on-dark);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rag-chat__head-title { display: flex; align-items: center; gap: var(--space-2); }
+.rag-chat__head-icon { font-size: 1.2rem; }
+.rag-chat__head h4 { margin: 0; font-size: 0.85rem; font-weight: 700; }
+.rag-chat__head span.rag-chat__head-sub { font-size: 0.65rem; opacity: 0.9; }
+
+.rag-chat__head-actions { display: flex; align-items: center; gap: var(--space-2); }
+
+.rag-chat__head-btn {
+  background: none;
+  border: none;
+  color: var(--text-on-dark);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0.2rem;
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+}
+
+.rag-chat__messages {
+  flex: 1;
+  padding: var(--space-4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: var(--surface-subtle);
+}
+
+.rag-chat__msg {
+  max-width: 85%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.rag-chat__msg--user { align-self: flex-end; }
+.rag-chat__msg--bot  { align-self: flex-start; }
+
+.rag-chat__bubble {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8rem;
+  white-space: pre-line;
+}
+
+.rag-chat__msg--user .rag-chat__bubble {
+  background: var(--gradient-primary);
+  color: var(--text-on-dark);
+  border-radius: var(--radius-md) var(--radius-md) 2px var(--radius-md);
+}
+
+.rag-chat__msg--bot .rag-chat__bubble {
+  background: var(--card-bg);
+  color: var(--text-strong);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 2px;
+}
+
+.rag-chat__sources {
+  font-size: 0.62rem;
+  color: var(--color-sec-blue);
+  font-style: italic;
+  align-self: flex-start;
+  padding-left: 4px;
+}
+
+.rag-chat__typing {
+  align-self: flex-start;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 2px;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.rag-chat__form {
+  display: flex;
+  padding: var(--space-2);
+  border-top: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
+.rag-chat__input {
+  flex: 1;
+  border-radius: var(--radius-pill);
+  padding: 0.45rem var(--space-3);
+  font-size: 0.8rem;
+}
+
+.rag-chat__send {
+  background: var(--gradient-primary);
+  color: var(--text-on-dark);
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  margin-left: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.rag-chat__send-icon { transform: translateY(-1px); display: inline-block; font-size: 1.1rem; line-height: 1; }
 
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -3834,6 +4220,12 @@ body.dark .card .menu-pop__empty.menu-pop__empty         { color: var(--text-mut
 /* Avisos dentro de una tarjeta. */
 body.dark .card.notice--danger  .notice__text.notice__text { color: var(--state-danger-strong); }
 body.dark .card.notice--warning .notice__text.notice__text { color: var(--state-warning-strong); }
+body.dark .card .notice--danger  .notice__title.notice__title { color: var(--state-danger-strong); }
+body.dark .card .notice--warning .notice__title.notice__title { color: var(--state-warning-strong); }
+body.dark .card .notice--danger  .notice__list.notice__list { color: var(--state-danger-strong); }
+body.dark .card .notice--warning .notice__list.notice__list { color: var(--state-warning-strong); }
+body.dark .card .notice__list.notice__list { color: var(--state-danger-strong); }
+body.dark .card .notice__badge.notice__badge { color: var(--state-danger-on-solid); }
 body.dark .card .inline-list.tone-danger  { color: var(--state-danger-strong); }
 body.dark .card .inline-list.tone-danger span { color: inherit; }
 
@@ -4416,3 +4808,507 @@ body.dark td .meter__value--danger.meter__value--danger { color: var(--state-dan
 }
 
 .form-row-grid--wide { grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PATRONES AÑADIDOS AL MIGRAR HORAS EXTRA
+   Siete sub-pestañas (reportar, aprobar PM, aprobar nómina, cierre, config,
+   festivos, delegaciones) que repetían la misma tarjeta, el mismo encabezado y
+   la misma tabla con `style={{ }}`. Todo sale de tokens y tiene contraparte
+   oscura; el color de estado nunca viaja solo (la etiqueta va dentro del chip).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Composición de pantalla ─────────────────────────────────────────────── */
+
+/* `.page-stack` con el aire lateral que ya tenía esta pantalla. A 560px el
+   margen de 32px se come casi un cuarto del ancho útil, así que se reduce. */
+.page-stack--padded { padding: var(--space-4) var(--space-8); }
+
+@media (max-width: 560px) {
+  .page-stack--padded { padding: var(--space-3) var(--space-4); }
+}
+
+/* Dos paneles asimétricos (ayuda a la izquierda, formulario o tabla a la
+   derecha). Antes había tres proporciones distintas a ojo (1.1/1.9, 1.2/1.8)
+   y ninguna colapsaba: a 400px las dos columnas seguían una al lado de otra. */
+.two-pane {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .two-pane { grid-template-columns: minmax(0, 1fr); gap: var(--space-6); }
+}
+
+/* ── Tarjeta ─────────────────────────────────────────────────────────────── */
+
+/* `.card` con el padding holgado de las pantallas de gestión. */
+.card--roomy { padding: var(--space-6); }
+
+/* `.card` que además apila su contenido (formularios de configuración). */
+.card--stack { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* Título de tarjeta. `.card h3` fija (0,1,1) color azul y 0,9rem, así que la
+   clase se repite para ganarle sin `!important`. */
+.card-title.card-title {
+  margin: 0 0 var(--space-4);
+  font-family: var(--display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+/* Cuando el título convive con una acción en `.card-head`, el hueco inferior
+   lo pone ya el propio `.card-head`. */
+.card-title--tight.card-title--tight { margin-bottom: 0; }
+
+/* Variante con filete inferior, para los títulos de bloque de un formulario. */
+.card-title--rule.card-title--rule {
+  margin-bottom: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.95rem;
+}
+
+/* Entradilla de una tarjeta: texto explicativo bajo el título. */
+.card-lead { margin: 0 0 var(--space-4); font-size: 0.82rem; color: var(--text-soft); }
+
+/* Tarjeta de presentación de una sección (título grande + descripción). */
+.section-intro__title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.section-intro__text { margin: var(--space-1) 0 0; font-size: 0.82rem; color: var(--text-soft); }
+
+/* ── Formularios ─────────────────────────────────────────────────────────── */
+
+/* `.form-label` en su tamaño pequeño. Antes convivían 0,78 / 0,8 / 0,85rem sin
+   criterio; se unifican en uno solo. */
+.form-label--sm { font-size: 0.8rem; font-weight: 700; }
+
+/* Etiqueta a la izquierda de su control, en una misma línea. */
+.inline-filter { display: flex; align-items: center; gap: var(--space-2); min-width: 15.625rem; }
+.inline-filter__label { font-size: 0.8rem; font-weight: 700; color: var(--text-soft); white-space: nowrap; }
+
+/* Dos campos que van juntos (hora inicio / hora fin, país / año). */
+.field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.field-pair--spaced { gap: var(--space-3); margin: var(--space-4) 0 var(--space-6); }
+
+/* Fila de tres campos donde el primero es el largo (nombre + fecha + alcance). */
+.form-row-3 {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr 1fr;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  align-items: end;
+}
+
+@media (max-width: 720px) {
+  .form-row-3 { grid-template-columns: 1fr; }
+}
+
+/* Campos apilados uno bajo otro dentro de un formulario en tarjeta. */
+.form-stack { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* Pie de acciones de un formulario, alineado a la derecha. */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.form-grid--tight { gap: var(--space-3); }
+
+/* `.inline-form` separada del contenido que viene debajo (la tabla). */
+.inline-form--spaced { margin-bottom: var(--space-6); }
+
+/* Campo que no se puede editar: se ve apagado y lo dice el cursor. La clase se
+   repite porque `body.dark input` (0,1,1) le ganaría y el campo volvería al
+   fondo normal, indistinguible de uno editable. */
+.input-readonly.input-readonly { background: var(--surface-subtle); cursor: not-allowed; }
+
+/* Control de formulario en su tamaño compacto (filtros dentro de una tarjeta). */
+.control-sm { font-size: 0.85rem; padding: var(--space-1) var(--space-2); }
+
+/* ── Botones ─────────────────────────────────────────────────────────────── */
+
+.btn-block   { width: 100%; }
+.btn-sm      { padding: var(--space-1) var(--space-2); font-size: 0.75rem; }
+.btn-compact { padding: var(--space-2) var(--space-4); font-size: 0.8rem; }
+
+/* Acciones de estado. El texto sobre el verde y el ámbar de marca es navy, no
+   blanco (ver DISENO.md §5.3); sobre el rojo sí es blanco. */
+.btn-success { background: var(--state-success-solid); border: 1px solid var(--state-success-solid); color: var(--state-success-on-solid); }
+.btn-danger  { background: var(--state-danger-solid);  border: 1px solid var(--state-danger-solid);  color: var(--state-danger-on-solid); }
+
+/* Acción destructiva secundaria: tinte en vez de relleno, para que no compita
+   con la acción principal. El hover vivía en dos manejadores `onMouseOver`/
+   `onMouseOut` que además devolvían un rojo de Tailwind distinto del inicial,
+   así que el botón cambiaba de color de forma permanente tras el primer hover. */
+.btn-danger-soft {
+  background: var(--state-danger-bg);
+  border: 1px solid var(--state-danger-border);
+  color: var(--state-danger-strong);
+}
+
+.btn-danger-soft:hover:not(:disabled) { background: var(--state-danger-border); }
+
+/* Botón que solo es un icono (eliminar una fila). */
+.btn-icon-danger {
+  background: none;
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  color: var(--state-danger-strong);
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.btn-icon-danger:hover:not(:disabled) { background: var(--state-danger-bg); box-shadow: none; }
+
+/* ── Aviso flotante de operación correcta ─────────────────────────────────
+   Antes era `#10b981` (verde de Tailwind) con texto `#fff` y una animación
+   `slideIn` cuyo keyframe no existe en ninguna hoja: el banner aparecía de
+   golpe. Ahora usa el verde de marca con su texto contrastado y el keyframe
+   `toast-slide-in` que ya trae `components/Toast.tsx`. */
+.success-banner {
+  position: fixed;
+  top: var(--space-6);
+  right: var(--space-6);
+  z-index: 9999;
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-md);
+  background: var(--state-success-solid);
+  color: var(--state-success-on-solid);
+  box-shadow: var(--shadow-lg);
+  font-size: 0.85rem;
+  font-weight: 700;
+  animation: toast-slide-in 0.3s ease;
+}
+
+/* ── Modal ───────────────────────────────────────────────────────────────── */
+.modal-card--sm { width: min(28rem, 100%); }
+.modal-actions--spaced { margin-top: var(--space-4); }
+.modal-close { padding: var(--space-1) var(--space-2); }
+
+/* ── Tabla ───────────────────────────────────────────────────────────────── */
+.cell-right { text-align: right; }
+.table-wrap--spaced { margin-top: var(--space-4); }
+
+/* Segunda línea de una celda: el desglose bajo el total, la moneda bajo el
+   importe. Antes era `#888`, que en oscuro quedaba casi invisible. */
+.cell-meta { display: block; font-size: 0.7rem; color: var(--text-muted); }
+.cell-dash { font-size: 0.8rem; color: var(--text-muted); }
+.cell-note { font-size: 0.8rem; color: var(--text-soft); }
+
+.cell-reject-note {
+  display: block;
+  max-width: 9.375rem;
+  margin-top: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--state-danger-strong);
+}
+
+/* "No hay nada que mostrar" en línea, dentro de una tarjeta. */
+.empty-note { margin: 0; font-size: 0.85rem; font-style: italic; color: var(--text-muted); }
+.empty-note--center { text-align: center; padding: var(--space-4); }
+
+/* ── Simulación del cálculo en vivo ──────────────────────────────────────── */
+.card.preview-card.preview-card { background: var(--color-accent-05); padding: var(--space-6); }
+
+.preview-card__title { margin: 0 0 var(--space-2); font-size: 0.9rem; font-weight: 700; color: var(--state-warning-strong); }
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+@media (max-width: 560px) {
+  .preview-grid { grid-template-columns: 1fr; }
+}
+
+/* Apunte legal que ocupa las dos columnas de la rejilla. */
+.preview-note {
+  grid-column: 1 / -1;
+  margin-top: 0.2rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+}
+
+.preview-note--success { background: var(--state-success-bg); border-color: var(--state-success-border); color: var(--state-success-strong); }
+.preview-note--info    { background: var(--state-info-bg);    border-color: var(--state-info-border);    color: var(--state-info-strong); }
+
+.preview-total {
+  grid-column: 1 / -1;
+  margin-top: 0.2rem;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-color);
+}
+
+.preview-total__amount { font-size: 0.95rem; color: var(--state-warning-strong); }
+
+/* ── Selector de país de la configuración ────────────────────────────────── */
+.country-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px dashed var(--border-color);
+}
+
+.country-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  font-size: 0.85rem;
+}
+
+.country-tab-btn__flag { font-size: 1.1rem; }
+
+/* ── Calendario de festivos ──────────────────────────────────────────────── */
+.holiday-list {
+  max-height: 21.875rem;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.holiday-list__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.78rem;
+}
+
+.holiday-list__date { font-weight: 600; color: var(--text-strong); text-transform: capitalize; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MODO OSCURO DE LOS PATRONES DE HORAS EXTRA
+   `body.dark .card p/span:not(.pill)/div` fuerza `color: inherit` con hasta
+   (0,3,2) y aplana la jerarquía de texto dentro de una tarjeta. Cada patrón
+   recupera su color repitiendo la clase, igual que `.stat-tile` y `.state-chip`.
+   ══════════════════════════════════════════════════════════════════════════ */
+body.dark .card .card-title.card-title       { color: var(--text-strong); }
+body.dark .card .card-lead.card-lead         { color: var(--text-soft); }
+body.dark .card .section-intro__title.section-intro__title { color: var(--text-strong); }
+body.dark .card .section-intro__text.section-intro__text   { color: var(--text-soft); }
+body.dark .card .empty-note.empty-note       { color: var(--text-muted); }
+body.dark .card .cell-meta.cell-meta         { color: var(--text-muted); }
+body.dark .card .cell-dash.cell-dash         { color: var(--text-muted); }
+body.dark .card .cell-note.cell-note         { color: var(--text-soft); }
+body.dark .card .cell-reject-note.cell-reject-note { color: var(--state-danger-strong); }
+body.dark .card .preview-grid.preview-grid   { color: var(--text-soft); }
+body.dark .card .preview-note--success.preview-note--success { color: var(--state-success-strong); }
+body.dark .card .preview-note--info.preview-note--info       { color: var(--state-info-strong); }
+body.dark .card .preview-total__amount.preview-total__amount { color: var(--state-warning-strong); }
+body.dark .card .holiday-list__date.holiday-list__date       { color: var(--text-strong); }
+body.dark .card td .tone-warning.tone-warning { color: var(--state-warning-strong); }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PATRONES AÑADIDOS AL MIGRAR PLANIFICACIÓN DE CAPACIDAD
+   `features/capacity/CapacityTab.tsx` tenía 123 estilos en línea y 28 colores
+   literales (la paleta de Tailwind: #16a34a, #dc2626, #f59e0b, #9ca3af,
+   #f9fafb, #e5e7eb, #6b7280, #e2e8f0, #fffbf0). Lo que ya existía se reutiliza
+   —`.card-head`, `.field-grid--compact`, `.select-control`, `.field-label`,
+   `.meter`, `.state-chip`, `.subtabs`, `.section-stack`, `.tone-*`—; aquí solo
+   queda lo propio de la pantalla, con el prefijo `capacity-`.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Botones pequeños ─────────────────────────────────────────────────────
+   Dos tamaños: el de la cabecera de una tarjeta (Limpiar, Exportar CSV) y el
+   que vive dentro de una celda (el alternador ▼ n). Ambos conservan 2rem de
+   alto mínimo, que es el objetivo táctil de WCAG 2.2. */
+.capacity-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.78rem;
+  min-height: 2rem;
+}
+
+.capacity-btn-row {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.75rem;
+  min-height: 2rem;
+}
+
+/* ── Medidor de utilización ───────────────────────────────────────────────
+   El porcentaje va escrito al lado del relleno, así que el color solo refuerza
+   un dato que ya se lee. Antes era `color` en línea con los verdes/ámbares de
+   Tailwind y sin contraparte oscura. */
+.capacity-col-util { min-width: 10rem; }
+
+.meter__value.capacity-util {
+  min-width: 3.5rem;
+  text-align: right;
+  font-weight: 600;
+  font-size: 0.78rem;
+}
+
+.meter__value.capacity-util--success { color: var(--state-success-strong); }
+.meter__value.capacity-util--warning { color: var(--state-warning-strong); }
+.meter__value.capacity-util--danger  { color: var(--state-danger-strong); }
+
+/* Dentro de una `.card`, `body.dark .card span:not(.pill)` pesa (0,3,2) y
+   aplana el color; hay que repetir la clase para ganarle sin `!important`. */
+body.dark .card .capacity-util.capacity-util--success { color: var(--state-success-strong); }
+body.dark .card .capacity-util.capacity-util--warning { color: var(--state-warning-strong); }
+body.dark .card .capacity-util.capacity-util--danger  { color: var(--state-danger-strong); }
+
+/* ── Fila desplegada con su tabla anidada ─────────────────────────────────
+   El fondo era `#f9fafb`, que en modo oscuro dejaba un parche blanco dentro de
+   la tabla. `--surface-subtle` ya tiene su contraparte. */
+.capacity-detail-cell {
+  background: var(--surface-subtle);
+  padding: var(--space-3) var(--space-4);
+}
+
+.capacity-subtable th,
+.capacity-subtable td {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.8rem;
+}
+
+.capacity-subtable th { font-weight: 600; }
+
+/* ── Controles sueltos ────────────────────────────────────────────────────── */
+/* Select estrecho dentro de la cabecera de una tarjeta (ventana de días). */
+.capacity-inline-select {
+  width: auto;
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.8rem;
+}
+
+/* Rejilla de filtros que va pegada a una tabla, no dentro de un `.panel`. */
+.capacity-filters { margin-bottom: var(--space-4); }
+
+/* Nota explicativa entre el título de una tarjeta y su formulario. */
+.capacity-form-note { margin-bottom: var(--space-3); }
+
+/* Tarjeta que ocupa las dos columnas cuando la de al lado no se pinta. */
+.capacity-span-full { grid-column: 1 / -1; }
+
+/* Selector de consultor de la pestaña de Bloqueos. */
+.capacity-block-filter {
+  width: 100%;
+  max-width: 22rem;
+  margin-bottom: var(--space-3);
+}
+
+/* ── Modal de nueva asignación ────────────────────────────────────────────── */
+.capacity-modal { width: min(680px, 100%); }
+
+.capacity-modal-header {
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.capacity-modal-title {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--text-strong);
+}
+
+.capacity-modal-close {
+  font-size: 1.1rem;
+  padding: var(--space-1) var(--space-2);
+  line-height: 1;
+}
+
+.capacity-modal-actions {
+  grid-column: 1 / -1;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-color);
+}
+
+/* ── Formulario del modal ─────────────────────────────────────────────────
+   Campo = etiqueta visible + control, apilados. La etiqueta reusa
+   `.field-label`; dentro de la columna el `gap` ya separa, así que se le
+   quita el margen inferior. */
+.capacity-form {
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.capacity-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.capacity-field .field-label { margin-bottom: 0; }
+
+.capacity-field--full { grid-column: 1 / -1; }
+.capacity-field--grow { flex: 1; }
+
+.capacity-field-pair {
+  display: flex;
+  gap: var(--space-3);
+  grid-column: span 1;
+}
+
+.capacity-check {
+  user-select: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* ── Selector múltiple de consultores ─────────────────────────────────────── */
+.capacity-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--card-bg);
+}
+
+.capacity-picker__search {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.82rem;
+}
+
+.capacity-picker__actions { display: flex; gap: var(--space-2); }
+
+.capacity-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 9.375rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+/* El rol es información secundaria: iba en ámbar de marca, que sobre blanco se
+   queda en 1,9:1 y no vale para texto de 0,75rem (ver DISENO.md §5.5). */
+.capacity-picker__role { font-size: 0.75rem; color: var(--text-muted); }
+
+.capacity-picker__count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}

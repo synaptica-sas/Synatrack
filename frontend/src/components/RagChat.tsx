@@ -212,40 +212,17 @@ export function RagChat({ projects, statsProjects = [], fxConfigs, consultants =
 
 
   return (
-    <div style={{
-      position: "fixed",
-      bottom: "85px",
-      right: "20px",
-      width: "350px",
-      height: "450px",
-      background: "var(--card-bg)",
-      backdropFilter: "blur(12px)",
-      border: "1px solid var(--border-color)",
-      borderRadius: "16px",
-      boxShadow: "0 8px 32px rgba(35, 65, 117, 0.18)",
-      display: "flex",
-      flexDirection: "column",
-      zIndex: 10000,
-      overflow: "hidden",
-      animation: "fadeInUp 0.25s ease forwards"
-    }}>
+    <div className="rag-chat">
       {/* Header */}
-      <div style={{
-        background: "linear-gradient(135deg, #234175 0%, #3b82f6 100%)",
-        color: "#fff",
-        padding: "0.85rem 1rem",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center"
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <span style={{ fontSize: "1.2rem" }}>🤖</span>
+      <div className="rag-chat__head">
+        <div className="rag-chat__head-title">
+          <span className="rag-chat__head-icon">🤖</span>
           <div>
-            <h4 style={{ margin: 0, fontSize: "0.85rem", fontWeight: 700 }}>Asistente RAG</h4>
-            <span style={{ fontSize: "0.65rem", opacity: 0.9 }}>Búsqueda Semántica Demo</span>
+            <h4>Asistente RAG</h4>
+            <span className="rag-chat__head-sub">Búsqueda Semántica Demo</span>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+        <div className="rag-chat__head-actions">
           <button
             type="button"
             onClick={() => {
@@ -259,131 +236,42 @@ export function RagChat({ projects, statsProjects = [], fxConfigs, consultants =
               ]);
             }}
             title="Limpiar conversación"
-            style={{
-              background: "none",
-              border: "none",
-              color: "#fff",
-              cursor: "pointer",
-              fontSize: "0.95rem",
-              padding: "0.2rem",
-              opacity: 0.8,
-              display: "flex",
-              alignItems: "center"
-            }}
+            className="rag-chat__head-btn"
           >
             🗑️
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#fff",
-              cursor: "pointer",
-              fontSize: "1rem",
-              padding: "0.2rem",
-              display: "flex",
-              alignItems: "center"
-            }}
-          >
+          <button type="button" onClick={onClose} className="rag-chat__head-btn">
             ✕
           </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div
-        ref={scrollRef}
-        style={{
-          flex: 1,
-          padding: "1rem",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-          background: "#f4f7fa"
-        }}
-      >
+      <div ref={scrollRef} className="rag-chat__messages">
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            style={{
-              alignSelf: msg.sender === "user" ? "flex-end" : "flex-start",
-              maxWidth: "85%",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.2rem"
-            }}
-          >
-            <div style={{
-              background: msg.sender === "user" ? "linear-gradient(135deg, #234175 0%, #3b82f6 100%)" : "#fff",
-              color: msg.sender === "user" ? "#fff" : "var(--text-strong)",
-              padding: "0.65rem 0.85rem",
-              borderRadius: msg.sender === "user" ? "12px 12px 2px 12px" : "12px 12px 12px 2px",
-              fontSize: "0.8rem",
-              border: msg.sender === "user" ? "none" : "1px solid var(--border-color)",
-              boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
-              whiteSpace: "pre-line"
-            }}>
-              {msg.text}
-            </div>
+          <div key={msg.id} className={`rag-chat__msg rag-chat__msg--${msg.sender}`}>
+            <div className="rag-chat__bubble">{msg.text}</div>
 
             {msg.sources && msg.sources.length > 0 && (
-              <div style={{
-                fontSize: "0.62rem",
-                color: "var(--color-sec-blue)",
-                fontStyle: "italic",
-                alignSelf: "flex-start",
-                paddingLeft: "4px"
-              }}>
-                Fuentes: {msg.sources.join(" | ")}
-              </div>
+              <div className="rag-chat__sources">Fuentes: {msg.sources.join(" | ")}</div>
             )}
           </div>
         ))}
 
-        {isTyping && (
-          <div style={{ alignSelf: "flex-start", background: "#fff", border: "1px solid var(--border-color)", padding: "0.5rem 0.85rem", borderRadius: "12px 12px 12px 2px", fontSize: "0.8rem", color: "var(--text-soft)" }}>
-            Generando respuesta... ⏳
-          </div>
-        )}
+        {isTyping && <div className="rag-chat__typing">Generando respuesta... ⏳</div>}
       </div>
 
       {/* Input Form */}
-      <form onSubmit={handleSend} style={{ display: "flex", padding: "0.5rem", borderTop: "1px solid var(--border-color)", background: "#fff" }}>
+      <form onSubmit={handleSend} className="rag-chat__form">
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Escribe una pregunta (Ctrl+K)..."
-          style={{
-            flex: 1,
-            border: "1px solid #cbd5e1",
-            borderRadius: "20px",
-            padding: "0.45rem 0.85rem",
-            fontSize: "0.8rem",
-            outline: "none"
-          }}
+          className="rag-chat__input"
         />
-        <button
-          type="submit"
-          style={{
-            background: "linear-gradient(135deg, #234175 0%, #3b82f6 100%)",
-            color: "#fff",
-            border: "none",
-            borderRadius: "50%",
-            width: "32px",
-            height: "32px",
-            marginLeft: "0.4rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            padding: 0
-          }}
-        >
-          <span style={{ transform: "translateY(-1px)", display: "inline-block", fontSize: "1.1rem", lineHeight: 1 }}>➔</span>
+        <button type="submit" className="rag-chat__send">
+          <span className="rag-chat__send-icon">➔</span>
         </button>
       </form>
     </div>

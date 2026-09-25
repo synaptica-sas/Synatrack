@@ -33,6 +33,15 @@ import { downloadCsv } from "../../utils/csv";
 import { displayCountryWithFlag } from "../../utils/statusLabels";
 import { CountryFlag } from "../../components/CountryFlag";
 
+/**
+ * Planificación de Capacidad, migrada al sistema de diseño
+ * (`documentacion/DISENO.md`): sin colores literales y sin estilos en línea
+ * salvo el ancho calculado del relleno del medidor de utilización.
+ *
+ * El color nunca viaja solo: cada estado se nombra con su etiqueta dentro del
+ * chip (`.state-chip`) y el medidor lleva siempre su porcentaje visible.
+ */
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<AvailabilityStatus, string> = {
@@ -41,11 +50,12 @@ const STATUS_LABELS: Record<AvailabilityStatus, string> = {
   FULL: "Completo",
   OVERLOADED: "Sobrecargado",
 };
+/** Modificador de `.state-chip` por estado de disponibilidad. */
 const STATUS_CLASS: Record<AvailabilityStatus, string> = {
-  FREE: "ok",
-  PARTIAL: "warn",
+  FREE: "success",
+  PARTIAL: "warning",
   FULL: "neutral",
-  OVERLOADED: "error",
+  OVERLOADED: "danger",
 };
 
 const ASSIGNMENT_STATUS_LABELS: Record<AssignmentStatus, string> = {
@@ -55,12 +65,13 @@ const ASSIGNMENT_STATUS_LABELS: Record<AssignmentStatus, string> = {
   COMPLETED: "Completada",
   CANCELLED: "Cancelada",
 };
+/** Modificador de `.state-chip` por estado de asignación. */
 const ASSIGNMENT_STATUS_CLASS: Record<AssignmentStatus, string> = {
-  PLANNED: "warn",
-  ACTIVE: "ok",
-  PARTIAL: "warn",
+  PLANNED: "warning",
+  ACTIVE: "success",
+  PARTIAL: "warning",
   COMPLETED: "neutral",
-  CANCELLED: "error",
+  CANCELLED: "danger",
 };
 
 const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
@@ -78,15 +89,20 @@ function money(value: number, currency = "USD") {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
+/**
+ * Medidor de utilización. El ancho del relleno es el único estilo en línea que
+ * queda en la pantalla, porque es un valor calculado; el color sale de
+ * `--state-*-solid` y el porcentaje siempre se ve escrito al lado.
+ */
 function utilizationBar(pct: number) {
   const clamped = Math.min(pct, 150);
-  const color = pct > 100 ? "#dc2626" : pct >= 80 ? "#f59e0b" : "#16a34a";
+  const mod = pct > 100 ? "danger" : pct >= 80 ? "warning" : "success";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-      <div style={{ flex: 1, height: "8px", background: "#e5e7eb", borderRadius: "4px", overflow: "hidden" }}>
-        <div style={{ width: `${(clamped / 150) * 100}%`, height: "100%", background: color, borderRadius: "4px" }} />
+    <div className="meter">
+      <div className="meter__track">
+        <div className={`meter__fill meter__fill--${mod}`} style={{ width: `${(clamped / 150) * 100}%` }} />
       </div>
-      <span style={{ fontSize: "0.8rem", color, fontWeight: 600, minWidth: "3.5rem", textAlign: "right" }}>
+      <span className={`meter__value capacity-util capacity-util--${mod}`}>
         {pct.toFixed(1)}%
       </span>
     </div>
@@ -132,14 +148,14 @@ export function CapacityTab({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="page-stack">
       <PageHeader
         icon="◉"
         title="Planificación de Capacidad"
         description="Visualiza y gestiona la asignación de consultores, disponibilidad y ocupación a lo largo de los proyectos."
       />
       <section className="grid">
-      <nav className="sub-tabs" style={{ display: "flex", gap: "0.5rem", padding: "0 0 0.75rem 0" }}>
+      <nav className="subtabs" aria-label="Secciones de capacidad">
         {([
           ["overview", "Vista general"],
           ["byProject", "Por proyecto"],
@@ -149,7 +165,8 @@ export function CapacityTab({
           <button
             key={id}
             type="button"
-            className={subTab === id ? "tab active" : "tab"}
+            className={subTab === id ? "subtab is-active" : "subtab"}
+            aria-current={subTab === id ? "page" : undefined}
             onClick={() => setSubTab(id)}
           >
             {label}
@@ -280,9 +297,9 @@ function OverviewPanel({
     <>
       {/* Filters */}
       <article className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "0.5rem" }}>
-          <h3 style={{ margin: 0 }}>Filtros</h3>
-          <button type="button" className="ghost"
+        <div className="card-head">
+          <h3>Filtros</h3>
+          <button type="button" className="ghost capacity-btn-sm"
             onClick={() => {
               setFrom(firstDayOfMonth());
               setTo(lastDayOfMonth());
@@ -291,27 +308,27 @@ function OverviewPanel({
               setSeniorityFilter("");
               setSkillFilter("");
             }}
-            style={{ fontSize: "0.8rem", padding: "0.4rem 0.8rem", borderRadius: "8px", height: "34px", display: "flex", alignItems: "center", gap: "0.3rem" }}
           >
             🧹 Limpiar
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", alignItems: "flex-end" }}>
+        <div className="field-grid field-grid--compact">
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Desde</label>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }} />
+            <label className="field-label" htmlFor="capacidad-desde">Desde</label>
+            <input id="capacidad-desde" className="select-control" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Hasta</label>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }} />
+            <label className="field-label" htmlFor="capacidad-hasta">Hasta</label>
+            <input id="capacidad-hasta" className="select-control" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Estado</label>
+            <label className="field-label" htmlFor="capacidad-estado">Estado</label>
             <select
+              id="capacidad-estado"
+              className="select-control"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as AvailabilityStatus | "")}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               <option value="">Todos los estados</option>
               <option value="FREE">Libre</option>
@@ -321,34 +338,37 @@ function OverviewPanel({
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>País</label>
+            <label className="field-label" htmlFor="capacidad-pais">País</label>
             <select
+              id="capacidad-pais"
+              className="select-control"
               value={countryFilter}
               onChange={(e) => setCountryFilter(e.target.value)}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               <option value="">Todos los países</option>
               {countries.map((c) => <option key={c} value={c}>{displayCountryWithFlag(c)}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Seniority</label>
+            <label className="field-label" htmlFor="capacidad-seniority">Seniority</label>
             <select
+              id="capacidad-seniority"
+              className="select-control"
               value={seniorityFilter}
               onChange={(e) => setSeniorityFilter(e.target.value)}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             >
               <option value="">Todos los seniority</option>
               {seniorities.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Skill / Especialidad</label>
+            <label className="field-label" htmlFor="capacidad-skill">Skill / Especialidad</label>
             <input
+              id="capacidad-skill"
+              className="select-control"
               placeholder="Ej: React, SQL..."
               value={skillFilter}
               onChange={(e) => setSkillFilter(e.target.value)}
-              style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
             />
           </div>
         </div>
@@ -360,13 +380,13 @@ function OverviewPanel({
       {!loading && overview && (
         <section className="grid dashboard-grid">
           <article className="card kpi"><h3>Consultores activos</h3><p>{overview.summary.totalConsultants}</p></article>
-          <article className="card kpi"><h3>Libres</h3><p style={{ color: "#16a34a" }}>{overview.summary.freeCount}</p></article>
-          <article className="card kpi"><h3>Parcialmente ocupados</h3><p style={{ color: "#d97706" }}>{overview.summary.partialCount}</p></article>
+          <article className="card kpi"><h3>Libres</h3><p className="tone-success">{overview.summary.freeCount}</p></article>
+          <article className="card kpi"><h3>Parcialmente ocupados</h3><p className="tone-warning">{overview.summary.partialCount}</p></article>
           <article className="card kpi"><h3>100% ocupados</h3><p>{overview.summary.fullCount}</p></article>
-          <article className="card kpi"><h3>Sobrecargados</h3><p style={{ color: "#dc2626" }}>{overview.summary.overloadedCount}</p></article>
+          <article className="card kpi"><h3>Sobrecargados</h3><p className="tone-danger">{overview.summary.overloadedCount}</p></article>
           <article className="card kpi">
             <h3>Utilización global</h3>
-            <p style={{ color: overview.summary.utilizationPct > 100 ? "#dc2626" : "inherit" }}>{overview.summary.utilizationPct.toFixed(1)}%</p>
+            <p className={overview.summary.utilizationPct > 100 ? "tone-danger" : undefined}>{overview.summary.utilizationPct.toFixed(1)}%</p>
           </article>
         </section>
       )}
@@ -374,9 +394,9 @@ function OverviewPanel({
       {/* Consultant table */}
       {!loading && overview && (
         <article className="card">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
-            <h3 style={{ margin: 0 }}>Disponibilidad por consultor</h3>
-            <button type="button" className="ghost" style={{ fontSize: "0.75rem", padding: "0.2rem 0.6rem" }} onClick={handleExport} disabled={overview.consultants.length === 0}>
+          <div className="card-head">
+            <h3>Disponibilidad por consultor</h3>
+            <button type="button" className="ghost capacity-btn-sm" onClick={handleExport} disabled={overview.consultants.length === 0}>
               Exportar CSV
             </button>
           </div>
@@ -403,15 +423,15 @@ function OverviewPanel({
                       <td>{row.fullName}</td>
                       <td>{row.role}</td>
                       <td>{row.country ? <CountryFlag country={row.country} /> : "—"}</td>
-                      <td><span className={`pill ${STATUS_CLASS[row.availabilityStatus]}`}>{STATUS_LABELS[row.availabilityStatus]}</span></td>
+                      <td><span className={`state-chip state-chip--${STATUS_CLASS[row.availabilityStatus]}`}>{STATUS_LABELS[row.availabilityStatus]}</span></td>
                       <td>{row.capacityHours.toFixed(1)}h</td>
                       <td>{row.committedHours.toFixed(1)}h</td>
-                      <td style={{ color: row.availableHours > 0 ? "#16a34a" : undefined }}>{row.availableHours.toFixed(1)}h</td>
-                      <td style={{ minWidth: "10rem" }}>{utilizationBar(row.utilizationPct)}</td>
-                      <td>{row.nextAvailableDate ? new Date(row.nextAvailableDate).toLocaleDateString("es-CO") : <span className="pill ok">Ahora</span>}</td>
+                      <td className={row.availableHours > 0 ? "tone-success" : undefined}>{row.availableHours.toFixed(1)}h</td>
+                      <td className="capacity-col-util">{utilizationBar(row.utilizationPct)}</td>
+                      <td>{row.nextAvailableDate ? new Date(row.nextAvailableDate).toLocaleDateString("es-CO") : <span className="state-chip state-chip--success">Ahora</span>}</td>
                       <td>
                         {row.activeAssignments.length > 0 && (
-                          <button type="button" className="ghost" style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }} onClick={() => setExpandedConsultant(expandedConsultant === row.consultantId ? null : row.consultantId)}>
+                          <button type="button" className="ghost capacity-btn-row" onClick={() => setExpandedConsultant(expandedConsultant === row.consultantId ? null : row.consultantId)}>
                             {expandedConsultant === row.consultantId ? "▲" : `▼ ${row.activeAssignments.length}`}
                           </button>
                         )}
@@ -419,7 +439,7 @@ function OverviewPanel({
                     </tr>
                     {expandedConsultant === row.consultantId && (
                       <tr>
-                        <td colSpan={10} style={{ background: "#f9fafb", padding: "0.75rem 1rem" }}>
+                        <td colSpan={10} className="capacity-detail-cell">
                           <AssignmentDetail assignments={row.activeAssignments} />
                         </td>
                       </tr>
@@ -451,11 +471,11 @@ function OverviewPanel({
                         <td>{c.fullName}</td>
                         <td>{c.role}</td>
                         <td>{c.country ? <CountryFlag country={c.country} /> : "—"}</td>
-                        <td style={{ color: "#16a34a", fontWeight: 600 }}>{c.capacityHours.toFixed(1)}h</td>
+                        <td className="cell-strong tone-success">{c.capacityHours.toFixed(1)}h</td>
                         <td>
                           <div className="tag-list">
-                            {c.skills.slice(0, 4).map((s) => <span key={s} className="pill neutral" style={{ fontSize: "0.7rem" }}>{s}</span>)}
-                            {c.skills.length > 4 && <span className="pill neutral" style={{ fontSize: "0.7rem" }}>+{c.skills.length - 4}</span>}
+                            {c.skills.slice(0, 4).map((s) => <span key={s} className="state-chip state-chip--neutral">{s}</span>)}
+                            {c.skills.length > 4 && <span className="state-chip state-chip--neutral">+{c.skills.length - 4}</span>}
                           </div>
                         </td>
                       </tr>
@@ -467,9 +487,14 @@ function OverviewPanel({
           </article>
 
           <article className="card">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+            <div className="card-head">
               <h3>Próximos a liberar</h3>
-              <select value={within} onChange={(e) => setWithin(Number(e.target.value))} style={{ padding: "0.2rem 0.4rem", fontSize: "0.8rem" }}>
+              <select
+                className="capacity-inline-select"
+                aria-label="Ventana de días para próximos a liberar"
+                value={within}
+                onChange={(e) => setWithin(Number(e.target.value))}
+              >
                 <option value={7}>7 días</option>
                 <option value={14}>14 días</option>
                 <option value={30}>30 días</option>
@@ -490,7 +515,7 @@ function OverviewPanel({
                         <td>{r.consultant.fullName}</td>
                         <td>{r.project.name}</td>
                         <td>{new Date(r.endDate).toLocaleDateString("es-CO")}</td>
-                        <td><span className={`pill ${r.daysUntilRelease <= 7 ? "error" : "warn"}`}>{r.daysUntilRelease}d</span></td>
+                        <td><span className={`state-chip state-chip--${r.daysUntilRelease <= 7 ? "danger" : "warning"}`}>{r.daysUntilRelease}d</span></td>
                         <td>{r.allocationPct !== null ? `${r.allocationPct}%` : "—"}</td>
                       </tr>
                     ))}
@@ -508,11 +533,11 @@ function OverviewPanel({
 function AssignmentDetail({ assignments }: { assignments: CapacityConsultantRow["activeAssignments"] }) {
   const isForecast = (status: string) => status === "FORECAST";
   return (
-    <table style={{ width: "100%", fontSize: "0.8rem" }}>
+    <table className="capacity-subtable">
       <thead>
         <tr>
           {["Fuente", "Proyecto", "Período", "Horas comprometidas", "Estado"].map((h) => (
-            <th key={h} style={{ textAlign: "left", padding: "0.25rem 0.5rem", fontWeight: 600 }}>{h}</th>
+            <th key={h}>{h}</th>
           ))}
         </tr>
       </thead>
@@ -520,27 +545,26 @@ function AssignmentDetail({ assignments }: { assignments: CapacityConsultantRow[
         {assignments.map((a) => {
           const forecast = isForecast(a.status);
           return (
-            <tr key={a.assignmentId} style={forecast ? { background: "#fffbf0" } : undefined}>
-              <td style={{ padding: "0.25rem 0.5rem" }}>
-                <span className={`pill ${forecast ? "warn" : "neutral"}`} style={{ fontSize: "0.68rem" }}>
+            <tr key={a.assignmentId} className={forecast ? "row-warning" : undefined}>
+              <td>
+                <span className={`state-chip state-chip--${forecast ? "warning" : "neutral"}`}>
                   {forecast ? "Proyección" : "Asignación"}
                 </span>
               </td>
-              <td style={{ padding: "0.25rem 0.5rem" }}>{a.projectName}</td>
-              <td style={{ padding: "0.25rem 0.5rem", whiteSpace: "nowrap" }}>
+              <td>{a.projectName}</td>
+              <td className="cell-date">
                 {new Date(a.startDate).toLocaleDateString("es-CO")} – {new Date(a.endDate).toLocaleDateString("es-CO")}
               </td>
-              <td style={{ padding: "0.25rem 0.5rem" }}>
+              <td>
                 {forecast
                   ? `${a.hoursPerPeriod ?? 0}h (trimestre)`
                   : a.allocationMode === "PERCENTAGE"
                     ? `${a.allocationPct ?? 0}%`
                     : `${a.hoursPerPeriod ?? 0}h/sem`}
               </td>
-              <td style={{ padding: "0.25rem 0.5rem" }}>
+              <td>
                 <span
-                  className={`pill ${forecast ? "warn" : ASSIGNMENT_STATUS_CLASS[a.status as AssignmentStatus] ?? "neutral"}`}
-                  style={{ fontSize: "0.68rem" }}
+                  className={`state-chip state-chip--${forecast ? "warning" : ASSIGNMENT_STATUS_CLASS[a.status as AssignmentStatus] ?? "neutral"}`}
                 >
                   {forecast ? "Forecast" : ASSIGNMENT_STATUS_LABELS[a.status as AssignmentStatus] ?? a.status}
                 </span>
@@ -582,14 +606,14 @@ function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
     <>
       <article className="card">
         <h3>Filtros de período</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem" }}>
+        <div className="field-grid field-grid--compact">
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Desde</label>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }} />
+            <label className="field-label" htmlFor="capacidad-proyecto-desde">Desde</label>
+            <input id="capacidad-proyecto-desde" className="select-control" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Hasta</label>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }} />
+            <label className="field-label" htmlFor="capacidad-proyecto-hasta">Hasta</label>
+            <input id="capacidad-proyecto-hasta" className="select-control" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
         </div>
       </article>
@@ -620,15 +644,15 @@ function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
                     <Fragment key={r.projectId}>
                       <tr>
                         <td>{r.projectName}</td>
-                        <td><span className={`pill ${r.projectStatus === "ACTIVE" ? "ok" : r.projectStatus === "PAUSED" ? "warn" : "neutral"}`}>{r.projectStatus}</span></td>
+                        <td><span className={`state-chip state-chip--${r.projectStatus === "ACTIVE" ? "success" : r.projectStatus === "PAUSED" ? "warning" : "neutral"}`}>{r.projectStatus}</span></td>
                         <td>{r.assignedConsultants}</td>
-                        <td style={{ fontWeight: 600 }}>{r.totalCommittedHours.toFixed(1)}h</td>
+                        <td className="cell-strong">{r.totalCommittedHours.toFixed(1)}h</td>
                         <td>{totalHours > 0 ? `${((r.totalCommittedHours / totalHours) * 100).toFixed(1)}%` : "—"}</td>
                         {/* `null` = el rol no puede ver tarifas (DEP-38); 0 = no hay costo. Ambos se pintan "—". */}
                         <td>{r.totalEstimatedCost !== null && r.totalEstimatedCost > 0 ? money(r.totalEstimatedCost, r.consultants[0]?.currency ?? "USD") : "—"}</td>
                         <td>
                           {r.consultants.length > 0 && (
-                            <button type="button" className="ghost" style={{ fontSize: "0.75rem", padding: "0.15rem 0.5rem" }} onClick={() => setExpandedProject(expandedProject === r.projectId ? null : r.projectId)}>
+                            <button type="button" className="ghost capacity-btn-row" onClick={() => setExpandedProject(expandedProject === r.projectId ? null : r.projectId)}>
                               {expandedProject === r.projectId ? "▲" : `▼ ver detalle`}
                             </button>
                           )}
@@ -636,21 +660,21 @@ function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
                       </tr>
                       {expandedProject === r.projectId && (
                         <tr>
-                          <td colSpan={7} style={{ background: "#f9fafb", padding: "0.75rem 1rem" }}>
-                            <table style={{ width: "100%", fontSize: "0.8rem" }}>
+                          <td colSpan={7} className="capacity-detail-cell">
+                            <table className="capacity-subtable">
                               <thead>
                                 <tr>
                                   {["Consultor", "Horas comprometidas", "Costo estimado"].map((h) => (
-                                    <th key={h} style={{ textAlign: "left", padding: "0.25rem 0.5rem", fontWeight: 600 }}>{h}</th>
+                                    <th key={h}>{h}</th>
                                   ))}
                                 </tr>
                               </thead>
                               <tbody>
                                 {r.consultants.map((c) => (
                                   <tr key={c.consultantId}>
-                                    <td style={{ padding: "0.25rem 0.5rem" }}>{c.fullName}</td>
-                                    <td style={{ padding: "0.25rem 0.5rem" }}>{c.committedHours.toFixed(1)}h</td>
-                                    <td style={{ padding: "0.25rem 0.5rem" }}>{c.estimatedCost !== null && c.estimatedCost > 0 ? money(c.estimatedCost, c.currency) : "—"}</td>
+                                    <td>{c.fullName}</td>
+                                    <td>{c.committedHours.toFixed(1)}h</td>
+                                    <td>{c.estimatedCost !== null && c.estimatedCost > 0 ? money(c.estimatedCost, c.currency) : "—"}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -837,38 +861,38 @@ function AssignmentsPanel({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <article className="card" style={{ width: "100%" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.5rem" }}>
-          <h3 style={{ margin: 0 }}>Listado de asignaciones</h3>
+    <div className="section-stack">
+      <article className="card">
+        <div className="card-head">
+          <h3>Listado de asignaciones</h3>
           {canWrite && (
             <button
               type="button"
+              className="toolbar-btn"
               onClick={() => setIsModalOpen(true)}
-              style={{ fontSize: "0.85rem", padding: "0.5rem 1.2rem", borderRadius: "8px" }}
             >
               + Nueva asignación
             </button>
           )}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem", marginBottom: "1rem" }}>
+        <div className="field-grid field-grid--compact capacity-filters">
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Proyecto</label>
-            <select value={filterProject} onChange={(e) => setFilterProject(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
+            <label className="field-label" htmlFor="asignaciones-proyecto">Proyecto</label>
+            <select id="asignaciones-proyecto" className="select-control" value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
               <option value="">Todos los proyectos</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Consultor</label>
-            <select value={filterConsultant} onChange={(e) => setFilterConsultant(e.target.value)} style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
+            <label className="field-label" htmlFor="asignaciones-consultor">Consultor</label>
+            <select id="asignaciones-consultor" className="select-control" value={filterConsultant} onChange={(e) => setFilterConsultant(e.target.value)}>
               <option value="">Todos los consultores</option>
               {consultants.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.25rem", textAlign: "center" }}>Estado de Asignación</label>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as AssignmentStatus | "")} style={{ width: "100%", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}>
+            <label className="field-label" htmlFor="asignaciones-estado">Estado de Asignación</label>
+            <select id="asignaciones-estado" className="select-control" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as AssignmentStatus | "")}>
               <option value="">Todos los estados</option>
               {(Object.keys(ASSIGNMENT_STATUS_LABELS) as AssignmentStatus[]).map((s) => (
                 <option key={s} value={s}>{ASSIGNMENT_STATUS_LABELS[s]}</option>
@@ -902,7 +926,7 @@ function AssignmentsPanel({
                         ? `${a.allocationPct ?? 0}%`
                         : `${a.hoursPerPeriod ?? 0}h/${a.periodUnit ?? "semana"}`}
                     </td>
-                    <td><span className={`pill ${ASSIGNMENT_STATUS_CLASS[a.status]}`}>{ASSIGNMENT_STATUS_LABELS[a.status]}</span></td>
+                    <td><span className={`state-chip state-chip--${ASSIGNMENT_STATUS_CLASS[a.status]}`}>{ASSIGNMENT_STATUS_LABELS[a.status]}</span></td>
                     {canWrite && (
                       <td>
                         <div className="inline-actions">
@@ -921,7 +945,7 @@ function AssignmentsPanel({
                   </tr>
                 ))}
                 {assignments.length === 0 && (
-                  <tr><td colSpan={canWrite ? 7 : 6} style={{ textAlign: "center", color: "#9ca3af", padding: "1rem" }}>No hay asignaciones con los filtros seleccionados.</td></tr>
+                  <tr><td colSpan={canWrite ? 7 : 6} className="cell-empty cell-empty--roomy">No hay asignaciones con los filtros seleccionados.</td></tr>
                 )}
               </tbody>
             </table>
@@ -959,33 +983,33 @@ function AssignmentsPanel({
       {/* Modal para Crear Nueva Asignación */}
       {canWrite && isModalOpen && createPortal(
         <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setForm(emptyAssignmentForm); }}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "680px", maxHeight: "90vh", overflowY: "auto" }}>
-            <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color, #e2e8f0)", paddingBottom: "0.75rem", marginBottom: "1.25rem" }}>
-              <h2 style={{ margin: 0, fontSize: "1.2rem", color: "var(--text-strong, #1e293b)" }}>
+          <div className="modal-card capacity-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header capacity-modal-header">
+              <h2 className="capacity-modal-title">
                 Nueva asignación
               </h2>
               <button
                 type="button"
-                className="ghost"
+                className="ghost capacity-modal-close"
+                aria-label="Cerrar"
                 onClick={() => { setIsModalOpen(false); setForm(emptyAssignmentForm); }}
-                style={{ fontSize: "1.1rem", padding: "0.2rem 0.5rem", lineHeight: 1 }}
               >
                 ✕
               </button>
             </div>
-            
-            <form onSubmit={(e) => void handleCreate(e)} className="form-grid two-col" style={{ gap: "1.2rem", alignItems: "start" }}>
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", gridColumn: "1 / -1" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Proyecto *</label>
-                <select value={form.projectId} onChange={(e) => setForm((p) => ({ ...p, projectId: e.target.value }))} required style={{ width: "100%" }}>
+
+            <form onSubmit={(e) => void handleCreate(e)} className="form-grid two-col capacity-form">
+
+              <div className="capacity-field capacity-field--full">
+                <label className="field-label" htmlFor="asignacion-proyecto">Proyecto *</label>
+                <select id="asignacion-proyecto" value={form.projectId} onChange={(e) => setForm((p) => ({ ...p, projectId: e.target.value }))} required>
                   <option value="" disabled hidden>Selecciona proyecto...</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", gridColumn: "1 / -1" }}>
-                <label className="check" style={{ userSelect: "none", fontSize: "0.82rem", fontWeight: 600 }}>
+              <div className="capacity-field capacity-field--full">
+                <label className="check capacity-check">
                   <input
                     type="checkbox"
                     checked={multipleMode}
@@ -998,29 +1022,29 @@ function AssignmentsPanel({
                 </label>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", gridColumn: "1 / -1" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>
+              <div className="capacity-field capacity-field--full">
+                <label className="field-label" htmlFor="asignacion-consultor">
                   {multipleMode ? "Consultores *" : "Consultor *"}
                 </label>
                 {!multipleMode ? (
-                  <select value={form.consultantId} onChange={(e) => setForm((p) => ({ ...p, consultantId: e.target.value }))} required={!multipleMode} style={{ width: "100%" }}>
+                  <select id="asignacion-consultor" value={form.consultantId} onChange={(e) => setForm((p) => ({ ...p, consultantId: e.target.value }))} required={!multipleMode}>
                     <option value="" disabled hidden>Selecciona consultor...</option>
                     {consultants.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.fullName} — {c.role}</option>)}
                   </select>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", border: "1px solid var(--border-color)", borderRadius: "10px", padding: "0.75rem", background: "var(--card-bg)" }}>
+                  <div className="capacity-picker">
                     <input
+                      id="asignacion-consultor"
                       type="text"
+                      className="capacity-picker__search"
                       placeholder="Buscar consultor por nombre/rol..."
                       value={consultantSearch}
                       onChange={(e) => setConsultantSearch(e.target.value)}
-                      style={{ padding: "0.4rem 0.6rem", borderRadius: "8px", border: "1px solid var(--border-color)", fontSize: "0.82rem", width: "100%", boxSizing: "border-box" }}
                     />
-                    <div style={{ display: "flex", gap: "0.4rem" }}>
+                    <div className="capacity-picker__actions">
                       <button
                         type="button"
-                        className="ghost"
-                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                        className="ghost capacity-btn-row"
                         onClick={() => {
                           const filtered = consultants.filter((c) => c.active && (c.fullName.toLowerCase().includes(consultantSearch.toLowerCase()) || c.role.toLowerCase().includes(consultantSearch.toLowerCase())));
                           setSelectedConsultantIds(filtered.map((c) => c.id));
@@ -1030,21 +1054,20 @@ function AssignmentsPanel({
                       </button>
                       <button
                         type="button"
-                        className="ghost"
-                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                        className="ghost capacity-btn-row"
                         onClick={() => setSelectedConsultantIds([])}
                       >
                         Desmarcar todos
                       </button>
                     </div>
-                    <div style={{ maxHeight: "150px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.4rem", padding: "0.25rem" }}>
+                    <div className="capacity-picker__list">
                       {consultants
                         .filter((c) => c.active)
                         .filter((c) => c.fullName.toLowerCase().includes(consultantSearch.toLowerCase()) || c.role.toLowerCase().includes(consultantSearch.toLowerCase()))
                         .map((c) => {
                           const isChecked = selectedConsultantIds.includes(c.id);
                           return (
-                            <label key={c.id} className="check" style={{ fontSize: "0.82rem", userSelect: "none" }}>
+                            <label key={c.id} className="check capacity-check">
                               <input
                                 type="checkbox"
                                 checked={isChecked}
@@ -1054,50 +1077,50 @@ function AssignmentsPanel({
                                   );
                                 }}
                               />
-                              <span>{c.fullName} <span style={{ color: "var(--color-accent)", fontSize: "0.75rem" }}>({c.role})</span></span>
+                              <span>{c.fullName} <span className="capacity-picker__role">({c.role})</span></span>
                             </label>
                           );
                         })}
                     </div>
-                    <span style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 600 }}>
+                    <span className="capacity-picker__count">
                       {selectedConsultantIds.length} seleccionados
                     </span>
                   </div>
                 )}
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Fecha de inicio *</label>
-                <input type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required style={{ width: "100%" }} />
+              <div className="capacity-field">
+                <label className="field-label" htmlFor="asignacion-inicio">Fecha de inicio *</label>
+                <input id="asignacion-inicio" type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required />
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Fecha de fin *</label>
-                <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required style={{ width: "100%" }} />
+              <div className="capacity-field">
+                <label className="field-label" htmlFor="asignacion-fin">Fecha de fin *</label>
+                <input id="asignacion-fin" type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required />
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Modo de asignación *</label>
-                <select value={form.allocationMode} onChange={(e) => setForm((p) => ({ ...p, allocationMode: e.target.value as AllocationMode }))} style={{ width: "100%" }}>
+              <div className="capacity-field">
+                <label className="field-label" htmlFor="asignacion-modo">Modo de asignación *</label>
+                <select id="asignacion-modo" value={form.allocationMode} onChange={(e) => setForm((p) => ({ ...p, allocationMode: e.target.value as AllocationMode }))}>
                   <option value="PERCENTAGE">Por porcentaje</option>
                   <option value="HOURS">Por horas</option>
                 </select>
               </div>
 
               {form.allocationMode === "PERCENTAGE" ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                  <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Porcentaje de capacidad *</label>
-                  <input type="number" min="1" max="200" step="1" placeholder="% de capacidad (ej: 100)" value={form.allocationPct} onChange={(e) => setForm((p) => ({ ...p, allocationPct: e.target.value }))} required style={{ width: "100%" }} />
+                <div className="capacity-field">
+                  <label className="field-label" htmlFor="asignacion-pct">Porcentaje de capacidad *</label>
+                  <input id="asignacion-pct" type="number" min="1" max="200" step="1" placeholder="% de capacidad (ej: 100)" value={form.allocationPct} onChange={(e) => setForm((p) => ({ ...p, allocationPct: e.target.value }))} required />
                 </div>
               ) : (
-                <div style={{ display: "flex", gap: "0.75rem", gridColumn: "span 1" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", flex: 1 }}>
-                    <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Horas *</label>
-                    <input type="number" min="1" step="0.5" placeholder="Horas" value={form.hoursPerPeriod} onChange={(e) => setForm((p) => ({ ...p, hoursPerPeriod: e.target.value }))} required style={{ width: "100%" }} />
+                <div className="capacity-field-pair">
+                  <div className="capacity-field capacity-field--grow">
+                    <label className="field-label" htmlFor="asignacion-horas">Horas *</label>
+                    <input id="asignacion-horas" type="number" min="1" step="0.5" placeholder="Horas" value={form.hoursPerPeriod} onChange={(e) => setForm((p) => ({ ...p, hoursPerPeriod: e.target.value }))} required />
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", flex: 1 }}>
-                    <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Período *</label>
-                    <select value={form.periodUnit} onChange={(e) => setForm((p) => ({ ...p, periodUnit: e.target.value as "week" | "month" }))} style={{ width: "100%" }}>
+                  <div className="capacity-field capacity-field--grow">
+                    <label className="field-label" htmlFor="asignacion-periodo">Período *</label>
+                    <select id="asignacion-periodo" value={form.periodUnit} onChange={(e) => setForm((p) => ({ ...p, periodUnit: e.target.value as "week" | "month" }))}>
                       <option value="week">Por semana</option>
                       <option value="month">Por mes</option>
                     </select>
@@ -1105,17 +1128,17 @@ function AssignmentsPanel({
                 </div>
               )}
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", gridColumn: "1 / -1" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Rol en el proyecto (opcional)</label>
-                <input placeholder="Rol en el proyecto" value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))} style={{ width: "100%" }} />
+              <div className="capacity-field capacity-field--full">
+                <label className="field-label" htmlFor="asignacion-rol">Rol en el proyecto (opcional)</label>
+                <input id="asignacion-rol" placeholder="Rol en el proyecto" value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))} />
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", gridColumn: "1 / -1" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong, #1e293b)" }}>Nota (opcional)</label>
-                <textarea placeholder="Nota" value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} style={{ width: "100%", minHeight: "80px" }} />
+              <div className="capacity-field capacity-field--full">
+                <label className="field-label" htmlFor="asignacion-nota">Nota (opcional)</label>
+                <textarea id="asignacion-nota" placeholder="Nota" value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
               </div>
 
-              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1rem", gridColumn: "1 / -1", borderTop: "1px solid #e2e8f0", paddingTop: "1rem" }}>
+              <div className="modal-actions capacity-modal-actions">
                 <button
                   type="button"
                   className="ghost"
@@ -1216,7 +1239,7 @@ function BlocksPanel({
       {canWrite && (
         <article className="card">
           <h3>Registrar bloqueo</h3>
-          <p className="fx-note" style={{ marginBottom: "0.75rem" }}>Registra períodos de no disponibilidad: vacaciones, incapacidades, festivos o bench interno.</p>
+          <p className="fx-note capacity-form-note">Registra períodos de no disponibilidad: vacaciones, incapacidades, festivos o bench interno.</p>
           <form onSubmit={(e) => void handleCreate(e)} className="form-grid">
             <select value={form.consultantId} onChange={(e) => setForm((p) => ({ ...p, consultantId: e.target.value }))} required>
               <option value="">Consultor</option>
@@ -1233,12 +1256,13 @@ function BlocksPanel({
         </article>
       )}
 
-      <article className="card" style={canWrite ? {} : { gridColumn: "1 / -1" }}>
+      <article className={canWrite ? "card" : "card capacity-span-full"}>
         <h3>Bloqueos por consultor</h3>
         <select
+          className="capacity-block-filter"
+          aria-label="Consultor del que ver los bloqueos"
           value={filterConsultant}
           onChange={(e) => setFilterConsultant(e.target.value)}
-          style={{ marginBottom: "0.75rem", width: "100%", maxWidth: "22rem" }}
         >
           <option value="">Selecciona un consultor para ver sus bloqueos</option>
           {consultants.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
@@ -1265,7 +1289,7 @@ function BlocksPanel({
                   const days = Math.round((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / 86_400_000) + 1;
                   return (
                     <tr key={b.id}>
-                      <td><span className="pill neutral">{BLOCK_TYPE_LABELS[b.blockType]}</span></td>
+                      <td><span className="state-chip state-chip--neutral">{BLOCK_TYPE_LABELS[b.blockType]}</span></td>
                       <td>{new Date(b.startDate).toLocaleDateString("es-CO")}</td>
                       <td>{new Date(b.endDate).toLocaleDateString("es-CO")}</td>
                       <td>{days}d</td>

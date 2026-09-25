@@ -208,6 +208,94 @@ Todas construidas solo con tokens. Están al final de `App.css`.
 | `.inline-list` | Lista de nombres separados en línea dentro de un aviso |
 | `.kpi-sub`, `.kpi-sub--danger`, `.kpi-hint`, `.kpi-loading`, `.table-search`, `.card-title-tight`, `.field-grid--compact`, `.col-health/.col-company/.col-project`, `.cell-empty--roomy`, `.table-foot--tight`, `.chart-block`, `.fx-note--spaced` | Detalles sueltos que antes eran estilos en línea repetidos |
 
+### Clases añadidas al migrar Planificación de Capacidad
+
+`features/capacity/CapacityTab.tsx` pasó de 123 estilos en línea y 28 colores literales a
+**1 y 0**. El único que queda es el ancho calculado del relleno del medidor, que es el uso
+legítimo. Casi todo salió de clases que ya existían (`.card-head`, `.field-grid--compact`,
+`.select-control`, `.field-label`, `.meter`, `.state-chip`, `.subtabs`, `.section-stack`,
+`.tone-*`, `.cell-strong`, `.cell-empty`, `tr.row-warning`, `.toolbar-btn`); lo propio de la
+pantalla lleva prefijo `capacity-`:
+
+| Clase | Para qué |
+|---|---|
+| `.capacity-btn-sm`, `.capacity-btn-row` | Los dos tamaños de botón pequeño: el de la cabecera de una tarjeta (Limpiar, Exportar CSV) y el que vive dentro de una celda (el alternador `▼ n`). Los dos conservan 2rem de alto mínimo |
+| `.capacity-col-util`, `.capacity-util` + `--success/--warning/--danger` | Columna y valor del medidor de utilización. El porcentaje va escrito al lado del relleno: el color solo refuerza un dato que ya se lee |
+| `.capacity-detail-cell`, `.capacity-subtable` | Fila desplegada y su tabla anidada. El fondo era `#f9fafb`, un parche blanco en modo oscuro; ahora es `--surface-subtle` |
+| `.capacity-inline-select`, `.capacity-filters`, `.capacity-form-note`, `.capacity-span-full`, `.capacity-block-filter` | Controles sueltos: select estrecho en una cabecera, rejilla de filtros pegada a una tabla, nota bajo un título, tarjeta que ocupa las dos columnas cuando la de al lado no se pinta |
+| `.capacity-modal`, `-header`, `-title`, `-close`, `-actions` | Modal de nueva asignación: ancho, cabecera con separador y pie con separador. Se apoyan en `.modal-card`/`.modal-header`/`.modal-actions`, que ya existían |
+| `.capacity-form`, `.capacity-field` (+ `--full`, `--grow`), `.capacity-field-pair`, `.capacity-check` | Rejilla del formulario del modal y sus campos apilados. La etiqueta reusa `.field-label`; dentro de la columna se le quita el margen inferior porque ya separa el `gap` |
+| `.capacity-picker` + `__search`, `__actions`, `__list`, `__role`, `__count` | Selector múltiple de consultores |
+
+Tres decisiones que conviene conocer antes de migrar una pantalla parecida:
+
+1. **Las píldoras `.pill ok/warn/error/neutral` pasan a `.state-chip--*`**, igual que en
+   Detalle de Proyecto. `.pill` tenía su modo oscuro a base de `!important` con verdes y
+   ámbares que no son los de marca; `.state-chip` sale de `--state-*` y ya trae sus reglas
+   de especificidad para `body.dark .card` y `body.dark td`.
+2. **Las etiquetas de filtro iban en ámbar de marca y centradas.** El ámbar sobre blanco se
+   queda en 1,9:1 y no vale para texto de 0,75rem (§5.5), así que pasan a `.field-label`
+   (`--text-soft`, alineada a la izquierda como en la pantalla de referencia). Lo mismo con
+   el `(rol)` del selector múltiple, que ahora va en `--text-muted`.
+3. **La navegación de sub-pestañas usaba `.sub-tabs`/`.tab`/`.active`, que no existen en
+   ningún CSS**: eran cuatro botones ámbar idénticos, sin ninguna marca de cuál estaba
+   activo. Pasan a `.subtabs`/`.subtab`/`.is-active`, el patrón que ya creó Detalle de
+   Proyecto, donde el activo se distingue por color, peso y subrayado.
+
+### Clases añadidas al migrar Horas Extra
+
+`features/extraHours/ExtraHoursTab.tsx` pasó de 186 estilos en línea y 35 colores literales
+a **0 y 0**. Son siete sub-pestañas (reportar, aprobar PM, aprobar nómina, cierre de nómina,
+parámetros, festivos, delegaciones) que repetían la misma tarjeta, el mismo encabezado y la
+misma tabla a mano. Reusa lo que ya existía (`.card-head`, `.field-grid`, `.inline-form`,
+`.inline-actions`, `.notice--warning`, `.state-chip`, `.table-wrap`, `.cell-*`,
+`.toolbar-btn`, `.modal-*`, `.empty-state`); lo nuevo es genérico a propósito, porque
+`ActivitiesTab` y `EstimationCalculatorTab` repiten los mismos patrones:
+
+| Clase | Para qué |
+|---|---|
+| `.page-stack--padded` | La pantalla con su aire lateral. A 560px el margen de 32px se reduce, que antes se comía un cuarto del ancho útil |
+| `.two-pane` | Dos paneles asimétricos (ayuda a la izquierda, formulario o tabla a la derecha). Había tres proporciones distintas a ojo y ninguna colapsaba: a 400px seguían siendo dos columnas. Ahora una sola por debajo de 900px |
+| `.card--roomy`, `.card--stack` | `.card` con padding holgado; `.card` que además apila su contenido |
+| `.card-title` (+ `--rule`, `--tight`), `.card-lead` | Título de tarjeta, con filete inferior o pegado a una acción, y su entradilla. La clase se repite (`.card-title.card-title`) porque `.card h3` pesa (0,1,1) |
+| `.section-intro__title`, `__text` | Tarjeta de presentación de una sección |
+| `.form-label--sm` | El tamaño pequeño de `.form-label`. Convivían 0,78 / 0,8 / 0,85rem sin criterio |
+| `.field-pair` (+ `--spaced`), `.form-row-3`, `.form-stack`, `.form-actions`, `.form-grid--tight`, `.inline-form--spaced`, `.inline-filter` + `__label` | Composición de formularios: dos campos que van juntos, fila de tres con el primero largo, campos apilados, pie de acciones y etiqueta en línea con su control |
+| `.input-readonly`, `.control-sm` | Campo no editable (se repite la clase: `body.dark input` le ganaba y quedaba indistinguible de uno editable) y control en tamaño compacto |
+| `.btn-block`, `.btn-sm`, `.btn-compact`, `.btn-success`, `.btn-danger`, `.btn-danger-soft`, `.btn-icon-danger` | Tamaños y estados de botón. Sobre el verde de marca el texto es navy (`--state-success-on-solid`), no blanco |
+| `.success-banner` | Aviso flotante de operación correcta |
+| `.modal-card--sm`, `.modal-actions--spaced`, `.modal-close` | Modal estrecho, pie separado y botón de cierre |
+| `.cell-right`, `.cell-meta`, `.cell-dash`, `.cell-note`, `.cell-reject-note`, `.table-wrap--spaced`, `.empty-note` (+ `--center`) | Utilidades de tabla que faltaban: segunda línea de una celda, celda alineada a la derecha, "no hay nada" en línea |
+| `.preview-card`, `__title`, `.preview-grid`, `.preview-note--success/--info`, `.preview-total`, `__amount` | Tarjeta de simulación del cálculo en vivo |
+| `.country-tabs`, `.country-tab-btn` + `__flag`, `.legislation-card__head`, `__flag`, `.holiday-list`, `__row`, `__date` | Selector de país y ficha de legislación de la configuración multipaís |
+
+Cinco cosas que conviene saber:
+
+1. **El banner de éxito pintaba `#10b981`** —el verde de Tailwind, no el `#6bb42d` de
+   Synaptica— con texto `#fff`, y animaba con `slideIn`, **un keyframe que no existe en
+   ninguna hoja del proyecto**: el aviso aparecía de golpe. Ahora usa `--state-success-solid`
+   con `--state-success-on-solid` encima y el keyframe `toast-slide-in` que ya trajo
+   `components/Toast.tsx`.
+2. **`getStatusLabel` devolvía dos colores sueltos** (`bg` y `color`) que se inyectaban como
+   estilo en línea, sin contraparte oscura. Ahora devuelve `{ label, tone }` y el marcado usa
+   `.state-chip--warning/-info/-success/-danger`. La etiqueta de texto no cambia: sigue
+   diciendo "Pte. PM (Nivel 1)", "Aprobada total"…
+3. **Cinco tarjetas fijaban `background: "#fff"`**, así que en modo oscuro se quedaban
+   blancas. Al quitarlo, `body.dark .card` hace su trabajo.
+4. **El botón "Volver a predeterminados" tenía el hover en JavaScript**
+   (`onMouseOver`/`onMouseOut`) y el manejador de salida **devolvía un rojo distinto del
+   inicial** (`rgba(239, 68, 68, 0.08)` y `#fecaca`, de Tailwind): tras pasar el ratón una
+   vez, el botón se quedaba de otro color para siempre. El hover vive ahora en CSS.
+5. **`.legislation-card` y `.country-tab-btn` vivían en `App.css` con siete literales y nueve
+   `!important` de modo oscuro.** Reescritos con `--state-warning-*` y `--surface-subtle`, la
+   contraparte oscura sale sola y los `!important` sobran. Las pestañas de país pasan a verse
+   como el resto de botones `ghost` de la aplicación en modo oscuro, que es lo coherente.
+
+Dos límites conocidos que **no** se tocaron: `body.dark h1..h6 { color: #f8fafc !important }`
+gana a cualquier clase, así que en modo oscuro los títulos de tarjeta y el de la ficha de
+legislación salen en blanco en vez de en su tono; y `.table-container`, la clase con la que
+se envolvían dos tablas, **no está definida en ningún CSS** (se sustituyó por `.table-wrap`).
+
 ### Especificidad: la trampa de `body.dark .card`
 
 Al migrar el Tablero salieron dos reglas heredadas que le ganan a cualquier clase de patrón:
@@ -250,10 +338,10 @@ Tailwind; el cambio de nombre es deliberado para que nadie vuelva a meter un col
 
 Medido con `grep -o 'style={{'` y `grep -oiE '#[0-9a-f]{3,8}'` sobre `frontend/src/**/*.tsx`.
 
-| | Antes (rama `dev`) | Tras Portafolio | Ahora |
-|---|---|---|---|
-| Colores literales en `.tsx` | 575 | 533 | **428** |
-| Estilos en línea en `.tsx` | 1576 | 1528 | **1372** |
+| | Antes (rama `dev`) | Tras Portafolio | Tras Encabezado/Alertas/Tablero | Ahora (tras Toast, ValidationErrorBox, AlertsPanel, DateRangePicker, RagChat, Horas Extra, Capacidad) |
+|---|---|---|---|---|
+| Colores literales en `.tsx` | 575 | 533 | 428 | **229** |
+| Estilos en línea en `.tsx` | 1576 | 1528 | 1372 | **903** |
 
 ### Lo migrado en esta pasada
 
@@ -277,18 +365,20 @@ de la paleta de Synaptica.
 |---|---|---|
 | `features/estimations/EstimationCalculatorTab.tsx` | 272 | 82 |
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
-| `features/extraHours/ExtraHoursTab.tsx` | 186 | 35 |
-| `features/capacity/CapacityTab.tsx` | 123 | 28 |
 | `features/projects/ProjectDetailTab.tsx` | 95 | 65 |
 | `features/profile/ProfileTab.tsx` | 48 | 6 |
-| `components/AlertsPanel.tsx` (el cajón, no la pestaña) | ~20 | ~10 |
 | `features/dashboard/AlertBadge.tsx` | 1 | 6 |
 | `App.tsx` (landing y layout) | — | ~100 |
 
-Con el catálogo de patrones ya probado en tres pantallas más, `CapacityTab` y
-`ProjectDetailTab` son las siguientes candidatas naturales: reutilizan tabla, KPIs y
-semáforo, que es justo lo que ya está resuelto. `EstimationCalculatorTab` sigue siendo la
-más grande y conviene dejarla para el final.
+**Ya migrados desde esta tabla**: `components/AlertsPanel.tsx`, `components/Toast.tsx`,
+`components/ValidationErrorBox.tsx`, `components/DateRangePicker.tsx`, `components/RagChat.tsx`,
+`features/extraHours/ExtraHoursTab.tsx` y `features/capacity/CapacityTab.tsx` — todos en 0/0
+salvo `CapacityTab` (1 estilo en línea, el valor calculado del medidor). Detalle de cada uno
+en "Clases añadidas al migrar..." más arriba y en `documentacion/PENDIENTES.md` §3.
+
+`ProjectDetailTab` es la siguiente candidata natural: reutiliza tabla, KPIs y semáforo, que
+es justo lo que ya está resuelto. `EstimationCalculatorTab` sigue siendo la más grande y
+conviene dejarla para el final.
 
 ### Cosas que esta pasada NO tocó, a propósito
 
