@@ -1,0 +1,270 @@
+/* ==============================================================================
+   INFORMES — gráfica de horas por consultor
+
+   Paleta validada con el script de daltonismo (ΔE deuteranopia sobre el fondo
+   de cada modo):
+
+     claro  #6bb42d / #a8194c sobre #ffffff → ΔE 22.5   (banda L 0.43–0.77)
+     oscuro #63a82c / #c42a5c sobre #121228 → ΔE 12.9   (banda L 0.48–0.67)
+
+   Los pasos de oscuro NO son los de claro: la banda de luminosidad admitida es
+   más estrecha ahí, y los de claro se salían. El verde en claro queda por
+   debajo de 3:1 de contraste, lo que obliga a que el color nunca sea el único
+   indicio: por eso cada barra lleva su cifra al lado, hay leyenda, y la misma
+   información aparece en tabla debajo.
+   ============================================================================== */
+
+.report-chart {
+  --chart-regular: #6bb42d;
+  --chart-excess: #a8194c;
+  position: relative;
+}
+
+body.dark .report-chart {
+  --chart-regular: #63a82c;
+  --chart-excess: #c42a5c;
+}
+
+/* Modo de alto contraste de Windows: el sistema reemplaza los colores, así que
+   verde y rojo dejan de distinguirse. Se añade un borde al tramo de exceso para
+   que la diferencia siga existiendo sin depender del color. */
+@media (forced-colors: active) {
+  .report-bar.excess {
+    stroke: CanvasText;
+    stroke-width: 2;
+    stroke-dasharray: 3 2;
+  }
+  .report-legend .swatch.excess {
+    outline: 2px dashed CanvasText;
+    outline-offset: 1px;
+  }
+}
+
+/* ── Leyenda ── */
+.report-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-soft);
+}
+
+.report-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.report-legend .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.report-legend .swatch.regular { background: var(--chart-regular); }
+.report-legend .swatch.excess  { background: var(--chart-excess); }
+
+/* ── Lienzo ── */
+.report-svg {
+  display: block;
+  /* Alto mínimo para que en pantallas estrechas las columnas no se aplasten. */
+  min-height: 240px;
+  overflow: visible;
+}
+
+/* ── Marcas ── */
+.report-bar.regular { fill: var(--chart-regular); }
+.report-bar.excess  { fill: var(--chart-excess); }
+
+.report-col { cursor: default; }
+.report-col.hovered .report-bar { filter: brightness(1.08); }
+.report-col.hovered .report-value { fill: var(--color-accent); }
+
+/* Día sin horas: una marca plana en la base, en tinta apagada. */
+.report-zero-bar {
+  fill: var(--text-soft);
+  opacity: 0.45;
+}
+
+.report-cat {
+  font-size: 12px;
+  fill: var(--text-soft);
+}
+
+/* Las cifras van en tinta de texto, nunca del color de la serie. */
+.report-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  fill: var(--text-strong);
+}
+
+.report-value.zero {
+  font-weight: 500;
+  fill: var(--text-soft);
+}
+
+/* ── Ejes y rejilla (recesivos) ── */
+.report-grid {
+  stroke: var(--border-color);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.report-baseline {
+  stroke: var(--border-color);
+  stroke-width: 1;
+}
+
+.report-axis {
+  font-size: 11px;
+  fill: var(--text-soft);
+}
+
+/* ── Línea de la jornada ── */
+.report-limit-line {
+  stroke: var(--text-soft);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  opacity: 0.8;
+}
+
+.report-limit-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  fill: var(--text-soft);
+}
+
+/* ── Tooltip ── */
+.report-tooltip {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.report-tooltip strong {
+  color: var(--text-strong);
+  font-size: 0.82rem;
+}
+
+.report-tooltip .excess { color: var(--chart-excess); font-weight: 600; }
+
+body.dark .report-tooltip { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
+
+/* Aviso de horas en fin de semana, que la gráfica no dibuja. */
+.report-weekend-note {
+  margin: 0 0 0.9rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--state-warning-bg, rgba(241, 163, 35, 0.12));
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.report-weekend-note strong { color: var(--text-strong); }
+
+/* ── Cifras de cabecera ── */
+.report-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  padding: 0.75rem 0 1rem;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 1rem;
+}
+
+.report-kpis div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.report-kpis span {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+}
+
+.report-kpis strong {
+  font-size: 1.3rem;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-kpis strong.ok  { color: var(--color-sec-green); }
+.report-kpis strong.bad { color: var(--color-sec-red); }
+
+body.dark .report-kpis strong.ok  { color: #63a82c; }
+body.dark .report-kpis strong.bad { color: #c42a5c; }
+
+.report-cell-excess {
+  color: var(--color-sec-red);
+  font-weight: 600;
+}
+
+body.dark .report-cell-excess { color: #c42a5c; }
+
+.report-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Franja horaria del cronometro, entre la descripcion y el estado. Ancho fijo
+   y cifras tabulares para que la columna quede alineada entre filas. */
+.tk-entry-span {
+  flex: 0 0 auto;
+  min-width: 7.5rem;
+  text-align: right;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.tk-entry-span.empty { opacity: 0.45; }
+
+@media (max-width: 720px) {
+  /* En pantalla estrecha la franja estorba mas de lo que aporta: la duracion
+     y la descripcion son lo que se consulta de un vistazo. */
+  .tk-entry-span { display: none; }
+}
+
+/* ── Rastreador: a nombre de quién se cronometra ── */
+.tk-whofor {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  padding-left: 0.2rem;
+}
+
+.tk-whofor select { min-width: 12rem; }
+
+.tk-whofor-lock {
+  font-size: 0.7rem;
+  font-style: italic;
+  opacity: 0.8;
+}

@@ -42,6 +42,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   CORS_ORIGIN: z.string().min(1).default("http://localhost:5173"),
+  // Peticiones por IP y minuto. Configurable para poder relajarlo si una
+  // oficina con NAT empieza a chocar contra el limite.
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   DATABASE_URL: z.string().min(1),
   // Conexión directa (no pooled) que Prisma usa para `migrate`. Es OPCIONAL a propósito:
   // en runtime la API solo necesita DATABASE_URL, y hay entornos (local, Docker, CI) donde

@@ -22,7 +22,9 @@ import { DashboardTab } from "./features/dashboard/DashboardTab";
 import { ProjectsTab } from "./features/projects/ProjectsTab";
 import { ProjectDetailTab } from "./features/projects/ProjectDetailTab";
 import { ConsultantsTab } from "./features/consultants/ConsultantsTab";
-import { TimeEntriesTab } from "./features/timeEntries/TimeEntriesTab";
+import { TimesheetTab } from "./features/timesheet/TimesheetTab";
+import { TrackerTab } from "./features/tracker/TrackerTab";
+import { ReportsTab } from "./features/reports/ReportsTab";
 import { ForecastsTab } from "./features/forecasts/ForecastsTab";
 import { FxTab } from "./features/fx/FxTab";
 import { AdminTab } from "./features/admin/AdminTab";
@@ -42,6 +44,8 @@ import { FinancialTab } from "./features/financial/FinancialTab";
 import { RagChat } from "./components/RagChat";
 import "./App.css";
 import "./responsive.css";
+import "./features/timesheet/timesheet.css";
+import "./features/reports/reports.css";
 
 
 
@@ -64,7 +68,9 @@ const SIDEBAR_GROUPS: {
     label: "Operación",
     tabs: [
       { id: "consultants",  label: "Consultores",   icon: "◐", permission: "consultants:read" },
-      { id: "timeEntries",  label: "Horas",          icon: "⊙", permission: "time:read" },
+      { id: "tracker",      label: "Rastreador",     icon: "⏱", permission: "time:read" },
+      { id: "timeEntries",  label: "Horas",          icon: "▥", permission: "time:read" },
+      { id: "reports",      label: "Informes",       icon: "▧", permission: "stats:read" },
       { id: "activities",   label: "Actividades",   icon: "▤", permission: "time:read" },
       { id: "extraHours",   label: "Horas Extra",    icon: "⧗", permission: "extrahours:read" },
     ],
@@ -230,7 +236,9 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   projects: "/projects",
   capacity: "/capacity",
   consultants: "/consultants",
-  timeEntries: "/time-entries",
+  timeEntries: "/timesheet",
+  tracker: "/tracker",
+  reports: "/reports",
   activities: "/activities",
   extraHours: "/extra-hours",
   financial: "/financial",
@@ -1832,8 +1840,25 @@ function App() {
                 />
               )}
 
+              {activeTab === "tracker" && (
+                <TrackerTab
+                  projects={projectsHook.projects}
+                  consultants={consultantsHook.consultants}
+                  canWrite={can("time:write")}
+                  onReload={timeEntriesHook.reload}
+                  onError={handleError}
+                />
+              )}
+
+              {activeTab === "reports" && (
+                <ReportsTab
+                  consultants={consultantsHook.consultants}
+                  onError={handleError}
+                />
+              )}
+
               {activeTab === "timeEntries" && (
-                <TimeEntriesTab
+                <TimesheetTab
                   timeEntries={timeEntriesHook.timeEntries}
                   projects={projectsHook.projects}
                   consultants={consultantsHook.consultants}

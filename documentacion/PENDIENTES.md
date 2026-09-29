@@ -2,7 +2,7 @@
 
 Lista viva de lo que falta. Si vas a tomar algo, empieza por aquí.
 
-**Actualizado:** 2026-09-22 · **Rama con todo lo hecho:** `dev`
+**Actualizado:** 2026-09-24 · **Rama con todo lo hecho:** `dev`
 
 Para el detalle de cada arreglo ya hecho, ver `documentacion/cambios/`.
 Para el histórico completo de la depuración, `documentacion/BACKLOG_DEPURACION.md`
@@ -12,7 +12,7 @@ Para el histórico completo de la depuración, `documentacion/BACKLOG_DEPURACION
 
 ## 0. Lo primero: nada de esto está en producción
 
-`dev` va **35 commits por delante de `main`**. Producción sigue en el estado de
+`dev` va **45 commits por delante de `main`**. Producción sigue en el estado de
 principios de septiembre, así que **todo lo arreglado no le sirve a nadie todavía**: el
 drift del esquema, las fugas de tarifas, la suplantación al registrar horas, el cron de
 tasas de cambio apuntando a un host inexistente, la auditoría, el planificador de tareas.
@@ -56,7 +56,9 @@ Nada de esto se puede resolver leyendo código.
 | D-4 | **¿Los ingresos se categorizan?** `FinancialEntry.category` solo se usa en gastos y queda nulo en ingresos, sin que el esquema lo impida. | Cambio de modelo si la respuesta es sí |
 | D-5 | **¿La jornada laboral se configura por país, por consultor o ambos?** Necesario para poder arreglar DEP-41. | Define el diseño |
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
-| D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con 0,85 / 1,00 y 90 % / 100 %, pero el backend calcula la salud con 0,75 y 0,9. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
+| D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con **0,85 / 1,00** y **90 % / 100 %**, pero `utils/health.ts` calcula la salud con **0,75** y **0,9**. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
+| D-8 | **¿Se va a usar el módulo de Actividades?** El cronómetro y el timesheet permiten enlazar cada registro a una `Activity` para poder comparar horas estimadas con reales, pero no hay ninguna creada: el desplegable solo ofrece "Sin tarea" y parece roto. O se empieza a usar, o se retira el selector de las dos pantallas. | Decisión de producto |
+| D-9 | **¿Las horas de sábado y domingo cuentan en el informe semanal?** Hoy el informe cubre de lunes a viernes y avisa aparte si hay horas en fin de semana, para no ocultarlas. Pero `Consultant.allowWeekendWork` existe, así que trabajar en fin de semana está contemplado: hay que decidir si entran en los totales o se siguen tratando como excepción. | Depende de cómo se factura y se controla la jornada |
 
 ---
 
@@ -71,6 +73,11 @@ formulario que los escriba**, así que la fila siempre es nula y toda la capacid
 con 8 h y 5 días para todo el mundo, sin importar el país ni la jornada real.
 Bloqueado por D-5.
 
+Desde el 2026-09-24 hay **un consumidor más**: `frontend/src/features/reports/reportUtils.ts`
+declara `DAILY_LIMIT = 8` para decidir qué parte de cada barra del informe sale en rojo. Es
+la misma jornada fija, ahora también en una pantalla que la gente mira. Cuando D-5 se
+decida, hay que conectar los dos sitios, no solo `capacity.routes.ts`.
+
 **Sin paginación.** Casi todos los `GET /` devuelven el conjunto completo
 (`time-entries`, `extra-hours`, `consultants`, `projects`…). Solo `/api/audit` pagina, y
 puede servir de plantilla. A medida que crezcan los datos, esto se vuelve el cuello de
@@ -80,6 +87,16 @@ botella; `AuditLog` además crece más rápido desde que guarda `before` y `afte
 **El TLS del correo está debilitado.** `utils/notifications.ts` usa
 `rejectUnauthorized: false` y `ciphers: "SSLv3"`. Bloqueado por D-6.
 
+**Dos pruebas de integración están en el sitio equivocado.**
+`src/modules/__tests__/roles.integration.test.ts` y `security.integration.test.ts` viven
+dentro de `src/`, así que las recoge `npm test` -- que por diseño es **solo cálculo puro y
+sin base de datos** (ver el comentario de `vitest.config.ts`). Consecuencias: `npm test` ya
+no corre sin Postgres, y esas pruebas escriben contra la `DATABASE_URL` que esté configurada,
+que puede ser la base de desarrollo; `vitest.routes.config.ts` dice explícitamente *"Base
+DEDICADA a pruebas; nunca `app_gestion_demo`"*. Además mockean `authenticate` en vez de usar
+el simulador de rol por encabezado, y solapan cobertura con `tests/routes/`. **Hay que
+moverlas a `tests/routes/` y adaptarlas a esa infraestructura.**
+
 ### Medio
 
 **DEP-32 — La conversión de moneda falla en silencio.** `convertAmountFallback` devuelve el
@@ -88,6 +105,13 @@ moneda original pero rotulados con la moneda base. Afecta especialmente a la nó
 
 **`GET /api/projects/:id/detail` escribe dentro de una lectura.** Si el `healthStatus`
 calculado difiere del guardado, hace un `update` dentro de un `GET`, y sin auditarlo.
+
+**Los umbrales de Portafolio no coinciden con los del backend (ver D-7).** Es un defecto
+funcional, no visual: se detectó al rediseñar la pantalla y se dejó sin tocar a propósito,
+porque elegir los umbrales buenos es decisión de negocio. Un proyecto con CPI 0,80 sale con
+la celda en **rojo** (`PortfolioTab.tsx`, < 0,85) mientras el semáforo de su propia fila es
+**ámbar** (`health.ts`, 0,80 no baja de 0,75); con CPI 0,95 la celda va **ámbar** y la fila
+**verde**.
 
 **Los deltas «vs período anterior» del tablero comparan peras con manzanas.** Un total del
 servidor ya convertido contra una suma local en monedas mezcladas. Arreglarlo bien exige que
@@ -113,9 +137,11 @@ retención para `AuditLog`.
 
 ### Bajo
 
-- **DEP-42** — `Consultant.maxHoursPerDay` no entra en ningún cálculo y `skills` no existe
-  ni en el esquema ni en la interfaz, pese a que la documentación describe "tags de
-  habilidades". Campos muertos: implementarlos o retirarlos.
+- **DEP-42** — `Consultant.maxHoursPerDay` no entra en ningún cálculo: solo aparece en la
+  proyección de `utils/consultant-scope.ts`. Campo muerto: implementarlo o retirarlo.
+  *(Corregido el 2026-09-24: la otra mitad de este ítem ya no aplica. `skills` **sí** existe
+  en el esquema — `Consultant` y `User` — y se usa en `ProfileTab`, `CapacityTab` y
+  `RagChat`.)*
 - **DEP-08** — Unas 20 funciones de `services/api.ts` sin usar (hitos, riesgos,
   incidencias). Son andamiaje de pantallas nunca construidas: primero decidir producto.
 - **DEP-14** — `TODO(backend)` duplicado en `periodUtils.ts` sobre rangos ISO.
@@ -303,6 +329,13 @@ Ya pasó con `projectManagerEmail` (la aprobación de horas extra por el PM era 
 (el documento salía siempre "No asignado" en la nómina) y `CapacityConfig` (DEP-41, todavía
 abierto).
 
+**Y una variante nueva (sexta vez), esta al revés:** en lugar de leer un campo que nadie
+escribe, se escribió un valor fijo en el código donde ya existía la columna para
+configurarlo. El informe de horas usa `DAILY_LIMIT = 8` en el frontend teniendo
+`CapacityConfig.hoursPerDay` en el modelo. El efecto es el mismo -- la configuración no
+manda -- y cuesta más de encontrar, porque no hay ninguna columna nula que delate el
+problema.
+
 **Si agregas un campo al modelo, agrégalo también al esquema Zod y al formulario en el mismo
 cambio.** Y si encuentras código que lee un campo, comprueba que exista forma de escribirlo.
 
@@ -313,11 +346,15 @@ cambio.** Y si encuentras código que lee un campo, comprueba que exista forma d
 El proyecto tiene con qué demostrar que un cambio funciona; úsalo.
 
 ```bash
-cd backend && npm test          # 195 pruebas unitarias (cálculo puro)
+cd backend && npm test          # 257 (ojo: incluye 2 ficheros mal ubicados que piden base)
 cd backend && npm run test:routes   # 78 pruebas de ruta, con base y autorización reales
-cd frontend && npm test         # 135 pruebas
+cd frontend && npm test         # 155 pruebas
 cd frontend && npx tsc -b --noEmit  # ojo: `tsc --noEmit` a secas NO verifica nada aquí
 ```
+
+**`npm run test:routes` es el que hay que mirar antes de tocar autorización.** Fue el que
+cazó que el Timesheet había rebajado en silencio el 403 de `POST /api/time-entries` a un 201
+con las horas reasignadas al propio solicitante. `npm test` pasaba igual.
 
 Para probar comportamiento por rol hay un **simulador**: variables `AUTH_DEV_EMAIL` y
 `AUTH_DEV_ROLES`, o los encabezados `x-dev-email` y `x-dev-roles` con

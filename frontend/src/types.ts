@@ -1,6 +1,6 @@
 export type TabId =
-  | "dashboard" | "portfolio" | "projects" | "consultants" | "timeEntries"
-  | "financial" | "forecasts" | "capacity" | "fx" | "admin" | "audit" | "alerts"
+  | "dashboard" | "portfolio" | "projects" | "consultants" | "timeEntries" | "tracker"
+  | "reports" | "financial" | "forecasts" | "capacity" | "fx" | "admin" | "audit" | "alerts"
   | "extraHours" | "estimations" | "profile" | "activities" | "extraHoursConfig";
 
 /** Sub-panel dentro del tab unificado "financial" (Gastos / Ingresos). */

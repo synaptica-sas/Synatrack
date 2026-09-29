@@ -1,0 +1,404 @@
+/* ==============================================================================
+   TIMESHEET (grilla semanal) + TRACKER (cronómetro)
+
+   Ambas vistas comparten la barra de navegación de semana y los totales, así
+   que el prefijo `ts-` es común y `tk-` es lo propio del cronómetro.
+   Los colores salen de las variables de App.css, de modo que el modo oscuro
+   funciona solo salvo por los pocos retoques del final.
+   ============================================================================== */
+
+/* ── Conmutador Semana / Aprobaciones ── */
+.ts-viewswitch {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--card-bg);
+  align-self: flex-start;
+}
+
+.ts-viewswitch button {
+  background: transparent;
+  border: none;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.35rem 0.9rem;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.ts-viewswitch button.active {
+  background: var(--color-accent);
+  color: #121228;
+}
+
+/* ── Barra superior compartida por ambas vistas ── */
+.ts-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.ts-weeknav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ts-weeknav button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+.ts-weeklabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 11rem;
+  color: var(--text-strong);
+  font-size: 0.92rem;
+}
+
+.ts-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-accent-15);
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+.ts-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ts-weektotal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+.ts-weektotal span {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+}
+
+.ts-weektotal strong {
+  font-size: 1.15rem;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Grilla semanal ── */
+.ts-grid {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 52rem;
+}
+
+.ts-grid th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0.45rem 0.4rem;
+}
+
+.ts-grid td {
+  border-bottom: 1px solid var(--border-color);
+  padding: 0.35rem 0.4rem;
+  vertical-align: middle;
+}
+
+.ts-col-project { min-width: 10rem; max-width: 14rem; }
+.ts-col-task    { min-width: 12rem; }
+.ts-col-day     { width: 4.6rem; text-align: center; }
+.ts-col-total   { width: 4.6rem; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.ts-col-actions { width: 2.2rem; }
+
+.ts-day-name { display: block; }
+.ts-day-num  { display: block; font-size: 0.95rem; color: var(--text-strong); font-weight: 700; }
+
+.ts-col-day.weekend { background: var(--color-primary-05); }
+.ts-col-day.today   { background: var(--color-accent-10); }
+
+.ts-grid .ts-col-project,
+.ts-grid .ts-col-task {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: var(--text-strong);
+}
+
+.ts-task-pill {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.08rem 0.4rem;
+  margin-right: 0.4rem;
+  border-radius: 5px;
+  background: var(--color-blue-10);
+  color: var(--color-sec-blue);
+}
+
+.ts-task-desc { color: var(--text-soft); }
+
+/* Celda editable: parece texto plano hasta que se pasa por encima o se enfoca. */
+.ts-cell {
+  width: 100%;
+  min-width: 0;
+  padding: 0.3rem 0.2rem;
+  text-align: center;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-strong);
+}
+
+.ts-cell:hover  { border-color: var(--border-color); }
+.ts-cell:focus  { border-color: var(--color-accent); background: var(--card-bg); outline: none; }
+.ts-cell.saving { opacity: 0.5; }
+
+.ts-cell-locked {
+  display: block;
+  text-align: center;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-soft);
+  cursor: not-allowed;
+}
+
+.ts-cell-locked.status-approved { color: var(--color-sec-green); font-weight: 700; }
+.ts-cell-locked.status-rejected { color: var(--color-sec-red); text-decoration: line-through; }
+
+.ts-grid tfoot td {
+  border-top: 2px solid var(--border-color);
+  border-bottom: none;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-strong);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.ts-grid tfoot td:first-child {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+}
+
+.ts-empty {
+  text-align: center;
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  padding: 1.6rem 0;
+}
+
+.ts-rowdel {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/* ── Alta de fila ── */
+.ts-addrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--border-color);
+}
+
+.ts-addrow select { flex: 1 1 11rem; min-width: 9rem; }
+.ts-addrow input  { flex: 2 1 14rem; min-width: 10rem; }
+.ts-addrow button { flex: 0 0 auto; }
+
+.ts-hint {
+  margin: 0.7rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-soft);
+}
+
+.ts-hint code {
+  background: var(--color-primary-05);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+}
+
+.ts-empty-note {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+  background: var(--color-primary-05);
+  border: 1px dashed var(--border-color);
+  border-radius: 10px;
+}
+
+/* ── Tracker: barra del cronómetro ── */
+.tk-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1rem;
+}
+
+.tk-bar.running {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent-30);
+}
+
+.tk-desc {
+  flex: 3 1 16rem;
+  min-width: 10rem;
+  font-size: 0.95rem;
+}
+
+.tk-project  { flex: 1 1 10rem; min-width: 8rem; }
+.tk-activity { flex: 1 1 9rem;  min-width: 8rem; }
+
+.tk-clock {
+  flex: 0 0 auto;
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--text-strong);
+  min-width: 6.2rem;
+  text-align: right;
+}
+
+.tk-bar.running .tk-clock { color: var(--color-accent); }
+
+.tk-start,
+.tk-stop {
+  flex: 0 0 auto;
+  min-width: 6.5rem;
+  font-weight: 700;
+}
+
+.tk-stop {
+  background: var(--color-sec-red);
+  border-color: var(--color-sec-red);
+  color: #fff;
+}
+
+.tk-discard {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.55rem;
+  line-height: 1;
+}
+
+.tk-running-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+  padding-left: 0.2rem;
+}
+
+/* ── Tracker: listado por día ── */
+.tk-day { margin-top: 0.9rem; }
+
+.tk-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.tk-day-head strong { color: var(--text-strong); font-size: 0.88rem; }
+.tk-day-head span   { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.tk-entries { list-style: none; margin: 0; padding: 0; }
+
+.tk-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.2rem;
+  border-bottom: 1px solid var(--color-primary-05);
+}
+
+.tk-entry-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.tk-entry-desc {
+  font-size: 0.88rem;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tk-entry-meta {
+  font-size: 0.72rem;
+  color: var(--text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tk-entry-hours {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-strong);
+  min-width: 3.4rem;
+  text-align: right;
+}
+
+.tk-resume,
+.tk-entry-del {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+/* ── Responsive ── */
+@media (max-width: 860px) {
+  .tk-clock { flex: 1 1 100%; text-align: left; }
+  .tk-start, .tk-stop { flex: 1 1 auto; }
+  .ts-toolbar { flex-direction: column; align-items: stretch; }
+  .ts-toolbar-right { justify-content: space-between; }
+  .ts-weektotal { align-items: flex-start; }
+}
+
+/* ── Retoques de modo oscuro ── */
+body.dark .ts-col-day.weekend { background: rgba(255, 255, 255, 0.03); }
+body.dark .ts-col-day.today   { background: rgba(241, 163, 35, 0.12); }
+body.dark .ts-cell:focus      { background: #0c0c1b; }
+body.dark .ts-empty-note,
+body.dark .ts-hint code       { background: rgba(255, 255, 255, 0.04); }
+body.dark .tk-entry           { border-bottom-color: rgba(255, 255, 255, 0.05); }
+body.dark .ts-task-pill       { background: rgba(96, 165, 250, 0.16); color: #93c5fd; }

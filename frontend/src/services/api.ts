@@ -112,6 +112,11 @@ export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
  */
 export type TimeEntryConsultant = Consultant;
 
+/** De donde salio el registro: formulario clasico, grilla semanal o cronometro. */
+export type TimeEntrySource = "MANUAL" | "TIMESHEET" | "TIMER";
+
+export type TimeEntryActivityRef = { id: string; title: string };
+
 export type TimeEntry = {
   id: string;
   projectId: string;
@@ -119,6 +124,11 @@ export type TimeEntry = {
   workDate: string;
   hours: string;
   note: string | null;
+  description: string | null;
+  activityId: string | null;
+  source: TimeEntrySource;
+  startedAt: string | null;
+  endedAt: string | null;
   status: TimeEntryStatus;
   approvedBy: string | null;
   approvedAt: string | null;
@@ -127,6 +137,22 @@ export type TimeEntry = {
   updatedAt: string;
   project: Project;
   consultant: TimeEntryConsultant;
+  activity?: TimeEntryActivityRef | null;
+};
+
+/** Cronometro en marcha del usuario autenticado. */
+export type RunningTimer = {
+  id: string;
+  consultantId: string;
+  projectId: string;
+  activityId: string | null;
+  description: string | null;
+  startedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  project: Project;
+  activity?: TimeEntryActivityRef | null;
+  consultant?: { id: string; fullName: string };
 };
 
 export type Expense = {
@@ -564,20 +590,124 @@ export async function deleteConsultant(id: string): Promise<void> {
   await request<void>(`/api/consultants/${id}`, "DELETE");
 }
 
-export async function listTimeEntries(): Promise<TimeEntry[]> {
-  const response = await request<ApiEnvelope<TimeEntry[]>>("/api/time-entries");
+export async function listTimeEntries(params?: {
+  consultantId?: string;
+  projectId?: string;
+  /** Fecha inicial inclusiva, YYYY-MM-DD. */
+  from?: string;
+  /** Fecha final inclusiva, YYYY-MM-DD. */
+  to?: string;
+  /** Solo las horas del usuario autenticado. */
+  mine?: boolean;
+  status?: TimeEntryStatus;
+}): Promise<TimeEntry[]> {
+  const query = new URLSearchParams();
+  if (params?.consultantId) query.set("consultantId", params.consultantId);
+  if (params?.projectId) query.set("projectId", params.projectId);
+  if (params?.from) query.set("from", params.from);
+  if (params?.to) query.set("to", params.to);
+  if (params?.mine) query.set("mine", "1");
+  if (params?.status) query.set("status", params.status);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<ApiEnvelope<TimeEntry[]>>(`/api/time-entries${suffix}`);
+  return response.data;
+}
+
+/**
+ * Ficha de consultor del usuario autenticado, o null si su correo no
+ * corresponde a ninguna. El timesheet y el tracker la necesitan para saber a
+ * nombre de quien registran las horas.
+ */
+export async function getMyConsultant(): Promise<Consultant | null> {
+  const response = await request<ApiEnvelope<Consultant | null>>("/api/time-entries/me");
   return response.data;
 }
 
 export async function createTimeEntry(payload: {
   projectId: string;
-  consultantId: string;
+  /** Solo ADMIN y PM pueden imputar horas a otra persona; el resto se ignora. */
+  consultantId?: string;
   workDate: string;
   hours: number;
   note?: string;
+  description?: string | null;
+  activityId?: string | null;
+  source?: TimeEntrySource;
 }): Promise<TimeEntry> {
   const response = await request<ApiEnvelope<TimeEntry>>("/api/time-entries", "POST", payload);
   return response.data;
+}
+
+export async function updateTimeEntry(
+  id: string,
+  payload: {
+    hours?: number;
+    description?: string | null;
+    activityId?: string | null;
+    note?: string | null;
+    projectId?: string;
+    workDate?: string;
+  },
+): Promise<TimeEntry> {
+  const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}`, "PATCH", payload);
+  return response.data;
+}
+
+export async function deleteTimeEntry(id: string): Promise<void> {
+  await request<void>(`/api/time-entries/${id}`, "DELETE");
+}
+
+// -- Cronometro (Tracker) --------------------------------------------------
+
+/**
+ * Cronometro en marcha. `consultantId` solo lo tienen en cuenta ADMIN y PM,
+ * que pueden llevar el cronometro de otra persona; para el resto de roles el
+ * backend lo ignora y devuelve siempre el propio.
+ */
+export async function getRunningTimer(consultantId?: string): Promise<RunningTimer | null> {
+  const suffix = consultantId ? `?consultantId=${encodeURIComponent(consultantId)}` : "";
+  const response = await request<ApiEnvelope<RunningTimer | null>>(`/api/timer${suffix}`);
+  return response.data;
+}
+
+export async function startTimer(payload: {
+  projectId: string;
+  activityId?: string | null;
+  description?: string | null;
+  /** ISO. Permite reanudar una entrada arrancando el cronometro en el pasado. */
+  startedAt?: string;
+  /** Solo ADMIN y PM: arrancar el cronometro a nombre de otro consultor. */
+  consultantId?: string;
+}): Promise<RunningTimer> {
+  const response = await request<ApiEnvelope<RunningTimer>>("/api/timer/start", "POST", payload);
+  return response.data;
+}
+
+export async function updateRunningTimer(payload: {
+  projectId?: string;
+  activityId?: string | null;
+  description?: string | null;
+  startedAt?: string;
+  consultantId?: string;
+}): Promise<RunningTimer> {
+  const response = await request<ApiEnvelope<RunningTimer>>("/api/timer", "PATCH", payload);
+  return response.data;
+}
+
+/** Detiene el cronometro y devuelve la entrada de horas que genero. */
+export async function stopTimer(consultantId?: string): Promise<TimeEntry> {
+  const response = await request<ApiEnvelope<TimeEntry>>(
+    "/api/timer/stop",
+    "POST",
+    consultantId ? { consultantId } : {},
+  );
+  return response.data;
+}
+
+/** Descarta el cronometro sin registrar horas. */
+export async function discardTimer(consultantId?: string): Promise<void> {
+  const suffix = consultantId ? `?consultantId=${encodeURIComponent(consultantId)}` : "";
+  await request<void>(`/api/timer${suffix}`, "DELETE");
 }
 
 // La identidad de quien aprueba o rechaza la toma el backend del token; el

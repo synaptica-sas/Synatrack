@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import { ZodError } from "zod";
 import { env } from "./config/env.js";
 import { registerRoutes } from "./routes/index.js";
@@ -30,6 +32,26 @@ export async function buildApp() {
     } catch (err) {
       done(err as Error);
     }
+  });
+
+  // Cabeceras de seguridad. `contentSecurityPolicy` va desactivado porque esto
+  // es una API JSON: no sirve HTML, y una CSP aquí no protege nada mientras
+  // complica las respuestas de error.
+  await app.register(helmet, { contentSecurityPolicy: false });
+
+  // Tope de peticiones por IP. Generoso a propósito: el frontend dispara una
+  // decena de peticiones en paralelo al cargar, y varios usuarios pueden salir
+  // por la misma IP de oficina. Lo que corta son los bucles y la fuerza bruta,
+  // no el uso normal.
+  await app.register(rateLimit, {
+    max: env.RATE_LIMIT_MAX,
+    timeWindow: "1 minute",
+    // El health check lo consulta Render cada pocos segundos; si lo bloqueamos,
+    // el servicio se reinicia solo.
+    allowList: (request) => request.url === "/health" || request.url === "/",
+    errorResponseBuilder: (_request, context) => ({
+      message: `Demasiadas peticiones. Vuelve a intentarlo en ${context.after}.`,
+    }),
   });
 
   const allowAllOrigins = env.CORS_ORIGIN.trim() === "*";
