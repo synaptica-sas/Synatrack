@@ -296,6 +296,114 @@ gana a cualquier clase, así que en modo oscuro los títulos de tarjeta y el de 
 legislación salen en blanco en vez de en su tono; y `.table-container`, la clase con la que
 se envolvían dos tablas, **no está definida en ningún CSS** (se sustituyó por `.table-wrap`).
 
+### Clases añadidas al migrar Gastos
+
+Las cinco piezas de `features/expenses/` (`ExpensesTab`, `GastosFilters`,
+`GastosSummaryTable`, `GastosDetailRow`, `GastosKPIStrip`) pasaron de **70 estilos en línea
+y 7 colores literales a 0 y 0**, sin ningún valor calculado pendiente. La mayor parte salió
+de clases que ya existían: `.kpi-grid`/`.kpi-card`, `.state-chip--*`, `.empty-state`,
+`.chip-row`, `.inline-filter`, `.control-sm`, `.btn-sm`, `.card--roomy`, `.card-head`,
+`.card-title`, `.table-wrap--spaced`, `.cell-center/-right/-num/-strong/-empty--roomy` y los
+tonos `.tone-*`. Lo propio de la pantalla lleva prefijo `gastos-`:
+
+| Clase | Para qué |
+|---|---|
+| `.gastos-kpi-strip`, `.gastos-kpi-delta` | La tira de KPIs (reusa `.kpi-grid`/`.kpi-card`) y su línea de variación contra el período anterior. La flecha ▲/▼ acompaña al color: la subida del gasto se lee sin distinguir rojo de verde |
+| `.gastos-filters` (+ `__row`, `__row--top`, `__actions`), `.gastos-search`, `.gastos-daterange`, `.gastos-currency-select` | Las dos filas de filtros. La de abajo alinea arriba porque el selector de rango despliega un panel |
+| `.inline-filter.gastos-inline-filter` | `.inline-filter` reserva 15,6rem porque nació para formularios; aquí la etiqueta va pegada a un select estrecho y esa reserva rompía la fila. Solo se anula el mínimo |
+| `.gastos-btn-new` | El botón principal. Iba en degradado naranja de Tailwind con texto blanco; ahora ámbar de marca con navy encima (`--state-warning-on-solid`) |
+| `.gastos-chip-row`, `.gastos-chip` (+ `.is-active`) | Chips de categoría. El activo lleva `aria-pressed` además del relleno, y el contraste se percibe en escala de grises |
+| `.gastos-table`, `.gastos-col--group/-count/-total/-date/-status/-toggle` | Tabla resumen y sus anchos de columna, que cambian cuando el agrupador no es "Proyecto" |
+| `.gastos-row` (+ `.is-open`), `.gastos-cell-group/-amount/-total/-soft`, `.gastos-total-row`, `.gastos-toggle` | Fila plegable, jerarquía de sus celdas, pie de total y el chevron |
+| `.gastos-detail-cell`, `.gastos-detail-inner`, `.gastos-subtable` (+ `__col-actions`, `__actions`, `__total`), `.gastos-icon-btn` | Fila desplegada y su tabla anidada. La cabecera iba en ámbar de marca, que no llega a 4,5:1 para 0,68rem; pasa a `--surface-subtle` + `--text-soft`, como `.capacity-subtable` |
+| `.gastos-forecast-title/-note/-row/-total/-meta/-foot` | El bloque de costos proyectados |
+
+Cuatro cosas que conviene saber:
+
+1. **El realce de la fila abierta va en las celdas, no en la `tr`.** `body.dark
+   .project-table tr` lleva `!important`, así que un fondo puesto en la `tr` desaparece en
+   oscuro. `.gastos-row.is-open > td` sí sobrevive, igual que hace `tr.row-danger > td`.
+2. **Dos fallos de especificidad de modo oscuro que solo aparecieron al medir el estilo
+   computado**, no a ojo: `body.dark .card span:not(.pill)` pesa (0,3,2) —tres clases y
+   **dos** elementos—, así que un selector de tres clases y un elemento *pierde el
+   desempate*; hubo que repetir la clase para llegar a (0,4,1). Y `body.dark th` pinta la
+   cabecera de tabla en ámbar con (0,1,2), que le ganaba a `.gastos-subtable th`. La lección
+   práctica: **contar clases no basta, hay que contar también los elementos**, y conviene
+   auditar con `getComputedStyle` antes de dar por buena una migración.
+3. **`StatusBadge` devolvía un mapa de `bg`/`color` inyectado como estilo en línea.** Ahora
+   es una tabla `{ tone, text }` y el marcado usa `.state-chip--danger/-warning/-success`,
+   que ya trae resueltas sus reglas para `body.dark td`. Las etiquetas no cambian.
+4. **Los dos `<label>` de la fila de filtros no estaban asociados a su control** (no había
+   `htmlFor`/`id`) y el select de moneda no tenía nombre accesible. Se añadieron; es
+   accesibilidad, no comportamiento.
+
+Un límite conocido que **no** se tocó: a ancho de móvil la tabla resumen se apila en una
+tarjeta por fila por una regla responsive previa, y el pie "Total general" queda en un bloque
+estrecho y desalineado. Ya pasaba antes de esta migración (se ve igual en
+`gastos-antes-claro-movil.png`) y arreglarlo toca CSS compartido por todas las tablas.
+
+### Clases añadidas al migrar Perfil, Usuarios, Auditoría y Tasas FX
+
+Las cuatro pasaron de **94 estilos en línea y 10 colores literales a 0 y 0**
+(`ProfileTab` 48/6, `AdminTab` 26/0, `AuditTab` 12/4, `FxTab` 8/0). No queda ningún valor
+calculado pendiente: ninguna de las cuatro dibuja barras ni porcentajes.
+
+Son sobre todo formulario y tabla, así que se migraron **juntas y buscando el patrón común
+una sola vez**, en vez de resolver cada pantalla por separado. Casi todo salió de clases que
+ya existían: `.page-stack`, `.section-stack`, `.card-head`, `.card`, `.table-wrap`
+(+`--spaced`), `.table-pager` con `__status`/`__nav`, `.state-chip--*`, `.field-label`,
+`.field-help`, `.empty-note`, `.input-readonly`, `.btn-sm`, `.inline-actions`, `.tag-list`,
+`.form-grid--tight`, `.modal-card--sm`, `.modal-close`, `.modal-actions`.
+
+**El hallazgo más rentable fue que el CSS de Perfil ya estaba escrito y sin usar.** Las
+clases `.profile-page`, `.profile-mantra*`, `.profile-card`, `.profile-head`,
+`.profile-avatar*`, `.profile-identity*`, `.profile-preview`, `.profile-form*`,
+`.profile-section`, `.profile-actions`, `.profile-modal__*`, `.skill-chips`, `.skill-chip*`,
+`.skill-empty`, `.skill-picker`, `.skill-suggestions*` e `.inline-success` entraron con el
+commit `e565e54` (migración de Detalle de Proyecto) pero el `.tsx` nunca llegó a usarlas: la
+pantalla seguía pintando lo mismo a mano. **Antes de escribir una clase nueva, busca también
+las que ya existen sin usar.**
+
+Lo nuevo va al final de `App.css`. Es genérico a propósito cuando lo comparten las cuatro:
+
+| Clase | Para qué |
+|---|---|
+| `.field-stack` | Campo apilado: etiqueta encima de su control. Era el `style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}` repetido ocho veces entre Perfil y Usuarios. Dentro de la columna se le quita el margen inferior a `.field-label`, porque ya separa el `gap`. **Sustituye a `.profile-field`**, que era lo mismo con nombre de pantalla y queda sin usar: candidata a `BACKLOG_DEPURACION.md` |
+| `.filters-grid--spaced` | La rejilla de filtros pegada a la tabla que filtra. Cada pantalla escribía su propio `marginBottom: "0.75rem"` |
+| `.span-full` | `grid-column: 1 / -1`. Equivalente genérico de `.capacity-span-full`, que estaba prefijado |
+| `.cell-mono` | Identificador técnico en una celda: monoespaciado y más pequeño, porque se lee carácter a carácter |
+| `.modal-header--rule`, `.modal-actions--rule` | El filete que separa la cabecera y el pie de un modal de su cuerpo. `.modal-header` y `.modal-actions` ya existían; lo que se escribía a mano era la línea |
+| `.modal-title` | Título de un modal. Se repite la clase (`.modal-title.modal-title`) porque los estilos de encabezado pesan más que una sola |
+| `.role-badge--sm` | `.role-badge` en su tamaño de celda de tabla. Es un modificador de una clase compartida, no una clase de pantalla, y por eso no lleva prefijo |
+| `.audit-diff__summary`, `.audit-diff__pre` | El volcado JSON del cambio en la bitácora. El fondo era `#f9fafb`: un parche blanco en modo oscuro, ahora `--surface-subtle` |
+| `.fx-rate-field`, `.fx-rate-field__spinner` | El campo de tasa de solo lectura y su indicador de carga anclado al borde derecho |
+
+Cuatro decisiones que conviene conocer:
+
+1. **El avatar de Perfil y cada sugerencia de habilidad eran `div` con `onClick`**: no se
+   podían alcanzar con el teclado, y el CSS ya preparado (`.profile-avatar:focus-visible`,
+   `.skill-suggestions__item:focus-visible`) daba por hecho que serían botones. Ahora lo son.
+   Al serlo heredan el estilo global de `button` —fondo ámbar, desplazamiento y sombra al
+   pasar el ratón—, así que hay dos reglas que lo neutralizan; sin ellas el avatar da un
+   salto al pasar por encima.
+2. **El hover del desplegable de habilidades vivía en JavaScript**
+   (`onMouseEnter`/`onMouseLeave` escribiendo `style.background`), y el `<style>` con las
+   reglas del avatar estaba **incrustado dentro del JSX**. Los dos viven ahora en `App.css`.
+3. **Las píldoras `.pill ok/warn/error/neutral` pasan a `.state-chip--*`**, como ya se hizo
+   en Capacidad y Detalle de Proyecto. `.pill` tiene su modo oscuro a base de `!important`
+   con verdes y ámbares que no son los de marca. En Auditoría, `actionColor()` —que devolvía
+   el nombre de una píldora— pasa a llamarse `actionTone()` y devuelve el modificador de
+   estado, por el mismo motivo por el que `colorMargen` pasó a `claseMargen`: que nadie
+   vuelva a meter un color ahí.
+4. **El paginador de la bitácora estaba escrito a mano** con su `#6b7280` y sus dos botones
+   de 0,75rem, cuando `.table-pager` ya existía con exactamente esa forma. Los dos botones
+   además no tenían nombre accesible (solo `‹` y `›`); ahora llevan `aria-label`.
+
+Un límite conocido que **no** se tocó: `body.dark h1..h6 { color: #f8fafc !important }` gana
+a cualquier clase, así que en modo oscuro el título del modal de Usuarios y el mantra de
+Perfil salen en blanco en vez de en su tono. Es la misma limitación ya anotada al migrar
+Horas Extra.
+
 ### Especificidad: la trampa de `body.dark .card`
 
 Al migrar el Tablero salieron dos reglas heredadas que le ganan a cualquier clase de patrón:
@@ -366,13 +474,14 @@ de la paleta de Synaptica.
 | `features/estimations/EstimationCalculatorTab.tsx` | 272 | 82 |
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
 | `features/projects/ProjectDetailTab.tsx` | 95 | 65 |
-| `features/profile/ProfileTab.tsx` | 48 | 6 |
 | `features/dashboard/AlertBadge.tsx` | 1 | 6 |
 | `App.tsx` (landing y layout) | — | ~100 |
 
 **Ya migrados desde esta tabla**: `components/AlertsPanel.tsx`, `components/Toast.tsx`,
 `components/ValidationErrorBox.tsx`, `components/DateRangePicker.tsx`, `components/RagChat.tsx`,
-`features/extraHours/ExtraHoursTab.tsx` y `features/capacity/CapacityTab.tsx` — todos en 0/0
+`features/extraHours/ExtraHoursTab.tsx`, `features/capacity/CapacityTab.tsx` y el grupo
+`features/profile/ProfileTab.tsx` + `features/admin/AdminTab.tsx` +
+`features/audit/AuditTab.tsx` + `features/fx/FxTab.tsx` — todos en 0/0
 salvo `CapacityTab` (1 estilo en línea, el valor calculado del medidor). Detalle de cada uno
 en "Clases añadidas al migrar..." más arriba y en `documentacion/PENDIENTES.md` §3.
 
@@ -447,6 +556,13 @@ En `documentacion/capturas/`, generadas con Playwright sobre el entorno local:
   claro y oscuro, a 400px.
 - `alertas-antes-*` / `alertas-despues-*`: el Centro de Alertas, claro y oscuro, a 400px.
 - `tablero-antes-*` / `tablero-despues-*`: el Tablero de Control, claro y oscuro, a 400px.
+- `perfil-*`, `admin-*`, `auditoria-*`, `fx-*` (`-antes-` / `-despues-`): las cuatro
+  pantallas de formulario y tabla, claro y oscuro, a 1440px y 400px. Más dos estados que la
+  navegación simple no muestra: `admin-modal-despues-*` (el modal de edición de usuario, con
+  su filete de cabecera y pie) y `auditoria-tabla-despues-*` (la bitácora con datos reales y
+  un diff desplegado). Las de `-antes-` se tomaron levantando un segundo servidor de Vite
+  sobre un `git worktree` en `HEAD`, en otro puerto, porque el servidor de desarrollo
+  compartido estaba en ese momento a medio recompilar por otra migración en paralelo.
 
 Dos avisos sobre estas tres últimas, por honestidad:
 

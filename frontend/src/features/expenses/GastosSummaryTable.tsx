@@ -6,26 +6,17 @@ import { fmtMoney, fmtDate } from "./gastosUtils";
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
+/* El color nunca viaja solo: cada estado lleva su icono (forma distinta) y su
+   etiqueta de texto. `.state-chip` ya resuelve el tinte y el modo oscuro. */
+const STATUS_PRESENTATION: Record<GroupedGasto["status"], { tone: string; text: string }> = {
+  exceeded: { tone: "danger",  text: "⚠ Superado" },
+  warning:  { tone: "warning", text: "⚡ Cerca del límite" },
+  ok:       { tone: "success", text: "✅ OK" },
+};
+
 function StatusBadge({ status }: { status: GroupedGasto["status"] }) {
-  const map = {
-    exceeded: { bg: "var(--state-danger-bg)", color: "var(--state-danger-text)", text: "⚠ Superado" },
-    warning:  { bg: "var(--state-warning-bg)", color: "var(--state-warning-text)", text: "⚡ Cerca del límite" },
-    ok:       { bg: "var(--state-success-bg)", color: "var(--state-success-text)", text: "✅ OK" },
-  };
-  const s = map[status];
-  return (
-    <span style={{
-      background: s.bg,
-      color: s.color,
-      borderRadius: "9999px",
-      padding: "0.2rem 0.6rem",
-      fontSize: "0.68rem",
-      fontWeight: 700,
-      whiteSpace: "nowrap",
-    }}>
-      {s.text}
-    </span>
-  );
+  const s = STATUS_PRESENTATION[status];
+  return <span className={`state-chip state-chip--${s.tone}`}>{s.text}</span>;
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────
@@ -33,9 +24,11 @@ function StatusBadge({ status }: { status: GroupedGasto["status"] }) {
 function EmptyState() {
   return (
     <tr>
-      <td colSpan={6} style={{ padding: "2rem", textAlign: "center", color: "var(--color-accent)" }}>
-        <div style={{ fontSize: "1.5rem", marginBottom: "0.3rem" }}>📋</div>
-        <p style={{ margin: 0, fontWeight: 600 }}>Sin gastos para los filtros seleccionados</p>
+      <td colSpan={6} className="cell-empty cell-empty--roomy">
+        <div className="empty-state">
+          <div className="empty-state__icon">📋</div>
+          <p className="empty-state__title">Sin gastos para los filtros seleccionados</p>
+        </div>
       </td>
     </tr>
   );
@@ -82,17 +75,17 @@ export function GastosSummaryTable({
 
   return (
     <div className="table-wrap">
-      <table className="project-table" style={{ fontSize: "0.82rem" }}>
+      <table className="project-table gastos-table">
         <thead>
           <tr>
-            <th style={{ width: "36%" }}>{groupLabel}</th>
-            <th style={{ width: "8%", textAlign: "center" }}># Gastos</th>
-            <th style={{ width: "20%", textAlign: "right" }}>Total ({baseCurrency})</th>
-            <th style={{ width: "14%", textAlign: "center" }}>Última fecha</th>
+            <th className="gastos-col--group">{groupLabel}</th>
+            <th className="gastos-col--count cell-center"># Gastos</th>
+            <th className="gastos-col--total cell-right">Total ({baseCurrency})</th>
+            <th className="gastos-col--date cell-center">Última fecha</th>
             {groupBy === "project" && (
-              <th style={{ width: "16%", textAlign: "center" }}>Estado</th>
+              <th className="gastos-col--status cell-center">Estado</th>
             )}
-            <th style={{ width: "6%", textAlign: "center" }} aria-label="Expandir" />
+            <th className="gastos-col--toggle cell-center" aria-label="Expandir" />
           </tr>
         </thead>
         <tbody role="rowgroup">
@@ -107,50 +100,31 @@ export function GastosSummaryTable({
                   key={`sum-${group.key}`}
                   onClick={() => toggleRow(group.key)}
                   aria-expanded={isOpen}
-                  style={{
-                    cursor: "pointer",
-                    background: isOpen ? "var(--state-neutral-bg)" : undefined,
-                    transition: "background 0.15s",
-                  }}
+                  className={isOpen ? "gastos-row is-open" : "gastos-row"}
                 >
-                  <td style={{ fontWeight: 600, color: "var(--text-strong)", padding: "0.55rem 0.75rem" }}>
+                  <td className="gastos-cell-group">
                     {group.label}
                   </td>
-                  <td style={{ textAlign: "center", color: "var(--text-soft)" }}>
+                  <td className="cell-center gastos-cell-soft">
                     {group.count}
                   </td>
-                  <td
-                    style={{ textAlign: "right", fontWeight: 700, color: "var(--text-strong)" }}
-                    title={group.tooltipBreakdown}
-                  >
+                  <td className="cell-right gastos-cell-amount" title={group.tooltipBreakdown}>
                     {fmtMoney(group.totalBase, baseCurrency)}
                   </td>
-                  <td style={{ textAlign: "center", color: "var(--text-soft)" }}>
+                  <td className="cell-center gastos-cell-soft">
                     {fmtDate(group.lastDate)}
                   </td>
                   {groupBy === "project" && (
-                    <td style={{ textAlign: "center" }}>
+                    <td className="cell-center">
                       <StatusBadge status={group.status} />
                     </td>
                   )}
-                  <td style={{ textAlign: "center" }}>
+                  <td className="cell-center">
                     <button
                       type="button"
                       aria-label={`${isOpen ? "Colapsar" : "Expandir"} detalle de ${group.label}`}
                       onClick={(e) => { e.stopPropagation(); toggleRow(group.key); }}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontSize: "0.75rem",
-                        color: "var(--color-accent)",
-                        fontWeight: 700,
-                        padding: "0.2rem 0.35rem",
-                        borderRadius: "4px",
-                        transition: "transform 0.2s",
-                        transform: isOpen ? "rotate(90deg)" : "none",
-                        display: "inline-block",
-                      }}
+                      className={isOpen ? "gastos-toggle is-open" : "gastos-toggle"}
                     >
                       ▶
                     </button>
@@ -178,14 +152,14 @@ export function GastosSummaryTable({
         {/* Grand total footer */}
         {groups.length > 0 && (
           <tfoot>
-            <tr style={{ borderTop: "2px solid var(--border-color)", background: "var(--state-neutral-bg)" }}>
-              <td style={{ padding: "0.5rem 0.75rem", fontWeight: 800, color: "var(--text-strong)" }}>
+            <tr className="gastos-total-row">
+              <td className="gastos-cell-total">
                 Total general
               </td>
-              <td style={{ textAlign: "center", fontWeight: 700, color: "var(--text-strong)" }}>
+              <td className="cell-center gastos-cell-total">
                 {totals.count}
               </td>
-              <td style={{ textAlign: "right", fontWeight: 800, color: "var(--text-strong)" }}>
+              <td className="cell-right gastos-cell-total">
                 {fmtMoney(totals.totalBase, baseCurrency)}
               </td>
               <td colSpan={groupBy === "project" ? 3 : 2} />

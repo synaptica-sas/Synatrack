@@ -34,14 +34,18 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
     }
   }
 
-  const actionColor = (action: AuditLog["action"]) => {
-    if (action === "CREATE") return "ok";
-    if (action === "DELETE") return "error";
-    return "warn";
+  /**
+   * Tono de estado de la acción. Devuelve el modificador de `.state-chip`, no
+   * un color: el sistema de diseño decide el matiz y su contraparte oscura.
+   */
+  const actionTone = (action: AuditLog["action"]) => {
+    if (action === "CREATE") return "success";
+    if (action === "DELETE") return "danger";
+    return "warning";
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="page-stack">
       <PageHeader
         icon="⊛"
         title="Bitácora de Auditoría"
@@ -50,7 +54,7 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
       <section className="grid">
       <article className="card">
         <h3>Log de Auditoría</h3>
-        <div className="form-grid filters-grid" style={{ marginBottom: "0.75rem" }}>
+        <div className="form-grid filters-grid filters-grid--spaced">
           <input
             placeholder="Entidad (ej. Project, Forecast)"
             value={filters.entity}
@@ -95,23 +99,23 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
                 <tbody>
                   {logs.map((log) => (
                     <tr key={log.id}>
-                      <td><span className="pill neutral">{log.entity}</span></td>
-                      <td><span className={`pill ${actionColor(log.action)}`}>{log.action}</span></td>
-                      <td style={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{log.entityId.slice(0, 8)}…</td>
+                      <td><span className="state-chip state-chip--neutral">{log.entity}</span></td>
+                      <td><span className={`state-chip state-chip--${actionTone(log.action)}`}>{log.action}</span></td>
+                      <td className="cell-mono">{log.entityId.slice(0, 8)}…</td>
                       <td>{log.changedBy}</td>
                       <td>{new Date(log.createdAt).toLocaleString()}</td>
                       <td>
                         {log.action === "UPDATE" && log.before && log.after ? (
-                          <details>
-                            <summary style={{ cursor: "pointer", fontSize: "0.75rem" }}>Ver diff</summary>
-                            <pre style={{ fontSize: "0.7rem", maxWidth: "30rem", overflow: "auto", background: "#f9fafb", padding: "0.5rem", borderRadius: "4px" }}>
+                          <details className="audit-diff">
+                            <summary className="audit-diff__summary">Ver diff</summary>
+                            <pre className="audit-diff__pre">
                               {JSON.stringify({ before: log.before, after: log.after }, null, 2)}
                             </pre>
                           </details>
                         ) : log.action === "CREATE" ? (
-                          <details>
-                            <summary style={{ cursor: "pointer", fontSize: "0.75rem" }}>Ver datos</summary>
-                            <pre style={{ fontSize: "0.7rem", maxWidth: "30rem", overflow: "auto", background: "#f9fafb", padding: "0.5rem", borderRadius: "4px" }}>
+                          <details className="audit-diff">
+                            <summary className="audit-diff__summary">Ver datos</summary>
+                            <pre className="audit-diff__pre">
                               {JSON.stringify(log.after, null, 2)}
                             </pre>
                           </details>
@@ -122,17 +126,17 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
                 </tbody>
               </table>
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "0.75rem", fontSize: "0.8rem", color: "#6b7280" }}>
-              <span>{meta.total} registros · página {meta.page} de {meta.totalPages}</span>
-              <div style={{ display: "flex", gap: "0.25rem" }}>
-                <button type="button" className="ghost" disabled={meta.page === 1} onClick={() => void loadLogs(meta.page - 1)} style={{ padding: "0.2rem 0.5rem", fontSize: "0.75rem" }}>‹</button>
-                <button type="button" className="ghost" disabled={meta.page === meta.totalPages} onClick={() => void loadLogs(meta.page + 1)} style={{ padding: "0.2rem 0.5rem", fontSize: "0.75rem" }}>›</button>
+            <div className="table-pager">
+              <span className="table-pager__status">{meta.total} registros · página {meta.page} de {meta.totalPages}</span>
+              <div className="table-pager__nav">
+                <button type="button" className="ghost" disabled={meta.page === 1} onClick={() => void loadLogs(meta.page - 1)} aria-label="Página anterior">‹</button>
+                <button type="button" className="ghost" disabled={meta.page === meta.totalPages} onClick={() => void loadLogs(meta.page + 1)} aria-label="Página siguiente">›</button>
               </div>
             </div>
           </>
         )}
         {!loading && logs.length === 0 && (
-          <p style={{ color: "#6b7280", fontSize: "0.875rem" }}>Aplica filtros y presiona "Consultar" para ver el log de auditoría.</p>
+          <p className="empty-note">Aplica filtros y presiona "Consultar" para ver el log de auditoría.</p>
         )}
       </article>
     </section>

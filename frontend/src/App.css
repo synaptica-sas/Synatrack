@@ -5312,3 +5312,424 @@ body.dark .card .capacity-util.capacity-util--danger  { color: var(--state-dange
   font-weight: 600;
   color: var(--text-muted);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GASTOS  (features/expenses/*)
+   Clases propias de la pantalla de Gastos. Todo lo genérico se reusa de los
+   patrones ya existentes: `.kpi-grid`/`.kpi-card`, `.state-chip`,
+   `.empty-state`, `.chip-row`, `.inline-filter`, `.control-sm`, `.btn-sm`,
+   `.card--roomy`, `.card-head`, `.card-title`, `.table-wrap--spaced`,
+   `.cell-center/-right/-num/-strong/-empty--roomy` y los tonos `.tone-*`.
+   Lo que lleva prefijo `gastos-` es solo lo que no tenía equivalente.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tira de KPIs ─────────────────────────────────────────────────────────
+   Reusa `.kpi-grid` + `.kpi-card`; lo único propio es el hueco inferior y la
+   línea de variación contra el período anterior. La flecha ▲/▼ acompaña al
+   color: la subida del gasto se lee también sin distinguir rojo de verde. */
+.gastos-kpi-strip { margin-bottom: var(--space-4); }
+
+.gastos-kpi-delta {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+/* La tira vive dentro de una `.card`, donde `body.dark .card span:not(.pill)`
+   fuerza `color: inherit` con (0,3,1) y aplana toda la jerarquía. Se les
+   devuelve su color con un selector más específico, sin `!important`. */
+body.dark .card .gastos-kpi-strip .kpi-card__label { color: var(--text-muted); }
+body.dark .card .gastos-kpi-strip .kpi-card__value { color: var(--text-strong); }
+body.dark .card .gastos-kpi-strip .kpi-card__sub   { color: var(--text-muted); }
+body.dark .card .gastos-kpi-strip .kpi-card__value.tone-success { color: var(--state-success-strong); }
+body.dark .card .gastos-kpi-strip .kpi-card__value.tone-warning { color: var(--state-warning-strong); }
+body.dark .card .gastos-kpi-strip .kpi-card__value.tone-danger  { color: var(--state-danger-strong); }
+body.dark .card .gastos-kpi-delta.tone-success { color: var(--state-success-strong); }
+body.dark .card .gastos-kpi-delta.tone-danger  { color: var(--state-danger-strong); }
+
+/* ── Barra de filtros ─────────────────────────────────────────────────────
+   Dos filas: la de arriba alinea al centro (controles de una línea), la de
+   abajo al principio (el selector de rango despliega un panel). */
+.gastos-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.gastos-filters__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.gastos-filters__row--top { align-items: flex-start; }
+
+.gastos-search { flex: 1 1 10rem; min-width: 10rem; }
+
+/* `.inline-filter` reserva 15,6rem porque nació para campos de formulario;
+   aquí la etiqueta va pegada a un select estrecho y esa reserva rompía la
+   fila. Solo se anula el mínimo: el resto del patrón se conserva. */
+.inline-filter.gastos-inline-filter { min-width: 0; }
+
+.gastos-filters__actions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* El botón principal iba en un degradado naranja de Tailwind
+   (#ff8b3d → #ea580c) con texto blanco. Pasa al ámbar de marca con navy
+   encima (`--state-warning-on-solid`): el blanco sobre ese ámbar se queda en
+   1,9:1, que es justo el error que documenta DISENO.md §5.3. */
+.gastos-btn-new {
+  background: var(--state-warning-solid);
+  color: var(--state-warning-on-solid);
+}
+
+.gastos-daterange { min-width: 13rem; }
+.gastos-currency-select { min-width: 7rem; }
+
+/* ── Chips de categoría ───────────────────────────────────────────────────
+   Filtro de dos estados. El activo no se distingue solo por color: lleva
+   además `aria-pressed` para el lector de pantalla y un contraste de relleno
+   que se percibe también en escala de grises. */
+.gastos-chip-row { align-items: center; gap: var(--space-1); }
+
+.gastos-chip {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  background: var(--card-bg);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.gastos-chip:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  border-color: var(--text-muted);
+  box-shadow: none;
+}
+
+.gastos-chip.is-active {
+  background: var(--state-warning-solid);
+  border-color: var(--state-warning-solid);
+  color: var(--state-warning-on-solid);
+}
+
+/* ── Tabla resumen ────────────────────────────────────────────────────── */
+.gastos-table { font-size: 0.82rem; }
+
+.gastos-col--group  { width: 36%; }
+.gastos-col--count  { width: 8%; }
+.gastos-col--total  { width: 20%; }
+.gastos-col--date   { width: 14%; }
+.gastos-col--status { width: 16%; }
+.gastos-col--toggle { width: 6%; }
+
+.gastos-row { cursor: pointer; }
+
+/* El realce de la fila abierta va en las celdas, no en la `tr`:
+   `body.dark .project-table tr` lleva `!important` y se lo comería. */
+.gastos-row.is-open > td { background: var(--surface-subtle); }
+
+.gastos-cell-group  { padding: var(--space-2) var(--space-3); font-weight: 600; }
+.gastos-cell-amount { font-weight: 700; font-variant-numeric: tabular-nums; }
+.gastos-cell-total  { font-weight: 800; padding: var(--space-2) var(--space-3); }
+
+/* `body.dark td` fija el color con (0,1,2); hay que repetir el elemento para
+   que la jerarquía de la tabla sobreviva al modo oscuro. */
+td.gastos-cell-group,  body.dark td.gastos-cell-group  { color: var(--text-strong); }
+td.gastos-cell-amount, body.dark td.gastos-cell-amount { color: var(--text-strong); }
+td.gastos-cell-total,  body.dark td.gastos-cell-total  { color: var(--text-strong); }
+td.gastos-cell-soft,   body.dark td.gastos-cell-soft   { color: var(--text-soft); }
+
+.gastos-total-row > td {
+  border-top: 2px solid var(--border-color);
+  background: var(--surface-subtle);
+}
+
+/* Chevron de expandir/colapsar. Es un `button`, así que hay que desandar el
+   relleno ámbar y la sombra que trae el botón base del proyecto. */
+.gastos-toggle {
+  background: none;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.gastos-toggle:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  box-shadow: none;
+  transform: none;
+}
+
+.gastos-toggle.is-open { transform: rotate(90deg); }
+.gastos-toggle.is-open:hover:not(:disabled) { transform: rotate(90deg); }
+
+/* ── Fila de detalle (acordeón) ──────────────────────────────────────────
+   La cabecera de la subtabla iba en ámbar de marca, que sobre claro no llega
+   a 4,5:1 para 0,68rem. Pasa a `--surface-subtle` + `--text-soft`, igual que
+   `.capacity-subtable`. */
+.gastos-detail-cell {
+  padding: 0;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.gastos-detail-inner {
+  padding: 0 var(--space-3) var(--space-2) var(--space-6);
+  animation: fadeIn 0.18s ease;
+}
+
+.gastos-subtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+/* `body.dark th` pinta la cabecera en ámbar de marca con (0,1,2); aquí el
+   texto es de 0,68rem y ese ámbar no llega a 4,5:1, así que hay que ganarle
+   con el elemento repetido en el selector, no con `!important`. */
+.gastos-subtable th,
+body.dark .gastos-subtable th {
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-soft);
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.gastos-subtable td {
+  padding: var(--space-1) var(--space-2);
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.gastos-subtable__col-actions { width: 4rem; }
+.gastos-subtable__actions { white-space: nowrap; }
+
+.gastos-subtable__total { font-weight: 700; }
+td.gastos-subtable__total, body.dark td.gastos-subtable__total { color: var(--text-strong); }
+
+.gastos-icon-btn {
+  background: none;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0.1rem var(--space-1);
+  border-radius: var(--radius-sm);
+  line-height: 1;
+}
+
+.gastos-icon-btn:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  box-shadow: none;
+  transform: none;
+}
+
+/* ── Bloque de costos proyectados ────────────────────────────────────────
+   La cifra iba en #2563eb, el azul de Tailwind, sin contraparte oscura.
+   Pasa a `--state-info-strong`, el azul de marca contrastado en ambos temas. */
+.gastos-forecast-title.gastos-forecast-title { font-size: 0.95rem; }
+
+.gastos-forecast-note {
+  margin-left: var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-soft);
+}
+
+.gastos-forecast-row {
+  display: flex;
+  gap: var(--space-6);
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
+}
+
+.gastos-forecast-total {
+  font-family: var(--display);
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--state-info-strong);
+}
+
+.gastos-forecast-meta { font-size: 0.8rem; color: var(--text-soft); }
+
+.gastos-forecast-foot {
+  margin: var(--space-2) 0 0;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+/* Dentro de `.card`, en oscuro, `body.dark .card span:not(.pill)` aplana estos
+   textos con (0,3,2): tres clases y DOS elementos. Un selector de tres clases
+   y un elemento pierde el desempate, así que la clase va repetida para llegar
+   a (0,4,1). `--foot` es un `<p>` y le basta con (0,3,1). */
+body.dark .card .gastos-forecast-total.gastos-forecast-total { color: var(--state-info-strong); }
+body.dark .card .gastos-forecast-note.gastos-forecast-note,
+body.dark .card .gastos-forecast-meta.gastos-forecast-meta,
+body.dark .card .gastos-forecast-foot { color: var(--text-soft); }
+
+/* ── Móvil ───────────────────────────────────────────────────────────────
+   A 560px las acciones dejan de empujarse a la derecha y ocupan su propia
+   fila: a 400px se salían del contenedor. */
+@media (max-width: 560px) {
+  .gastos-filters__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .gastos-filters__actions > button { flex: 1 1 auto; }
+
+  .gastos-search,
+  .gastos-daterange,
+  .gastos-currency-select { flex: 1 1 100%; width: 100%; min-width: 0; }
+
+  .inline-filter.gastos-inline-filter { flex: 1 1 100%; }
+  .inline-filter.gastos-inline-filter > select { flex: 1; min-width: 0; }
+
+  .gastos-detail-inner { padding-left: var(--space-3); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PERFIL, USUARIOS, AUDITORÍA Y TASAS FX
+   Las cuatro son sobre todo formulario + tabla, así que casi todo sale de
+   patrones que ya existían (`.page-stack`, `.card-head`, `.table-wrap`,
+   `.table-pager`, `.state-chip`, `.field-label`, `.field-help`, `.empty-note`,
+   `.input-readonly`, `.btn-sm`, `.inline-actions`, `.tag-list`, `.modal-*`).
+   Lo de abajo es lo que faltaba: primero lo genérico —porque lo comparten las
+   cuatro y varias pantallas ya migradas repetían el mismo `style={{ }}`— y
+   después lo propio de cada pantalla, con su prefijo.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Campo apilado: etiqueta encima de su control ────────────────────────
+   Era el `style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}`
+   que se repetía en Perfil (4 veces) y en Usuarios (4 más). La etiqueta usa
+   `.field-label`, que dentro de la columna ya no necesita su margen inferior
+   porque separa el `gap`. */
+.field-stack { display: flex; flex-direction: column; gap: var(--space-1); }
+.field-stack > .field-label { margin-bottom: 0; }
+
+/* Rejilla de filtros pegada a la tabla que filtra. Antes cada pantalla
+   escribía su propio `marginBottom: "0.75rem"`. */
+.filters-grid--spaced { margin-bottom: var(--space-3); }
+
+/* Celda que ocupa todo el ancho de su rejilla (`gridColumn: "1 / -1"`). */
+.span-full { grid-column: 1 / -1; }
+
+/* Identificador técnico dentro de una celda: monoespaciado y más pequeño que
+   el texto normal, porque se lee carácter a carácter y no como palabra. */
+.cell-mono { font-family: var(--mono); font-size: 0.75rem; }
+
+/* ── Modal: cabecera y pie con filete ────────────────────────────────────
+   `.modal-header` y `.modal-actions` ya existían; lo que se escribía a mano
+   una y otra vez era la línea que los separa del cuerpo. */
+.modal-header--rule {
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.modal-actions--rule {
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-4);
+  margin-top: var(--space-2);
+  gap: var(--space-3);
+}
+
+/* Título de un modal. Se repite la clase porque `body.dark .modal-card` y los
+   estilos de encabezado pesan más que una sola. */
+.modal-title.modal-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+/* Insignia de rol en su tamaño compacto, para una celda de tabla. */
+.role-badge--sm { padding: 0.15rem var(--space-1); font-size: 0.68rem; }
+
+/* ── Perfil ──────────────────────────────────────────────────────────────
+   El grueso de la pantalla usa las clases `.profile-*` y `.skill-*` que ya
+   estaban en esta hoja. Lo que falta es neutralizar el estilo global de
+   `button`, ahora que el avatar y cada sugerencia son botones de verdad (antes
+   eran `div` con `onClick`, inalcanzables con el teclado): sin esto heredan el
+   fondo ámbar, el desplazamiento del hover y su sombra. */
+.profile-avatar:hover:not(:disabled),
+.profile-avatar:active:not(:disabled) {
+  transform: none;
+  filter: none;
+  box-shadow: 0 8px 24px var(--color-accent-30);
+}
+
+.skill-suggestions__item:hover:not(:disabled),
+.skill-suggestions__item:active:not(:disabled) {
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+.skill-suggestions li + li { border-top: 1px solid var(--border-subtle); }
+
+.profile-identity { min-width: 0; }
+
+/* ── Auditoría ───────────────────────────────────────────────────────────
+   El volcado JSON del cambio. El fondo era `#f9fafb`, un parche blanco en
+   modo oscuro; ahora es `--surface-subtle`, que sí tiene contraparte. */
+.audit-diff__summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.audit-diff__pre {
+  margin: var(--space-2) 0 0;
+  max-width: 30rem;
+  overflow: auto;
+  padding: var(--space-2);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+body.dark td .audit-diff__summary.audit-diff__summary { color: var(--text-soft); }
+body.dark td .audit-diff__pre.audit-diff__pre         { color: var(--text); }
+
+/* ── Tasas FX ────────────────────────────────────────────────────────────
+   La tasa se consulta sola al proveedor: el campo es de solo lectura y lleva
+   un indicador de carga dentro, alineado al borde derecho. */
+.fx-rate-field { position: relative; }
+
+.fx-rate-field__spinner {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  pointer-events: none;
+}
+
+body.dark .card .fx-rate-field__spinner.fx-rate-field__spinner { color: var(--text-soft); }

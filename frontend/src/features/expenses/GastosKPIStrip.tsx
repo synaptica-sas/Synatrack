@@ -1,6 +1,9 @@
 import type { Expense, FxConfig, Project } from "../../services/api";
 import { convertToBase, numberish, fmtMoney, prevPeriod } from "./gastosUtils";
 
+/** Tono de estado de un dato. `undefined` = sin estado, color de texto normal. */
+type Tone = "success" | "warning" | "danger";
+
 function pct(a: number, b: number): number {
   return b > 0 ? (a / b) * 100 : 0;
 }
@@ -15,41 +18,25 @@ function KPI({
   value,
   sub,
   delta,
-  accent,
+  tone,
 }: {
   label: string;
   value: string;
   sub?: string;
   delta?: number | null;
-  accent?: string;
+  tone?: Tone;
 }) {
   return (
-    <div style={{
-      flex: "1 1 0",
-      minWidth: "9rem",
-      background: "var(--card-bg)",
-      border: "1px solid var(--border-color)",
-      borderRadius: "10px",
-      padding: "0.65rem 0.9rem",
-    }}>
-      <div style={{ fontSize: "0.68rem", color: "var(--color-accent)", fontWeight: 600, marginBottom: "0.15rem" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: "1.05rem", fontWeight: 800, color: accent ?? "var(--text-strong)" }}>
+    <div className="kpi-card">
+      <span className="kpi-card__label">{label}</span>
+      <span className={tone ? `kpi-card__value tone-${tone}` : "kpi-card__value"}>
         {value}
-      </div>
-      {sub && (
-        <div style={{ fontSize: "0.68rem", color: "var(--color-accent)", marginTop: "0.1rem" }}>{sub}</div>
-      )}
+      </span>
+      {sub && <span className="kpi-card__sub">{sub}</span>}
       {delta != null && (
-        <div style={{
-          fontSize: "0.68rem",
-          fontWeight: 700,
-          marginTop: "0.1rem",
-          color: delta > 0 ? "var(--state-danger-text)" : "var(--state-success-text)",
-        }}>
+        <span className={`gastos-kpi-delta tone-${delta > 0 ? "danger" : "success"}`}>
           {delta > 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}% vs período anterior
-        </div>
+        </span>
       )}
     </div>
   );
@@ -97,18 +84,13 @@ export function GastosKPIStrip({
   }
 
   const execPct = pct(currentTotal, totalBudget);
-  const execColor =
-    execPct >= 100 ? "var(--state-danger-text)" :
-    execPct >= 85  ? "var(--state-warning-text)" :
-    "var(--state-success-text)";
+  const execTone: Tone =
+    execPct >= 100 ? "danger" :
+    execPct >= 85  ? "warning" :
+    "success";
 
   return (
-    <div style={{
-      display: "flex",
-      gap: "0.75rem",
-      flexWrap: "wrap",
-      marginBottom: "1rem",
-    }}>
+    <div className="kpi-grid gastos-kpi-strip">
       <KPI
         label="Total gastado"
         value={fmtMoney(currentTotal, baseCurrency)}
@@ -121,7 +103,7 @@ export function GastosKPIStrip({
       <KPI
         label="% Ejecución presupuestal"
         value={totalBudget > 0 ? `${execPct.toFixed(1)}%` : "—"}
-        accent={totalBudget > 0 ? execColor : undefined}
+        tone={totalBudget > 0 ? execTone : undefined}
         sub={totalBudget > 0
           ? (execPct >= 100 ? "⚠ Superado" : execPct >= 85 ? "⚡ Cerca del límite" : "✅ En rango")
           : "Sin presupuesto disponible"}

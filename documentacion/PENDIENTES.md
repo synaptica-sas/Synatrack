@@ -201,18 +201,10 @@ grep -c 'style={{' frontend/src/features/<pantalla>.tsx
 |---|---|---|
 | `features/estimations/EstimationCalculatorTab.tsx` | 272 | 82 |
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
-| `features/profile/ProfileTab.tsx` | 48 | 6 |
 | `features/forecasts/ForecastsTab.tsx` | 39 | 19 |
 | `features/consultants/ConsultantsTab.tsx` | 39 | 0 |
-| `features/admin/AdminTab.tsx` | 26 | 0 |
 | `features/projects/ProjectsTab.tsx` | 24 | 3 |
-| `features/expenses/GastosSummaryTable.tsx` | 23 | 0 |
-| `features/expenses/GastosFilters.tsx` | 18 | 6 |
-| `features/expenses/ExpensesTab.tsx` | 14 | 1 |
 | `components/SearchableSelect.tsx` | 13 | 2 |
-| `features/audit/AuditTab.tsx` | 12 | 4 |
-| `features/expenses/GastosDetailRow.tsx` | 9 | 0 |
-| `features/fx/FxTab.tsx` | 8 | 0 |
 
 **Ya migrados** (puntos 1, 2 y 3 del orden recomendado):
 
@@ -250,6 +242,42 @@ UI para dispararlos de verdad chocan con la validación
 nativa del formulario antes de llegar al servidor). Capturas en
 `documentacion/capturas/alertas-cajon-despues-*`, `toast-notice-despues-*`,
 `daterange-despues-*` y `ragchat-despues-*`.
+
+- **Gastos** (`features/expenses/`, las cinco piezas: `ExpensesTab`, `GastosFilters`,
+  `GastosSummaryTable`, `GastosDetailRow`, `GastosKPIStrip`) — **70 → 0 estilos en línea y
+  7 → 0 colores literales**, sin ningún valor calculado pendiente. Casi todo salió de clases
+  que ya existían (`.kpi-grid`/`.kpi-card`, `.state-chip`, `.empty-state`, `.chip-row`,
+  `.inline-filter`, `.control-sm`, `.btn-sm`, `.card--roomy`, `.card-head`, `.card-title`,
+  `.table-wrap--spaced`, `.cell-*`, `.tone-*`); lo propio de la pantalla lleva prefijo
+  `gastos-` y está al final de `App.css`. Lo sustancial: el botón "+ Nuevo gasto" iba en un
+  degradado naranja de Tailwind (`#ff8b3d`→`#ea580c`) con texto blanco y los chips de
+  categoría en `#ea580c`/`#fff`; ahora usan `--state-warning-solid` con
+  `--state-warning-on-solid` (navy) encima, que es la convención documentada en `DISENO.md`
+  §5.3. El total de costos proyectados iba en `#2563eb` sin contraparte oscura y ahora es
+  `--state-info-strong`. El detalle de las clases está en `DISENO.md` §6, sección "Clases
+  añadidas al migrar Gastos". Verificado en la app real con Playwright en claro y oscuro y a
+  400px, más una auditoría de estilo computado que destapó dos fallos de especificidad de
+  modo oscuro ya corregidos. Capturas en `documentacion/capturas/gastos-antes-*` y
+  `gastos-despues-*`.
+
+- **Perfil, Usuarios, Auditoría y Tasas FX** (`features/profile/ProfileTab.tsx`,
+  `features/admin/AdminTab.tsx`, `features/audit/AuditTab.tsx`, `features/fx/FxTab.tsx`) —
+  **94 → 0 estilos en línea y 10 → 0 colores literales**, sin ningún valor calculado
+  pendiente. Son cuatro pantallas de formulario + tabla, así que se migraron juntas buscando
+  el patrón común una sola vez. Hallazgo principal: **el CSS de Perfil ya existía y llevaba
+  sin usarse desde el commit `e565e54`** — las clases `.profile-*`, `.skill-*` e
+  `.inline-success` se habían escrito con la migración de Detalle de Proyecto pero el `.tsx`
+  nunca llegó a aplicarlas, así que 43 de los 48 estilos en línea de esa pantalla se
+  resolvieron simplemente conectando el marcado a lo que ya estaba. Lo nuevo es
+  deliberadamente genérico (`.field-stack`, `.filters-grid--spaced`, `.span-full`,
+  `.cell-mono`, `.modal-header--rule`, `.modal-actions--rule`, `.modal-title`,
+  `.role-badge--sm`) porque las cuatro repetían el mismo campo apilado y el mismo modal a
+  mano; solo `.audit-diff__*` y `.fx-rate-field*` son de una pantalla concreta. Las píldoras
+  `.pill ok/warn/error/neutral` pasan a `.state-chip--*`, igual que en Capacidad. El detalle
+  está en `DISENO.md` §6, sección "Clases añadidas al migrar Perfil, Usuarios, Auditoría y
+  Tasas FX". Verificado en la app real con Playwright, claro y oscuro, a 1440 y 400px,
+  incluidos el modal de Usuarios y la tabla de Auditoría con datos reales. Capturas en
+  `documentacion/capturas/perfil-*`, `admin-*`, `auditoria-*` y `fx-*` (`-antes-`/`-despues-`).
 
 ### Orden recomendado, y por qué
 

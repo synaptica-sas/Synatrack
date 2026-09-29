@@ -247,7 +247,7 @@ export function ExpensesTab({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <section className="page-stack">
       <PageHeader
         icon="⊟"
         title="Gestión de Gastos"
@@ -257,7 +257,7 @@ export function ExpensesTab({
       {loading ? (
         <p className="loading">Cargando gastos…</p>
       ) : (
-        <article className="card" style={{ padding: "1rem 1.25rem" }}>
+        <article className="card card--roomy">
           {/* KPI strip */}
           <GastosKPIStrip
             filteredExpenses={filteredExpenses}
@@ -304,47 +304,46 @@ export function ExpensesTab({
 
       {/* ── Costos proyectados (forecasts) ── */}
       {forecasts.length > 0 && (
-        <article className="card" style={{ padding: "1rem 1.25rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-            <h3 style={{ margin: 0, fontSize: "0.95rem" }}>
+        <article className="card card--roomy">
+          <div className="card-head">
+            <h3 className="card-title card-title--tight card-title--rule gastos-forecast-title">
               Costos proyectados (forecasts)
-              <span style={{ marginLeft: "0.5rem", fontSize: "0.75rem", color: "var(--text-soft)", fontWeight: 400 }}>
+              <span className="gastos-forecast-note">
                 — costo futuro estimado basado en proyecciones activas
               </span>
             </h3>
             <button
               type="button"
-              className="ghost"
-              style={{ fontSize: "0.78rem" }}
+              className="ghost btn-sm"
               onClick={() => setShowForecastDetail((p) => !p)}
             >
               {showForecastDetail ? "Ocultar detalle" : "Ver por proyecto"}
             </button>
           </div>
 
-          <div style={{ display: "flex", gap: "1.5rem", alignItems: "baseline", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "1.4rem", fontWeight: 800, color: "#2563eb" }}>
+          <div className="gastos-forecast-row">
+            <span className="gastos-forecast-total">
               {fmtBase(totalProjectedCost)}
             </span>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-soft)" }}>
+            <span className="gastos-forecast-meta">
               Total en {forecasts.length} proyecciones · {forecastByProject.length} proyectos
             </span>
           </div>
 
           {showForecastDetail && (
-            <div className="table-wrap" style={{ marginTop: "0.75rem" }}>
+            <div className="table-wrap table-wrap--spaced">
               <table>
                 <thead>
                   <tr>
                     <th>Proyecto</th>
-                    <th style={{ textAlign: "right" }}>Costo proyectado</th>
+                    <th className="cell-right">Costo proyectado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {forecastByProject.map((row) => (
                     <tr key={row.name}>
                       <td>{row.name}</td>
-                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      <td className="cell-right cell-num">
                         {fmtBase(row.total)}
                       </td>
                     </tr>
@@ -353,7 +352,7 @@ export function ExpensesTab({
               </table>
             </div>
           )}
-          <p style={{ margin: "0.5rem 0 0", fontSize: "0.72rem", color: "var(--text-soft)" }}>
+          <p className="gastos-forecast-foot">
             Nota: costos proyectados en moneda original del forecast. Para comparación exacta en {baseCurrency} configure las tasas de cambio en FX Config.
           </p>
         </article>

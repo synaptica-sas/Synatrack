@@ -115,7 +115,7 @@ export function FxTab({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="page-stack">
       <PageHeader
         icon="⊗"
         title="Tasas de Cambio (FX)"
@@ -132,7 +132,7 @@ export function FxTab({
             <select value={form.quoteCode} onChange={(e) => setForm((p) => ({ ...p, quoteCode: e.target.value }))}>
               {currencyOptions.map((c) => <option key={`fx-quote-${c}`} value={c}>{`Destino: ${c}`}</option>)}
             </select>
-            <div style={{ position: "relative" }}>
+            <div className="fx-rate-field">
               <input
                 type="number"
                 step="0.000001"
@@ -141,10 +141,10 @@ export function FxTab({
                 value={form.rate}
                 readOnly
                 required
-                style={{ width: "100%", cursor: "default", background: "var(--state-neutral-bg)", color: "var(--text)" }}
+                className="input-readonly"
               />
               {fetchingRate && (
-                <span style={{ position: "absolute", right: "0.6rem", top: "50%", transform: "translateY(-50%)", fontSize: "0.75rem", color: "var(--text-soft)" }}>
+                <span className="fx-rate-field__spinner" aria-hidden="true">
                   ⟳
                 </span>
               )}
@@ -158,8 +158,8 @@ export function FxTab({
       </article>
 
       <article className="card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
-          <h3 style={{ margin: 0 }}>Tasas configuradas</h3>
+        <div className="card-head">
+          <h3>Tasas configuradas</h3>
           {canWrite && (
             <button type="button" className="ghost" onClick={() => void handleSync()} disabled={syncing}>
               {syncing ? "Sincronizando…" : "🔄 Actualizar ahora"}
@@ -186,7 +186,7 @@ export function FxTab({
               <tbody>
                 {fxConfigs.map((fx) => (
                   <tr key={fx.id}>
-                    <td><span className="pill neutral">{fx.baseCode}/{fx.quoteCode}</span></td>
+                    <td><span className="state-chip state-chip--neutral">{fx.baseCode}/{fx.quoteCode}</span></td>
                     <td>{`1 ${fx.baseCode} = ${Number(fx.rate).toLocaleString("es-CO", { maximumFractionDigits: 6 })} ${fx.quoteCode}`}</td>
                     <td>{`1 ${fx.quoteCode} = ${(1 / Number(fx.rate)).toLocaleString("es-CO", { maximumFractionDigits: 6 })} ${fx.baseCode}`}</td>
                     <td>{formatDateTime(fx.updatedAt)}</td>
@@ -203,9 +203,9 @@ export function FxTab({
         )}
       </article>
 
-      <article className="card" style={{ gridColumn: "1 / -1" }}>
+      <article className="card span-full">
         <h3>Historial de tasas</h3>
-        <div className="form-grid filters-grid" style={{ marginBottom: "0.75rem" }}>
+        <div className="form-grid filters-grid filters-grid--spaced">
           <select value={historyFilter.baseCode} onChange={(e) => setHistoryFilter((p) => ({ ...p, baseCode: e.target.value }))}>
             <option value="">Todas las bases</option>
             {currencyOptions.map((c) => <option key={`hist-base-${c}`} value={c}>{c}</option>)}
@@ -232,7 +232,7 @@ export function FxTab({
               <tbody>
                 {history.map((h) => (
                   <tr key={h.id}>
-                    <td><span className="pill neutral">{h.baseCode}/{h.quoteCode}</span></td>
+                    <td><span className="state-chip state-chip--neutral">{h.baseCode}/{h.quoteCode}</span></td>
                     <td>{Number(h.rate).toLocaleString("es-CO", { maximumFractionDigits: 6 })}</td>
                     <td>{formatDate(h.effectiveDate)}</td>
                     <td>{h.source || "—"}</td>

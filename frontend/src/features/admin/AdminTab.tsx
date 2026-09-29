@@ -75,15 +75,15 @@ export function AdminTab({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="page-stack">
       <PageHeader
         icon="👤"
         title="Usuarios"
         description="Los usuarios se crean automáticamente al iniciar sesión con Microsoft. Los roles se administran y sincronizan desde Entra ID — aquí puedes consultarlos y activar/desactivar el acceso local."
       />
 
-      <section style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        <article className="card" style={{ width: "100%" }}>
+      <section className="section-stack">
+        <article className="card">
           <h3>Usuarios registrados</h3>
           <p className="fx-note">
             Para cambiar el rol de alguien, hazlo en <strong>Entra ID → Aplicaciones empresariales → Synatrack → Usuarios y grupos</strong>.
@@ -92,7 +92,7 @@ export function AdminTab({
           {loading ? (
             <p className="loading">Cargando...</p>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap table-wrap--spaced">
               <table>
                 <thead>
                   <tr>
@@ -110,9 +110,9 @@ export function AdminTab({
                       <td>{user.displayName}</td>
                       <td>{user.email}</td>
                       <td>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                        <div className="tag-list">
                           {user.roles.map((r) => (
-                            <span key={r} className={`role-badge role-${r.toLowerCase()}`} style={{ fontSize: "0.68rem", padding: "0.15rem 0.4rem" }}>
+                            <span key={r} className={`role-badge role-badge--sm role-${r.toLowerCase()}`}>
                               {roleLabels[r] || r}
                             </span>
                           ))}
@@ -120,14 +120,16 @@ export function AdminTab({
                       </td>
                       <td><CountryFlag country={user.country} /></td>
                       <td>
-                        <span className={`pill ${user.active ? "ok" : "neutral"}`}>{user.active ? "Activo" : "Inactivo"}</span>
+                        <span className={`state-chip ${user.active ? "state-chip--success" : "state-chip--neutral"}`}>
+                          {user.active ? "Activo" : "Inactivo"}
+                        </span>
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
-                          <button type="button" className="ghost" onClick={() => startEdit(user)} style={{ padding: "0.25rem 0.5rem" }}>
+                        <div className="inline-actions">
+                          <button type="button" className="ghost btn-sm" onClick={() => startEdit(user)}>
                             Editar
                           </button>
-                          <button type="button" onClick={() => void handleToggleActive(user)} style={{ padding: "0.25rem 0.5rem" }}>
+                          <button type="button" className="btn-sm" onClick={() => void handleToggleActive(user)}>
                             {user.active ? "Desactivar" : "Activar"}
                           </button>
                         </div>
@@ -144,30 +146,31 @@ export function AdminTab({
       {/* Modal de edición: solo nombre, país y estado — nunca roles */}
       {editingUser && createPortal(
         <div className="modal-overlay" onClick={() => setEditingUser(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "560px" }}>
-            <div className="modal-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.75rem", marginBottom: "1.25rem" }}>
-              <h2 style={{ margin: 0, fontSize: "1.2rem", color: "var(--text-strong)" }}>Editar usuario</h2>
-              <button type="button" className="ghost" onClick={() => setEditingUser(null)} style={{ fontSize: "1.1rem", padding: "0.2rem 0.5rem", lineHeight: 1 }}>
+          <div className="modal-card admin-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header modal-header--rule">
+              <h2 className="modal-title">Editar usuario</h2>
+              <button type="button" className="ghost modal-close" onClick={() => setEditingUser(null)}>
                 ✕
               </button>
             </div>
-            <form onSubmit={(e) => void handleSubmit(e)} className="form-grid" style={{ gap: "1rem" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong)" }}>Correo electrónico</label>
-                <input type="email" value={editingUser.email} disabled style={{ opacity: 0.7 }} />
+            <form onSubmit={(e) => void handleSubmit(e)} className="form-grid form-grid--tight">
+              <div className="field-stack">
+                <label className="field-label" htmlFor="admin-correo">Correo electrónico</label>
+                <input id="admin-correo" type="email" value={editingUser.email} disabled className="input-readonly" />
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong)" }}>Nombre completo</label>
+              <div className="field-stack">
+                <label className="field-label" htmlFor="admin-nombre">Nombre completo</label>
                 <input
+                  id="admin-nombre"
                   placeholder="Nombre"
                   value={form.displayName}
                   onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
                   required
                 />
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong)" }}>País</label>
-                <select value={form.country} onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))}>
+              <div className="field-stack">
+                <label className="field-label" htmlFor="admin-pais">País</label>
+                <select id="admin-pais" value={form.country} onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))}>
                   {supportedCountries.map((c) => (
                     <option key={c} value={c}>{displayCountryWithFlag(c)}</option>
                   ))}
@@ -175,19 +178,19 @@ export function AdminTab({
                 </select>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--text-strong)" }}>Roles</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+              <div className="field-stack">
+                <span className="field-label">Roles</span>
+                <div className="tag-list">
                   {editingUser.roles.map((r) => (
-                    <span key={r} className={`role-badge role-${r.toLowerCase()}`} style={{ fontSize: "0.75rem", padding: "0.3rem 0.7rem" }}>
+                    <span key={r} className={`role-badge role-${r.toLowerCase()}`}>
                       {roleLabels[r] || r}
                     </span>
                   ))}
                 </div>
-                <p className="fx-note" style={{ margin: 0 }}>Se gestionan desde Microsoft Entra ID — no editables aquí.</p>
+                <p className="field-help">Se gestionan desde Microsoft Entra ID — no editables aquí.</p>
               </div>
 
-              <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "0.5rem", borderTop: "1px solid var(--border-color)", paddingTop: "1rem" }}>
+              <div className="modal-actions modal-actions--rule">
                 <button type="button" className="ghost" onClick={() => setEditingUser(null)} disabled={submitting}>
                   Cancelar
                 </button>

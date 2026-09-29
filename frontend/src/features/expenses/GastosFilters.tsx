@@ -53,25 +53,26 @@ export function GastosFilters({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginBottom: "0.75rem" }}>
+    <div className="gastos-filters">
       {/* Row 1: search + group-by + actions */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+      <div className="gastos-filters__row">
         <input
           type="search"
           placeholder="Buscar proyecto, categoría…"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          style={{ flex: "1 1 10rem", minWidth: "10rem", fontSize: "0.82rem", padding: "0.35rem 0.6rem" }}
+          className="gastos-search control-sm"
         />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-          <label style={{ fontSize: "0.72rem", color: "var(--color-accent)", fontWeight: 600, whiteSpace: "nowrap" }}>
+        <div className="inline-filter gastos-inline-filter">
+          <label className="inline-filter__label" htmlFor="gastos-group-by">
             Agrupar por
           </label>
           <select
+            id="gastos-group-by"
             value={groupBy}
             onChange={(e) => onGroupByChange(e.target.value as GroupBy)}
-            style={{ fontSize: "0.78rem", padding: "0.3rem 0.5rem" }}
+            className="control-sm"
           >
             {GROUP_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -79,14 +80,15 @@ export function GastosFilters({
           </select>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-          <label style={{ fontSize: "0.72rem", color: "var(--color-accent)", fontWeight: 600, whiteSpace: "nowrap" }}>
+        <div className="inline-filter gastos-inline-filter">
+          <label className="inline-filter__label" htmlFor="gastos-base-currency">
             Moneda base
           </label>
           <select
+            id="gastos-base-currency"
             value={baseCurrency}
             onChange={(e) => onBaseCurrencyChange(e.target.value)}
-            style={{ fontSize: "0.78rem", padding: "0.3rem 0.5rem" }}
+            className="control-sm"
           >
             {BASE_CURRENCY_OPTIONS.map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -94,30 +96,16 @@ export function GastosFilters({
           </select>
         </div>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: "0.4rem" }}>
+        <div className="gastos-filters__actions">
           <button
             type="button"
-            className="ghost"
+            className="ghost btn-sm"
             onClick={onExport}
-            style={{ fontSize: "0.75rem", padding: "0.3rem 0.65rem" }}
           >
             Exportar CSV
           </button>
           {canWrite && (
-            <button
-              type="button"
-              onClick={onNew}
-              style={{
-                fontSize: "0.75rem",
-                padding: "0.3rem 0.65rem",
-                background: "linear-gradient(135deg,#ff8b3d,#ea580c)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
+            <button type="button" className="btn-sm gastos-btn-new" onClick={onNew}>
               + Nuevo gasto
             </button>
           )}
@@ -125,15 +113,16 @@ export function GastosFilters({
       </div>
 
       {/* Row 2: date range + currency + category chips */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", flexWrap: "wrap" }}>
-        <div style={{ minWidth: "13rem" }}>
+      <div className="gastos-filters__row gastos-filters__row--top">
+        <div className="gastos-daterange">
           <DateRangePicker value={dateRange} onChange={onDateRangeChange} />
         </div>
 
         <select
           value={selectedCurrency}
           onChange={(e) => onCurrencyChange(e.target.value)}
-          style={{ fontSize: "0.78rem", padding: "0.3rem 0.5rem", minWidth: "7rem" }}
+          className="control-sm gastos-currency-select"
+          aria-label="Filtrar por moneda"
         >
           <option value="">Todas las monedas</option>
           {CURRENCY_OPTIONS.map((c) => (
@@ -143,7 +132,7 @@ export function GastosFilters({
 
         {/* Category chips */}
         {availableCategories.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", alignItems: "center" }}>
+          <div className="chip-row gastos-chip-row">
             {availableCategories.map((cat) => {
               const active = selectedCategories.includes(cat);
               return (
@@ -151,17 +140,7 @@ export function GastosFilters({
                   key={cat}
                   type="button"
                   onClick={() => toggleCategory(cat)}
-                  style={{
-                    fontSize: "0.68rem",
-                    padding: "0.2rem 0.55rem",
-                    borderRadius: "9999px",
-                    border: "1px solid",
-                    borderColor: active ? "#ea580c" : "var(--border-color)",
-                    background: active ? "#ea580c" : "var(--card-bg)",
-                    color: active ? "#fff" : "var(--tint-orange-text)",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  className={active ? "gastos-chip is-active" : "gastos-chip"}
                   aria-pressed={active}
                 >
                   {cat}
@@ -171,9 +150,8 @@ export function GastosFilters({
             {selectedCategories.length > 0 && (
               <button
                 type="button"
-                className="ghost"
+                className="ghost btn-sm"
                 onClick={() => onCategoriesChange([])}
-                style={{ fontSize: "0.65rem", padding: "0.15rem 0.4rem" }}
               >
                 Limpiar
               </button>
