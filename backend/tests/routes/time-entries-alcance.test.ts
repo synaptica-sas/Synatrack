@@ -186,6 +186,65 @@ describe("GET /api/time-entries: alcance por rol", () => {
     const ajena = filas.find((fila) => fila.consultantId === escenario.consultorB.id);
     expect(Number(ajena?.consultant?.hourlyRate)).toBe(999.77);
   });
+
+  // Los cuatro casos siguientes vienen de
+  // `src/modules/__tests__/security.integration.test.ts`: comprueban que el
+  // filtro `consultantId` de la petición se acumula sobre el alcance del rol y
+  // nunca lo amplía.
+  it("un CONSULTANT que pide explícitamente las de otro no recibe ninguna", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/time-entries?consultantId=${escenario.consultorB.id}`,
+      headers: comoRol(AppRole.CONSULTANT, escenario.consultorA.email),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toHaveLength(0);
+  });
+
+  it("un usuario sin ficha de consultor no ve las horas de nadie", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/time-entries",
+      headers: comoRol(AppRole.CONSULTANT, `fantasma.${escenario.prefijo}@synaptica.test`),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toHaveLength(0);
+  });
+
+  it("un PM que no gestiona ningún proyecto solo ve las suyas como consultor", async () => {
+    // Identidad de PM con el correo del consultor A: no figura como
+    // `projectManagerEmail` de ningún proyecto, así que el `OR` del alcance
+    // solo puede resolver por la rama del consultor.
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/time-entries",
+      headers: comoRol(AppRole.PM, escenario.consultorA.email),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const filas = res.json().data as Array<{ consultantId: string }>;
+    expect(filas.length).toBeGreaterThan(0);
+    for (const fila of filas) {
+      expect(fila.consultantId).toBe(escenario.consultorA.id);
+    }
+  });
+
+  it("un ADMIN sí puede filtrar por un consultor concreto", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/time-entries?consultantId=${escenario.consultorB.id}`,
+      headers: comoRol(AppRole.ADMIN),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const filas = res.json().data as Array<{ consultantId: string }>;
+    expect(filas).toHaveLength(2);
+    for (const fila of filas) {
+      expect(fila.consultantId).toBe(escenario.consultorB.id);
+    }
+  });
 });
 
 describe("POST /api/time-entries: no se puede registrar a nombre de otro", () => {

@@ -87,16 +87,6 @@ botella; `AuditLog` además crece más rápido desde que guarda `before` y `afte
 **El TLS del correo está debilitado.** `utils/notifications.ts` usa
 `rejectUnauthorized: false` y `ciphers: "SSLv3"`. Bloqueado por D-6.
 
-**Dos pruebas de integración están en el sitio equivocado.**
-`src/modules/__tests__/roles.integration.test.ts` y `security.integration.test.ts` viven
-dentro de `src/`, así que las recoge `npm test` -- que por diseño es **solo cálculo puro y
-sin base de datos** (ver el comentario de `vitest.config.ts`). Consecuencias: `npm test` ya
-no corre sin Postgres, y esas pruebas escriben contra la `DATABASE_URL` que esté configurada,
-que puede ser la base de desarrollo; `vitest.routes.config.ts` dice explícitamente *"Base
-DEDICADA a pruebas; nunca `app_gestion_demo`"*. Además mockean `authenticate` en vez de usar
-el simulador de rol por encabezado, y solapan cobertura con `tests/routes/`. **Hay que
-moverlas a `tests/routes/` y adaptarlas a esa infraestructura.**
-
 ### Medio
 
 **DEP-32 — La conversión de moneda falla en silencio.** `convertAmountFallback` devuelve el
@@ -116,10 +106,6 @@ la celda en **rojo** (`PortfolioTab.tsx`, < 0,85) mientras el semáforo de su pr
 **Los deltas «vs período anterior» del tablero comparan peras con manzanas.** Un total del
 servidor ya convertido contra una suma local en monedas mezcladas. Arreglarlo bien exige que
 `/stats/overview` devuelva los totales del período anterior.
-
-**Los umbrales de Portafolio no coinciden con los del backend** (ver D-7). Es un defecto
-funcional, no visual: se detectó al rediseñar la pantalla y se dejó sin tocar a propósito,
-porque elegir los umbrales buenos es decisión de negocio.
 
 **DEP-05 y DEP-06 — Enums muertos.** `AssignmentStatus.PARTIAL` nunca se escribe pero
 aparece en 12 filtros de lectura; `AlertType.CONSULTANT_OVERLOADED` nunca se genera, aunque

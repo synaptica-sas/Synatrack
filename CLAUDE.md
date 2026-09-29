@@ -93,7 +93,7 @@ node scripts/generate-map.mjs         # regenera documentacion/MAPA_PROYECTO.md
 ```bash
 cd backend
 npm run dev                           # tsx watch -> http://localhost:4000
-npm test                              # 153 tests, pasan
+npm test                              # 195 tests (cálculo puro, sin base de datos)
 npm run prisma:deploy                 # migrate deploy
 npm run prisma:seed                   # solo roles + usuario admin, NO datos demo
 npm run smoke                         # smoke test manual contra un deploy
@@ -101,7 +101,7 @@ npm run smoke                         # smoke test manual contra un deploy
 cd frontend
 npm run dev                           # http://localhost:5173
 npm run build                         # tsc -b && vite build -> dist/
-npm test                              # 124 tests, pasan
+npm test                              # 156 tests, pasan
 npm run lint
 ```
 
