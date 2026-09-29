@@ -199,12 +199,15 @@ grep -c 'style={{' frontend/src/features/<pantalla>.tsx
 
 | Archivo | Estilos en línea | Colores literales |
 |---|---|---|
-| `features/estimations/EstimationCalculatorTab.tsx` | 272 | 82 |
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
+| `App.tsx` (landing y layout) | 93 | 42 |
 | `features/forecasts/ForecastsTab.tsx` | 39 | 19 |
 | `features/consultants/ConsultantsTab.tsx` | 39 | 0 |
 | `features/projects/ProjectsTab.tsx` | 24 | 3 |
 | `components/SearchableSelect.tsx` | 13 | 2 |
+
+Totales globales sobre `frontend/src/**/*.tsx` tras esta pasada: **490 estilos en línea y
+130 colores literales** (venían de 1.576 y 575 en la rama `dev`).
 
 **Ya migrados** (puntos 1, 2 y 3 del orden recomendado):
 
@@ -279,6 +282,35 @@ nativa del formulario antes de llegar al servidor). Capturas en
   incluidos el modal de Usuarios y la tabla de Auditoría con datos reales. Capturas en
   `documentacion/capturas/perfil-*`, `admin-*`, `auditoria-*` y `fx-*` (`-antes-`/`-despues-`).
 
+- **Calculadora de Estimaciones** (`features/estimations/EstimationCalculatorTab.tsx`) —
+  **272 → 2 estilos en línea y 82 → 0 colores literales**. Era el archivo más cargado del
+  frontend (2.422 líneas). Los 2 que quedan son valores calculados, el único uso legítimo:
+  el ancho de cada segmento de la barra apilada de esfuerzo y el del tramo "Ideal" de la
+  comparación ideal vs. real.
+
+  Se hizo en cuatro pasadas verificadas por separado (guía educativa → parámetros y espacio
+  de trabajo → consolidado → calibrador de pesos). Lo más rentable no fue reemplazar color
+  por color sino **buscar el patrón repetido**: un solo `style` de control de formulario
+  (`width:100%`, `padding:0.5rem`, `background:"#fff"`) aparecía **30 veces**, y la etiqueta
+  de campo apilada **26 veces**; las dos clases correspondientes resolvieron 67 de los 272
+  estilos de una vez. Las dos filas de pestañas (estimador/pesos y la de la guía) estaban
+  escritas a mano con ámbar incrustado y pasan a `.subtabs`/`.subtab`/`.is-active`, que ya
+  existía.
+
+  Los 82 literales eran casi todos de Tailwind y se mapearon **por significado**: verde →
+  `--state-success-*`, ámbar → `--state-warning-*`, rojo → `--state-danger-*`, azul →
+  `--state-info-*`, y morado/naranja/cian/rosa → los tintes categóricos `--tint-*`, que ya
+  tenían contraparte oscura. **No hizo falta crear ningún token nuevo.** De los 18 `#fff`,
+  15 eran fondos de campo (ahora `--card-bg`, con `body.dark input` haciendo su trabajo) y 3
+  eran texto sobre relleno sólido; los que iban sobre ámbar pasan a navy
+  (`--state-warning-on-solid`), que es la convención de `DISENO.md` §5.3. El detalle está en
+  `DISENO.md` §6, sección "Clases añadidas al migrar la Calculadora de Estimaciones".
+
+  Verificado con `tsc -b`/`lint`/`build`/156 pruebas, más Playwright en claro y oscuro a
+  1440 y 400px sobre cinco estados de la pantalla (estimador, las tres pestañas de la guía y
+  el calibrador) y una auditoría de `getComputedStyle` de 35 selectores en ambos temas.
+  Capturas en `documentacion/capturas/estimaciones-*` (`-antes-`/`-despues-`).
+
 ### Orden recomendado, y por qué
 
 No por tamaño, sino por impacto:
@@ -301,8 +333,11 @@ No por tamaño, sino por impacto:
    sin errores de consola: reporte y configuración multipaís (fichas de legislación) de Horas
    Extra, y las cuatro sub-pestañas de Capacidad. Capturas en
    `documentacion/capturas/extrahoras-*-despues-*` y `capacidad-*-despues-*`.
-5. **Actividades** y **Estimaciones** al final: son las más grandes (más de 2.000 líneas) y
-   las de uso más esporádico. **Léelas por rangos, no enteras.**
+5. ~~**Estimaciones**~~ **— hecho.** 272 → 2 estilos en línea (los dos calculados), 82 → 0
+   colores. Era la más grande (2.422 líneas). **Queda `ActivitiesTab` (223 / 58)**, que es
+   ahora la de mayor rentabilidad, y después `App.tsx` (93 / 42), que es landing y layout.
+   **Léelas por rangos, no enteras**, y empieza mapeando qué patrón se repite: en
+   Estimaciones, dos clases resolvieron 67 de los 272 estilos.
 
 ### Reglas que no se pueden romper
 

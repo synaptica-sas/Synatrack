@@ -500,17 +500,17 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
   // Dynamic values using current weights calibration
   const complexityLevels = useMemo(() => [
     {
-      key: "routine", label: `Rutinaria (x${weights.compRoutine})`, uFactor: weights.compRoutine, color: "#22c55e", icon: "✅",
+      key: "routine", label: `Rutinaria (x${weights.compRoutine})`, uFactor: weights.compRoutine, icon: "✅",
       desc: "Trabajo estándar repetido muchas veces. CRUD básico, queries simples o componentes comunes.",
       examples: ["CRUD básico", "Componente UI estándar", "Endpoint REST común"]
     },
     {
-      key: "known_unknowns", label: `Incógnitas Conocidas (x${weights.compKnownUnknowns})`, uFactor: weights.compKnownUnknowns, color: "#eab308", icon: "⚠️",
+      key: "known_unknowns", label: `Incógnitas Conocidas (x${weights.compKnownUnknowns})`, uFactor: weights.compKnownUnknowns, icon: "⚠️",
       desc: "Hay dependencias de terceros, APIs de otros equipos o código legacy sin pruebas automatizadas.",
       examples: ["Integración API externa", "Refactorizar módulo legacy", "Feature multi-servicio"]
     },
     {
-      key: "unknown_unknowns", label: `Territorio Inexplorado (x${weights.compUnknownUnknowns})`, uFactor: weights.compUnknownUnknowns, color: "#ef4444", icon: "🔴",
+      key: "unknown_unknowns", label: `Territorio Inexplorado (x${weights.compUnknownUnknowns})`, uFactor: weights.compUnknownUnknowns, icon: "🔴",
       desc: "Tecnología nueva o inestable para el equipo, requisitos sumamente ambiguos o sin documentación.",
       examples: ["Integración IA desde cero", "Protocolo de red propietario", "Cambio de arquitectura core"]
     }
@@ -532,18 +532,21 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
   ], [weights]);
 
   const scopeDefinitionLevels = useMemo(() => [
-    { key: "closed", label: `Cerrado y Acotado (x${weights.scopeClosed})`, factor: weights.scopeClosed, color: "#22c55e", desc: "Requisitos 100% claros, aprobados y firmados, sin posibilidad de cambios sin control de cambios estricto." },
-    { key: "pending", label: `Pendientes Menores (x${weights.scopePending})`, factor: weights.scopePending, color: "#eab308", desc: "Flujos claros pero quedan detalles cosméticos o APIs secundarias por confirmar." },
-    { key: "diffuse", label: `Difuso / WIP (x${weights.scopeDiffuse})`, factor: weights.scopeDiffuse, color: "#ef4444", desc: "El cliente sabe qué quiere lograr pero no el cómo. Historias de usuario ambiguas o incompletas." },
-    { key: "no_closure", label: `Sin Cierre Técnico (x${weights.scopeNoTechnicalClosure})`, factor: weights.scopeNoTechnicalClosure, color: "#7f1d1d", desc: "Incertidumbre crítica. El alcance cambia semanalmente, sin alcances definidos ni límites técnicos." }
+    { key: "closed", label: `Cerrado y Acotado (x${weights.scopeClosed})`, factor: weights.scopeClosed, desc: "Requisitos 100% claros, aprobados y firmados, sin posibilidad de cambios sin control de cambios estricto." },
+    { key: "pending", label: `Pendientes Menores (x${weights.scopePending})`, factor: weights.scopePending, desc: "Flujos claros pero quedan detalles cosméticos o APIs secundarias por confirmar." },
+    { key: "diffuse", label: `Difuso / WIP (x${weights.scopeDiffuse})`, factor: weights.scopeDiffuse, desc: "El cliente sabe qué quiere lograr pero no el cómo. Historias de usuario ambiguas o incompletas." },
+    { key: "no_closure", label: `Sin Cierre Técnico (x${weights.scopeNoTechnicalClosure})`, factor: weights.scopeNoTechnicalClosure, desc: "Incertidumbre crítica. El alcance cambia semanalmente, sin alcances definidos ni límites técnicos." }
   ], [weights]);
 
   // Brooks' Law SVG node visualizer generation
   const devList = useMemo(() => {
-    const list: { type: "senior" | "mid" | "junior"; color: string; label: string }[] = [];
-    for (let i = 0; i < teamSeniorCount; i++) list.push({ type: "senior", color: "#22c55e", label: "SR" });
-    for (let i = 0; i < teamMidCount; i++) list.push({ type: "mid", color: "#eab308", label: "MID" });
-    for (let i = 0; i < teamJuniorCount; i++) list.push({ type: "junior", color: "#ef4444", label: "JR" });
+    // El color de cada nodo sale de su `type` mediante una clase CSS
+    // (`.est-node--senior/-mid/-junior`), no de un literal: así tiene
+    // contraparte de modo oscuro y sale del sistema de tokens.
+    const list: { type: "senior" | "mid" | "junior"; label: string }[] = [];
+    for (let i = 0; i < teamSeniorCount; i++) list.push({ type: "senior", label: "SR" });
+    for (let i = 0; i < teamMidCount; i++) list.push({ type: "mid", label: "MID" });
+    for (let i = 0; i < teamJuniorCount; i++) list.push({ type: "junior", label: "JR" });
     return list;
   }, [teamSeniorCount, teamMidCount, teamJuniorCount]);
 
@@ -945,25 +948,25 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
   const activeTask = tasks[activeTaskIndex] || null;
 
   return (
-    <div className={showTooltips ? "" : "hide-tooltips"} style={{ display: "flex", flexDirection: "column", gap: "2.5rem", padding: "1rem 2rem" }}>
-      
+    <div className={`page-stack page-stack--padded${showTooltips ? "" : " hide-tooltips"}`}>
+
       <PageHeader
         icon="⚖"
         title="Calculadora de Estimaciones"
         description="Herramienta interactiva para estimar el esfuerzo, horas y costos de desarrollo por tareas utilizando el método PERT calibrado por U-Factor."
         actions={
           <>
-            <button type="button" onClick={handleToggleTooltips} className="ghost" style={{ fontSize: "0.85rem", padding: "0.5rem 1rem", borderRadius: "8px", borderColor: "var(--border-color)", color: "var(--text-soft)" }}>
+            <button type="button" onClick={handleToggleTooltips} className="ghost est-hdr-btn">
               {showTooltips ? "ℹ️ Ocultar Tooltips" : "ℹ️ Mostrar Tooltips"}
             </button>
-            <button type="button" onClick={() => setShowEducation((v) => !v)} className="ghost" style={{ fontSize: "0.85rem", padding: "0.5rem 1rem", borderRadius: "8px", borderColor: "var(--tint-purple-border)", color: "var(--tint-purple-text)" }}>
+            <button type="button" onClick={() => setShowEducation((v) => !v)} className="ghost est-hdr-btn est-hdr-btn--guide">
               {showEducation ? "🎓 Ocultar Guía Educativa" : "🎓 Mostrar Guía Educativa"}
             </button>
-            <button type="button" onClick={handleExportCSV} className="ghost" style={{ fontSize: "0.85rem", padding: "0.5rem 1rem", borderRadius: "8px", borderColor: "var(--border-color)", color: "var(--state-warning-text)" }}>
+            <button type="button" onClick={handleExportCSV} className="ghost est-hdr-btn est-hdr-btn--export">
               ⬇ Exportar CSV
             </button>
             {canWrite && (
-              <button type="button" onClick={handleSave} disabled={saving} style={{ fontSize: "0.85rem", padding: "0.5rem 1.25rem", borderRadius: "8px", border: "none", background: "var(--gradient-accent)", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+              <button type="button" onClick={handleSave} disabled={saving} className="est-btn-primary">
                 {saving ? "Guardando..." : "💾 Guardar Estimación"}
               </button>
             )}
@@ -972,80 +975,50 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
       />
 
       {successBanner && (
-        <div style={{ padding: "0.75rem 1rem", background: "var(--state-success-bg)", border: "1px solid var(--state-success-border)", color: "var(--state-success-text)", borderRadius: "10px", fontWeight: 600, fontSize: "0.9rem" }}>
+        <div className="est-banner-ok">
           ✓ {successBanner}
         </div>
       )}
 
       {/* Main Tab selectors for Estimator / Weights Calibrator */}
-      <div style={{ display: "flex", gap: "0.5rem", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.5rem", marginBottom: "-1rem" }}>
+      <div className="subtabs" role="tablist">
         <button
           type="button"
+          role="tab"
+          aria-selected={activeMainTab === "estimator"}
           onClick={() => setActiveMainTab("estimator")}
-          style={{
-            padding: "0.6rem 1.25rem",
-            borderRadius: "8px 8px 0 0",
-            border: "none",
-            background: activeMainTab === "estimator" ? "rgba(241, 163, 35, 0.08)" : "transparent",
-            color: activeMainTab === "estimator" ? "#d97706" : "var(--text-soft)",
-            fontWeight: 700,
-            cursor: "pointer",
-            borderBottom: activeMainTab === "estimator" ? "3px solid #f1a323" : "none",
-            transition: "all 0.2s"
-          }}
+          className={`subtab${activeMainTab === "estimator" ? " is-active" : ""}`}
         >
           📊 Estimador de Proyecto
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={activeMainTab === "weights"}
           onClick={() => setActiveMainTab("weights")}
-          style={{
-            padding: "0.6rem 1.25rem",
-            borderRadius: "8px 8px 0 0",
-            border: "none",
-            background: activeMainTab === "weights" ? "rgba(241, 163, 35, 0.08)" : "transparent",
-            color: activeMainTab === "weights" ? "#d97706" : "var(--text-soft)",
-            fontWeight: 700,
-            cursor: "pointer",
-            borderBottom: activeMainTab === "weights" ? "3px solid #f1a323" : "none",
-            transition: "all 0.2s"
-          }}
+          className={`subtab${activeMainTab === "weights" ? " is-active" : ""}`}
         >
           ⚙️ Configuración de Pesos (Factores)
         </button>
       </div>
 
       {activeMainTab === "estimator" ? (
-        <div className="fade-in-tab" style={{ display: "flex", flexDirection: "column", gap: "2.5rem" }}>
+        <div className="fade-in-tab page-stack">
           {/* Educational Guide Drawer */}
           {showEducation && (
-            <div style={{
-              background: "rgba(241, 163, 35, 0.02)",
-              border: "1px solid var(--border-color)",
-              borderRadius: "14px",
-              padding: "1.5rem"
-            }}>
+            <div className="est-guide">
               {/* Tab Selector */}
-              <div style={{ display: "flex", gap: "0.25rem", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0", marginBottom: "1.25rem" }}>
+              <div className="subtabs est-guide__tabs" role="tablist">
                 {(["concepts", "example", "factors"] as const).map((tab) => {
                   const labels: Record<string, string> = { concepts: "📖 Conceptos Clave", example: "🔢 Ejemplo Real", factors: "⚖️ Tabla de Factores" };
                   return (
                     <button
                       key={tab}
                       type="button"
+                      role="tab"
+                      aria-selected={guideTab === tab}
                       onClick={() => setGuideTab(tab)}
-                      style={{
-                        padding: "0.4rem 0.9rem",
-                        border: "none",
-                        borderBottom: guideTab === tab ? "3px solid #f1a323" : "3px solid transparent",
-                        background: "transparent",
-                        color: guideTab === tab ? "#d97706" : "var(--text-soft)",
-                        fontWeight: guideTab === tab ? 700 : 500,
-                        fontSize: "0.82rem",
-                        cursor: "pointer",
-                        transition: "all 0.15s",
-                        marginBottom: "-2px"
-                      }}
+                      className={`subtab${guideTab === tab ? " is-active" : ""}`}
                     >
                       {labels[tab]}
                     </button>
@@ -1054,109 +1027,101 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
               </div>
 
               {guideTab === "concepts" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "1.5rem", alignItems: "start" }} className="responsive-grid">
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0.85rem" }}>
+                <div className="est-guide__split">
+                  <div className="est-concept-grid">
                     {[
                       {
                         icon: "🧠", title: "Método U-Factor",
-                        color: "var(--tint-purple-text)", bg: "var(--tint-purple-bg)", border: "var(--tint-purple-border)",
+                        tone: "purple",
                         body: "Convierte tus horas ideales (optimistas) en horas reales añadiendo capas de overhead controladas. Cada factor es aditivo — no se multiplican entre sí.",
                         tip: "Piensa en las horas ideales como el mejor caso posible. El U-Factor estima cuánto crecerá en el mundo real."
                       },
                       {
                         icon: "🔬", title: "Complejidad (U-Factor)",
-                        color: "var(--state-warning-text)", bg: "var(--state-warning-bg)", border: "var(--state-warning-border)",
+                        tone: "warning",
                         body: `El factor base de incertidumbre. Rutinaria (×${weights.compRoutine}): trabajo conocido. Incógnitas (×${weights.compKnownUnknowns}): dependencias externas. Inexplorado (×${weights.compUnknownUnknowns}): tecnología nueva o sin documentar.`,
                         tip: "Sé conservador: un CRUD con un API externa que no conoces es 'Incógnitas', no 'Rutinaria'."
                       },
                       {
                         icon: "👥", title: "Composición del Equipo",
-                        color: "var(--tint-orange-text)", bg: "var(--tint-orange-bg)", border: "var(--tint-orange-border)",
+                        tone: "orange",
                         body: `El factor promedio ponderado del equipo se calcula automáticamente. Senior (×${weights.expSenior}) = línea base. Mid (×${weights.expMid}) = +${Math.round((weights.expMid-1)*100)}% overhead. Junior (×${weights.expJunior}) = +${Math.round((weights.expJunior-1)*100)}% overhead.`,
                         tip: "Un equipo 1SR + 1MID + 1JR tiene factor promedio ×" + (((weights.expSenior + weights.expMid + weights.expJunior) / 3).toFixed(2)) + ". Añade juniors con cuidado."
                       },
                       {
                         icon: "💬", title: "Ley de Brooks",
-                        color: "var(--tint-cyan-text)", bg: "var(--tint-cyan-bg)", border: "var(--tint-cyan-border)",
+                        tone: "cyan",
                         body: `Cada persona que se une crea nuevos canales de comunicación: L = n(n-1)/2. Con ${totalDevs} personas hay ${totalChannels} canales, añadiendo +${Math.round(totalChannels * weights.brooksFactor * 100)}% overhead sobre el esfuerzo base.`,
                         tip: "Agregar un dev tarde en un proyecto retrasado lo retrasa más. Planifica el equipo desde el inicio."
                       },
                       {
                         icon: "⚠️", title: "Deuda Técnica",
-                        color: "var(--tint-purple-text)", bg: "var(--tint-purple-bg)", border: "var(--tint-purple-border)",
+                        tone: "purple",
                         body: `Estado del código base. Limpio (×${weights.debtClean}): fácil de modificar. Moderado (×${weights.debtModerate}): algunos obstáculos. Pesado (×${weights.debtHeavy}): sin tests, alto acoplamiento. Legacy (×${weights.debtLegacy}): sin documentación, miedo a cambiar.`,
                         tip: "La deuda técnica es el multiplicador silencioso más subestimado por los PMs."
                       },
                       {
                         icon: "🛡️", title: "Ceremonias Ágiles",
-                        color: "var(--state-info-text)", bg: "var(--state-info-bg)", border: "var(--state-info-border)",
+                        tone: "info",
                         body: `Overhead fijo sobre las horas ideales. Code Review: +${Math.round(weights.ceremonyCodeReview*100)}%. Testing/QA: +${Math.round(weights.ceremonyTesting*100)}%. Documentación: +${Math.round(weights.ceremonyDocumentation*100)}%. Son horas reales que se gastan aunque no se programen explícitamente.`,
                         tip: "Nunca omitas testing en la estimación — el cliente siempre lo va a pedir al final de todos modos."
                       },
                       {
                         icon: "📐", title: "Riesgo de Alcance",
-                        color: "var(--state-danger-text)", bg: "var(--state-danger-bg)", border: "var(--state-danger-border)",
+                        tone: "danger",
                         body: `Qué tan definidos están los requisitos. Cerrado (×${weights.scopeClosed}): documentado y firmado. Pendientes (×${weights.scopePending}): detalles por confirmar. Difuso (×${weights.scopeDiffuse}): el cliente sabe qué quiere pero no el cómo. Sin cierre (×${weights.scopeNoTechnicalClosure}): alcance cambia semanalmente.`,
                         tip: "Sin cierre técnico el proyecto es potencialmente infinito. Escala esto al PM inmediatamente."
                       },
                       {
                         icon: "🔄", title: "Context Switching",
-                        color: "var(--tint-pink-text)", bg: "var(--tint-pink-bg)", border: "var(--tint-pink-border)",
+                        tone: "pink",
                         body: `Cuando el dev trabaja en múltiples tareas a la vez pierde tiempo en cambiar de contexto mental. Actívalo si el dev está asignado a más de 2 proyectos o tiene reuniones constantes. Overhead: +${Math.round((weights.contextSwitchingPenalty-1)*100)}% sobre el esfuerzo base.`,
                         tip: "Un dev interrumpido cada hora tarda hasta 23 min en recuperar el foco profundo."
                       }
                     ].map((card) => (
-                      <div key={card.title} style={{
-                        background: card.bg,
-                        border: `1px solid ${card.border}`,
-                        borderRadius: "10px",
-                        padding: "0.85rem",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "0.4rem"
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                          <span style={{ fontSize: "1rem" }}>{card.icon}</span>
-                          <strong style={{ fontSize: "0.8rem", color: card.color }}>{card.title}</strong>
+                      <div key={card.title} className={`est-concept est-concept--${card.tone}`}>
+                        <div className="est-concept__head">
+                          <span aria-hidden="true">{card.icon}</span>
+                          <strong className="est-concept__title">{card.title}</strong>
                         </div>
-                        <p style={{ margin: 0, fontSize: "0.73rem", color: "var(--text)", lineHeight: 1.45 }}>{card.body}</p>
-                        <div style={{ background: "rgba(0,0,0,0.04)", borderRadius: "6px", padding: "0.35rem 0.5rem", fontSize: "0.68rem", color: card.color, fontStyle: "italic", display: "flex", alignItems: "flex-start", gap: "0.3rem" }}>
-                          <span>💡</span> <span>{card.tip}</span>
+                        <p className="est-concept__body">{card.body}</p>
+                        <div className="est-concept__tip">
+                          <span aria-hidden="true">💡</span> <span>{card.tip}</span>
                         </div>
                       </div>
                     ))}
                   </div>
 
                   {/* Interactive SVG */}
-                  <div style={{ background: "var(--card-bg)", padding: "1rem", borderRadius: "12px", border: "1px solid var(--border-color)", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem" }}>
-                    <div style={{ textAlign: "center" }}>
-                      <h5 style={{ margin: "0 0 0.2rem 0", color: "var(--text-strong)", fontSize: "0.82rem", fontWeight: 700 }}>Red de Canales (Brooks' Law)</h5>
-                      <p style={{ margin: 0, fontSize: "0.68rem", color: "var(--text-soft)" }}>{totalDevs} devs → {totalChannels} canales de comunicación</p>
+                  <div className="est-brooks">
+                    <div className="est-brooks__head">
+                      <h5 className="est-brooks__title">Red de Canales (Brooks&apos; Law)</h5>
+                      <p className="est-brooks__sub">{totalDevs} devs → {totalChannels} canales de comunicación</p>
                     </div>
-                    <div style={{ width: "210px", height: "210px", background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div className="est-brooks__canvas">
                       {totalDevs <= 1 ? (
-                        <span style={{ fontSize: "0.72rem", color: "var(--text-soft)", fontStyle: "italic", textAlign: "center", padding: "0 1rem" }}>Agrega más devs en los parámetros para ver los canales</span>
+                        <span className="est-brooks__empty">Agrega más devs en los parámetros para ver los canales</span>
                       ) : (
-                        <svg width="200" height="200" viewBox="0 0 210 210" style={{ display: "block" }}>
-                          {lines.map((line, idx) => (<line key={idx} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} stroke="var(--color-accent-20)" strokeWidth="1" strokeOpacity="0.75" />))}
+                        <svg width="200" height="200" viewBox="0 0 210 210" className="est-brooks__svg" role="img" aria-label={`Red de ${totalDevs} desarrolladores con ${totalChannels} canales de comunicación`}>
+                          {lines.map((line, idx) => (<line key={idx} x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} className="est-link" strokeWidth="1" strokeOpacity="0.75" />))}
                           {nodes.map((node, idx) => (
                             <g key={idx}>
-                              <circle cx={node.x} cy={node.y} r={totalDevs > 10 ? "6" : "8"} fill={node.color} stroke="#fff" strokeWidth="1.5" style={{ filter: "drop-shadow(0px 2px 4px rgba(0,0,0,0.1))" }} />
-                              <text x={node.x} y={node.y + 2.5} fill="#fff" fontSize={totalDevs > 10 ? "5px" : "6px"} fontWeight="bold" textAnchor="middle">{node.label}</text>
+                              <circle cx={node.x} cy={node.y} r={totalDevs > 10 ? "6" : "8"} className={`est-node--${node.type} est-node-ring`} strokeWidth="1.5" />
+                              <text x={node.x} y={node.y + 2.5} className={`est-node-label--${node.type}`} fontSize={totalDevs > 10 ? "5px" : "6px"} fontWeight="bold" textAnchor="middle">{node.label}</text>
                             </g>
                           ))}
                         </svg>
                       )}
                     </div>
-                    <div style={{ display: "flex", gap: "0.75rem", fontSize: "0.68rem", color: "var(--text-soft)" }}>
-                      {[["#22c55e", "Senior"], ["#eab308", "Mid"], ["#ef4444", "Junior"]].map(([c, l]) => (
-                        <span key={l} style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                          <span style={{ width: "8px", height: "8px", background: c, borderRadius: "50%", flexShrink: 0 }} /> {l}
+                    <div className="est-legend">
+                      {([["senior", "Senior"], ["mid", "Mid"], ["junior", "Junior"]] as const).map(([tone, l]) => (
+                        <span key={l} className="est-legend__item">
+                          <span className={`est-legend__dot est-legend__dot--${tone}`} /> {l}
                         </span>
                       ))}
                     </div>
                     {totalChannels > 0 && (
-                      <div style={{ background: "var(--color-accent-05)", border: "1px solid var(--border-color)", borderRadius: "8px", padding: "0.5rem 0.75rem", fontSize: "0.72rem", color: "var(--tint-orange-text)", textAlign: "center", lineHeight: 1.4 }}>
+                      <div className="est-brooks__note">
                         <strong>{totalChannels} canales</strong> × {(weights.brooksFactor * 100).toFixed(0)}% = <strong>+{Math.round(totalChannels * weights.brooksFactor * 100)}%</strong> overhead de coordinación
                       </div>
                     )}
@@ -1164,11 +1129,11 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                 </div>
               ) : guideTab === "example" ? (
                 /* Worked example tab */
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }} className="responsive-grid">
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                    <div style={{ background: "var(--state-info-bg)", border: "1px solid var(--state-info-border)", borderRadius: "10px", padding: "1rem" }}>
-                      <h4 style={{ margin: "0 0 0.75rem 0", color: "var(--state-info-text)", fontSize: "0.9rem", fontWeight: 700 }}>📋 Escenario de ejemplo</h4>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.78rem", color: "var(--text)" }}>
+                <div className="est-example">
+                  <div>
+                    <div className="est-example__scenario">
+                      <h4 className="est-example__title">📋 Escenario de ejemplo</h4>
+                      <div className="est-example__rows">
                         {[
                           ["Tarea", "Integración pasarela de pagos PSE"],
                           ["Horas ideales", "8h (estimado optimista)"],
@@ -1179,16 +1144,16 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                           ["Ceremonias", "Code Review + Testing"],
                           ["Alcance", "Cerrado y acotado"],
                         ].map(([k, v]) => (
-                          <div key={k} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--border-color)", paddingBottom: "0.25rem" }}>
-                            <span style={{ color: "var(--text-soft)" }}>{k}:</span>
-                            <strong style={{ textAlign: "right", maxWidth: "60%" }}>{v}</strong>
+                          <div key={k} className="est-example__row">
+                            <span className="est-example__key">{k}:</span>
+                            <strong className="est-example__val">{v}</strong>
                           </div>
                         ))}
                       </div>
                     </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                    <h4 style={{ margin: "0 0 0.25rem 0", color: "var(--color-accent)", fontSize: "0.9rem", fontWeight: 700 }}>🧮 Cálculo paso a paso</h4>
+                  <div className="est-steps">
+                    <h4 className="est-steps__title">🧮 Cálculo paso a paso</h4>
                     {(() => {
                       const ideal = 8;
                       const base = ideal * weights.compKnownUnknowns;
@@ -1200,27 +1165,27 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                       const ceremonies = ideal * weights.ceremonyCodeReview + ideal * weights.ceremonyTesting;
                       const total = base + expOv + depOv + brooks + ceremonies;
                       const steps = [
-                        { label: "🏗 Base (8h × complejidad)",        value: base,     color: "#15803d" },
-                        { label: `🔬 Incertidumbre (×${weights.compKnownUnknowns} - 1)`, value: unc, color: "var(--color-accent)" },
-                        { label: `👥 Overhead equipo (factor ×${avgExp.toFixed(2)})`, value: expOv, color: "#c2410c" },
-                        { label: `🔗 Dep. externa (+${Math.round((weights.depExternal-1)*100)}%)`, value: depOv, color: "#0e7490" },
-                        { label: `💬 Brooks (1 canal × ${(weights.brooksFactor*100).toFixed(0)}%)`, value: brooks, color: "#6d28d9" },
-                        { label: `👁 Code Review (+${Math.round(weights.ceremonyCodeReview*100)}%)`, value: ideal*weights.ceremonyCodeReview, color: "#1d4ed8" },
-                        { label: `🧪 Testing (+${Math.round(weights.ceremonyTesting*100)}%)`, value: ideal*weights.ceremonyTesting, color: "#1d4ed8" },
+                        { label: "🏗 Base (8h × complejidad)",        value: base,     tone: "tone-success" },
+                        { label: `🔬 Incertidumbre (×${weights.compKnownUnknowns} - 1)`, value: unc, tone: "tone-warning" },
+                        { label: `👥 Overhead equipo (factor ×${avgExp.toFixed(2)})`, value: expOv, tone: "est-tone--orange" },
+                        { label: `🔗 Dep. externa (+${Math.round((weights.depExternal-1)*100)}%)`, value: depOv, tone: "est-tone--cyan" },
+                        { label: `💬 Brooks (1 canal × ${(weights.brooksFactor*100).toFixed(0)}%)`, value: brooks, tone: "est-tone--purple" },
+                        { label: `👁 Code Review (+${Math.round(weights.ceremonyCodeReview*100)}%)`, value: ideal*weights.ceremonyCodeReview, tone: "tone-info" },
+                        { label: `🧪 Testing (+${Math.round(weights.ceremonyTesting*100)}%)`, value: ideal*weights.ceremonyTesting, tone: "tone-info" },
                       ];
                       return (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                        <div className="est-steps">
                           {steps.map((s, i) => (
-                            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.3rem 0.5rem", background: i === 0 ? "var(--state-success-bg)" : "var(--state-warning-bg)", borderRadius: "6px", border: `1px solid ${i === 0 ? "var(--state-success-border)" : "var(--state-warning-border)"}`, fontSize: "0.75rem" }}>
-                              <span style={{ color: "var(--text-soft)" }}>{s.label}</span>
-                              <strong style={{ color: s.color }}>{i === 0 ? "" : "+"}{s.value.toFixed(1)}h</strong>
+                            <div key={i} className={`est-step${i === 0 ? " est-step--base" : ""}`}>
+                              <span className="est-step__label">{s.label}</span>
+                              <strong className={`est-step__value ${s.tone}`}>{i === 0 ? "" : "+"}{s.value.toFixed(1)}h</strong>
                             </div>
                           ))}
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.5rem", background: "rgba(241, 163, 35, 0.04)", borderRadius: "6px", border: "2px solid #f1a323", fontSize: "0.82rem", fontWeight: 700, marginTop: "0.25rem" }}>
-                            <span style={{ color: "var(--state-warning-text)" }}>⏱ Total real estimado:</span>
-                            <span style={{ color: "var(--state-warning-text)", fontSize: "1rem" }}>{total.toFixed(1)}h</span>
+                          <div className="est-step-total">
+                            <span>⏱ Total real estimado:</span>
+                            <span className="est-step-total__value">{total.toFixed(1)}h</span>
                           </div>
-                          <div style={{ fontSize: "0.7rem", color: "var(--text-soft)", textAlign: "center", fontStyle: "italic" }}>
+                          <div className="est-step-note">
                             8h de código → {total.toFixed(1)}h de trabajo real (×{(total/8).toFixed(2)} factor de crecimiento)
                           </div>
                         </div>
@@ -1230,17 +1195,17 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                 </div>
               ) : (
                 /* Factors table */
-                <div style={{ overflowX: "auto", fontSize: "0.76rem" }}>
-                  <p style={{ margin: "0 0 0.75rem 0", fontSize: "0.78rem", color: "var(--text)", background: "var(--color-accent-05)", borderRadius: "8px", padding: "0.6rem 0.75rem", border: "1px solid var(--border-color)" }}>
+                <div className="est-factor-scroll">
+                  <p className="est-factor-note">
                     💡 Estos factores son <strong>configurables</strong> en la pestaña <strong>⚙️ Configuración de Pesos</strong>. Ajústalos según la realidad histórica de tu equipo.
                   </p>
-                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left" }}>
+                  <table className="est-factor-table">
                     <thead>
-                      <tr style={{ background: "var(--state-warning-bg)", color: "var(--text-strong)" }}>
-                        <th style={{ padding: "0.5rem 0.6rem", borderRadius: "8px 0 0 0", fontWeight: 700, fontSize: "0.78rem" }}>Categoría</th>
-                        <th style={{ padding: "0.5rem 0.6rem", fontWeight: 700, fontSize: "0.78rem" }}>Nivel / Tipo</th>
-                        <th style={{ padding: "0.5rem 0.6rem", fontWeight: 700, fontSize: "0.78rem" }}>Factor / Overhead</th>
-                        <th style={{ padding: "0.5rem 0.6rem", borderRadius: "0 8px 0 0", fontWeight: 700, fontSize: "0.78rem" }}>Cuándo usarlo</th>
+                      <tr>
+                        <th scope="col">Categoría</th>
+                        <th scope="col">Nivel / Tipo</th>
+                        <th scope="col">Factor / Overhead</th>
+                        <th scope="col">Cuándo usarlo</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1267,11 +1232,11 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                         ["", "Difuso / WIP", `×${weights.scopeDiffuse}`, "El cliente no sabe el cómo"],
                         ["", "Sin Cierre Técnico", `×${weights.scopeNoTechnicalClosure}`, "Alcance cambia cada semana"],
                       ].map(([cat, level, factor, when], i) => (
-                        <tr key={i} style={{ background: i % 2 === 0 ? "var(--card-bg)" : "var(--state-neutral-bg)", borderBottom: "1px solid var(--border-color)" }}>
-                          <td style={{ padding: "0.35rem 0.6rem", fontWeight: cat ? 700 : 400, color: cat ? "var(--tint-purple-text)" : "var(--text-soft)" }}>{cat}</td>
-                          <td style={{ padding: "0.35rem 0.6rem", color: "var(--text)" }}>{level}</td>
-                          <td style={{ padding: "0.35rem 0.6rem", fontWeight: 700, color: "var(--color-accent)", fontFamily: "monospace" }}>{factor}</td>
-                          <td style={{ padding: "0.35rem 0.6rem", color: "var(--text-soft)", fontSize: "0.72rem", fontStyle: "italic" }}>{when}</td>
+                        <tr key={i}>
+                          <td className={cat ? "est-factor-table__cat" : "est-factor-table__cat--empty"}>{cat}</td>
+                          <td className="est-factor-table__level">{level}</td>
+                          <td className="est-factor-table__factor">{factor}</td>
+                          <td className="est-factor-table__when">{when}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1281,14 +1246,14 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "2.1fr 0.9fr", gap: "2rem", alignItems: "start" }} className="responsive-grid">
+          <div className="est-columns">
             
             {/* Left column: Global config & Split Workspace */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            <div className="est-column">
               
               {/* Global Config Card */}
-              <div className="card glass-card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)", maxWidth: "1100px" }}>
-                <h3 style={{ margin: "0 0 1rem 0", fontSize: "1rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+              <div className="card glass-card est-config-card">
+                <h3 className="card-title">
                   ⚙ Parámetros Globales de Estimación
                 </h3>
                 <div className="calculator-grid">
@@ -1298,7 +1263,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                     <select 
                       value={selectedProjectId} 
                       onChange={(e) => setSelectedProjectId(e.target.value)}
-                      style={{ width: "100%", padding: "0.55rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                      className="est-control"
                     >
                       <option value="">-- Sin Vincular / Personal --</option>
                       {projects.map((p) => (
@@ -1317,7 +1282,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                       value={estimationContext} 
                       onChange={(e) => setEstimationContext(e.target.value)} 
                       placeholder="Ej. Sprint 3 - Integración de Pagos"
-                      style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                      className="est-control"
                     />
                   </div>
 
@@ -1329,7 +1294,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                       max={12} 
                       value={hoursPerDay} 
                       onChange={(e) => setHoursPerDay(Number(e.target.value) || 8)} 
-                      style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                      className="est-control"
                     />
                   </div>
 
@@ -1341,7 +1306,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                       max={30} 
                       value={sprintDays} 
                       onChange={(e) => setSprintDays(Number(e.target.value) || 10)} 
-                      style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                      className="est-control"
                     />
                   </div>
 
@@ -1353,7 +1318,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                       max={100} 
                       value={bufferPercentage} 
                       onChange={(e) => setBufferPercentage(Number(e.target.value) || 0)} 
-                      style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                      className="est-control"
                     />
                   </div>
 
@@ -1363,7 +1328,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                       type="date" 
                       value={startDate} 
                       onChange={(e) => setStartDate(e.target.value)} 
-                      style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                      className="est-control"
                     />
                   </div>
 
@@ -1372,7 +1337,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                     <select 
                       value={estimationCountry} 
                       onChange={(e) => setEstimationCountry(e.target.value)}
-                      style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                      className="est-control"
                     >
                       <option value="US">USA / Default (Federal)</option>
                       <option value="CO">Colombia 🇨🇴</option>
@@ -1388,7 +1353,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                     <select 
                       value={scopeDefinition} 
                       onChange={(e) => setScopeDefinition(e.target.value)}
-                      style={{ width: "100%", padding: "0.55rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                      className="est-control"
                     >
                       {scopeDefinitionLevels.map((s) => (
                         <option key={s.key} value={s.key}>{s.label}</option>
@@ -1397,84 +1362,84 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                   </div>
 
                   {/* Team Grid composition inputs */}
-                  <div className="calculator-grid-span-2" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.75rem", background: "var(--color-accent-05)", padding: "0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
-                    <div style={{ gridColumn: "span 3", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-accent)" }}>
+                  <div className="calculator-grid-span-2 est-subcard est-team">
+                    <div className="est-team__head est-subcard__head">
+                      <span className="est-subcard__title">
                         👥 Composición del Equipo: <InfoTooltip text="Número de programadores. Afecta el rendimiento y los canales de comunicación." />
                       </span>
                       {/* Live factor chip */}
                       {(() => {
                         const size = Math.max(1, teamSeniorCount + teamMidCount + teamJuniorCount);
                         const avg = (teamSeniorCount * weights.expSenior + teamMidCount * weights.expMid + teamJuniorCount * weights.expJunior) / size;
-                        const color = avg <= 1.05 ? "#22c55e" : avg <= 1.2 ? "#eab308" : "#ef4444";
+                        const tone = avg <= 1.05 ? "success" : avg <= 1.2 ? "warning" : "danger";
                         const label = avg <= 1.05 ? "Muy Ágil" : avg <= 1.2 ? "Ágil" : "Requiere más tiempo";
                         return (
-                          <span style={{ fontSize: "0.7rem", fontWeight: 700, background: `${color}18`, color, border: `1px solid ${color}44`, borderRadius: "9999px", padding: "0.1rem 0.5rem" }}>
+                          <span className={`state-chip state-chip--${tone}`}>
                             Factor Equipo: x{avg.toFixed(2)} — {label}
                           </span>
                         );
                       })()}
                     </div>
                     <div>
-                      <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, marginBottom: "0.15rem" }}>🟢 Seniors</label>
+                      <label className="field-label">🟢 Seniors</label>
                       <input 
                         type="number" min={0} max={20}
                         value={teamSeniorCount} 
                         onChange={(e) => setTeamSeniorCount(Math.max(0, Number(e.target.value) || 0))} 
-                        style={{ width: "100%", padding: "0.35rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                        className="est-control est-control--sm"
                       />
                     </div>
                     <div>
-                      <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, marginBottom: "0.15rem" }}>🟡 Mids</label>
+                      <label className="field-label">🟡 Mids</label>
                       <input 
                         type="number" min={0} max={20}
                         value={teamMidCount} 
                         onChange={(e) => setTeamMidCount(Math.max(0, Number(e.target.value) || 0))} 
-                        style={{ width: "100%", padding: "0.35rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                        className="est-control est-control--sm"
                       />
                     </div>
                     <div>
-                      <label style={{ display: "block", fontSize: "0.72rem", fontWeight: 700, marginBottom: "0.15rem" }}>🔴 Juniors</label>
+                      <label className="field-label">🔴 Juniors</label>
                       <input 
                         type="number" min={0} max={20}
                         value={teamJuniorCount} 
                         onChange={(e) => setTeamJuniorCount(Math.max(0, Number(e.target.value) || 0))} 
-                        style={{ width: "100%", padding: "0.35rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                        className="est-control est-control--sm"
                       />
                     </div>
                   </div>
 
                   {/* Calendar simulation options card */}
-                  <div className="calculator-grid-span-2" style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: "0.75rem", background: "var(--color-accent-05)", padding: "0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "var(--color-accent)" }}>
+                  <div className="calculator-grid-span-2 est-subcard est-cal">
+                    <div className="est-subcard__head">
+                      <span className="est-subcard__title">
                         📅 Opciones de Calendario: <InfoTooltip text="Configura si los fines de semana y festivos se consideran días laborables en la simulación temporal." />
                       </span>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: "0.6rem" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div className="est-cal__options">
+                      <div className="est-check">
                         <input 
                           type="checkbox" 
                           id="includeWeekends" 
                           checked={includeWeekends} 
                           onChange={(e) => setIncludeWeekends(e.target.checked)} 
-                          style={{ width: "16px", height: "16px", cursor: "pointer", flexShrink: 0 }}
+                          
                         />
-                        <label htmlFor="includeWeekends" style={{ fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", margin: 0 }}>
+                        <label htmlFor="includeWeekends" className="est-check__label">
                           Incluir Fines de Semana
                           <InfoTooltip text="Trabajar sábados y domingos (reduce la duración total del proyecto)." />
                         </label>
                       </div>
 
-                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <div className="est-check">
                         <input 
                           type="checkbox" 
                           id="includeHolidays" 
                           checked={includeHolidays} 
                           onChange={(e) => setIncludeHolidays(e.target.checked)} 
-                          style={{ width: "16px", height: "16px", cursor: "pointer", flexShrink: 0 }}
+                          
                         />
-                        <label htmlFor="includeHolidays" style={{ fontSize: "0.78rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", margin: 0 }}>
+                        <label htmlFor="includeHolidays" className="est-check__label">
                           Incluir Días Festivos (Calendario)
                           <InfoTooltip text="Considerar los festivos nacionales del país seleccionado como días laborales hábiles." />
                         </label>
@@ -1486,74 +1451,51 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
               </div>
 
               {/* Master-Detail Task Workspace Container */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h3 style={{ margin: 0, fontSize: "1.05rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+              <div className="est-workspace">
+                <div className="est-workspace__head">
+                  <h3 className="est-workspace__title">
                     Desglose de Tareas Estimadas ({tasks.length})
                   </h3>
-                  <button 
-                    type="button" 
-                    onClick={handleAddTask} 
-                    style={{ 
-                      padding: "0.4rem 1rem", 
-                      borderRadius: "8px", 
-                      border: "1px solid var(--border-color)", 
-                      background: "var(--color-accent-10)", 
-                      color: "var(--color-accent)", 
-                      fontWeight: 700, 
-                      fontSize: "0.82rem",
-                      cursor: "pointer" 
-                    }}
-                  >
+                  <button type="button" onClick={handleAddTask} className="est-btn-secondary">
                     ➕ Agregar Tarea
                   </button>
                 </div>
 
                 {/* Split Pane Work Area */}
-                <div className="split-pane-wrapper" style={{ 
-                  display: "flex", 
-                  gap: "1rem", 
-                  background: "var(--card-bg)", 
-                  border: "1px solid var(--border-color)", 
-                  borderRadius: "14px", 
-                  padding: "1rem", 
-                  backdropFilter: "blur(12px)",
-                  minHeight: "580px"
-                }}>
+                <div className="split-pane-wrapper est-split">
                   {/* Panel Izquierdo: Master Task list (35% width) */}
-                  <div className="split-pane-master" style={{ width: "35%", display: "flex", flexDirection: "column", gap: "0.75rem", borderRight: "1px solid var(--color-primary-20)", paddingRight: "1rem" }}>
-                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-soft)", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.25rem", display: "flex", justifyContent: "space-between" }}>
+                  <div className="split-pane-master est-split__master">
+                    <div className="est-master__head">
                       <span>Tareas</span>
                       <span>Horas Estimadas</span>
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", overflowY: "auto", maxHeight: "530px", paddingRight: "0.25rem" }}>
+                    <div className="est-master__list">
                       {tasks.map((task, idx) => {
                         const tr = taskResults.find((r) => r.task.id === task.id)!;
                         const isActive = activeTaskIndex === idx;
                         return (
                           <div
                             key={task.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={isActive}
                             onClick={() => setActiveTaskIndex(idx)}
-                            style={{
-                              padding: "0.6rem 0.85rem",
-                              borderRadius: "10px",
-                              background: isActive ? "rgba(241, 163, 35, 0.08)" : "var(--card-bg)",
-                              border: isActive ? "2px solid #f1a323" : "1px solid var(--border-color)",
-                              cursor: "pointer",
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              transition: "all 0.2s ease"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setActiveTaskIndex(idx);
+                              }
                             }}
+                            className={`est-task${isActive ? " is-active" : ""}`}
                           >
-                            <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, paddingRight: "0.5rem" }}>
-                              <span style={{ fontSize: "0.68rem", color: "var(--text-soft)", fontWeight: 700 }}>Tarea {idx + 1}</span>
-                              <strong style={{ fontSize: "0.8rem", color: isActive ? "var(--text-strong)" : "var(--text-strong)", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            <div className="est-task__text">
+                              <span className="est-task__idx">Tarea {idx + 1}</span>
+                              <strong className="est-task__name">
                                 {task.name || "Sin nombre"}
                               </strong>
                             </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                              <span style={{ fontSize: "0.78rem", fontWeight: 700, color: isActive ? "#b45309" : "var(--text-soft)" }}>
+                            <div className="est-task__right">
+                              <span className="est-task__hours">
                                 {tr.res.totalEffort.toFixed(1)}h
                               </span>
                               {tasks.length > 1 && (
@@ -1563,21 +1505,9 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                                     e.stopPropagation();
                                     handleRemoveTask(task.id);
                                   }}
-                                  style={{
-                                    border: "none",
-                                    background: "none",
-                                    color: "#ef4444",
-                                    cursor: "pointer",
-                                    fontSize: "0.9rem",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    padding: "0.2rem",
-                                    borderRadius: "50%"
-                                  }}
-                                  onMouseEnter={(ev) => ev.currentTarget.style.background = "rgba(239, 68, 68, 0.1)"}
-                                  onMouseLeave={(ev) => ev.currentTarget.style.background = "none"}
+                                  className="est-task__remove"
                                   title="Eliminar tarea"
+                                  aria-label={`Eliminar la tarea ${task.name || idx + 1}`}
                                 >
                                   ✕
                                 </button>
@@ -1590,20 +1520,20 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                   </div>
 
                   {/* Panel Derecho: Detail Form for currently selected task (65% width) */}
-                  <div className="split-pane-detail" style={{ width: "65%", display: "flex", flexDirection: "column", gap: "1rem", overflowY: "auto", maxHeight: "580px", paddingRight: "0.5rem", paddingLeft: "0.25rem" }}>
+                  <div className="split-pane-detail est-split__detail">
                     {activeTask ? (
-                      <div key={activeTask.id} className="fade-in-detail" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.5rem", marginBottom: "0.25rem" }}>
-                          <h4 style={{ margin: 0, fontSize: "0.92rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+                      <div key={activeTask.id} className="fade-in-detail est-detail__form">
+                        <div className="est-detail__head">
+                          <h4 className="est-detail__title">
                             📝 Parámetros de Simulación de Tarea
                           </h4>
                           {(() => {
                             const size = Math.max(1, teamJuniorCount + teamMidCount + teamSeniorCount);
                             const avg = (teamSeniorCount * weights.expSenior + teamMidCount * weights.expMid + teamJuniorCount * weights.expJunior) / size;
-                            const color = avg <= 1.05 ? "#22c55e" : avg <= 1.2 ? "#eab308" : "#ef4444";
+                            const tone = avg <= 1.05 ? "tone-success" : avg <= 1.2 ? "tone-warning" : "tone-danger";
                             return (
-                              <span style={{ fontSize: "0.72rem", color: "var(--text-soft)" }}>
-                                👥 Factor Experiencia: <strong style={{ color }}>x{avg.toFixed(2)}</strong> (Global)
+                              <span className="est-detail__factor">
+                                👥 Factor Experiencia: <strong className={tone}>x{avg.toFixed(2)}</strong> (Global)
                               </span>
                             );
                           })()}
@@ -1618,7 +1548,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                               value={activeTask.name} 
                               onChange={(e) => handleUpdateTask(activeTask.id, "name", e.target.value)} 
                               placeholder="Ej. Integración pasarela PSE"
-                              style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                              className="est-control"
                             />
                           </div>
 
@@ -1630,7 +1560,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                               step={0.5}
                               value={activeTask.idealHours} 
                               onChange={(e) => handleUpdateTask(activeTask.id, "idealHours", Number(e.target.value) || 1)} 
-                              style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                              className="est-control"
                             />
                           </div>
 
@@ -1639,7 +1569,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                             <select 
                               value={activeTask.complexity} 
                               onChange={(e) => handleUpdateTask(activeTask.id, "complexity", e.target.value)}
-                              style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                              className="est-control"
                             >
                               {complexityLevels.map((c) => (
                                 <option key={c.key} value={c.key}>{c.label}</option>
@@ -1652,7 +1582,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                             <select 
                               value={activeTask.techDebt} 
                               onChange={(e) => handleUpdateTask(activeTask.id, "techDebt", e.target.value)}
-                              style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                              className="est-control"
                             >
                               {techDebtOptions.map((d) => (
                                 <option key={d.key} value={d.key}>{d.label}</option>
@@ -1665,7 +1595,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                             <select 
                               value={activeTask.dependencies} 
                               onChange={(e) => handleUpdateTask(activeTask.id, "dependencies", e.target.value)}
-                              style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                              className="est-control"
                             >
                               {dependencyOptions.map((d) => (
                                 <option key={d.key} value={d.key}>{d.label}</option>
@@ -1678,7 +1608,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                             <select 
                               value={activeTask.meetingsPerDay} 
                               onChange={(e) => handleUpdateTask(activeTask.id, "meetingsPerDay", Number(e.target.value))}
-                              style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff" }}
+                              className="est-control"
                             >
                               <option value={0}>0 (Sin interrupciones)</option>
                               <option value={1}>1 (~45 min ocupados)</option>
@@ -1688,49 +1618,49 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                             </select>
                           </div>
 
-                          <div className="task-editor-span-2" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.5rem", margin: "0.25rem 0" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                          <div className="task-editor-span-2 est-check-row">
+                            <div className="est-check est-check--tight">
                               <input 
                                 type="checkbox" 
                                 id={`hasCodeReview-${activeTask.id}`}
                                 checked={activeTask.hasCodeReview}
                                 onChange={(e) => handleUpdateTask(activeTask.id, "hasCodeReview", e.target.checked)}
-                                style={{ width: "14px", height: "14px", cursor: "pointer" }}
+                                
                               />
-                              <label htmlFor={`hasCodeReview-${activeTask.id}`} style={{ fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>Code Review (+{Math.round(weights.ceremonyCodeReview * 100)}%)</label>
+                              <label htmlFor={`hasCodeReview-${activeTask.id}`} className="est-check__label">Code Review (+{Math.round(weights.ceremonyCodeReview * 100)}%)</label>
                             </div>
 
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <div className="est-check est-check--tight">
                               <input 
                                 type="checkbox" 
                                 id={`hasTesting-${activeTask.id}`}
                                 checked={activeTask.hasTesting}
                                 onChange={(e) => handleUpdateTask(activeTask.id, "hasTesting", e.target.checked)}
-                                style={{ width: "14px", height: "14px", cursor: "pointer" }}
+                                
                               />
-                              <label htmlFor={`hasTesting-${activeTask.id}`} style={{ fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>Testing/QA (+{Math.round(weights.ceremonyTesting * 100)}%)</label>
+                              <label htmlFor={`hasTesting-${activeTask.id}`} className="est-check__label">Testing/QA (+{Math.round(weights.ceremonyTesting * 100)}%)</label>
                             </div>
 
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <div className="est-check est-check--tight">
                               <input 
                                 type="checkbox" 
                                 id={`hasDocumentation-${activeTask.id}`}
                                 checked={activeTask.hasDocumentation}
                                 onChange={(e) => handleUpdateTask(activeTask.id, "hasDocumentation", e.target.checked)}
-                                style={{ width: "14px", height: "14px", cursor: "pointer" }}
+                                
                               />
-                              <label htmlFor={`hasDocumentation-${activeTask.id}`} style={{ fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>Documentación (+{Math.round(weights.ceremonyDocumentation * 100)}%)</label>
+                              <label htmlFor={`hasDocumentation-${activeTask.id}`} className="est-check__label">Documentación (+{Math.round(weights.ceremonyDocumentation * 100)}%)</label>
                             </div>
 
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <div className="est-check est-check--tight">
                               <input 
                                 type="checkbox" 
                                 id={`contextSwitching-${activeTask.id}`}
                                 checked={activeTask.contextSwitching}
                                 onChange={(e) => handleUpdateTask(activeTask.id, "contextSwitching", e.target.checked)}
-                                style={{ width: "14px", height: "14px", cursor: "pointer" }}
+                                
                               />
-                              <label htmlFor={`contextSwitching-${activeTask.id}`} style={{ fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}>Context Switching (+{Math.round((weights.contextSwitchingPenalty - 1) * 100)}%)</label>
+                              <label htmlFor={`contextSwitching-${activeTask.id}`} className="est-check__label">Context Switching (+{Math.round((weights.contextSwitchingPenalty - 1) * 100)}%)</label>
                             </div>
                           </div>
 
@@ -1741,7 +1671,7 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                               value={activeTask.notes} 
                               onChange={(e) => handleUpdateTask(activeTask.id, "notes", e.target.value)}
                               placeholder="Ej. VPN de terceros inestable, requiere aprobación del arquitecto principal..."
-                              style={{ width: "100%", padding: "0.5rem", borderRadius: "6px", border: "1px solid var(--border-color)", background: "#fff", resize: "vertical" }}
+                              className="est-control est-control--area"
                             />
                           </div>
 
@@ -1753,63 +1683,70 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                           if (!tr) return null;
                           const { totalEffort, breakdown, riskLevel, combinedFactor } = tr.res;
                           
-                          const riskColors: Record<string, string> = { bajo: "#22c55e", medio: "#eab308", alto: "#ef4444", crítico: "#7f1d1d" };
-                          const riskColor = riskColors[riskLevel] || "#22c55e";
+                          // El riesgo se pinta con clase, no con literal: así tiene
+                          // contraparte de modo oscuro y la palabra ("bajo", "crítico")
+                          // sigue siendo la que porta la información.
+                          const riskClasses: Record<string, string> = {
+                            bajo: "est-risk--bajo", medio: "est-risk--medio",
+                            alto: "est-risk--alto", "crítico": "est-risk--critico"
+                          };
+                          const riskClass = riskClasses[riskLevel] || "est-risk--bajo";
 
                           // Segments for the stacked bar
                           const segments = [
-                            { value: breakdown.base,             color: "#4ade80",  label: "Base" },
-                            { value: breakdown.uncertainty,      color: "#fbbf24",  label: "Complejidad" },
-                            { value: breakdown.teamOverhead,     color: "#f97316",  label: "Equipo" },
-                            { value: breakdown.debtOverhead,     color: "#a855f7",  label: "Deuda" },
-                            { value: breakdown.depOverhead,      color: "#06b6d4",  label: "Deps" },
-                            { value: breakdown.switchingOverhead, color: "#ec4899", label: "Switching" },
-                            { value: breakdown.scopeOverhead,    color: "#ef4444",  label: "Alcance" },
-                            { value: breakdown.ceremonies,       color: "#60a5fa",  label: "Ceremonias" },
+                            { value: breakdown.base,              seg: "base",       label: "Base" },
+                            { value: breakdown.uncertainty,       seg: "complexity", label: "Complejidad" },
+                            { value: breakdown.teamOverhead,      seg: "team",       label: "Equipo" },
+                            { value: breakdown.debtOverhead,      seg: "debt",       label: "Deuda" },
+                            { value: breakdown.depOverhead,       seg: "deps",       label: "Deps" },
+                            { value: breakdown.switchingOverhead, seg: "switching",  label: "Switching" },
+                            { value: breakdown.scopeOverhead,     seg: "scope",      label: "Alcance" },
+                            { value: breakdown.ceremonies,        seg: "ceremonies", label: "Ceremonias" },
                           ].filter(s => s.value > 0.01);
 
                           // Named breakdown rows
                           const rows = [
-                            { icon: "🏗", label: "Base ideal (sin ajustes)",        value: breakdown.base,              color: "#15803d" },
-                            { icon: "🔬", label: `Incertidumbre (complejidad)`,     value: breakdown.uncertainty,       color: "var(--color-accent)" },
-                            { icon: "👥", label: "Overhead de equipo (exp + Brooks)", value: breakdown.teamOverhead,    color: "#c2410c" },
-                            { icon: "⚠️", label: "Deuda técnica del entorno",       value: breakdown.debtOverhead,      color: "#7c3aed" },
-                            { icon: "🔗", label: "Dependencias externas",           value: breakdown.depOverhead,       color: "#0e7490" },
-                            { icon: "🔄", label: "Context switching",               value: breakdown.switchingOverhead, color: "#be185d" },
-                            { icon: "📐", label: "Riesgo de alcance",               value: breakdown.scopeOverhead,     color: "#b91c1c" },
-                            ...(breakdown.codeReview > 0.01   ? [{ icon: "👁", label: "Code Review",        value: breakdown.codeReview,    color: "#1d4ed8" }] : []),
-                            ...(breakdown.testing > 0.01      ? [{ icon: "🧪", label: "Testing / QA",       value: breakdown.testing,       color: "#1d4ed8" }] : []),
-                            ...(breakdown.documentation > 0.01 ? [{ icon: "📄", label: "Documentación",     value: breakdown.documentation, color: "#1d4ed8" }] : []),
+                            { icon: "🏗", label: "Base ideal (sin ajustes)",        value: breakdown.base,              tone: "tone-success" },
+                            { icon: "🔬", label: `Incertidumbre (complejidad)`,     value: breakdown.uncertainty,       tone: "tone-warning" },
+                            { icon: "👥", label: "Overhead de equipo (exp + Brooks)", value: breakdown.teamOverhead,    tone: "est-tone--orange" },
+                            { icon: "⚠️", label: "Deuda técnica del entorno",       value: breakdown.debtOverhead,      tone: "est-tone--purple" },
+                            { icon: "🔗", label: "Dependencias externas",           value: breakdown.depOverhead,       tone: "est-tone--cyan" },
+                            { icon: "🔄", label: "Context switching",               value: breakdown.switchingOverhead, tone: "est-tone--pink" },
+                            { icon: "📐", label: "Riesgo de alcance",               value: breakdown.scopeOverhead,     tone: "tone-danger" },
+                            ...(breakdown.codeReview > 0.01   ? [{ icon: "👁", label: "Code Review",        value: breakdown.codeReview,    tone: "tone-info" }] : []),
+                            ...(breakdown.testing > 0.01      ? [{ icon: "🧪", label: "Testing / QA",       value: breakdown.testing,       tone: "tone-info" }] : []),
+                            ...(breakdown.documentation > 0.01 ? [{ icon: "📄", label: "Documentación",     value: breakdown.documentation, tone: "tone-info" }] : []),
                           ].filter(r => r.value > 0.01);
 
                           return (
-                            <div style={{ marginTop: "0.5rem", padding: "1rem", background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "10px" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.82rem", fontWeight: 700, color: "var(--color-accent)", marginBottom: "0.75rem" }}>
+                            <div className="est-breakdown">
+                              <div className="est-breakdown__head">
                                 <span>📊 Desglose Completo de Esfuerzo:</span>
-                                <span>Crecimiento: <strong style={{ color: riskColor }}>x{combinedFactor.toFixed(2)}</strong> — Riesgo: <strong style={{ color: riskColor, textTransform: "uppercase" }}>{riskLevel}</strong></span>
+                                <span>Crecimiento: <strong className={riskClass}>x{combinedFactor.toFixed(2)}</strong> — Riesgo: <strong className={`est-risk ${riskClass}`}>{riskLevel}</strong></span>
                               </div>
                               
                               {/* Stacked effort bar */}
-                              <div style={{ display: "flex", height: "14px", borderRadius: "7px", overflow: "hidden", border: "1px solid var(--border-color)", background: "var(--state-neutral-bg)", marginBottom: "0.75rem" }}>
+                              <div className="est-bar">
                                 {segments.map((s, i) => (
                                   <div
                                     key={i}
-                                    style={{ width: `${(s.value / totalEffort) * 100}%`, background: s.color, height: "100%", transition: "width 0.3s ease" }}
+                                    className={`est-bar__seg est-bar__seg--${s.seg}`}
+                                    style={{ width: `${(s.value / totalEffort) * 100}%` }}
                                     title={`${s.label}: ${s.value.toFixed(1)}h (${Math.round((s.value / totalEffort) * 100)}%)`}
                                   />
                                 ))}
                               </div>
 
                               {/* Named breakdown rows */}
-                              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              <div className="est-breakdown__rows">
                                 {rows.map((row, i) => (
-                                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.73rem", padding: "0.2rem 0", borderBottom: i < rows.length - 1 ? "1px solid var(--border-color)" : "none" }}>
-                                    <span style={{ color: "var(--text-soft)", display: "flex", alignItems: "center", gap: "0.3rem" }}>
-                                      <span>{row.icon}</span> {row.label}
+                                  <div key={i} className="est-breakdown__row">
+                                    <span className="est-breakdown__label">
+                                      <span aria-hidden="true">{row.icon}</span> {row.label}
                                     </span>
-                                    <span style={{ fontWeight: 700, color: row.value < 0.01 ? "var(--text-soft)" : row.color, minWidth: "70px", textAlign: "right" }}>
+                                    <span className={`est-breakdown__value ${row.value < 0.01 ? "tone-muted" : row.tone}`}>
                                       {i === 0 ? "" : "+"}{row.value.toFixed(1)}h
-                                      <span style={{ fontWeight: 400, color: "var(--text-soft)", marginLeft: "0.3rem" }}>
+                                      <span className="est-breakdown__pct">
                                         ({Math.round((row.value / totalEffort) * 100)}%)
                                       </span>
                                     </span>
@@ -1817,18 +1754,18 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
                                 ))}
                               </div>
 
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.6rem", paddingTop: "0.5rem", borderTop: "2px solid var(--color-primary-20)", fontSize: "0.82rem", fontWeight: 700, color: "var(--color-accent)" }}>
+                              <div className="est-breakdown__total">
                                 <span>⏱ Esfuerzo Real Total:</span>
-                                <span style={{ fontSize: "1rem" }}>{totalEffort.toFixed(1)}h</span>
+                                <span className="est-breakdown__total-value">{totalEffort.toFixed(1)}h</span>
                               </div>
                             </div>
                           );
                         })()}
                       </div>
                     ) : (
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-soft)", padding: "2rem", textAlign: "center" }}>
-                        <span style={{ fontSize: "2rem" }}>📋</span>
-                        <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>No hay tareas agregadas en esta estimación.</p>
+                      <div className="empty-state">
+                        <div className="empty-state__icon" aria-hidden="true">📋</div>
+                        <p className="empty-state__text">No hay tareas agregadas en esta estimación.</p>
                       </div>
                     )}
                   </div>
@@ -1837,116 +1774,81 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
             </div>
 
             {/* Right column: Consolidation, Metrics & Saved Estimations */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            <div className="est-column">
               
               {/* Resumen Total Card */}
-              <div className="card" style={{ padding: "1.75rem", borderRadius: "14px", border: "2px solid #f1a323", background: "rgba(241, 163, 35, 0.02)", boxShadow: "0 4px 20px rgba(241, 163, 35, 0.05)" }}>
-                <h3 style={{ margin: "0 0 1.25rem 0", color: "var(--text-strong)", fontFamily: "var(--display)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <div className="card card--roomy est-summary-card">
+                <h3 className="card-title">
                   📊 Consolidado del Proyecto
                 </h3>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <div className="est-summary-rows">
                   <div className="summary-row">
-                    <span style={{ color: "var(--text-soft)", display: "flex", alignItems: "center" }}>Horas Ideales Estimadas <InfoTooltip text="Suma del esfuerzo neto optimista (sin imprevistos, reuniones ni deuda técnica)." />:</span>
-                    <strong style={{ fontSize: "1.1rem" }}>{totals.idealHours}h</strong>
+                    <span className="est-summary-label">Horas Ideales Estimadas <InfoTooltip text="Suma del esfuerzo neto optimista (sin imprevistos, reuniones ni deuda técnica)." />:</span>
+                    <strong className="est-summary-value">{totals.idealHours}h</strong>
                   </div>
 
                   <div className="summary-row">
-                    <span style={{ color: "var(--text-soft)", display: "flex", alignItems: "center" }}>Esfuerzo Real Calculado <InfoTooltip text="Horas reales necesarias incluyendo el U-Factor, ceremonias, deuda y comunicación." />:</span>
-                    <strong style={{ fontSize: "1.1rem", color: "var(--color-accent)" }}>{totals.adjustedHours.toFixed(1)}h</strong>
+                    <span className="est-summary-label">Esfuerzo Real Calculado <InfoTooltip text="Horas reales necesarias incluyendo el U-Factor, ceremonias, deuda y comunicación." />:</span>
+                    <strong className="est-summary-value est-summary-value--accent">{totals.adjustedHours.toFixed(1)}h</strong>
                   </div>
 
                   <div className="summary-row">
-                    <span style={{ color: "var(--text-soft)", display: "flex", alignItems: "center" }}>Días Hábiles con Buffer <InfoTooltip text="Duración en días laborables de esfuerzo incluyendo el colchón de imprevistos." />:</span>
-                    <strong style={{ fontSize: "1.3rem", color: "var(--color-accent)" }}>{totals.withBuffer.toFixed(1)} días</strong>
+                    <span className="est-summary-label">Días Hábiles con Buffer <InfoTooltip text="Duración en días laborables de esfuerzo incluyendo el colchón de imprevistos." />:</span>
+                    <strong className="est-summary-value--lg">{totals.withBuffer.toFixed(1)} días</strong>
                   </div>
 
                   <div className="summary-row">
-                    <span style={{ color: "var(--text-soft)", display: "flex", alignItems: "center" }}>Días Calendario Aproximados <InfoTooltip text="Estimación del tiempo de entrega incluyendo fines de semana y festivos." />:</span>
-                    <strong style={{ fontSize: "1.1rem" }}>~{totals.calendarDays} días</strong>
+                    <span className="est-summary-label">Días Calendario Aproximados <InfoTooltip text="Estimación del tiempo de entrega incluyendo fines de semana y festivos." />:</span>
+                    <strong className="est-summary-value">~{totals.calendarDays} días</strong>
                   </div>
 
                   <div className="summary-row">
-                    <span style={{ color: "var(--text-soft)", display: "flex", alignItems: "center" }}>Confianza de la Estimación <InfoTooltip text="Nivel de certeza basado en la proporción de horas base vs overhead añadido." />:</span>
-                    <strong style={{ color: totals.confidence > 60 ? "#22c55e" : totals.confidence > 35 ? "#eab308" : "#ef4444", fontSize: "1.1rem" }}>{totals.confidence}%</strong>
+                    <span className="est-summary-label">Confianza de la Estimación <InfoTooltip text="Nivel de certeza basado en la proporción de horas base vs overhead añadido." />:</span>
+                    <strong className={`est-summary-value ${totals.confidence > 60 ? "tone-success" : totals.confidence > 35 ? "tone-warning" : "tone-danger"}`}>{totals.confidence}%</strong>
                   </div>
 
-                  <div className="summary-row" style={{ borderBottom: "none" }}>
-                    <span style={{ color: "var(--text-soft)", display: "flex", alignItems: "center" }}>Nivel de Riesgo del Proyecto <InfoTooltip text="Clasificación general de riesgo técnico y de alcance para reportar." />:</span>
-                    <span style={{ padding: "0.2rem 0.6rem", borderRadius: "9999px", background: totals.riskLevel === "crítico" || totals.riskLevel === "alto" ? "var(--state-danger-bg)" : "var(--state-success-bg)", color: totals.riskLevel === "crítico" || totals.riskLevel === "alto" ? "var(--state-danger-text)" : "var(--state-success-text)", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase" }}>
+                  <div className="summary-row summary-row--last">
+                    <span className="est-summary-label">Nivel de Riesgo del Proyecto <InfoTooltip text="Clasificación general de riesgo técnico y de alcance para reportar." />:</span>
+                    <span className={`state-chip est-risk state-chip--${totals.riskLevel === "crítico" || totals.riskLevel === "alto" ? "danger" : "success"}`}>
                       {totals.riskLevel}
                     </span>
                   </div>
                 </div>
 
-                <div style={{ background: "var(--color-accent-10)", border: "1px dashed var(--color-accent)", borderRadius: "8px", padding: "1rem", marginTop: "1rem", fontSize: "0.85rem", color: "var(--text)", lineHeight: "140%" }}>
+                <div className="est-reco">
                   💡 <strong>Recomendación Comercial:</strong> Al negociar o armar la propuesta, comunica un rango de <strong>{totals.realDays.toFixed(0)} a {totals.withBuffer.toFixed(0)} días hábiles</strong>. Nunca des una sola cifra rígida.
                 </div>
 
                 {/* Warning PM banners based on Scope Definition */}
                 {scopeDefinition === "diffuse" && (
-                  <div style={{
-                    marginTop: "1rem",
-                    padding: "0.75rem 1rem",
-                    background: "var(--state-warning-bg)",
-                    border: "1px solid var(--state-warning-border)",
-                    color: "var(--state-warning-text)",
-                    borderRadius: "8px",
-                    fontSize: "0.82rem",
-                    lineHeight: "1.4"
-                  }}>
+                  <div className="notice notice--warning est-notice--spaced">
                     ⚠️ <strong>Aviso del PM:</strong> El alcance de este proyecto está catalogado como <strong>Difuso (WIP)</strong>. Se aconseja incorporar un colchón de imprevistos más amplio y solicitar definiciones clave al cliente.
                   </div>
                 )}
                 {scopeDefinition === "no_closure" && (
-                  <div style={{
-                    marginTop: "1rem",
-                    padding: "0.75rem 1rem",
-                    background: "var(--state-danger-bg)",
-                    border: "1px solid var(--state-danger-border)",
-                    color: "var(--state-danger-text)",
-                    borderRadius: "8px",
-                    fontSize: "0.82rem",
-                    lineHeight: "1.4"
-                  }}>
+                  <div className="notice notice--danger est-notice--spaced">
                     🚨 <strong>Alerta Crítica del PM:</strong> El proyecto no cuenta con <strong>Cierre Técnico</strong>. Se recomienda alertar al PM inmediatamente para negociar un cierre técnico, dar tiempo al cliente para organizarse o congelar avances.
                   </div>
                 )}
 
                 {/* Comparación visual de Ideal vs Ajustada */}
-                <div style={{ marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "1px solid var(--border-color)" }}>
-                  <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "0.85rem", color: "var(--text-strong)", fontWeight: 700 }}>
+                <div className="est-compare">
+                  <h4 className="est-compare__title">
                     Comparación: Ideal vs. Realidad Calculada
                   </h4>
-                  <div style={{ display: "flex", height: "24px", background: "var(--state-neutral-bg)", borderRadius: "6px", overflow: "hidden", margin: "0.5rem 0" }}>
-                    <div style={{
-                      width: `${Math.max(15, Math.min(85, (totals.idealHours / Math.max(totals.adjustedHours, 1)) * 100))}%`,
-                      background: "#234175",
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.72rem",
-                      fontWeight: "bold",
-                      transition: "width 0.3s ease"
-                    }}>
+                  <div className="est-compare__bar">
+                    <div
+                      className="est-compare__seg est-compare__seg--ideal"
+                      style={{ width: `${Math.max(15, Math.min(85, (totals.idealHours / Math.max(totals.adjustedHours, 1)) * 100))}%` }}
+                    >
                       {totals.idealHours}h Ideal
                     </div>
-                    <div style={{
-                      flexGrow: 1,
-                      background: "#f1a323",
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.72rem",
-                      fontWeight: "bold",
-                      transition: "width 0.3s ease"
-                    }}>
+                    <div className="est-compare__seg est-compare__seg--real">
                       {totals.adjustedHours.toFixed(1)}h Real
                     </div>
                   </div>
-                  <p style={{ margin: 0, fontSize: "0.76rem", color: "var(--text-soft)", lineHeight: 1.4, display: "flex", alignItems: "flex-start", gap: "0.3rem" }}>
+                  <p className="est-compare__note">
                     <span>💡</span>
                     <span>
                       {totals.adjustedHours > totals.idealHours * 2.5 ? (
@@ -1962,41 +1864,31 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
               </div>
 
               {/* Saved Estimations List */}
-              <div className="card" style={{ padding: "1.5rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "#fff" }}>
-                <h3 style={{ margin: "0 0 1rem 0", fontSize: "1rem", color: "var(--text-strong)", fontFamily: "var(--display)" }}>
+              <div className="card card--roomy">
+                <h3 className="card-title">
                   💾 Estimaciones Guardadas en Sistema ({estimations.length})
                 </h3>
                 {loadingEstimations ? (
                   <p className="loading">Cargando...</p>
                 ) : estimations.length === 0 ? (
-                  <p style={{ color: "var(--text-soft)", fontSize: "0.85rem", fontStyle: "italic" }}>No hay estimaciones guardadas todavía.</p>
+                  <p className="empty-note">No hay estimaciones guardadas todavía.</p>
                 ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxHeight: "300px", overflowY: "auto" }}>
+                  <div className="est-saved-list">
                     {estimations.map((est) => (
-                      <div 
-                        key={est.id} 
-                        style={{ 
-                          padding: "0.75rem", 
-                          borderRadius: "8px", 
-                          border: "1px solid var(--border-color)", 
-                          background: "var(--card-bg)", 
-                          display: "flex", 
-                          justifyContent: "space-between", 
-                          alignItems: "center" 
-                        }}
-                      >
-                        <div style={{ cursor: "pointer", flex: 1 }} onClick={() => loadSavedData(est)}>
-                          <strong style={{ fontSize: "0.85rem", color: "var(--color-accent)", display: "block" }}>{est.projectName}</strong>
-                          <span style={{ fontSize: "0.75rem", color: "var(--text-soft)" }}>
+                      <div key={est.id} className="est-saved-item">
+                        <button type="button" className="est-saved-item__main" onClick={() => loadSavedData(est)}>
+                          <strong className="est-saved-item__name">{est.projectName}</strong>
+                          <span className="est-saved-item__meta">
                             {Number(est.totalAdjustedHours).toFixed(1)}h | Riesgo: {est.riskLevel.toUpperCase()}
                           </span>
-                        </div>
+                        </button>
                         
                         <button 
                           type="button" 
                           onClick={() => setDeleteTargetId(est.id)} 
-                          style={{ color: "#ef4444", border: "none", background: "none", cursor: "pointer", fontSize: "0.9rem" }}
+                          className="est-saved-item__delete"
                           title="Eliminar estimación"
+                          aria-label={`Eliminar la estimación ${est.projectName}`}
                         >
                           🗑
                         </button>
@@ -2012,62 +1904,61 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
         </div>
       ) : (
         /* Weights Config Tab */
-        <div className="card glass-card fade-in-tab" style={{ padding: "1.75rem", borderRadius: "14px", border: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
-          <h3 style={{ margin: "0 0 1.5rem 0", color: "var(--text-strong)", fontFamily: "var(--display)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div className="card card--roomy glass-card fade-in-tab">
+          <h3 className="card-title">
             ⚙️ Configuración y Calibración de Pesos (Factores Científicos)
           </h3>
           
-          <p style={{ fontSize: "0.85rem", color: "var(--text-soft)", margin: "-0.5rem 0 1.5rem 0", lineHeight: "1.4" }}>
+          <p className="est-weights__lead">
             Calibra los multiplicadores de la fórmula científica U-Factor de Synaptica. Estos coeficientes determinan cómo se escala el esfuerzo real de desarrollo según la complejidad del código, el seniority disponible, la deuda técnica, las dependencias y los riesgos de alcance.
           </p>
           
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <div className="est-weights">
             
             {/* 1. Complejidad (U-Factor) */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.25rem", marginBottom: "0.75rem" }}>
-                <h4 style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-accent)" }}>
+              <div className="est-weight-section__head">
+                <h4 className="est-weight-section__title">
                   1. Complejidad del Trabajo (U-Factor base)
                 </h4>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "var(--color-accent)", fontWeight: "bold", cursor: "pointer" }}>
+                <label className="est-weight-toggle">
                   <input
                     type="checkbox"
                     checked={weights.useComplexityFactor !== false}
                     onChange={(e) => setWeights({ ...weights, useComplexityFactor: e.target.checked })}
-                    style={{ cursor: "pointer" }}
                   />
                   <span>Activo</span>
                 </label>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", opacity: weights.useComplexityFactor !== false ? 1 : 0.5 }}>
+              <div className={`est-weight-grid${weights.useComplexityFactor !== false ? "" : " is-off"}`}>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Rutinaria (Routine)</label>
+                  <label className="field-label">Rutinaria (Routine)</label>
                   <input
                     type="number" step="0.05" min="1.0" max="5.0"
                     disabled={weights.useComplexityFactor === false}
                     value={weights.compRoutine}
                     onChange={(e) => setWeights({ ...weights, compRoutine: Number(e.target.value) || 1.3 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Incógnitas Conocidas (Known Unknowns)</label>
+                  <label className="field-label">Incógnitas Conocidas (Known Unknowns)</label>
                   <input
                     type="number" step="0.05" min="1.0" max="5.0"
                     disabled={weights.useComplexityFactor === false}
                     value={weights.compKnownUnknowns}
                     onChange={(e) => setWeights({ ...weights, compKnownUnknowns: Number(e.target.value) || 2.0 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Territorio Inexplorado (Unknown Unknowns)</label>
+                  <label className="field-label">Territorio Inexplorado (Unknown Unknowns)</label>
                   <input
                     type="number" step="0.05" min="1.0" max="10.0"
                     disabled={weights.useComplexityFactor === false}
                     value={weights.compUnknownUnknowns}
                     onChange={(e) => setWeights({ ...weights, compUnknownUnknowns: Number(e.target.value) || 3.5 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
               </div>
@@ -2075,49 +1966,48 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
 
             {/* 2. Experiencia (Seniority) */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.25rem", marginBottom: "0.75rem" }}>
-                <h4 style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-accent)" }}>
+              <div className="est-weight-section__head">
+                <h4 className="est-weight-section__title">
                   2. Coeficientes de Seniority / Experiencia
                 </h4>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "var(--color-accent)", fontWeight: "bold", cursor: "pointer" }}>
+                <label className="est-weight-toggle">
                   <input
                     type="checkbox"
                     checked={weights.useExperienceFactor !== false}
                     onChange={(e) => setWeights({ ...weights, useExperienceFactor: e.target.checked })}
-                    style={{ cursor: "pointer" }}
                   />
                   <span>Activo</span>
                 </label>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", opacity: weights.useExperienceFactor !== false ? 1 : 0.5 }}>
+              <div className={`est-weight-grid${weights.useExperienceFactor !== false ? "" : " is-off"}`}>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Senior (5+ años)</label>
+                  <label className="field-label">Senior (5+ años)</label>
                   <input
                     type="number" step="0.05" min="0.5" max="3.0"
                     disabled={weights.useExperienceFactor === false}
                     value={weights.expSenior}
                     onChange={(e) => setWeights({ ...weights, expSenior: Number(e.target.value) || 1.0 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Mid-Level (2-5 años)</label>
+                  <label className="field-label">Mid-Level (2-5 años)</label>
                   <input
                     type="number" step="0.05" min="0.5" max="3.0"
                     disabled={weights.useExperienceFactor === false}
                     value={weights.expMid}
                     onChange={(e) => setWeights({ ...weights, expMid: Number(e.target.value) || 1.25 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Junior (&lt;2 años)</label>
+                  <label className="field-label">Junior (&lt;2 años)</label>
                   <input
                     type="number" step="0.05" min="0.5" max="3.0"
                     disabled={weights.useExperienceFactor === false}
                     value={weights.expJunior}
                     onChange={(e) => setWeights({ ...weights, expJunior: Number(e.target.value) || 1.6 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
               </div>
@@ -2125,59 +2015,58 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
 
             {/* 3. Deuda Técnica */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.25rem", marginBottom: "0.75rem" }}>
-                <h4 style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-accent)" }}>
+              <div className="est-weight-section__head">
+                <h4 className="est-weight-section__title">
                   3. Fricción por Deuda Técnica
                 </h4>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "var(--color-accent)", fontWeight: "bold", cursor: "pointer" }}>
+                <label className="est-weight-toggle">
                   <input
                     type="checkbox"
                     checked={weights.useTechDebtFactor !== false}
                     onChange={(e) => setWeights({ ...weights, useTechDebtFactor: e.target.checked })}
-                    style={{ cursor: "pointer" }}
                   />
                   <span>Activo</span>
                 </label>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem", opacity: weights.useTechDebtFactor !== false ? 1 : 0.5 }}>
+              <div className={`est-weight-grid est-weight-grid--narrow${weights.useTechDebtFactor !== false ? "" : " is-off"}`}>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Código Limpio</label>
+                  <label className="field-label">Código Limpio</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useTechDebtFactor === false}
                     value={weights.debtClean}
                     onChange={(e) => setWeights({ ...weights, debtClean: Number(e.target.value) || 1.0 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Deuda Moderada</label>
+                  <label className="field-label">Deuda Moderada</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useTechDebtFactor === false}
                     value={weights.debtModerate}
                     onChange={(e) => setWeights({ ...weights, debtModerate: Number(e.target.value) || 1.3 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Deuda Pesada</label>
+                  <label className="field-label">Deuda Pesada</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useTechDebtFactor === false}
                     value={weights.debtHeavy}
                     onChange={(e) => setWeights({ ...weights, debtHeavy: Number(e.target.value) || 1.6 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Legacy Crítico</label>
+                  <label className="field-label">Legacy Crítico</label>
                   <input
                     type="number" step="0.05" min="1.0" max="4.0"
                     disabled={weights.useTechDebtFactor === false}
                     value={weights.debtLegacy}
                     onChange={(e) => setWeights({ ...weights, debtLegacy: Number(e.target.value) || 2.0 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
               </div>
@@ -2185,59 +2074,58 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
 
             {/* 4. Dependencias */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.25rem", marginBottom: "0.75rem" }}>
-                <h4 style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-accent)" }}>
+              <div className="est-weight-section__head">
+                <h4 className="est-weight-section__title">
                   4. Bloqueos por Dependencias Externas
                 </h4>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "var(--color-accent)", fontWeight: "bold", cursor: "pointer" }}>
+                <label className="est-weight-toggle">
                   <input
                     type="checkbox"
                     checked={weights.useDependencyFactor !== false}
                     onChange={(e) => setWeights({ ...weights, useDependencyFactor: e.target.checked })}
-                    style={{ cursor: "pointer" }}
                   />
                   <span>Activo</span>
                 </label>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem", opacity: weights.useDependencyFactor !== false ? 1 : 0.5 }}>
+              <div className={`est-weight-grid est-weight-grid--narrow${weights.useDependencyFactor !== false ? "" : " is-off"}`}>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Sin dependencias</label>
+                  <label className="field-label">Sin dependencias</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useDependencyFactor === false}
                     value={weights.depNone}
                     onChange={(e) => setWeights({ ...weights, depNone: Number(e.target.value) || 1.0 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Interna (Otro equipo)</label>
+                  <label className="field-label">Interna (Otro equipo)</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useDependencyFactor === false}
                     value={weights.depInternal}
                     onChange={(e) => setWeights({ ...weights, depInternal: Number(e.target.value) || 1.2 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Externa (Proveedor/API)</label>
+                  <label className="field-label">Externa (Proveedor/API)</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useDependencyFactor === false}
                     value={weights.depExternal}
                     onChange={(e) => setWeights({ ...weights, depExternal: Number(e.target.value) || 1.4 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Múltiples bloqueantes</label>
+                  <label className="field-label">Múltiples bloqueantes</label>
                   <input
                     type="number" step="0.05" min="1.0" max="4.0"
                     disabled={weights.useDependencyFactor === false}
                     value={weights.depMultiple}
                     onChange={(e) => setWeights({ ...weights, depMultiple: Number(e.target.value) || 1.6 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
               </div>
@@ -2245,65 +2133,64 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
 
             {/* 5. Ceremonias, Contexto & Brooks' Law */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.25rem", marginBottom: "0.75rem" }}>
-                <h4 style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-accent)" }}>
+              <div className="est-weight-section__head">
+                <h4 className="est-weight-section__title">
                   5. Ceremonias, Contexto y Ley de Brooks
                 </h4>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "var(--color-accent)", fontWeight: "bold", cursor: "pointer" }}>
+                <label className="est-weight-toggle">
                   <input
                     type="checkbox"
                     checked={weights.useBrooksFactor !== false}
                     onChange={(e) => setWeights({ ...weights, useBrooksFactor: e.target.checked })}
-                    style={{ cursor: "pointer" }}
                   />
                   <span>Ley de Brooks Activa</span>
                 </label>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+              <div className="est-weight-grid">
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Code Review (Proporción, ej: 0.15 = 15%)</label>
+                  <label className="field-label">Code Review (Proporción, ej: 0.15 = 15%)</label>
                   <input
                     type="number" step="0.01" min="0.0" max="1.0"
                     value={weights.ceremonyCodeReview}
                     onChange={(e) => setWeights({ ...weights, ceremonyCodeReview: Number(e.target.value) || 0.15 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Testing/QA (Proporción, ej: 0.25 = 25%)</label>
+                  <label className="field-label">Testing/QA (Proporción, ej: 0.25 = 25%)</label>
                   <input
                     type="number" step="0.01" min="0.0" max="1.0"
                     value={weights.ceremonyTesting}
                     onChange={(e) => setWeights({ ...weights, ceremonyTesting: Number(e.target.value) || 0.25 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Documentación (Proporción, ej: 0.10 = 10%)</label>
+                  <label className="field-label">Documentación (Proporción, ej: 0.10 = 10%)</label>
                   <input
                     type="number" step="0.01" min="0.0" max="1.0"
                     value={weights.ceremonyDocumentation}
                     onChange={(e) => setWeights({ ...weights, ceremonyDocumentation: Number(e.target.value) || 0.10 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Recargo por Context Switching</label>
+                  <label className="field-label">Recargo por Context Switching</label>
                   <input
                     type="number" step="0.05" min="1.0" max="2.0"
                     value={weights.contextSwitchingPenalty}
                     onChange={(e) => setWeights({ ...weights, contextSwitchingPenalty: Number(e.target.value) || 1.15 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
-                <div style={{ opacity: weights.useBrooksFactor !== false ? 1 : 0.5 }}>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Recargo Canal Comunicación Brooks</label>
+                <div className={`est-weight-field${weights.useBrooksFactor !== false ? "" : " is-off"}`}>
+                  <label className="field-label">Recargo Canal Comunicación Brooks</label>
                   <input
                     type="number" step="0.01" min="0.0" max="0.5"
                     disabled={weights.useBrooksFactor === false}
                     value={weights.brooksFactor}
                     onChange={(e) => setWeights({ ...weights, brooksFactor: Number(e.target.value) || 0.08 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
               </div>
@@ -2311,59 +2198,58 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
 
             {/* 6. Riesgo de Alcance */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-primary-10)", paddingBottom: "0.25rem", marginBottom: "0.75rem" }}>
-                <h4 style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-accent)" }}>
+              <div className="est-weight-section__head">
+                <h4 className="est-weight-section__title">
                   6. Coeficientes por Claridad de Alcance
                 </h4>
-                <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "var(--color-accent)", fontWeight: "bold", cursor: "pointer" }}>
+                <label className="est-weight-toggle">
                   <input
                     type="checkbox"
                     checked={weights.useScopeFactor !== false}
                     onChange={(e) => setWeights({ ...weights, useScopeFactor: e.target.checked })}
-                    style={{ cursor: "pointer" }}
                   />
                   <span>Activo</span>
                 </label>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", opacity: weights.useScopeFactor !== false ? 1 : 0.5 }}>
+              <div className={`est-weight-grid${weights.useScopeFactor !== false ? "" : " is-off"}`}>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Cerrado y Acotado</label>
+                  <label className="field-label">Cerrado y Acotado</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useScopeFactor === false}
                     value={weights.scopeClosed}
                     onChange={(e) => setWeights({ ...weights, scopeClosed: Number(e.target.value) || 1.0 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Pendientes Menores</label>
+                  <label className="field-label">Pendientes Menores</label>
                   <input
                     type="number" step="0.05" min="1.0" max="3.0"
                     disabled={weights.useScopeFactor === false}
                     value={weights.scopePending}
                     onChange={(e) => setWeights({ ...weights, scopePending: Number(e.target.value) || 1.25 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Difuso / WIP</label>
+                  <label className="field-label">Difuso / WIP</label>
                   <input
                     type="number" step="0.05" min="1.0" max="4.0"
                     disabled={weights.useScopeFactor === false}
                     value={weights.scopeDiffuse}
                     onChange={(e) => setWeights({ ...weights, scopeDiffuse: Number(e.target.value) || 1.6 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 700, marginBottom: "0.25rem" }}>Sin Cierre Técnico</label>
+                  <label className="field-label">Sin Cierre Técnico</label>
                   <input
                     type="number" step="0.05" min="1.0" max="5.0"
                     disabled={weights.useScopeFactor === false}
                     value={weights.scopeNoTechnicalClosure}
                     onChange={(e) => setWeights({ ...weights, scopeNoTechnicalClosure: Number(e.target.value) || 2.0 })}
-                    style={{ width: "100%", padding: "0.45rem", borderRadius: "6px", border: "1px solid var(--border-color)" }}
+                    className="est-control"
                   />
                 </div>
               </div>
@@ -2371,35 +2257,11 @@ export function EstimationCalculatorTab({ projects, canWrite, onError }: Estimat
 
           </div>
           
-          <div style={{ display: "flex", gap: "1rem", marginTop: "2rem", borderTop: "1px solid var(--border-color)", paddingTop: "1.5rem" }}>
-            <button
-              type="button"
-              onClick={() => handleSaveWeights(weights)}
-              style={{
-                padding: "0.6rem 1.5rem",
-                borderRadius: "8px",
-                border: "none",
-                background: "var(--gradient-accent)",
-                color: "#fff",
-                fontWeight: 700,
-                cursor: "pointer"
-              }}
-            >
+          <div className="est-weights__actions">
+            <button type="button" onClick={() => handleSaveWeights(weights)} className="est-btn-primary">
               💾 Guardar Calibración
             </button>
-            <button
-              type="button"
-              onClick={handleResetWeights}
-              style={{
-                padding: "0.6rem 1.5rem",
-                borderRadius: "8px",
-                border: "1px solid var(--border-color)",
-                background: "var(--color-accent-10)",
-                color: "var(--color-accent)",
-                fontWeight: 700,
-                cursor: "pointer"
-              }}
-            >
+            <button type="button" onClick={handleResetWeights} className="est-btn-secondary">
               🔄 Restaurar Predeterminados
             </button>
           </div>

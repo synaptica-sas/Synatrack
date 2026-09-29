@@ -5733,3 +5733,688 @@ body.dark td .audit-diff__pre.audit-diff__pre         { color: var(--text); }
 }
 
 body.dark .card .fx-rate-field__spinner.fx-rate-field__spinner { color: var(--text-soft); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CALCULADORA DE ESTIMACIONES
+   `features/estimations/EstimationCalculatorTab.tsx`
+
+   Era el archivo más cargado del frontend: 272 estilos en línea y 82 colores
+   literales, casi todos de la paleta por defecto de Tailwind (#ef4444,
+   #22c55e, #eab308, #1d4ed8) más 18 `#fff` que en modo oscuro dejaban texto
+   e inputs blancos sobre blanco.
+
+   Criterio de traducción del color, por SIGNIFICADO y no por tono:
+     · verde  (#22c55e #4ade80 #15803d) → `--state-success-*`  (riesgo bajo, senior)
+     · ámbar  (#eab308 #fbbf24 #d97706 #b45309 #f1a323) → `--state-warning-*`
+               o `--color-accent` cuando es el ámbar de marca
+     · rojo   (#ef4444 #b91c1c #7f1d1d) → `--state-danger-*`   (riesgo alto/crítico)
+     · azul   (#1d4ed8 #60a5fa #234175) → `--state-info-*`     (ceremonias, ideal)
+     · morado/naranja/cian/rosa → los tintes categóricos `--tint-*`, que no son
+       estados sino conceptos que solo necesitan distinguirse entre sí.
+
+   Casi todo el marcado reusa clases que ya existían (`.subtabs`, `.card`,
+   `.state-chip`, `.field-label`, `.select-control`, `.empty-state`,
+   `.page-stack--padded`, `.tone-*`, `.btn-sm`, `.ghost`). Lo de aquí abajo es
+   solo lo propio de esta pantalla.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Cabecera y acciones ─────────────────────────────────────────────────── */
+.est-hdr-btn { font-size: 0.85rem; padding: var(--space-2) var(--space-4); border-radius: var(--radius-md); }
+/* `button.ghost` pesa (0,1,1) —una clase y un elemento— y le gana a un
+   modificador de una sola clase, que es por lo que estos dos botones salían
+   los dos del azul de `.ghost`. Se repite la clase para llegar a (0,2,0). */
+.est-hdr-btn--guide.est-hdr-btn--guide   { border-color: var(--tint-purple-border); color: var(--tint-purple-text); }
+.est-hdr-btn--export.est-hdr-btn--export { border-color: var(--border-color); color: var(--state-warning-strong); }
+/* En oscuro `body.dark button.ghost` pinta todo ghost de ámbar con (0,2,2):
+   solo hay que recuperar el morado del botón de la guía. */
+body.dark .est-hdr-btn--guide.est-hdr-btn--guide { color: var(--tint-purple-text); border-color: var(--tint-purple-border); }
+
+/* Botón principal. Iba en `--gradient-accent` con `#fff` encima, que sobre el
+   ámbar de marca se queda en 2,6:1 (§5.3 de DISENO.md): el texto es navy. */
+.est-btn-primary {
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--state-warning-solid);
+  color: var(--state-warning-on-solid);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.est-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.est-btn-secondary {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-10);
+  color: var(--state-warning-strong);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.est-banner-ok {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--state-success-border);
+  border-radius: var(--radius-md);
+  background: var(--state-success-bg);
+  color: var(--state-success-strong);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* ── Tonos categóricos de texto ───────────────────────────────────────────
+   Hermanos de `.tone-success/-warning/-danger/-info`, para los conceptos que
+   NO son estados (deuda, dependencias, Brooks, switching) y solo necesitan
+   distinguirse entre sí. Salen de los tintes ya definidos en `index.css`. */
+.est-tone--purple { color: var(--tint-purple-text); }
+.est-tone--orange { color: var(--tint-orange-text); }
+.est-tone--cyan   { color: var(--tint-cyan-text); }
+.est-tone--pink   { color: var(--tint-pink-text); }
+
+/* ── Guía educativa ──────────────────────────────────────────────────────── */
+.est-guide {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+}
+.est-guide__tabs { margin-bottom: var(--space-4); }
+
+.est-guide__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 900px) { .est-guide__split { grid-template-columns: minmax(0, 1fr); } }
+
+.est-concept-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--space-3);
+}
+.est-concept {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+.est-concept__head  { display: flex; align-items: center; gap: var(--space-1); }
+.est-concept__title { font-size: 0.8rem; }
+.est-concept__body  { margin: 0; font-size: 0.73rem; color: var(--text); line-height: 1.45; }
+.est-concept__tip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: 0.35rem var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  font-size: 0.68rem;
+  font-style: italic;
+}
+
+/* Cada tarjeta lleva su tinte; el título y el consejo toman ese mismo color. */
+.est-concept--purple  { background: var(--tint-purple-bg);   border-color: var(--tint-purple-border); }
+.est-concept--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
+.est-concept--orange  { background: var(--tint-orange-bg);   border-color: var(--tint-orange-border); }
+.est-concept--cyan    { background: var(--tint-cyan-bg);     border-color: var(--tint-cyan-border); }
+.est-concept--info    { background: var(--state-info-bg);    border-color: var(--state-info-border); }
+.est-concept--danger  { background: var(--state-danger-bg);  border-color: var(--state-danger-border); }
+.est-concept--pink    { background: var(--tint-pink-bg);     border-color: var(--tint-pink-border); }
+
+.est-concept--purple  .est-concept__title, .est-concept--purple  .est-concept__tip { color: var(--tint-purple-text); }
+.est-concept--warning .est-concept__title, .est-concept--warning .est-concept__tip { color: var(--state-warning-strong); }
+.est-concept--orange  .est-concept__title, .est-concept--orange  .est-concept__tip { color: var(--tint-orange-text); }
+.est-concept--cyan    .est-concept__title, .est-concept--cyan    .est-concept__tip { color: var(--tint-cyan-text); }
+.est-concept--info    .est-concept__title, .est-concept--info    .est-concept__tip { color: var(--state-info-strong); }
+.est-concept--danger  .est-concept__title, .est-concept--danger  .est-concept__tip { color: var(--state-danger-strong); }
+.est-concept--pink    .est-concept__title, .est-concept--pink    .est-concept__tip { color: var(--tint-pink-text); }
+
+/* ── Red de canales de Brooks (SVG dibujado a mano) ──────────────────────── */
+.est-brooks {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+}
+.est-brooks__head  { text-align: center; }
+.est-brooks__title { margin: 0 0 0.2rem; font-size: 0.82rem; font-weight: 700; color: var(--text-strong); }
+.est-brooks__sub   { margin: 0; font-size: 0.68rem; color: var(--text-soft); }
+.est-brooks__canvas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 210px;
+  max-width: 100%;
+  height: 210px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+.est-brooks__empty { padding: 0 var(--space-4); font-size: 0.72rem; font-style: italic; color: var(--text-soft); text-align: center; }
+.est-brooks__svg   { display: block; }
+.est-brooks__note {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-05);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--state-warning-strong);
+  text-align: center;
+}
+
+/* El color de un SVG se pone con clase, nunca con el atributo `fill`: un
+   literal ahí no puede resolver un token ni tener contraparte oscura. */
+.est-link { stroke: var(--color-accent-20); }
+.est-node-ring { stroke: var(--card-bg); }
+.est-node--senior { fill: var(--state-success-solid); }
+.est-node--mid    { fill: var(--state-warning-solid); }
+.est-node--junior { fill: var(--state-danger-solid); }
+/* El texto sobre el relleno NO siempre es blanco: sobre el verde y el ámbar
+   de marca va navy, y solo sobre el rojo va blanco. */
+.est-node-label--senior { fill: var(--state-success-on-solid); }
+.est-node-label--mid    { fill: var(--state-warning-on-solid); }
+.est-node-label--junior { fill: var(--state-danger-on-solid); }
+
+.est-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-3); font-size: 0.68rem; color: var(--text-soft); }
+.est-legend__item { display: flex; align-items: center; gap: var(--space-1); }
+.est-legend__dot  { width: 8px; height: 8px; border-radius: var(--radius-pill); flex-shrink: 0; }
+.est-legend__dot--senior { background: var(--state-success-solid); }
+.est-legend__dot--mid    { background: var(--state-warning-solid); }
+.est-legend__dot--junior { background: var(--state-danger-solid); }
+
+/* ── Guía: ejemplo resuelto paso a paso ──────────────────────────────────── */
+.est-example { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: var(--space-4); }
+.est-example__scenario {
+  padding: var(--space-4);
+  border: 1px solid var(--state-info-border);
+  border-radius: var(--radius-md);
+  background: var(--state-info-bg);
+}
+.est-example__title.est-example__title { margin: 0 0 var(--space-3); font-size: 0.9rem; font-weight: 700; color: var(--state-info-strong); }
+.est-example__rows { display: flex; flex-direction: column; gap: var(--space-1); font-size: 0.78rem; color: var(--text); }
+.est-example__row  { display: flex; justify-content: space-between; gap: var(--space-2); padding-bottom: var(--space-1); border-bottom: 1px solid var(--border-color); }
+.est-example__key  { color: var(--text-soft); }
+.est-example__val  { max-width: 60%; text-align: right; }
+
+.est-steps { display: flex; flex-direction: column; gap: var(--space-2); }
+.est-steps__title.est-steps__title { margin: 0 0 var(--space-1); font-size: 0.9rem; font-weight: 700; color: var(--state-warning-strong); }
+.est-step {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.3rem var(--space-2);
+  border: 1px solid var(--state-warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--state-warning-bg);
+  font-size: 0.75rem;
+}
+.est-step--base   { border-color: var(--state-success-border); background: var(--state-success-bg); }
+.est-step__label  { color: var(--text-soft); }
+.est-step__value  { font-weight: 700; }
+.est-step-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border: 2px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent-05);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--state-warning-strong);
+}
+.est-step-total__value { font-size: 1rem; }
+.est-step-note { font-size: 0.7rem; font-style: italic; color: var(--text-soft); text-align: center; }
+
+/* ── Guía: tabla de factores ─────────────────────────────────────────────── */
+.est-factor-scroll { overflow-x: auto; }
+.est-factor-note {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-05);
+  font-size: 0.78rem;
+  color: var(--text);
+}
+.est-factor-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.76rem; }
+.est-factor-table th {
+  padding: var(--space-2) 0.6rem;
+  background: var(--state-warning-bg);
+  color: var(--text-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.est-factor-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border-color); }
+.est-factor-table tbody tr:nth-child(even) { background: var(--surface-subtle); }
+.est-factor-table__cat        { font-weight: 700; color: var(--tint-purple-text); }
+.est-factor-table__cat--empty { font-weight: 400; color: var(--text-soft); }
+.est-factor-table__level  { color: var(--text); }
+.est-factor-table__factor { font-family: var(--mono); font-weight: 700; color: var(--state-warning-strong); }
+.est-factor-table__when   { font-size: 0.72rem; font-style: italic; color: var(--text-soft); }
+
+/* `body.dark th` pinta toda cabecera de tabla en ámbar con (0,1,2), y
+   `body.dark td` fuerza el color del cuerpo: hay que repetir la clase para
+   ganar el desempate sin recurrir a `!important`. */
+body.dark .est-factor-table th.est-factor-table th { background: var(--state-warning-bg); color: var(--text-strong); }
+body.dark .est-factor-table td.est-factor-table__cat.est-factor-table__cat               { color: var(--tint-purple-text); }
+body.dark .est-factor-table td.est-factor-table__cat--empty.est-factor-table__cat--empty { color: var(--text-soft); }
+body.dark .est-factor-table td.est-factor-table__level.est-factor-table__level           { color: var(--text); }
+body.dark .est-factor-table td.est-factor-table__factor.est-factor-table__factor         { color: var(--state-warning-strong); }
+body.dark .est-factor-table td.est-factor-table__when.est-factor-table__when             { color: var(--text-soft); }
+
+/* ── Controles de formulario ──────────────────────────────────────────────
+   El mismo `style` (ancho completo, 0,5rem de relleno, radio 6px, borde y
+   `background: "#fff"`) se repetía 30 veces entre los parámetros globales,
+   el editor de tarea y el calibrador de pesos. El `#fff` era el error de
+   siempre: en modo oscuro dejaba el campo blanco. Quitado, `body.dark input`
+   hace su trabajo. */
+.est-control {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+.est-control--sm   { padding: 0.35rem; font-size: 0.85rem; }
+.est-control--area { resize: vertical; }
+
+/* Casilla de verificación con su etiqueta al lado. */
+.est-check { display: flex; align-items: center; gap: var(--space-2); }
+.est-check input { width: 16px; height: 16px; flex-shrink: 0; cursor: pointer; }
+.est-check__label {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.est-check--tight input { width: 14px; height: 14px; }
+.est-check--tight .est-check__label { font-size: 0.75rem; font-weight: 600; }
+
+/* ── Parámetros globales: equipo y calendario ────────────────────────────── */
+.est-subcard {
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-05);
+}
+.est-subcard__head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.est-subcard__title { font-size: 0.8rem; font-weight: 700; color: var(--state-warning-strong); }
+
+.est-team { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); }
+.est-team__head { grid-column: 1 / -1; }
+.est-cal { display: grid; grid-template-rows: auto 1fr; gap: var(--space-3); }
+.est-cal__options { display: flex; flex-direction: column; justify-content: center; gap: 0.6rem; }
+
+/* ── Espacio de trabajo maestro-detalle ──────────────────────────────────── */
+.est-workspace { display: flex; flex-direction: column; gap: var(--space-3); }
+.est-workspace__head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.est-workspace__title.est-workspace__title { margin: 0; font-family: var(--display); font-size: 1.05rem; color: var(--text-strong); }
+
+.est-master__head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+.est-master__list { display: flex; flex-direction: column; gap: var(--space-2); max-height: 530px; overflow-y: auto; padding-right: var(--space-1); }
+
+/* Tarea de la lista. La activa se distingue por borde ÁMBAR y por el peso de
+   su cifra, no solo por el relleno: el borde se percibe en escala de grises. */
+.est-task {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  text-align: left;
+  cursor: pointer;
+}
+.est-task.is-active { border: 2px solid var(--color-accent); background: var(--color-accent-05); }
+.est-task__text  { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; padding-right: var(--space-2); }
+.est-task__idx   { font-size: 0.68rem; font-weight: 700; color: var(--text-soft); }
+.est-task__name  { font-size: 0.8rem; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.est-task__right { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+.est-task__hours { font-size: 0.78rem; font-weight: 700; color: var(--text-soft); }
+.est-task.is-active .est-task__hours { color: var(--state-warning-strong); }
+.est-task__remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--state-danger-strong);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+/* El hover vivía en JavaScript (`onMouseEnter`/`onMouseLeave` escribiendo
+   `style.background`) con un rojo de Tailwind. Ahora vive aquí. */
+.est-task__remove:hover { background: var(--state-danger-bg); }
+
+.est-detail__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-1);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.est-detail__title.est-detail__title { margin: 0; font-family: var(--display); font-size: 0.92rem; color: var(--text-strong); }
+.est-detail__factor { font-size: 0.72rem; color: var(--text-soft); }
+.est-detail__form { display: flex; flex-direction: column; gap: var(--space-4); }
+.est-check-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--space-2); margin: var(--space-1) 0; }
+
+/* ── Desglose de esfuerzo de la tarea ────────────────────────────────────── */
+.est-breakdown {
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+.est-breakdown__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--state-warning-strong);
+}
+
+/* Barra apilada. Cada segmento lleva su concepto en el `title`, y justo
+   debajo la lista nombrada repite el mismo color con su etiqueta escrita:
+   el color no es el único portador de la información. */
+.est-bar {
+  display: flex;
+  height: 14px;
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--chart-track);
+}
+.est-bar__seg { height: 100%; transition: width 0.3s ease; }
+.est-bar__seg--base       { background: var(--state-success-solid); }
+.est-bar__seg--complexity { background: var(--color-accent); }
+.est-bar__seg--team       { background: var(--tint-orange-text); }
+.est-bar__seg--debt       { background: var(--tint-purple-text); }
+.est-bar__seg--deps       { background: var(--tint-cyan-text); }
+.est-bar__seg--switching  { background: var(--tint-pink-text); }
+.est-bar__seg--scope      { background: var(--state-danger-solid); }
+.est-bar__seg--ceremonies { background: var(--state-info-solid); }
+
+.est-breakdown__rows { display: flex; flex-direction: column; gap: var(--space-1); }
+.est-breakdown__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.73rem;
+}
+.est-breakdown__row:last-child { border-bottom: none; }
+.est-breakdown__label { display: flex; align-items: center; gap: var(--space-1); color: var(--text-soft); }
+.est-breakdown__value { min-width: 70px; text-align: right; font-weight: 700; }
+.est-breakdown__pct   { margin-left: 0.3rem; font-weight: 400; color: var(--text-soft); }
+.est-breakdown__total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 0.6rem;
+  padding-top: var(--space-2);
+  border-top: 2px solid var(--border-color);
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--state-warning-strong);
+}
+.est-breakdown__total-value { font-size: 1rem; }
+
+/* El riesgo se escribe siempre con su palabra al lado ("bajo", "crítico"…);
+   el color solo la refuerza. `crítico` se distingue de `alto` por relleno
+   sólido, no por un cuarto tono, porque solo hay tres familias de estado. */
+.est-risk { text-transform: uppercase; }
+.est-risk--bajo   { color: var(--state-success-strong); }
+.est-risk--medio  { color: var(--state-warning-strong); }
+.est-risk--alto   { color: var(--state-danger-strong); }
+.est-risk--critico { color: var(--state-danger-strong); text-decoration: underline; }
+
+/* Dentro de `.card`, `body.dark .card span:not(.pill)` pesa (0,3,2) y aplana
+   todo este color: hay que repetir la clase para ganar el desempate. */
+body.dark .card .est-task__hours.est-task__hours          { color: var(--text-soft); }
+body.dark .card .est-task.is-active .est-task__hours.est-task__hours { color: var(--state-warning-strong); }
+body.dark .card .est-breakdown__pct.est-breakdown__pct    { color: var(--text-soft); }
+body.dark .card .est-breakdown__label.est-breakdown__label { color: var(--text-soft); }
+body.dark .card .est-subcard__title.est-subcard__title    { color: var(--state-warning-strong); }
+body.dark .card .est-detail__factor.est-detail__factor    { color: var(--text-soft); }
+body.dark .card .est-task__idx.est-task__idx              { color: var(--text-soft); }
+body.dark .card .est-task__name.est-task__name            { color: var(--text-strong); }
+body.dark .card .est-risk--bajo.est-risk--bajo            { color: var(--state-success-strong); }
+body.dark .card .est-risk--medio.est-risk--medio          { color: var(--state-warning-strong); }
+body.dark .card .est-risk--alto.est-risk--alto,
+body.dark .card .est-risk--critico.est-risk--critico      { color: var(--state-danger-strong); }
+body.dark .card .est-tone--purple.est-tone--purple { color: var(--tint-purple-text); }
+body.dark .card .est-tone--orange.est-tone--orange { color: var(--tint-orange-text); }
+body.dark .card .est-tone--cyan.est-tone--cyan     { color: var(--tint-cyan-text); }
+body.dark .card .est-tone--pink.est-tone--pink     { color: var(--tint-pink-text); }
+
+/* ── Estructura de la pantalla ────────────────────────────────────────────
+   Dos columnas asimétricas (trabajo a la izquierda, consolidado a la
+   derecha). La rejilla anterior era `2.1fr 0.9fr` con `.responsive-grid`, que
+   no colapsaba por debajo de 900px: a 400px seguían siendo dos columnas y la
+   de la derecha quedaba ilegible. */
+.est-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(0, 0.9fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+@media (max-width: 1100px) { .est-columns { grid-template-columns: minmax(0, 1fr); } }
+
+.est-column { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.est-config-card { max-width: 1100px; }
+
+/* El contenedor maestro-detalle. `.split-pane-wrapper` ya trae su regla
+   responsive (apila los dos paneles por debajo de su punto de corte); aquí
+   solo van la superficie y las proporciones, que estaban en línea. */
+.est-split {
+  display: flex;
+  gap: var(--space-4);
+  min-height: 580px;
+  padding: var(--space-4);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+}
+.est-split__master {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 35%;
+  min-width: 0;
+  padding-right: var(--space-4);
+  border-right: 1px solid var(--border-subtle);
+}
+.est-split__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 65%;
+  min-width: 0;
+  max-height: 580px;
+  overflow-y: auto;
+  padding-right: var(--space-2);
+  padding-left: var(--space-1);
+}
+@media (max-width: 900px) {
+  .est-split { flex-direction: column; min-height: 0; }
+  .est-split__master,
+  .est-split__detail { width: 100%; max-height: none; }
+  .est-split__master { padding-right: 0; border-right: none; border-bottom: 1px solid var(--border-subtle); padding-bottom: var(--space-4); }
+}
+
+/* ── Consolidado del proyecto ────────────────────────────────────────────── */
+.est-summary-card { border: 2px solid var(--color-accent); }
+.est-summary-rows { display: flex; flex-direction: column; gap: var(--space-2); }
+.est-summary-label { display: flex; align-items: center; color: var(--text-soft); }
+.est-summary-value { font-size: 1.1rem; }
+.est-summary-value--accent { color: var(--state-warning-strong); }
+.est-summary-value--lg { font-size: 1.3rem; color: var(--state-warning-strong); }
+.summary-row--last { border-bottom: none; }
+
+.est-reco {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent-10);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+.est-notice--spaced { margin-top: var(--space-4); }
+
+/* Comparación ideal vs. realidad. Los dos tramos llevan su cifra escrita
+   dentro, así que el color no es el único portador; y el texto encima del
+   ámbar es navy, no blanco (sobre el ámbar de marca el blanco da 2,6:1). */
+.est-compare { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border-color); }
+.est-compare__title.est-compare__title { margin: 0 0 var(--space-2); font-size: 0.85rem; font-weight: 700; color: var(--text-strong); }
+.est-compare__bar {
+  display: flex;
+  height: 24px;
+  margin: var(--space-2) 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--chart-track);
+}
+.est-compare__seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: width 0.3s ease;
+}
+.est-compare__seg--ideal { background: var(--state-info-solid);    color: var(--state-info-on-solid); }
+.est-compare__seg--real  { flex-grow: 1; background: var(--state-warning-solid); color: var(--state-warning-on-solid); }
+.est-compare__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.3rem;
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+/* ── Estimaciones guardadas ──────────────────────────────────────────────── */
+.est-saved-list { display: flex; flex-direction: column; gap: var(--space-3); max-height: 300px; overflow-y: auto; }
+.est-saved-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+}
+.est-saved-item__main { flex: 1; min-width: 0; text-align: left; border: none; background: none; padding: 0; cursor: pointer; font: inherit; }
+.est-saved-item__name { display: block; font-size: 0.85rem; font-weight: 700; color: var(--state-warning-strong); }
+.est-saved-item__meta { font-size: 0.75rem; color: var(--text-soft); }
+.est-saved-item__delete {
+  border: none;
+  background: none;
+  color: var(--state-danger-strong);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+.est-saved-item__delete:hover { background: var(--state-danger-bg); }
+
+/* ── Calibrador de pesos ─────────────────────────────────────────────────── */
+.est-weights { display: flex; flex-direction: column; gap: var(--space-6); }
+.est-weights__lead { margin: calc(var(--space-2) * -1) 0 var(--space-6); font-size: 0.85rem; line-height: 1.4; color: var(--text-soft); }
+.est-weight-section__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.est-weight-section__title.est-weight-section__title { margin: 0; font-size: 0.9rem; color: var(--state-warning-strong); }
+.est-weight-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--state-warning-strong);
+  cursor: pointer;
+}
+.est-weight-toggle input { cursor: pointer; }
+
+.est-weight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr)); gap: var(--space-4); }
+.est-weight-grid--narrow { grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); }
+/* Un factor desactivado se atenúa; la casilla "Activo" de su cabecera dice
+   además, en texto, que lo está. */
+.est-weight-grid.is-off { opacity: 0.5; }
+.est-weight-field.is-off { opacity: 0.5; }
+
+.est-weights__actions { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-8); padding-top: var(--space-6); border-top: 1px solid var(--border-color); }
+
+/* `body.dark .card span:not(.pill)` y `body.dark .card div` aplanan el color
+   dentro de una tarjeta: se repite la clase para recuperarlo. */
+body.dark .card .est-summary-label.est-summary-label           { color: var(--text-soft); }
+body.dark .card .est-summary-value--accent.est-summary-value--accent,
+body.dark .card .est-summary-value--lg.est-summary-value--lg   { color: var(--state-warning-strong); }
+body.dark .card .est-saved-item__name.est-saved-item__name     { color: var(--state-warning-strong); }
+body.dark .card .est-saved-item__meta.est-saved-item__meta     { color: var(--text-soft); }
+body.dark .card .est-compare__note.est-compare__note           { color: var(--text-soft); }
+body.dark .card .est-compare__seg--ideal.est-compare__seg--ideal { color: var(--state-info-on-solid); }
+body.dark .card .est-compare__seg--real.est-compare__seg--real   { color: var(--state-warning-on-solid); }
+body.dark .card .est-weight-toggle.est-weight-toggle           { color: var(--state-warning-strong); }
+body.dark .card .est-weights__lead.est-weights__lead           { color: var(--text-soft); }
+body.dark .card .est-reco.est-reco                             { color: var(--text); }

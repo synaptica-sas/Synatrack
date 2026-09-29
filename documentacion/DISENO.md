@@ -404,6 +404,82 @@ a cualquier clase, así que en modo oscuro el título del modal de Usuarios y el
 Perfil salen en blanco en vez de en su tono. Es la misma limitación ya anotada al migrar
 Horas Extra.
 
+### Clases añadidas al migrar la Calculadora de Estimaciones
+
+`features/estimations/EstimationCalculatorTab.tsx` pasó de **272 estilos en línea y 82
+colores literales a 2 y 0**. Era el archivo más cargado del frontend (2.422 líneas). Los 2
+que quedan son **valores calculados**, el único uso legítimo: el ancho de cada segmento de la
+barra apilada de esfuerzo y el del tramo "Ideal" de la comparación ideal vs. real.
+
+Lo más rentable no fue cambiar color por color sino **buscar primero el patrón repetido**:
+
+- El `style` del control de formulario (`width:100%`, `padding:0.5rem`, `borderRadius:6px`,
+  `border`, `background:"#fff"`) aparecía **30 veces** entre los parámetros globales, el
+  editor de tarea y el calibrador de pesos.
+- La etiqueta de campo apilada (`display:block; fontSize:0.78rem; fontWeight:700`) **26 veces**.
+
+`.est-control` y `.field-label` (que ya existía) resolvieron **67 de los 272 estilos en una
+sola sustitución**. Merece la pena mapear antes de migrar.
+
+Mucho salió de clases que ya existían: `.subtabs`/`.subtab`/`.is-active`, `.card`,
+`.card--roomy`, `.card-title`, `.page-stack`/`--padded`, `.state-chip--*`, `.field-label`,
+`.empty-state`, `.empty-note`, `.notice--warning/--danger`, `.tone-*`, `.split-pane-*`. Lo
+propio de la pantalla lleva prefijo `est-`:
+
+| Clase | Para qué |
+|---|---|
+| `.est-hdr-btn` (+ `--guide`, `--export`), `.est-btn-primary`, `.est-btn-secondary`, `.est-banner-ok` | Acciones de la cabecera y aviso de guardado correcto |
+| `.est-tone--purple/-orange/-cyan/-pink` | Hermanos de `.tone-*` para los conceptos que **no** son estados (deuda, dependencias, Brooks, switching) y solo necesitan distinguirse entre sí |
+| `.est-guide` (+ `__tabs`, `__split`), `.est-concept-grid`, `.est-concept` + 7 tintes, `__head`, `__title`, `__body`, `__tip` | La guía educativa y sus ocho tarjetas de concepto |
+| `.est-brooks` (+ `__head`, `__title`, `__sub`, `__canvas`, `__empty`, `__svg`, `__note`), `.est-link`, `.est-node--*`, `.est-node-ring`, `.est-node-label--*`, `.est-legend` (+ `__item`, `__dot--*`) | La red de canales de Brooks. **El color del SVG se pone con clase, no con `fill`**, que no resuelve tokens ni tiene modo oscuro |
+| `.est-example` (+ `__scenario`, `__title`, `__rows`, `__row`, `__key`, `__val`), `.est-steps` (+ `__title`), `.est-step` (+ `--base`, `__label`, `__value`), `.est-step-total`, `.est-step-note` | El ejemplo resuelto paso a paso |
+| `.est-factor-scroll`, `.est-factor-note`, `.est-factor-table` (+ `__cat`, `__cat--empty`, `__level`, `__factor`, `__when`) | La tabla de factores |
+| `.est-columns`, `.est-column`, `.est-config-card`, `.est-split` (+ `__master`, `__detail`) | La estructura de dos columnas y el espacio maestro-detalle |
+| `.est-control` (+ `--sm`, `--area`), `.est-check` (+ `--tight`, `__label`), `.est-check-row` | Controles de formulario y casillas |
+| `.est-subcard` (+ `__head`, `__title`), `.est-team` (+ `__head`), `.est-cal` (+ `__options`) | Las dos subtarjetas de los parámetros globales (equipo y calendario) |
+| `.est-workspace` (+ `__head`, `__title`), `.est-master__head`, `.est-master__list`, `.est-task` (+ `.is-active`, `__text`, `__idx`, `__name`, `__right`, `__hours`, `__remove`), `.est-detail__head/__title/__factor/__form` | La lista de tareas y el formulario de detalle |
+| `.est-breakdown` (+ `__head`, `__rows`, `__row`, `__label`, `__value`, `__pct`, `__total`), `.est-bar` + `.est-bar__seg--base/-complexity/-team/-debt/-deps/-switching/-scope/-ceremonies`, `.est-risk--*` | El desglose de esfuerzo y su barra apilada de ocho segmentos |
+| `.est-summary-card`, `.est-summary-rows/-label/-value` (+ `--accent`, `--lg`), `.summary-row--last`, `.est-reco`, `.est-notice--spaced`, `.est-compare` (+ `__title`, `__bar`, `__seg--ideal/--real`, `__note`) | El consolidado del proyecto |
+| `.est-saved-list`, `.est-saved-item` (+ `__main`, `__name`, `__meta`, `__delete`) | Las estimaciones guardadas |
+| `.est-weights` (+ `__lead`, `__actions`), `.est-weight-section__head/__title`, `.est-weight-toggle`, `.est-weight-grid` (+ `--narrow`, `.is-off`), `.est-weight-field.is-off` | El calibrador de pesos |
+
+Seis cosas que conviene saber:
+
+1. **No hizo falta crear ningún token nuevo.** Los 82 literales se mapearon por **significado**:
+   verde (`#22c55e` `#4ade80` `#15803d`) → `--state-success-*`; ámbar (`#eab308` `#fbbf24`
+   `#d97706` `#b45309` `#f1a323`) → `--state-warning-*` o `--color-accent`; rojo (`#ef4444`
+   `#b91c1c` `#7f1d1d`) → `--state-danger-*`; azul (`#1d4ed8` `#60a5fa` `#234175`) →
+   `--state-info-*`; y morado, naranja, cian y rosa → los tintes categóricos `--tint-*`, que
+   ya tenían contraparte oscura definida en `App.css`. La barra apilada tiene ocho segmentos
+   y la serie `--chart-1..7` solo siete, pero **no se añadió un `--chart-8`**: cada segmento
+   usa el mismo color que su fila nombrada justo debajo, que es más informativo que una serie
+   categórica arbitraria.
+2. **Los 18 `#fff`, uno por uno.** 15 eran `background` de un `input`/`select`/`textarea`:
+   quitarlos basta, porque `body.dark input` ya pinta el campo. Los otros 3 eran texto sobre
+   relleno sólido y **no todos eran blanco**: sobre el ámbar de marca pasan a navy
+   (`--state-warning-on-solid`, §5.3) y solo el del tramo "Ideal", que va sobre el azul, se
+   queda en blanco vía `--state-info-on-solid`.
+3. **`button.ghost` pesa (0,1,1) y le gana a un modificador de una sola clase.** Los botones
+   "Guía Educativa" y "Exportar CSV" salían los dos del azul de `.ghost` en vez de su color;
+   se repite la clase (`.est-hdr-btn--export.est-hdr-btn--export`) para llegar a (0,2,0).
+   **Esto solo apareció al auditar el estilo computado**, no en las capturas.
+4. **El hover del botón de eliminar tarea vivía en JavaScript** (`onMouseEnter`/`onMouseLeave`
+   escribiendo `style.background` con un rojo de Tailwind), el mismo patrón ya encontrado en
+   Horas Extra y Perfil. Ahora vive en CSS.
+5. **La tarjeta de tarea era un `div` con `onClick`**: no se podía alcanzar con el teclado.
+   Ahora lleva `role="button"`, `tabIndex`, `aria-pressed` y manejador de Enter/Espacio. Lo
+   mismo con la estimación guardada, que pasa a ser un `<button>`. Los dos botones de borrar
+   tenían solo un glifo (`✕`, `🗑`) y ahora llevan `aria-label`.
+6. **La pantalla no colapsaba en móvil.** La rejilla `2.1fr 0.9fr` y el `split-pane` con
+   anchos `35%`/`65%` en línea seguían siendo dos columnas a 400px. Ahora `.est-columns`
+   colapsa por debajo de 1100px y `.est-split` por debajo de 900px.
+
+Dos límites conocidos que **no** se tocaron: `body.dark h1..h6 { color: #f8fafc !important }`
+sigue ganando, así que en oscuro los títulos de sección del calibrador y el del escenario de
+ejemplo salen en blanco en vez de en su tono (la misma limitación ya anotada en Horas Extra,
+Perfil y Usuarios); y `.summary-row`, que es CSS previo compartido, conserva sus literales
+`#ffd8a8` y `rgba(255, 156, 44, 0.05)` — reescribirla es tocar CSS que no es de esta pantalla.
+
 ### Especificidad: la trampa de `body.dark .card`
 
 Al migrar el Tablero salieron dos reglas heredadas que le ganan a cualquier clase de patrón:
@@ -446,10 +522,10 @@ Tailwind; el cambio de nombre es deliberado para que nadie vuelva a meter un col
 
 Medido con `grep -o 'style={{'` y `grep -oiE '#[0-9a-f]{3,8}'` sobre `frontend/src/**/*.tsx`.
 
-| | Antes (rama `dev`) | Tras Portafolio | Tras Encabezado/Alertas/Tablero | Ahora (tras Toast, ValidationErrorBox, AlertsPanel, DateRangePicker, RagChat, Horas Extra, Capacidad) |
-|---|---|---|---|---|
-| Colores literales en `.tsx` | 575 | 533 | 428 | **229** |
-| Estilos en línea en `.tsx` | 1576 | 1528 | 1372 | **903** |
+| | Antes (rama `dev`) | Tras Portafolio | Tras Encabezado/Alertas/Tablero | Tras Toast…Capacidad | Ahora (tras Gastos, Perfil/Usuarios/Auditoría/FX y Estimaciones) |
+|---|---|---|---|---|---|
+| Colores literales en `.tsx` | 575 | 533 | 428 | 229 | **130** |
+| Estilos en línea en `.tsx` | 1576 | 1528 | 1372 | 903 | **490** |
 
 ### Lo migrado en esta pasada
 
@@ -471,11 +547,11 @@ de la paleta de Synaptica.
 
 | Archivo | Estilos en línea | Colores literales |
 |---|---|---|
-| `features/estimations/EstimationCalculatorTab.tsx` | 272 | 82 |
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
-| `features/projects/ProjectDetailTab.tsx` | 95 | 65 |
-| `features/dashboard/AlertBadge.tsx` | 1 | 6 |
-| `App.tsx` (landing y layout) | — | ~100 |
+| `App.tsx` (landing y layout) | 93 | 42 |
+| `features/forecasts/ForecastsTab.tsx` | 39 | 19 |
+| `features/consultants/ConsultantsTab.tsx` | 39 | 0 |
+| `features/projects/ProjectsTab.tsx` | 24 | 3 |
 
 **Ya migrados desde esta tabla**: `components/AlertsPanel.tsx`, `components/Toast.tsx`,
 `components/ValidationErrorBox.tsx`, `components/DateRangePicker.tsx`, `components/RagChat.tsx`,
@@ -485,9 +561,10 @@ de la paleta de Synaptica.
 salvo `CapacityTab` (1 estilo en línea, el valor calculado del medidor). Detalle de cada uno
 en "Clases añadidas al migrar..." más arriba y en `documentacion/PENDIENTES.md` §3.
 
-`ProjectDetailTab` es la siguiente candidata natural: reutiliza tabla, KPIs y semáforo, que
-es justo lo que ya está resuelto. `EstimationCalculatorTab` sigue siendo la más grande y
-conviene dejarla para el final.
+`EstimationCalculatorTab` (272 / 82), `ProjectDetailTab` y `AlertBadge` ya están migrados y
+salen de esta tabla. **La siguiente candidata es `ActivitiesTab`**, que es ahora la de mayor
+rentabilidad con diferencia; después `App.tsx`, que es landing y layout y por tanto se ve en
+todas las pantallas.
 
 ### Cosas que esta pasada NO tocó, a propósito
 
@@ -556,6 +633,12 @@ En `documentacion/capturas/`, generadas con Playwright sobre el entorno local:
   claro y oscuro, a 400px.
 - `alertas-antes-*` / `alertas-despues-*`: el Centro de Alertas, claro y oscuro, a 400px.
 - `tablero-antes-*` / `tablero-despues-*`: el Tablero de Control, claro y oscuro, a 400px.
+- `estimaciones-*` (`-antes-` / `-despues-`): la Calculadora de Estimaciones, claro y oscuro.
+  Cinco estados, porque la pantalla tiene dos pestañas mayores y la guía tiene tres solapas:
+  `estimaciones-*` (el estimador), `estimaciones-guia-*` (conceptos), `estimaciones-ejemplo-*`
+  (el cálculo paso a paso), `estimaciones-factores-*` (la tabla de factores) y
+  `estimaciones-pesos-*` (el calibrador). A 1440px los cinco; a 400px el estimador y el
+  calibrador, que son los dos que cambiaron de estructura al colapsar a una columna.
 - `perfil-*`, `admin-*`, `auditoria-*`, `fx-*` (`-antes-` / `-despues-`): las cuatro
   pantallas de formulario y tabla, claro y oscuro, a 1440px y 400px. Más dos estados que la
   navegación simple no muestra: `admin-modal-despues-*` (el modal de edición de usuario, con
