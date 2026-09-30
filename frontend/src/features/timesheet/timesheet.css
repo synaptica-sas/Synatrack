@@ -105,7 +105,9 @@
 .ts-grid {
   width: 100%;
   border-collapse: collapse;
-  min-width: 52rem;
+  /* Proyecto 10 + tarea 12 + 7 días y total a 5,4 + acciones: sin esto la
+     tabla comprime las columnas y las cifras HH:MM:SS se cortan. */
+  min-width: 68rem;
 }
 
 .ts-grid th {
@@ -125,8 +127,8 @@
 
 .ts-col-project { min-width: 10rem; max-width: 14rem; }
 .ts-col-task    { min-width: 12rem; }
-.ts-col-day     { width: 4.6rem; text-align: center; }
-.ts-col-total   { width: 4.6rem; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.ts-col-day     { width: 5.4rem; text-align: center; }
+.ts-col-total   { width: 5.4rem; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
 .ts-col-actions { width: 2.2rem; }
 
 .ts-day-name { display: block; }
@@ -528,3 +530,12 @@ body.dark .ts-group > td { background: rgba(255, 255, 255, 0.03); }
 
 .ts-merge p { margin: 0; }
 .ts-merge select { width: 100%; }
+
+/* Las duraciones van siempre en HH:MM:SS (8 caracteres): las celdas del día
+   se ajustan para que quepan sin cortarse. */
+.ts-grid td.ts-col-day { padding-left: 0.2rem; padding-right: 0.2rem; }
+.ts-cell,
+.ts-cell-locked,
+.ts-group-hours,
+.ts-grid tfoot td { font-size: 0.8rem; }
+.ts-cell { padding-left: 0.1rem; padding-right: 0.1rem; }

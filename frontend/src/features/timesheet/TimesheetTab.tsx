@@ -865,7 +865,7 @@ export function TimesheetTab({
                                 <input
                                   className={`ts-cell${savingCells[key] ? " saving" : ""}`}
                                   inputMode="decimal"
-                                  placeholder="0:00"
+                                  placeholder="00:00:00"
                                   value={value}
                                   disabled={savingCells[key]}
                                   onChange={(e) =>

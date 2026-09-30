@@ -23,6 +23,7 @@ import {
 import {
   addDays,
   formatClock,
+  formatDuration,
   formatWeekRange,
   numberish,
   startOfWeek,
@@ -55,7 +56,7 @@ function entryDuration(entry: TimeEntry): string {
     const ms = new Date(entry.endedAt).getTime() - new Date(entry.startedAt).getTime();
     if (ms >= 0) return formatClock(ms / 1000);
   }
-  return formatClock(numberish(entry.hours) * 3600);
+  return formatDuration(numberish(entry.hours));
 }
 
 /** Hora local "9:05" a partir de un instante ISO. */
@@ -601,7 +602,7 @@ export function TrackerTab({
           </div>
           <div className="ts-weektotal">
             <span>Total semana</span>
-            <strong>{formatClock(weekTotal * 3600)}</strong>
+            <strong>{formatDuration(weekTotal)}</strong>
           </div>
         </div>
 
@@ -616,7 +617,7 @@ export function TrackerTab({
             <section key={group.day} className="tk-day">
               <header className="tk-day-head">
                 <strong>{dayHeading(group.day, today)}</strong>
-                <span>{formatClock(group.total * 3600)}</span>
+                <span>{formatDuration(group.total)}</span>
               </header>
               <ul className="tk-entries">
                 {group.entries.map((entry) => (

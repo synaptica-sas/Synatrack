@@ -21,20 +21,32 @@ const S43 = roundHours(43 / 3600);
 
 describe("Las duraciones no pierden los segundos", () => {
   it("43 segundos se muestran como tales, no como un minuto", () => {
-    expect(formatDuration(S43)).toBe("0:00:43");
-    expect(formatHoursShort(S43)).toBe("0:00:43");
+    expect(formatDuration(S43)).toBe("00:00:43");
+    expect(formatHoursShort(S43)).toBe("00:00:43");
   });
 
-  it("los valores redondos siguen mostrándose cortos", () => {
-    expect(formatDuration(8)).toBe("8:00");
-    expect(formatDuration(1.5)).toBe("1:30");
-    expect(formatDuration(0.25)).toBe("0:15");
+  it("todo va en HH:MM:SS, también los valores redondos", () => {
+    expect(formatDuration(8)).toBe("08:00:00");
+    expect(formatDuration(1.5)).toBe("01:30:00");
+    expect(formatDuration(0.25)).toBe("00:15:00");
   });
 
-  it("los totales siguen la misma regla", () => {
-    expect(formatHoursTotal(0)).toBe("0:00");
-    expect(formatHoursTotal(10)).toBe("10:00");
-    expect(formatHoursTotal(S43)).toBe("0:00:43");
+  it("los totales usan el mismo formato", () => {
+    expect(formatHoursTotal(0)).toBe("00:00:00");
+    expect(formatHoursTotal(10)).toBe("10:00:00");
+    expect(formatHoursTotal(S43)).toBe("00:00:43");
+  });
+
+  it("2 h y 53 s suman 02:00:53, y cada sumando se lee en el mismo formato", () => {
+    const S53 = roundHours(53 / 3600);
+    expect(formatDuration(2)).toBe("02:00:00");
+    expect(formatDuration(S53)).toBe("00:00:53");
+    expect(formatHoursTotal(2 + S53)).toBe("02:00:53");
+  });
+
+  it("redondea al segundo en vez de truncar", () => {
+    // 53 s se guardan como 0,0147 h = 52,92 s; truncar mostraria 52.
+    expect(formatDuration(roundHours(53 / 3600))).toBe("00:00:53");
   });
 
   it("una celda vacía se queda vacía, no muestra un cero", () => {

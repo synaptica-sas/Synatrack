@@ -94,22 +94,24 @@ export function formatHoursShort(hours: number): string {
 }
 
 /**
- * Duración legible que NO pierde información.
+ * Duración de un registro como "HH:MM:SS": 2 h -> "02:00:00", 53 s ->
+ * "00:00:53". Es el formato de TODAS las pantallas de horas -- timesheet,
+ * rastreador e informe -- para que una cifra se lea igual en cualquiera.
  *
- * Se muestra "1:30" mientras el valor sean minutos exactos, y "0:00:43" en
- * cuanto queden segundos sueltos. El formato corto se redondeaba al minuto, y
- * eso convertía los 43 segundos de un cronómetro en un "0:01" que además se
- * leía como un segundo, porque el reloj del rastreador sí usa HH:MM:SS.
+ * Siempre con segundos, a propósito. Antes se abreviaba ("2:00" si no había
+ * segundos sueltos), y al mezclar en la misma grilla "2:00" con "0:00:53" el
+ * total "2:00:53" parecía un "2:00" con ":53" pegado detrás, aunque la suma
+ * fuera correcta.
+ *
+ * Redondea al segundo, no trunca: la columna guarda 4 decimales de hora, y 53 s
+ * se guardan como 0,0147 h = 52,92 s. Truncar mostraría 52.
  */
 export function formatDuration(hours: number): string {
   const totalSeconds = Math.round(Math.max(0, hours) * 3600);
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
-
-  return s === 0
-    ? `${h}:${String(m).padStart(2, "0")}`
-    : `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
 /** Horas decimales → "8:30", mostrando también el cero (para los totales). */
