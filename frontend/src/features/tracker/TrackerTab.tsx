@@ -8,11 +8,13 @@ import {
   getMyConsultant,
   getRunningTimer,
   listActivities,
+  listTaskDescriptions,
   listAllTimeEntries,
   startTimer,
   stopTimer,
   updateRunningTimer,
   type Activity,
+  type TaskDescription,
   type Consultant,
   type Project,
   type RunningTimer,
@@ -83,6 +85,8 @@ export function TrackerTab({
   const [consultantResolved, setConsultantResolved] = useState(false);
   const [timer, setTimer] = useState<RunningTimer | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  // Tareas ya usadas, para autocompletar la descripción del cronómetro.
+  const [suggestions, setSuggestions] = useState<TaskDescription[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -195,6 +199,32 @@ export function TrackerTab({
       cancelled = true;
     };
   }, [myConsultant, targetConsultantId]);
+
+  // Sugerencias de descripción: las del proyecto elegido (o de todos si aún no
+  // hay proyecto). Se recargan al terminar una medición, porque puede haber
+  // una tarea nueva. Si fallan, solo se pierde el autocompletado.
+  useEffect(() => {
+    const consultantId = targetConsultantId || myConsultant?.id;
+    if (!consultantId) {
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await listTaskDescriptions({
+          consultantId,
+          ...(projectId ? { projectId } : {}),
+        });
+        if (!cancelled) setSuggestions(data);
+      } catch {
+        if (!cancelled) setSuggestions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [myConsultant, targetConsultantId, projectId, entries]);
 
   // ── Reloj ──────────────────────────────────────────────────────────────────
 
@@ -451,7 +481,16 @@ export function TrackerTab({
           onChange={(e) => handleDescriptionChange(e.target.value)}
           disabled={!canWrite}
           aria-label="Descripción de la tarea"
+          list="tk-task-suggestions"
+          autoComplete="off"
         />
+        {/* Elegir una tarea ya usada, en vez de reescribirla, hace que la
+            medición caiga en la misma fila del timesheet. */}
+        <datalist id="tk-task-suggestions">
+          {suggestions.map((t) => (
+            <option key={t.description} value={t.description} />
+          ))}
+        </datalist>
 
         <select
           className="tk-project"

@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { PageHeader } from "../../components/PageHeader";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SectionLayout } from "../../components/SectionLayout";
 import { TIME_ENTRY_STATUS_LABELS, label } from "../../utils/statusLabels";
 import { formatDate } from "../../utils/formatDate";
@@ -12,9 +13,12 @@ import {
   getMyConsultant,
   listActivities,
   listAllTimeEntries,
+  listTaskDescriptions,
   listTimeEntries,
+  mergeTask,
   rejectTimeEntry,
   updateTimeEntry,
+  type TaskDescription,
   type Activity,
   type Consultant,
   type PageMeta,
@@ -37,57 +41,18 @@ import {
   weekDays,
   weekdayLabel,
 } from "./timesheetUtils";
-
-/**
- * Una fila de la grilla agrupa todas las horas de la semana que comparten
- * proyecto, actividad y descripción. La clave se construye con esos tres
- * campos para que escribir la misma tarea dos días seguidos caiga en la misma
- * fila, igual que en Clockify.
- */
-type TimesheetRow = {
-  key: string;
-  projectId: string;
-  activityId: string | null;
-  description: string;
-  /**
-   * Entradas de horas por día ISO. Normalmente hay una sola, pero el tracker
-   * puede generar varias el mismo día sobre la misma tarea (una por cada vez
-   * que se arranca y se detiene el cronómetro). En ese caso la celda muestra
-   * la suma y se bloquea, porque no habría forma de repartir un valor nuevo
-   * entre los registros originales sin inventarse el criterio.
-   */
-  cells: Record<string, TimeEntry[] | undefined>;
-};
-
-function rowKeyOf(projectId: string, activityId: string | null, description: string) {
-  return `${projectId}::${activityId ?? ""}::${description.trim().toLowerCase()}`;
-}
+import {
+  buildRows,
+  projectsWithHoursOn,
+  rankByHours,
+  rowKeyOf,
+  rowsToCopy,
+  sortByRank,
+  type TimesheetRow,
+} from "./timesheetGrid";
 
 const emptyDraft = { projectId: "", activityId: "", description: "" };
 
-/**
- * Proyectos desplegados en la grilla. Se recuerda por navegador para que la
- * semana siguiente se abra igual; es una comodidad, así que si el
- * almacenamiento no está disponible simplemente arranca todo plegado.
- */
-const EXPANDED_KEY = "synatrack.timesheet.expandedProjects";
-
-function loadExpanded(): Set<string> {
-  try {
-    const raw = window.localStorage.getItem(EXPANDED_KEY);
-    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveExpanded(ids: Set<string>) {
-  try {
-    window.localStorage.setItem(EXPANDED_KEY, JSON.stringify([...ids]));
-  } catch {
-    // Sin almacenamiento el plegado dura lo que la sesión: no es un error.
-  }
-}
 
 export function TimesheetTab({
   projects,
@@ -108,14 +73,27 @@ export function TimesheetTab({
   // Cada proyecto es una fila plegable que despliega sus tareas: el cronómetro
   // crea una fila por cada descripción distinta, y sin agrupar la grilla crece
   // sin orden semana tras semana.
-  const [expanded, setExpanded] = useState<Set<string>>(() => loadExpanded());
+  //
+  // Al llegar a una semana se despliegan solo los proyectos con horas HOY: lo
+  // que estás tocando queda a la vista y el resto plegado. Dentro de la misma
+  // semana se respetan los cambios que hagas a mano.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // Orden de las tareas, fijado al cargar la semana (ver `rankByHours`).
+  const [taskRank, setTaskRank] = useState<Map<string, number>>(() => new Map());
 
   const toggleProject = useCallback((projectId: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(projectId)) next.delete(projectId);
       else next.add(projectId);
-      saveExpanded(next);
+      return next;
+    });
+  }, []);
+
+  const expandProjects = useCallback((ids: Iterable<string>) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
       return next;
     });
   }, []);
@@ -127,6 +105,9 @@ export function TimesheetTab({
   const [consultantResolved, setConsultantResolved] = useState(false);
   const [consultantId, setConsultantId] = useState("");
   const [weekEntries, setWeekEntries] = useState<TimeEntry[]>([]);
+  // Semana y consultor de los datos cargados. Distingue "llegué a una semana
+  // nueva" de "recargué la misma tras guardar una celda".
+  const [loadedKey, setLoadedKey] = useState("");
   const [activities, setActivities] = useState<Activity[]>([]);
   const [weekLoading, setWeekLoading] = useState(false);
 
@@ -148,6 +129,15 @@ export function TimesheetTab({
   // Filas que el usuario acaba de crear y aún no tienen ninguna hora cargada.
   const [draftRows, setDraftRows] = useState<TimesheetRow[]>([]);
   const [newRow, setNewRow] = useState(emptyDraft);
+  // Tareas ya usadas en el proyecto elegido, para autocompletar la descripción.
+  const [suggestions, setSuggestions] = useState<TaskDescription[]>([]);
+  // Fusión de tareas: la fila que se va a absorber y la que la absorbe.
+  const [mergeSource, setMergeSource] = useState<TimesheetRow | null>(null);
+  const [mergeTargetKey, setMergeTargetKey] = useState("");
+  const [merging, setMerging] = useState(false);
+  // Mensaje de lo que acaba de pasar (copia o fusión); no es un error.
+  const [notice, setNotice] = useState<string | null>(null);
+  const [copying, setCopying] = useState(false);
   // Texto que se está editando en cada celda, mientras no se haya guardado.
   const [cellDrafts, setCellDrafts] = useState<Record<string, string>>({});
   const [savingCells, setSavingCells] = useState<Record<string, boolean>>({});
@@ -196,6 +186,7 @@ export function TimesheetTab({
         to: addDays(weekStart, 6),
       });
       setWeekEntries(data);
+      setLoadedKey(`${weekStart}|${consultantId}`);
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudieron cargar las horas de la semana");
     } finally {
@@ -239,28 +230,49 @@ export function TimesheetTab({
     }
   }, [weekStart, consultantId]);
 
+  // Sugerencias para la descripción: las del proyecto elegido, o de todos si
+  // aún no se eligió ninguno. Fallar aquí solo quita el autocompletado.
+  useEffect(() => {
+    if (!consultantId) {
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await listTaskDescriptions({
+          consultantId,
+          ...(newRow.projectId ? { projectId: newRow.projectId } : {}),
+        });
+        if (!cancelled) setSuggestions(data);
+      } catch {
+        if (!cancelled) setSuggestions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [consultantId, newRow.projectId, loadedKey]);
+
+  // Al llegar a una semana (no al recargarla tras guardar): orden de tareas por
+  // horas y proyectos abiertos. En la semana actual se abren los que tienen
+  // horas hoy; en otras semanas se llega todo plegado.
+  const appliedKeyRef = useRef("");
+  useEffect(() => {
+    if (!loadedKey || appliedKeyRef.current === loadedKey) return;
+    appliedKeyRef.current = loadedKey;
+
+    const filas = [...buildRows(weekEntries).values()];
+    setTaskRank(rankByHours(filas));
+    setExpanded(
+      weekStart === startOfWeek(today) ? projectsWithHoursOn(filas, today) : new Set<string>(),
+    );
+  }, [loadedKey, weekEntries, weekStart, today]);
+
   // ── Construcción de la grilla ──────────────────────────────────────────────
 
   const rows = useMemo<TimesheetRow[]>(() => {
-    const byKey = new Map<string, TimesheetRow>();
-
-    for (const entry of weekEntries) {
-      const description = entry.description ?? "";
-      const key = rowKeyOf(entry.projectId, entry.activityId, description);
-      let row = byKey.get(key);
-      if (!row) {
-        row = {
-          key,
-          projectId: entry.projectId,
-          activityId: entry.activityId,
-          description,
-          cells: {},
-        };
-        byKey.set(key, row);
-      }
-      const day = entry.workDate.slice(0, 10);
-      row.cells[day] = [...(row.cells[day] ?? []), entry];
-    }
+    const byKey = buildRows(weekEntries);
 
     // Las filas en borrador solo sobreviven mientras no existan ya con horas.
     for (const draft of draftRows) {
@@ -282,15 +294,16 @@ export function TimesheetTab({
       lista.push(row);
       porProyecto.set(row.projectId, lista);
     }
-    return Array.from(porProyecto, ([projectId, tareas]) => ({ projectId, tareas }));
-  }, [rows]);
+    return Array.from(porProyecto, ([projectId, tareas]) => ({
+      projectId,
+      tareas: sortByRank(tareas, taskRank),
+    }));
+  }, [rows, taskRank]);
 
   const allExpanded = groups.length > 0 && groups.every((g) => expanded.has(g.projectId));
 
   function setAllExpanded(open: boolean) {
-    const next = open ? new Set(groups.map((g) => g.projectId)) : new Set<string>();
-    saveExpanded(next);
-    setExpanded(next);
+    setExpanded(open ? new Set(groups.map((g) => g.projectId)) : new Set<string>());
   }
 
   const dayTotals = useMemo(() => {
@@ -415,13 +428,87 @@ export function TimesheetTab({
       { key, projectId: newRow.projectId, activityId, description, cells: {} },
     ]);
     // Si el proyecto estaba plegado, la fila recién creada quedaría oculta.
-    setExpanded((prev) => {
-      if (prev.has(newRow.projectId)) return prev;
-      const next = new Set(prev).add(newRow.projectId);
-      saveExpanded(next);
-      return next;
-    });
+    expandProjects([newRow.projectId]);
     setNewRow(emptyDraft);
+  }
+
+  /** Trae las tareas de la semana anterior como filas vacías para rellenar. */
+  async function handleCopyPreviousWeek() {
+    if (!consultantId) return;
+    setCopying(true);
+    setNotice(null);
+    try {
+      const anterior = await listAllTimeEntries({
+        consultantId,
+        from: addDays(weekStart, -7),
+        to: addDays(weekStart, -1),
+      });
+      const copiadas = rowsToCopy(anterior, new Set(rows.map((r) => r.key)));
+      if (copiadas.length === 0) {
+        setNotice(
+          anterior.length === 0
+            ? "La semana anterior no tiene horas registradas."
+            : "Todas las tareas de la semana anterior ya están en esta.",
+        );
+        return;
+      }
+      setDraftRows((prev) => [...prev, ...copiadas]);
+      expandProjects(copiadas.map((r) => r.projectId));
+      const n = copiadas.length;
+      setNotice(`${n} ${n === 1 ? "tarea copiada" : "tareas copiadas"} de la semana anterior, listas para rellenar.`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "No se pudo copiar la semana anterior");
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  /** Nombre visible de una tarea, para el diálogo de fusión. */
+  function taskLabel(row: TimesheetRow) {
+    const activity = activities.find((a) => a.id === row.activityId);
+    const partes = [activity?.title, row.description].filter(Boolean);
+    return partes.length > 0 ? partes.join(" · ") : "Sin descripción";
+  }
+
+  function openMerge(row: TimesheetRow) {
+    setMergeSource(row);
+    setMergeTargetKey("");
+  }
+
+  async function handleMerge() {
+    const source = mergeSource;
+    const destino = rows.find((r) => r.key === mergeTargetKey);
+    if (!source || !destino) return;
+
+    setMerging(true);
+    setNotice(null);
+    try {
+      const tieneHoras = Object.values(source.cells).some((l) => (l ?? []).length > 0);
+      if (tieneHoras) {
+        const res = await mergeTask({
+          projectId: source.projectId,
+          consultantId,
+          from: { description: source.description, activityId: source.activityId },
+          to: { description: destino.description, activityId: destino.activityId },
+        });
+        const motivos = [
+          res.skippedClosedMonth > 0 ? `${res.skippedClosedMonth} de meses cerrados` : "",
+          res.skippedReviewed > 0 ? `${res.skippedReviewed} ya revisados` : "",
+        ].filter(Boolean);
+        const verbo = res.merged === 1 ? "registro pasó" : "registros pasaron";
+        const extra = motivos.length > 0 ? ` No se movieron ${motivos.join(" y ")}.` : "";
+        setNotice(`${res.merged} ${verbo} a «${taskLabel(destino)}».${extra}`);
+      }
+      // Una fila en borrador no tiene registros: fusionarla es solo quitarla.
+      setDraftRows((prev) => prev.filter((d) => d.key !== source.key));
+      setMergeSource(null);
+      await reloadWeek();
+      await onReload();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "No se pudieron fusionar las tareas");
+    } finally {
+      setMerging(false);
+    }
   }
 
   async function handleRemoveRow(row: TimesheetRow) {
@@ -633,6 +720,17 @@ export function TimesheetTab({
                   ))}
                 </select>
               )}
+              {gridEditable && (
+                <button
+                  type="button"
+                  className="ghost ts-expand-all"
+                  onClick={() => void handleCopyPreviousWeek()}
+                  disabled={copying}
+                  title="Trae las tareas de la semana pasada como filas vacías"
+                >
+                  {copying ? "Copiando…" : "Copiar semana anterior"}
+                </button>
+              )}
               {groups.length > 0 && (
                 <button
                   type="button"
@@ -802,6 +900,17 @@ export function TimesheetTab({
                         <td className="ts-col-total">{formatHoursTotal(rowTotal(row))}</td>
                         {gridEditable && (
                           <td className="ts-col-actions">
+                            {tareas.length > 1 && (
+                              <button
+                                type="button"
+                                className="ghost ts-rowmerge"
+                                onClick={() => openMerge(row)}
+                                aria-label="Fusionar con otra tarea"
+                                title="Es la misma tarea que otra: pasar sus horas a esa"
+                              >
+                                ⇄
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="ghost ts-rowdel"
@@ -873,10 +982,62 @@ export function TimesheetTab({
                 value={newRow.description}
                 onChange={(e) => setNewRow((p) => ({ ...p, description: e.target.value }))}
                 aria-label="Descripción de la nueva fila"
+                list="ts-task-suggestions"
+                autoComplete="off"
               />
+              {/* Tareas ya usadas: elegir una en vez de reescribirla hace que
+                  las horas caigan en la misma fila y no en una nueva. */}
+              <datalist id="ts-task-suggestions">
+                {suggestions.map((t) => (
+                  <option key={t.description} value={t.description} />
+                ))}
+              </datalist>
               <button type="submit">+ Agregar fila</button>
             </form>
           )}
+
+          {notice && (
+            <p className="ts-notice" role="status">
+              <span>{notice}</span>
+              <button type="button" className="ghost" onClick={() => setNotice(null)} aria-label="Cerrar aviso">
+                ✕
+              </button>
+            </p>
+          )}
+
+          <ConfirmDialog
+            open={!!mergeSource}
+            title="Fusionar tareas"
+            confirmLabel={merging ? "Fusionando…" : "Fusionar"}
+            confirmDisabled={!mergeTargetKey || merging}
+            onCancel={() => setMergeSource(null)}
+            onConfirm={() => void handleMerge()}
+            message={
+              mergeSource && (
+                <div className="ts-merge">
+                  <p>
+                    Todas las horas de <strong>«{taskLabel(mergeSource)}»</strong> pasarán a la tarea
+                    que elijas, también las de semanas anteriores. Las horas no cambian, solo el nombre
+                    de la tarea.
+                  </p>
+                  <select
+                    value={mergeTargetKey}
+                    onChange={(e) => setMergeTargetKey(e.target.value)}
+                    aria-label="Tarea destino"
+                  >
+                    <option value="">Elige la tarea que se queda…</option>
+                    {rows
+                      .filter((r) => r.projectId === mergeSource.projectId && r.key !== mergeSource.key)
+                      .map((r) => (
+                        <option key={r.key} value={r.key}>
+                          {taskLabel(r)}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )
+            }
+          />
 
           <p className="ts-hint">
             Escribe las horas como <code>1:30</code>, <code>1,5</code> o <code>90m</code>. Se guardan

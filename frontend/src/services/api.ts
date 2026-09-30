@@ -737,6 +737,41 @@ export async function deleteTimeEntry(id: string): Promise<void> {
   await request<void>(`/api/time-entries/${id}`, "DELETE");
 }
 
+/** Una descripción de tarea ya usada, para sugerirla al escribir. */
+export type TaskDescription = { description: string; uses: number; lastUsedAt: string | null };
+
+/**
+ * Descripciones que el consultor ya usó, de la más reciente a la más antigua.
+ * Sin `projectId`, las de todos sus proyectos.
+ */
+export async function listTaskDescriptions(params: {
+  projectId?: string;
+  consultantId?: string;
+}): Promise<TaskDescription[]> {
+  const query = new URLSearchParams();
+  if (params.projectId) query.set("projectId", params.projectId);
+  if (params.consultantId) query.set("consultantId", params.consultantId);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<ApiEnvelope<TaskDescription[]>>(`/api/time-entries/descriptions${suffix}`);
+  return response.data;
+}
+
+/**
+ * Fusiona dos tareas de un proyecto: todas las horas de `from` pasan a `to`,
+ * en toda la historia, no solo en la semana visible.
+ */
+export async function mergeTask(payload: {
+  projectId: string;
+  consultantId?: string;
+  from: { description: string; activityId: string | null };
+  to: { description: string; activityId: string | null };
+}): Promise<{ merged: number; skippedClosedMonth: number; skippedReviewed: number }> {
+  const response = await request<
+    ApiEnvelope<{ merged: number; skippedClosedMonth: number; skippedReviewed: number }>
+  >("/api/time-entries/merge-task", "POST", payload);
+  return response.data;
+}
+
 // -- Cronometro (Tracker) --------------------------------------------------
 
 /**
