@@ -4,12 +4,28 @@
 por su cuenta: o son regla de negocio, o política de la empresa, o requieren confirmar algo que
 no está en el código.
 
-Cada una trae los datos ya verificados contra el código (fecha de verificación: 29/09/2026), las
+Cada una trae los datos ya verificados contra el código (última verificación: **30/09/2026**), las
 opciones reales, y una recomendación del equipo de desarrollo. **La recomendación es una
 propuesta, no una conclusión**: está para que la discusión arranque desde algo concreto, no para
 cerrarla.
 
 Al final de cada punto hay una línea **Decisión:** para anotar lo acordado en la misma reunión.
+
+---
+
+## Estado al 30 de septiembre
+
+**Ninguna de las nueve se ha resuelto todavía.** El trabajo técnico ha seguido avanzando
+alrededor de ellas, y eso cambia el coste de dos:
+
+- **D-8 sigue bloqueando trabajo real.** La pantalla de Actividades es la última grande sin
+  unificar bajo el sistema de diseño, y no se toca a propósito: si el módulo se retira, ese
+  trabajo se tira. Es la decisión que más tiempo ahorra o desperdicia según cómo se responda.
+- **D-7 ya no es solo teórica.** La contradicción entre los dos criterios se ve hoy en pantalla,
+  y ahora además convive con el resto de la pantalla de Portafolio ya rediseñada, así que
+  destaca más que antes.
+
+Las otras siete siguen igual de abiertas y con el mismo coste que tenían.
 
 ---
 
