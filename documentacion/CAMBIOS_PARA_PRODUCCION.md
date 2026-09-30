@@ -11,9 +11,8 @@ La versión en producción es del **2 de septiembre**. Desde entonces el trabajo
 | Persona | Cambios | Aportación principal |
 |---|---|---|
 | Juan Mahecha | 53 | Seguridad, corrección de cifras, fiabilidad, rediseño, pruebas |
-| Wilson Córdoba (Fercho) | 9 | Timesheet, cronómetro, informes de horas y tres fallos de seguridad |
+| Wilson Córdoba | 12 | Timesheet, cronómetro, informes de horas, tres fallos de seguridad y la tabla de decisiones de negocio |
 | Juan Espinosa | 4 | Unificación de Gastos e Ingresos, y el desfase de base de datos |
-| Fernando | 3 | Documentación de pendientes |
 
 ---
 
@@ -92,6 +91,12 @@ completó lo que faltaba y se hizo el arreglo repetible sin riesgo.
 Eran dos tablas y dos pantallas separadas. Ahora son **un solo panel sobre una sola tabla**, que
 era un requerimiento del cliente. Esto simplifica el reporte financiero y elimina una fuente de
 inconsistencias.
+
+### Decisiones de negocio documentadas (Wilson Córdoba)
+
+Al construir el timesheet y el cronómetro aparecieron preguntas que no puede responder un
+desarrollador, y en vez de resolverlas por su cuenta las dejó planteadas con sus opciones. Ese
+trabajo es la base del documento `DECISIONES_REUNION.md`.
 
 ### Auditoría completa
 
