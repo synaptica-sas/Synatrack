@@ -8,7 +8,7 @@ import {
   getMyConsultant,
   getRunningTimer,
   listActivities,
-  listTimeEntries,
+  listAllTimeEntries,
   startTimer,
   stopTimer,
   updateRunningTimer,
@@ -160,7 +160,9 @@ export function TrackerTab({
     }
     setEntriesLoading(true);
     try {
-      const data = await listTimeEntries({
+      // La semana entera a propósito: el cronómetro suma las horas del día y
+      // de la semana, así que una página suelta daría totales mal.
+      const data = await listAllTimeEntries({
         consultantId,
         from: weekStart,
         to: addDays(weekStart, 6),

@@ -291,6 +291,18 @@ export async function getExtraHourAuthLevel(
   return { level: "PM", authorized: isPM || isAdmin || hasDelegation };
 }
 
+/**
+ * Filtros y paginación del listado. Se acumulan SOBRE el alcance del rol; nunca
+ * lo sustituyen, así que un filtro no puede ampliar lo que alguien ve.
+ * Contrato de paginación idéntico al de `/api/audit`.
+ */
+const listQuerySchema = z.object({
+  status: z.nativeEnum(ExtraHourStatus).optional(),
+  consultantId: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(50),
+});
+
 export async function extraHoursRoutes(app: FastifyInstance) {
   // 0. Obtener países soportados dinámicamente
   app.get(
@@ -313,27 +325,35 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const user = request.authUser!;
       const roles = user.roles;
       const email = user.email.toLowerCase();
+      const query = listQuerySchema.parse(request.query);
 
       // Alcance por fila (sin cambios respecto a antes de R7):
       //   ADMIN / FINANCE / VIEWER -> todas.
       //   PM                       -> las suyas como consultor + las de sus proyectos.
       //   CONSULTANT               -> solo las suyas.
-      let where: Prisma.ExtraHourEntryWhereInput | undefined;
+      let alcance: Prisma.ExtraHourEntryWhereInput = {};
       let soloPropias = false;
 
       if (roles.includes(AppRole.ADMIN) || roles.includes(AppRole.FINANCE) || roles.includes(AppRole.VIEWER)) {
-        where = undefined;
+        alcance = {};
       } else if (roles.includes(AppRole.PM)) {
-        where = {
+        alcance = {
           OR: [
             { consultant: { email: email } },
             { project: { projectManagerEmail: email } },
           ],
         };
       } else {
-        where = { consultant: { email: email } };
+        alcance = { consultant: { email: email } };
         soloPropias = true;
       }
+
+      const filtros: Prisma.ExtraHourEntryWhereInput[] = [];
+      if (query.status) filtros.push({ status: query.status });
+      if (query.consultantId) filtros.push({ consultantId: query.consultantId });
+
+      const where: Prisma.ExtraHourEntryWhereInput =
+        filtros.length > 0 ? { AND: [alcance, ...filtros] } : alcance;
 
       // Alcance por campo (DEP-38): el consultor viaja completo solo para quien
       // puede ver tarifas (ADMIN, PM, FINANCE) o para quien solo recibe sus
@@ -341,24 +361,46 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       // documento, igual que en `time-entries` desde R5). El caso que se cierra
       // aquí es el VIEWER: recibía la `hourlyRate` y el `costPerMonth` de toda
       // la plantilla, la misma fuga que R5 cerró en `time-entries`.
-      const orderBy = { date: "desc" } as const;
+      // El desempate por `id` hace estable la paginación: varias solicitudes
+      // comparten la misma `date` y sin él una fila podría repetirse o
+      // desaparecer al pasar de página.
+      const orderBy = [{ date: "desc" as const }, { id: "desc" as const }];
+      const skip = (query.page - 1) * query.pageSize;
 
-      const entries = puedeVerTarifas(roles) || soloPropias
-        ? await prisma.extraHourEntry.findMany({
-            where,
-            include: { project: true, consultant: true },
-            orderBy,
-          })
-        : await prisma.extraHourEntry.findMany({
-            where,
-            include: {
-              project: true,
-              consultant: { select: consultantSinDatosSensiblesSelect },
-            },
-            orderBy,
-          });
+      const [entries, total] = await Promise.all([
+        puedeVerTarifas(roles) || soloPropias
+          ? prisma.extraHourEntry.findMany({
+              where,
+              include: { project: true, consultant: true },
+              orderBy,
+              skip,
+              take: query.pageSize,
+            })
+          : prisma.extraHourEntry.findMany({
+              where,
+              include: {
+                project: true,
+                consultant: { select: consultantSinDatosSensiblesSelect },
+              },
+              orderBy,
+              skip,
+              take: query.pageSize,
+            }),
+        // El total se cuenta sobre el mismo `where`, que ya lleva el alcance
+        // del rol: un consultor no debe enterarse por el contador de cuántas
+        // solicitudes hay de sus compañeros.
+        prisma.extraHourEntry.count({ where }),
+      ]);
 
-      return { data: entries };
+      return {
+        data: entries,
+        meta: {
+          total,
+          page: query.page,
+          pageSize: query.pageSize,
+          totalPages: Math.ceil(total / query.pageSize),
+        },
+      };
     },
   );
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { downloadCsv } from "../../utils/csv";
-import { listTimeEntries, type Consultant, type TimeEntry } from "../../services/api";
+import { listAllTimeEntries, type Consultant, type TimeEntry } from "../../services/api";
 import { addDays, formatWeekRange, startOfWeek, todayIso } from "../timesheet/timesheetUtils";
 import { HoursBarChart } from "./HoursBarChart";
 import {
@@ -35,7 +35,9 @@ export function ReportsTab({
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listTimeEntries({
+      // El informe es un agregado de la semana (gráfica, totales y CSV): se
+      // piden todas las páginas del rango a propósito, no la primera.
+      const data = await listAllTimeEntries({
         from: weekStart,
         to: weekEnd,
         ...(consultantId ? { consultantId } : {}),

@@ -11,13 +11,16 @@ import {
   deleteTimeEntry,
   getMyConsultant,
   listActivities,
+  listAllTimeEntries,
   listTimeEntries,
   rejectTimeEntry,
   updateTimeEntry,
   type Activity,
   type Consultant,
+  type PageMeta,
   type Project,
   type TimeEntry,
+  type TimeEntryStatus,
 } from "../../services/api";
 import {
   addDays,
@@ -63,19 +66,15 @@ function rowKeyOf(projectId: string, activityId: string | null, description: str
 const emptyDraft = { projectId: "", activityId: "", description: "" };
 
 export function TimesheetTab({
-  timeEntries,
   projects,
   consultants,
-  loading,
   canWrite,
   canReview,
   onReload,
   onError,
 }: {
-  timeEntries: TimeEntry[];
   projects: Project[];
   consultants: Consultant[];
-  loading: boolean;
   canWrite: boolean;
   canReview: boolean;
   onReload: () => Promise<void>;
@@ -92,6 +91,21 @@ export function TimesheetTab({
   const [weekEntries, setWeekEntries] = useState<TimeEntry[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [weekLoading, setWeekLoading] = useState(false);
+
+  // -- Vista de aprobaciones -------------------------------------------------
+  // Antes esta tabla pintaba el histórico completo que `App.tsx` cargaba de una
+  // vez. Ahora pide una página al servidor y el paginador muestra el total, de
+  // modo que nunca se enseñe un subconjunto sin decirlo.
+  const [approvalEntries, setApprovalEntries] = useState<TimeEntry[]>([]);
+  const [approvalMeta, setApprovalMeta] = useState<PageMeta>({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalStatus, setApprovalStatus] = useState<TimeEntryStatus | "">("");
+  const [exporting, setExporting] = useState(false);
 
   // Filas que el usuario acaba de crear y aún no tienen ninguna hora cargada.
   const [draftRows, setDraftRows] = useState<TimesheetRow[]>([]);
@@ -136,7 +150,9 @@ export function TimesheetTab({
     }
     setWeekLoading(true);
     try {
-      const data = await listTimeEntries({
+      // La rejilla necesita todos los registros de la semana para sumar cada
+      // celda y el total por día: se piden todas las páginas del rango.
+      const data = await listAllTimeEntries({
         consultantId,
         from: weekStart,
         to: addDays(weekStart, 6),
@@ -359,6 +375,34 @@ export function TimesheetTab({
 
   // ── Aprobaciones ───────────────────────────────────────────────────────────
 
+  const loadApprovals = useCallback(
+    async (page: number) => {
+      setApprovalLoading(true);
+      try {
+        const result = await listTimeEntries({
+          page,
+          ...(approvalStatus ? { status: approvalStatus } : {}),
+        });
+        setApprovalEntries(result.data);
+        setApprovalMeta(result.meta);
+      } catch (err) {
+        setApprovalEntries([]);
+        onError(err instanceof Error ? err.message : "No se pudieron cargar las aprobaciones");
+      } finally {
+        setApprovalLoading(false);
+      }
+    },
+    [approvalStatus, onError],
+  );
+
+  // Al entrar en la vista, y cada vez que cambia el filtro, se vuelve SIEMPRE a
+  // la página 1: conservar la página actual dejaría al usuario en una que quizá
+  // ya no existe con el filtro nuevo, y vería una tabla vacía sin motivo.
+  useEffect(() => {
+    if (view !== "approvals") return;
+    void loadApprovals(1);
+  }, [view, loadApprovals]);
+
   async function handleReview(id: string, action: "approve" | "reject") {
     try {
       // La identidad del revisor la toma el backend del token: el cliente no
@@ -370,14 +414,34 @@ export function TimesheetTab({
       }
       await onReload();
       await reloadWeek();
+      await loadApprovals(approvalMeta.page);
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo actualizar estado");
     }
   }
 
-  function handleExport() {
+  /**
+   * El CSV exporta **todas** las horas del filtro actual, no solo la página que
+   * se está viendo: un informe recortado en silencio a 50 filas sería justo el
+   * defecto que la paginación no puede introducir.
+   */
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const todas = await listAllTimeEntries(
+        approvalStatus ? { status: approvalStatus } : undefined,
+      );
+      exportarCsv(todas);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "No se pudo exportar el listado");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function exportarCsv(filas: TimeEntry[]) {
     downloadCsv(
-      timeEntries.map((e) => ({
+      filas.map((e) => ({
         proyecto: e.project.name,
         consultor: e.consultant.fullName,
         fecha: e.workDate.slice(0, 10),
@@ -694,12 +758,34 @@ export function TimesheetTab({
         <SectionLayout
           title="Flujo de aprobación"
           canWrite={false}
-          onExport={handleExport}
-          exportDisabled={timeEntries.length === 0}
+          onExport={() => void handleExport()}
+          exportDisabled={approvalMeta.total === 0 || exporting}
           table={
-            loading ? (
-              <p className="loading">Cargando...</p>
-            ) : (
+            <>
+              <div className="ts-approvals-filter">
+                <label className="field-label" htmlFor="ts-approval-status">
+                  Estado
+                </label>
+                <select
+                  id="ts-approval-status"
+                  value={approvalStatus}
+                  onChange={(e) => setApprovalStatus(e.target.value as TimeEntryStatus | "")}
+                >
+                  <option value="">Todos</option>
+                  <option value="PENDING">Pendientes</option>
+                  <option value="APPROVED">Aprobadas</option>
+                  <option value="REJECTED">Rechazadas</option>
+                </select>
+              </div>
+              {approvalLoading ? (
+                <p className="loading">Cargando...</p>
+              ) : approvalMeta.total === 0 ? (
+                <p className="empty-note">
+                  No hay horas registradas
+                  {approvalStatus ? " con el estado seleccionado" : ""}.
+                </p>
+              ) : (
+                <>
               <div className="table-wrap">
                 <table className="approval-table">
                   <thead>
@@ -714,7 +800,7 @@ export function TimesheetTab({
                     </tr>
                   </thead>
                   <tbody>
-                    {timeEntries.map((entry) => {
+                    {approvalEntries.map((entry) => {
                       const rowClass =
                         entry.status === "APPROVED"
                           ? "row-approved"
@@ -763,7 +849,35 @@ export function TimesheetTab({
                   </tbody>
                 </table>
               </div>
-            )
+              <div className="table-pager">
+                <span className="table-pager__status">
+                  {approvalMeta.total} registros · página {approvalMeta.page} de{" "}
+                  {Math.max(1, approvalMeta.totalPages)}
+                </span>
+                <div className="table-pager__nav">
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={approvalMeta.page <= 1}
+                    onClick={() => void loadApprovals(approvalMeta.page - 1)}
+                    aria-label="Página anterior"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={approvalMeta.page >= approvalMeta.totalPages}
+                    onClick={() => void loadApprovals(approvalMeta.page + 1)}
+                    aria-label="Página siguiente"
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+                </>
+              )}
+            </>
           }
         />
       )}

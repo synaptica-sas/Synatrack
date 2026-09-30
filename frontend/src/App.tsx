@@ -1873,10 +1873,8 @@ function App() {
 
               {activeTab === "timeEntries" && (
                 <TimesheetTab
-                  timeEntries={timeEntriesHook.timeEntries}
                   projects={projectsHook.projects}
                   consultants={consultantsHook.consultants}
-                  loading={timeEntriesHook.loading}
                   canWrite={can("time:write")}
                   canReview={can("time:review")}
                   onReload={timeEntriesHook.reload}

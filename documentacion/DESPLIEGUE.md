@@ -69,6 +69,21 @@ momento.
 - [ ] Tener a mano la **cadena directa** (`DIRECT_URL`, puerto 5432), no la del pooler. Las
       migraciones necesitan la directa.
 
+**Migraciones que aún no están en Supabase.** Como aquí la base se rehace desde cero, la cadena
+completa se aplica sola en §2.3 y no hay que hacer nada extra. Se listan porque son las que
+faltaban respecto a producción, y porque si alguien decidiera **no** rehacer la base tendría que
+aplicarlas a mano:
+
+| Migración | Qué trae |
+|---|---|
+| `20260918120000_fix_schema_drift` | `CustomHoliday`, `ApprovalDelegation`, campos de `Consultant`, `ExtraHoursConfig.country`, `User.country` |
+| `20260922110000_add_timesheet_and_tracker` | Timesheet y cronómetro |
+| `20260922120000_time_entry_hours_precision` | Precisión en segundos del cronómetro |
+| `20260929143000_add_job_run_observability` | `JobRun`, el rastro de los trabajos periódicos (§4) |
+
+Las cuatro son idempotentes y solo crean, así que aplicarlas sobre una base que ya las tenga es
+seguro. **Sin la última, el bloque `jobs` de `/health` no sirve de nada.**
+
 ### 2.3 Rehacer la base
 
 Desde `backend/`, con `DATABASE_URL` y `DIRECT_URL` apuntando a Supabase:
@@ -104,10 +119,17 @@ la base queda sin proyectos, consultores ni horas.
 
 ### 2.4 Cargar las tasas de cambio — no te lo saltes
 
-El seed deja **cero tasas**, y sin ellas la aplicación **muestra los importes en la moneda
-equivocada**: no convierte y solo cambia la etiqueta, así que un proyecto de 100 millones de
-pesos aparece como "US$ 100.000.000". Es un defecto conocido (DEP-32) y con la base recién
-creada se manifiesta siempre.
+El seed deja **cero tasas**, y sin ellas no hay nada que convertir.
+
+Esto ya no falla en silencio: desde que se corrigió DEP-32, un total que no se pudo convertir
+del todo llega marcado y la interfaz lo avisa en pantalla con el rótulo **"Cifras aproximadas"**
+y un atajo a *Tasas FX*. O sea que **con la base recién creada la aplicación se va a quejar en
+casi todas las pantallas hasta que cargues las tasas**. Es el comportamiento correcto, no un
+fallo del despliegue, pero conviene saberlo antes de que alguien lo reporte como tal.
+
+Ojo además: una sincronización que deje monedas sin tasa (`failed` no vacío) se registra como
+**no correcta** en la frescura de trabajos (§4). No basta con que el `curl` devuelva 200: hay
+que comprobar que `failed` venga vacío.
 
 Con el backend ya desplegado:
 
@@ -206,6 +228,11 @@ VITE_AZURE_API_SCOPE=api://<backend-app-id-uri-or-client-id>/access_as_user
 
 Ambos requieren plan `starter`: el plan free no tiene cron jobs.
 
+**Ahora se puede comprobar que existen sin entrar al panel de Render.** `GET /health` publica la
+frescura de cada trabajo (§4). Si pasada una hora `assignment-maintenance` y `alert-engine`
+siguen en `nunca`, el cron `app-gestion-jobs` no se creó; si pasado un día `fx-sync` sigue en
+`nunca`, no se creó el de FX. En `obsoleto` significa que existen pero dejaron de correr.
+
 **Ojo con el host.** El cron de FX apuntaba a `app-gestion-backend.onrender.com`, que **no
 existe** —se comprobó que no responde en 150 segundos, mientras `app-gestion-demo` devuelve
 200—, y por eso la sincronización de tasas nunca funcionó. El `name` del servicio en
@@ -227,6 +254,12 @@ curl https://app-gestion-demo.onrender.com/health
 curl -H "Authorization: Bearer $JOBS_RUN_TOKEN" \
   https://app-gestion-demo.onrender.com/api/jobs/status
 # Esperado: tokenConfigurado: true
+
+# Los trabajos periódicos están vivos (bloque `jobs` del health)
+curl https://app-gestion-demo.onrender.com/health
+# Recién desplegado los tres saldrán en `nunca`: es lo esperado.
+# Vuelve a mirarlo pasada una hora (ciclo) y al día siguiente (FX).
+# Si siguen en `nunca`, los cron jobs no se crearon: volver a §3.3.
 
 # Prueba de humo end-to-end
 API_BASE_URL=https://app-gestion-demo.onrender.com npm run smoke
@@ -260,6 +293,18 @@ Conviene avisarlo antes, para que nadie piense que algo se rompió:
   ver las tarifas de la plantilla.
 - **Los correos de aprobación registran el correo de quien aprueba**, no su nombre para
   mostrar.
+- **La aplicación entera cambia de aspecto.** Se migró al sistema de tokens de diseño: los
+  estilos en línea bajaron de 1.162 a 340 y los colores incrustados de 575 a 100. No es un
+  rediseño —la paleta de Synaptica es la misma— pero se retiró una segunda paleta de Tailwind
+  que se había colado por copiar y pegar, así que **bastantes tonos concretos cambian** y el
+  modo oscuro funciona en pantallas donde antes no. Quedan sin migrar Actividades y `App.tsx`.
+- **Aparece el aviso "Cifras aproximadas"** cuando falta una tasa de cambio (ver §2.4).
+- **Tres listados pasan a estar paginados**: Horas → Aprobaciones, Horas Extra → Historial e
+  ingresos/gastos. Muestran 50 filas por página con el total a la vista. Ninguna pantalla pasó
+  a mostrar un subconjunto en silencio: lo que necesita el conjunto completo —la rejilla del
+  timesheet, los informes, las colas de aprobación, el CSV— lo sigue pidiendo entero.
+- **Horas → Aprobaciones estrena filtro por estado** y el de Horas Extra por consultor pasó a
+  filtrar en el servidor.
 
 ---
 

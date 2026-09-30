@@ -2,7 +2,7 @@
 
 Lista viva de lo que falta. Si vas a tomar algo, empieza por aquí.
 
-**Actualizado:** 2026-09-24 · **Rama con todo lo hecho:** `dev`
+**Actualizado:** 2026-09-30 · **Rama con todo lo hecho:** `dev`
 
 Para el detalle de cada arreglo ya hecho, ver `documentacion/cambios/`.
 Para el histórico completo de la depuración, `documentacion/BACKLOG_DEPURACION.md`
@@ -80,10 +80,41 @@ declara `DAILY_LIMIT = 8` para decidir qué parte de cada barra del informe sale
 la misma jornada fija, ahora también en una pantalla que la gente mira. Cuando D-5 se
 decida, hay que conectar los dos sitios, no solo `capacity.routes.ts`.
 
-**Sin paginación.** Casi todos los `GET /` devuelven el conjunto completo
-(`time-entries`, `extra-hours`, `consultants`, `projects`…). Solo `/api/audit` pagina, y
-puede servir de plantilla. A medida que crezcan los datos, esto se vuelve el cuello de
-botella; `AuditLog` además crece más rápido desde que guarda `before` y `after` completos.
+**Paginación: hecha la mitad urgente, falta el resto.** El 2026-09-30 se paginaron los
+tres listados **cuyo volumen crece con el tiempo**, con el mismo contrato de `/api/audit`
+(`page`, `pageSize` topado a 100, respuesta `{ data, meta }`):
+
+- `GET /api/time-entries` — pantalla Horas → Aprobaciones, con paginador.
+- `GET /api/extra-hours` — Horas Extra → Historial de Solicitudes, con paginador.
+- `GET /api/financial-entries` — sin consumidor en el frontend hoy.
+
+En los tres, el `meta.total` se cuenta sobre el mismo `where` que ya lleva el alcance por
+rol, así que el contador no delata filas ajenas. Los tres llevan desempate por `id` en el
+`orderBy` para que la paginación sea estable.
+
+**Lo que sigue pendiente**, medido contra la base local del 2026-09-30:
+
+| Listado | Filas hoy | ¿Paginar? |
+|---|---|---|
+| `consultants` | 6 | No por ahora. Cota: plantilla de la empresa. |
+| `projects` | 4 | No por ahora. Cota: cartera activa. |
+| `assignments` | 4 | No por ahora, pero crece como consultores × proyectos × tiempo: es el primero de esta lista que habrá que paginar. |
+| `forecasts` | 4 | No por ahora. Cota: proyectos × consultores. |
+| `alerts` | 0 | **Vigilar.** No tiene cota natural: crece con cada ciclo del motor de alertas y hoy no hay purga ni archivado. Antes de paginarlo, decidir si se archivan las resueltas. |
+| `activities` | 2 | No por ahora, pero crece por consultor y por día como las horas. Segundo candidato. |
+| `audit` | 30 | Ya paginado desde antes. |
+
+Criterio con el que se decidió: **se pagina lo que crece con el tiempo, no lo que crece con
+el tamaño de la empresa**. Y no se pagina un endpoint sin tocar a la vez la pantalla que lo
+consume: si el backend recorta y la pantalla no lo dice, el usuario ve un subconjunto
+indistinguible de un conjunto completo.
+
+**Deuda que deja este cambio:** el **Tablero** sigue descargando *todas* las horas
+(`useTimeEntries` → `listAllTimeEntries`), ahora en páginas de 100 en vez de una petición
+gigante. Es explícito y está comentado, pero el arreglo de verdad es pedirle los agregados
+al servidor (`/api/stats/overview` ya hace parte del trabajo) en vez de sumar 124 filas —
+y mañana 50.000 — en el navegador. Lo mismo, en menor grado, para la exportación a CSV del
+timesheet y para los dos buzones de aprobación de horas extra.
 
 
 **El TLS del correo está debilitado.** `utils/notifications.ts` usa

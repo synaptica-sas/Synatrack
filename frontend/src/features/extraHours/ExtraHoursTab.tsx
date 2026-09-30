@@ -4,6 +4,7 @@ import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import {
   listExtraHours,
+  listAllExtraHours,
   createExtraHour,
   calculateExtraHoursApi,
   listExtraHoursConfigs,
@@ -23,6 +24,7 @@ import {
   type Consultant,
   type AuthUser,
   type ExtraHourEntry,
+  type PageMeta,
   type ExtraHoursConfig,
   type ExtraHoursCalculationResult,
   type PayrollConsolidationRow,
@@ -157,7 +159,20 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Global lists
+  // Historial: una página cada vez, con su paginador y su total.
   const [entries, setEntries] = useState<ExtraHourEntry[]>([]);
+  const [historyMeta, setHistoryMeta] = useState<PageMeta>({
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    totalPages: 1,
+  });
+  // Los dos buzones de aprobación se piden COMPLETOS y por estado: son colas de
+  // trabajo, y el número del botón de la pestaña es un total, no un recuento de
+  // la primera página. Si se paginaran, un aprobador dejaría de ver solicitudes
+  // sin enterarse.
+  const [pmPendingEntries, setPmPendingEntries] = useState<ExtraHourEntry[]>([]);
+  const [financePendingEntries, setFinancePendingEntries] = useState<ExtraHourEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
   // Supported countries from backend
@@ -310,18 +325,48 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }
   };
 
-  // Fetch entries
-  const loadEntries = useCallback(async () => {
-    setLoadingEntries(true);
+  // Una página del historial. El filtro de consultor viaja al servidor para
+  // que el total del paginador sea el del filtro, no el de la tabla entera.
+  const loadHistoryPage = useCallback(
+    async (page: number) => {
+      setLoadingEntries(true);
+      try {
+        const result = await listExtraHours({
+          page,
+          ...(historyConsultantFilter ? { consultantId: historyConsultantFilter } : {}),
+        });
+        setEntries(result.data);
+        setHistoryMeta(result.meta);
+      } catch (err) {
+        setEntries([]);
+        onError(err instanceof Error ? err.message : "Error al cargar solicitudes de horas extra");
+      } finally {
+        setLoadingEntries(false);
+      }
+    },
+    [historyConsultantFilter, onError],
+  );
+
+  /** Los dos buzones, completos, recorriendo sus páginas a propósito. */
+  const loadPendingInboxes = useCallback(async () => {
     try {
-      const data = await listExtraHours();
-      setEntries(data);
+      const [pm, finanzas] = await Promise.all([
+        listAllExtraHours({ status: "PENDING_PM" }),
+        listAllExtraHours({ status: "PENDING_FINANCE" }),
+      ]);
+      setPmPendingEntries(pm);
+      setFinancePendingEntries(finanzas);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Error al cargar solicitudes de horas extra");
-    } finally {
-      setLoadingEntries(false);
+      setPmPendingEntries([]);
+      setFinancePendingEntries([]);
+      onError(err instanceof Error ? err.message : "Error al cargar los buzones de aprobación");
     }
   }, [onError]);
+
+  /** Recarga todo lo que puede haber cambiado tras una escritura. */
+  const loadEntries = useCallback(async () => {
+    await Promise.all([loadHistoryPage(historyMeta.page), loadPendingInboxes()]);
+  }, [loadHistoryPage, loadPendingInboxes, historyMeta.page]);
 
   // Load configs
   const loadConfigs = useCallback(async () => {
@@ -359,9 +404,16 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }
   }, [onError]);
 
+  // Cambiar el filtro de consultor vuelve SIEMPRE a la página 1: quedarse en
+  // la página 5 de un filtro que ahora tiene dos páginas mostraría una tabla
+  // vacía sin motivo aparente.
+  useEffect(() => {
+    void loadHistoryPage(1);
+  }, [loadHistoryPage]);
+
   // Load initial data
   useEffect(() => {
-    void loadEntries();
+    void loadPendingInboxes();
     if (can("extrahours:config")) {
       void loadConfigs();
       void loadCustomHolidaysList();
@@ -371,7 +423,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }
     // Fetch supported countries from backend
     void listSupportedCountries().then(setSupportedCountries).catch(() => {});
-  }, [loadEntries, loadConfigs, loadCustomHolidaysList, loadDelegationsList, can, authUser]);
+  }, [loadPendingInboxes, loadConfigs, loadCustomHolidaysList, loadDelegationsList, can, authUser]);
 
 
   // Handle selected country changes in config
@@ -728,9 +780,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   // Filter projects with allowExtraHours = true
   const availableProjects = projects.filter((p) => p.allowExtraHours !== false);
 
-  // Filter entries based on approval views
-  const pmPendingEntries = entries.filter((e) => e.status === "PENDING_PM");
-  const financePendingEntries = entries.filter((e) => e.status === "PENDING_FINANCE");
 
   return (
     <div className="page-stack page-stack--padded">
@@ -1044,9 +1093,14 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
             {loadingEntries ? (
               <p className="loading">Cargando...</p>
-            ) : entries.length === 0 ? (
-              <p className="empty-note">No se han registrado solicitudes todavía.</p>
+            ) : historyMeta.total === 0 ? (
+              <p className="empty-note">
+                {historyConsultantFilter
+                  ? "No se encontraron solicitudes para el consultor seleccionado."
+                  : "No se han registrado solicitudes todavía."}
+              </p>
             ) : (
+              <>
               <div className="table-wrap">
                 <table>
                   <thead>
@@ -1063,22 +1117,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   </thead>
                   <tbody>
                     {(() => {
-                      const filtered = entries.filter((entry) => {
-                        if (historyConsultantFilter && entry.consultantId !== historyConsultantFilter) {
-                          return false;
-                        }
-                        return true;
-                      });
-                      if (filtered.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={8} className="cell-empty cell-empty--roomy">
-                              No se encontraron solicitudes para el consultor seleccionado.
-                            </td>
-                          </tr>
-                        );
-                      }
-                      return filtered.map((entry) => {
+                      return entries.map((entry) => {
                         const stat = getStatusLabel(entry.status);
                         const isOwn = entry.consultantId === myConsultant?.id || authUser?.roles.includes("ADMIN");
                         const canDelete = isOwn && entry.status !== "APPROVED";
@@ -1130,6 +1169,33 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   </tbody>
                 </table>
               </div>
+              <div className="table-pager">
+                <span className="table-pager__status">
+                  {historyMeta.total} solicitudes · página {historyMeta.page} de{" "}
+                  {Math.max(1, historyMeta.totalPages)}
+                </span>
+                <div className="table-pager__nav">
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={historyMeta.page <= 1}
+                    onClick={() => void loadHistoryPage(historyMeta.page - 1)}
+                    aria-label="Página anterior"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={historyMeta.page >= historyMeta.totalPages}
+                    onClick={() => void loadHistoryPage(historyMeta.page + 1)}
+                    aria-label="Página siguiente"
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+              </>
             )}
           </div>
 

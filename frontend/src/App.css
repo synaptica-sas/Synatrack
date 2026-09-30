@@ -4108,6 +4108,22 @@ tr.row-warning > td { background: var(--state-warning-bg); }
   min-height: 2rem; /* objetivo táctil */
 }
 
+/* Filtro sobre la tabla paginada de aprobaciones del timesheet. Cambiar el
+   filtro devuelve a la página 1, así que vive junto al paginador. */
+.ts-approvals-filter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.ts-approvals-filter > select { min-width: 10rem; }
+
+@media (max-width: 48rem) {
+  .ts-approvals-filter > select { flex: 1 1 100%; min-width: 0; }
+}
+
 /* ── Detalles sueltos del tablero ────────────────────────────────────────── */
 .table-search {
   width: 16rem;

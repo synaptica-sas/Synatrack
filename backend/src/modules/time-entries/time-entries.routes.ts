@@ -45,6 +45,11 @@ const listQuerySchema = z.object({
   /** "1" restringe el listado a las horas del usuario autenticado. */
   mine: z.string().optional(),
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  // Paginación con el mismo contrato que `/api/audit`: `page` empieza en 1 y
+  // `pageSize` está topado a 100 para que nadie pueda pedir la tabla entera
+  // en una sola petición.
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(50),
 });
 
 /**
@@ -161,19 +166,42 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
         });
       }
 
-      const entries = await prisma.timeEntry.findMany({
-        where: filtros.length > 0 ? { AND: [scope, ...filtros] } : scope,
-        include: {
-          project: true,
-          consultant: ocultarDatosSensibles
-            ? { select: consultantSinDatosSensiblesSelect }
-            : true,
-          activity: { select: { id: true, title: true } },
-        },
-        orderBy: { workDate: "desc" },
-      });
+      const where = filtros.length > 0 ? { AND: [scope, ...filtros] } : scope;
+      const skip = (query.page - 1) * query.pageSize;
 
-      return { data: entries };
+      // El desempate por `id` es lo que hace estable la paginación: varias
+      // horas comparten el mismo `workDate` a diario, y sin un segundo criterio
+      // Postgres puede devolverlas en distinto orden en cada página y hacer que
+      // una fila se repita o se pierda entre la página 1 y la 2.
+      const [entries, total] = await Promise.all([
+        prisma.timeEntry.findMany({
+          where,
+          include: {
+            project: true,
+            consultant: ocultarDatosSensibles
+              ? { select: consultantSinDatosSensiblesSelect }
+              : true,
+            activity: { select: { id: true, title: true } },
+          },
+          orderBy: [{ workDate: "desc" }, { id: "desc" }],
+          skip,
+          take: query.pageSize,
+        }),
+        // `where` ya incluye el alcance del rol, así que el total es el que ese
+        // usuario puede ver. Contar sobre la tabla entera filtraría cuántas
+        // horas hay de gente que no le corresponde.
+        prisma.timeEntry.count({ where }),
+      ]);
+
+      return {
+        data: entries,
+        meta: {
+          total,
+          page: query.page,
+          pageSize: query.pageSize,
+          totalPages: Math.ceil(total / query.pageSize),
+        },
+      };
     },
   );
 

@@ -2,6 +2,42 @@ import { env } from "../config/env";
 
 type ApiEnvelope<T> = { data: T };
 
+/**
+ * Metadatos de paginación. Contrato único de la API, estrenado por `/api/audit`
+ * y compartido hoy por `/api/time-entries`, `/api/extra-hours` y
+ * `/api/financial-entries`.
+ */
+export type PageMeta = { total: number; page: number; pageSize: number; totalPages: number };
+
+/** Respuesta de un listado paginado. */
+export type ApiPage<T> = { data: T[]; meta: PageMeta };
+
+/** Tope de `pageSize` que acepta el backend. */
+export const MAX_PAGE_SIZE = 100;
+
+/**
+ * Recorre todas las páginas de un listado y devuelve el conjunto completo.
+ *
+ * Existe para las pantallas que de verdad necesitan todas las filas para
+ * calcular algo (un total, una gráfica, un CSV). Es una decisión explícita, no
+ * un descuido: el coste queda a la vista en el sitio donde se llama, en lugar
+ * de que el cálculo pase a hacerse en silencio sobre la primera página.
+ */
+async function fetchAllPages<T>(
+  fetchPage: (page: number, pageSize: number) => Promise<ApiPage<T>>,
+): Promise<T[]> {
+  const todas: T[] = [];
+  let page = 1;
+  // Cota dura para que un `meta` incoherente no produzca un bucle infinito.
+  for (let vuelta = 0; vuelta < 500; vuelta += 1) {
+    const pagina = await fetchPage(page, MAX_PAGE_SIZE);
+    todas.push(...pagina.data);
+    if (pagina.data.length === 0 || page >= pagina.meta.totalPages) break;
+    page += 1;
+  }
+  return todas;
+}
+
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 let accessToken: string | null = null;
@@ -610,7 +646,7 @@ export async function deleteConsultant(id: string): Promise<void> {
   await request<void>(`/api/consultants/${id}`, "DELETE");
 }
 
-export async function listTimeEntries(params?: {
+export type TimeEntryFilters = {
   consultantId?: string;
   projectId?: string;
   /** Fecha inicial inclusiva, YYYY-MM-DD. */
@@ -620,7 +656,15 @@ export async function listTimeEntries(params?: {
   /** Solo las horas del usuario autenticado. */
   mine?: boolean;
   status?: TimeEntryStatus;
-}): Promise<TimeEntry[]> {
+};
+
+/**
+ * Una página de horas. El `meta.total` que devuelve el backend ya está acotado
+ * al alcance del rol de quien pregunta, así que puede mostrarse tal cual.
+ */
+export async function listTimeEntries(
+  params?: TimeEntryFilters & { page?: number; pageSize?: number },
+): Promise<ApiPage<TimeEntry>> {
   const query = new URLSearchParams();
   if (params?.consultantId) query.set("consultantId", params.consultantId);
   if (params?.projectId) query.set("projectId", params.projectId);
@@ -628,9 +672,20 @@ export async function listTimeEntries(params?: {
   if (params?.to) query.set("to", params.to);
   if (params?.mine) query.set("mine", "1");
   if (params?.status) query.set("status", params.status);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
   const suffix = query.toString() ? `?${query.toString()}` : "";
-  const response = await request<ApiEnvelope<TimeEntry[]>>(`/api/time-entries${suffix}`);
-  return response.data;
+  return request<ApiPage<TimeEntry>>(`/api/time-entries${suffix}`);
+}
+
+/**
+ * Todas las horas que cumplen el filtro, recorriendo las páginas a propósito.
+ * Úsala solo donde la pantalla necesite el conjunto completo para calcular algo
+ * (totales, gráficas, exportación). Para una tabla, usa `listTimeEntries` con
+ * su paginador.
+ */
+export async function listAllTimeEntries(params?: TimeEntryFilters): Promise<TimeEntry[]> {
+  return fetchAllPages((page, pageSize) => listTimeEntries({ ...params, page, pageSize }));
 }
 
 /**
@@ -1208,10 +1263,7 @@ export type AuditLog = {
   createdAt: string;
 };
 
-export type AuditLogPage = {
-  data: AuditLog[];
-  meta: { total: number; page: number; pageSize: number; totalPages: number };
-};
+export type AuditLogPage = ApiPage<AuditLog>;
 
 export async function listAuditLogs(params?: {
   entity?: string;
@@ -1808,9 +1860,31 @@ export type PayrollConsolidationRow = {
   totalAmountUSD: number;
 };
 
-export async function listExtraHours(): Promise<ExtraHourEntry[]> {
-  const response = await request<ApiEnvelope<ExtraHourEntry[]>>("/api/extra-hours");
-  return response.data;
+export type ExtraHourFilters = {
+  status?: ExtraHourEntry["status"];
+  consultantId?: string;
+};
+
+/** Una página de solicitudes de horas extra, dentro del alcance del rol. */
+export async function listExtraHours(
+  params?: ExtraHourFilters & { page?: number; pageSize?: number },
+): Promise<ApiPage<ExtraHourEntry>> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.consultantId) query.set("consultantId", params.consultantId);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<ApiPage<ExtraHourEntry>>(`/api/extra-hours${suffix}`);
+}
+
+/**
+ * Todas las solicitudes que cumplen el filtro, recorriendo las páginas a
+ * propósito. Para los buzones de aprobación y las métricas del panel, que
+ * necesitan el conjunto completo de su estado.
+ */
+export async function listAllExtraHours(params?: ExtraHourFilters): Promise<ExtraHourEntry[]> {
+  return fetchAllPages((page, pageSize) => listExtraHours({ ...params, page, pageSize }));
 }
 
 export async function createExtraHour(payload: {

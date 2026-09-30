@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getStatsOverview,
-  listExtraHours,
+  listAllExtraHours,
   type Expense, type FxConfig, type Forecast,
   type Project, type StatsOverview, type TimeEntry, type ExtraHourEntry,
 } from "../../services/api";
@@ -512,7 +512,10 @@ export function DashboardTab({
   const [extraHours, setExtraHours] = useState<ExtraHourEntry[]>([]);
   useEffect(() => {
     let active = true;
-    listExtraHours().then((data) => {
+    // Solo se usan las aprobadas, así que se piden solo esas: el filtro viaja
+    // al servidor y se recorren todas sus páginas a propósito, porque la
+    // tendencia y el desglose por consultor son agregados del conjunto.
+    listAllExtraHours({ status: "APPROVED" }).then((data) => {
       if (active) setExtraHours(data);
     }).catch(() => {});
     return () => {
