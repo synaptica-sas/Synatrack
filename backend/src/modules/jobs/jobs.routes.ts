@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { permitirTokenCompartidoOSesion } from "../../auth/shared-token.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../infra/prisma.js";
+import { obtenerFrescura } from "./job-runs.service.js";
 import { hayCicloEnCurso, runMaintenanceCycle } from "./jobs.service.js";
 
 export async function jobsRoutes(app: FastifyInstance) {
@@ -27,8 +28,10 @@ export async function jobsRoutes(app: FastifyInstance) {
     return reply.status(200).send({ data: resultado });
   });
 
-  // GET /api/jobs/status — estado del planificador. Sirve para comprobar en un
-  // entorno desplegado si el intervalo en proceso está encendido y con qué cadencia.
+  // GET /api/jobs/status — estado del planificador MÁS la frescura persistida de
+  // cada trabajo vigilado. Lo primero dice cómo está configurado este proceso;
+  // lo segundo, lo único que sobrevive a un reinicio, dice si los trabajos
+  // realmente están corriendo.
   app.get("/status", async (request, reply) => {
     const autorizado = await permitirTokenCompartidoOSesion(request, reply, {
       token: env.JOBS_RUN_TOKEN,
@@ -36,12 +39,18 @@ export async function jobsRoutes(app: FastifyInstance) {
     });
     if (!autorizado) return;
 
+    const frescura = await obtenerFrescura(prisma);
+
     return reply.status(200).send({
       data: {
         intervaloMinutos: env.JOBS_INTERVAL_MINUTES,
         intervaloActivo: env.JOBS_INTERVAL_MINUTES > 0,
         cicloEnCurso: hayCicloEnCurso(),
         tokenConfigurado: Boolean(env.JOBS_RUN_TOKEN),
+        // `estado: "degradado"` si algún trabajo nunca corrió, falló o está
+        // obsoleto. El detalle por trabajo va en `trabajos`.
+        estadoTrabajos: frescura.estado,
+        trabajos: frescura.trabajos,
       },
     });
   });

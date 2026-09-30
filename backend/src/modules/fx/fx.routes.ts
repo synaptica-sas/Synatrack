@@ -5,6 +5,7 @@ import { authenticate, authorize } from "../../auth/guard.js";
 import { permitirTokenCompartidoOSesion } from "../../auth/shared-token.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../infra/prisma.js";
+import { registrarEjecucion } from "../jobs/job-runs.service.js";
 import { runFxSync } from "./fx-sync.service.js";
 
 const fxPayloadSchema = z
@@ -194,11 +195,38 @@ export async function fxRoutes(app: FastifyInstance) {
     });
     if (!autorizado) return;
 
+    // La ejecución se mide por fuera de `runFxSync` (su lógica no se toca) para
+    // dejar el mismo rastro persistente que los trabajos del ciclo: sin esto,
+    // que el cron diario deje de dispararse volvería a pasar inadvertido.
+    const inicio = new Date();
     try {
       const result = await runFxSync(prisma);
+      await registrarEjecucion(prisma, {
+        jobName: "fx-sync",
+        origin: "http",
+        startedAt: inicio,
+        finishedAt: new Date(),
+        durationMs: Date.now() - inicio.getTime(),
+        // Si alguna moneda falló, la sincronización NO se da por buena: es
+        // justamente el silencio que se quiere evitar.
+        ok: result.failed.length === 0,
+        error:
+          result.failed.length === 0
+            ? null
+            : `Sin tasa para: ${result.failed.join(", ")}`,
+      });
       return { data: result };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
+      await registrarEjecucion(prisma, {
+        jobName: "fx-sync",
+        origin: "http",
+        startedAt: inicio,
+        finishedAt: new Date(),
+        durationMs: Date.now() - inicio.getTime(),
+        ok: false,
+        error: detail,
+      });
       return reply.status(502).send({ message: "No se pudo sincronizar con el proveedor de tasas de cambio", detail });
     }
   });

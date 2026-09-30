@@ -741,3 +741,37 @@ model ApprovalDelegation {
   @@index([fromUserEmail])
   @@index([toUserEmail])
 }
+
+// ─── Observabilidad de los trabajos periódicos ────────────────────────────────
+
+/// Rastro PERSISTENTE de cada ejecución de un trabajo periódico.
+///
+/// Existe porque el resultado del ciclo vivía solo en una variable de módulo
+/// (`jobs.service.ts`) y el plan free de Render duerme el servicio a los 15
+/// minutos de inactividad: tras cada siesta esa evidencia desaparecía y no
+/// había forma de responder "¿cuándo fue la última vez que esto corrió?".
+///
+/// La tabla NO crece sin límite: `job-runs.service.ts` purga, después de cada
+/// inserción, todo lo que exceda las últimas N ejecuciones de ese mismo
+/// trabajo (ver RETENCION_POR_TRABAJO). Con los trabajos vigilados de hoy el
+/// techo es de unos pocos cientos de filas.
+model JobRun {
+  id         String   @id @default(cuid())
+  /// Nombre del trabajo: "assignment-maintenance", "alert-engine", "fx-sync".
+  jobName    String
+  /// De dónde salió la ejecución: "arranque" | "intervalo" | "http".
+  origin     String
+  startedAt  DateTime
+  finishedAt DateTime
+  durationMs Int
+  ok         Boolean
+  /// Mensaje del error cuando `ok = false`. Nunca lleva el stack.
+  error      String?
+  createdAt  DateTime @default(now())
+
+  // Sirve a la consulta "última ejecución de cada trabajo" (DISTINCT ON).
+  @@index([jobName, startedAt(sort: Desc)])
+  // Sirve a la consulta "último ÉXITO de cada trabajo", que es la que decide
+  // la frescura.
+  @@index([jobName, ok, startedAt(sort: Desc)])
+}

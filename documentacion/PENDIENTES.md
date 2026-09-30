@@ -33,8 +33,10 @@ Resumen de lo que hay que hacer:
 - [ ] Asegurarse de que las variables `AUTH_DEV_*` **no existan** en producción. Son el
       simulador de rol; están apagadas por defecto y protegidas por tres cerrojos, pero
       no deben estar ahí.
-- [ ] Crear en Render el cron `app-gestion-jobs` si el Blueprint no lo aplica solo, y
-      comprobar con `GET /api/jobs/status` que quedó activo.
+- [ ] Crear en Render los cron `app-gestion-jobs` y `app-gestion-fx-sync` si el Blueprint no
+      los aplica solo. **Cómo se comprueba ahora**: espera un ciclo y mira `GET /health`; si
+      algún trabajo sigue en `estado: "nunca"` pasadas su cadencia, ese cron no existe. El
+      detalle completo está en `GET /api/jobs/status` (ADMIN o `JOBS_RUN_TOKEN`).
 - [ ] Revisar si las tasas de cambio quedaron congeladas durante los meses en que el cron
       apuntaba a un host que no existía.
 - [ ] **Avisar al equipo de que varios proyectos van a cambiar de color.** El semáforo
@@ -108,9 +110,14 @@ aparece en 12 filtros de lectura; `AlertType.CONSULTANT_OVERLOADED` nunca se gen
 `capacity.ts` ya calcula el estado `OVERLOADED` y conectarlos sería trabajo corto.
 *(Decisión previa: dejarlos documentados por ahora.)*
 
-**Nadie vigila que el cron esté vivo.** Si el Blueprint no lo aplica y nadie lo crea a mano,
-las tareas periódicas vuelven a no ejecutarse **en silencio**. Ya pasó con el cron de tasas
-de cambio, que apuntó a un host inexistente durante meses sin que nadie lo notara.
+~~**Nadie vigila que el cron esté vivo.**~~ **RESUELTO el 2026-09-29.** Cada ejecución de un
+trabajo periódico deja fila en la tabla `JobRun` (qué trabajo, cuándo empezó, si salió bien,
+cuánto tardó y el error si lo hubo), así que el rastro sobrevive al reinicio y a la siesta del
+plan free. `GET /health` y `GET /api/jobs/status` publican el estado de frescura de cada
+trabajo: `nunca` (no hay ninguna ejecución: el cron probablemente no existe), `fallido`,
+`obsoleto` (el último éxito es más viejo que la tolerancia) u `ok`. `/health` **informa pero no
+devuelve 503** por un trabajo obsoleto: Render reiniciaría el servicio en bucle por algo que un
+reinicio no arregla.
 
 **La auditoría no es transaccional.** Se escribe después de confirmar la operación, así que
 si el proceso muere en medio, la operación queda sin rastro. Es deliberado —lo contrario

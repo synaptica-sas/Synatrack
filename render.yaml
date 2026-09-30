@@ -55,6 +55,10 @@ services:
   # de confiar en el "Blueprint sync" automático — si no aplica sola, crea este
   # Cron Job manualmente en el dashboard con el mismo comando y la misma
   # variable FX_SYNC_TOKEN (debe tener el mismo valor que la del Web Service).
+  #
+  # COMO SE COMPRUEBA QUE ESTA VIVO, sin entrar al panel: `GET /health` publica
+  # `jobs.trabajos[]`; si `fx-sync` sigue en `estado: "nunca"` pasado un dia,
+  # este cron NO existe. Si esta en "obsoleto", existe pero dejo de correr.
   - type: cron
     name: app-gestion-fx-sync
     runtime: docker
@@ -81,6 +85,13 @@ services:
   # el de FX: verifica la sintaxis contra la documentación de Render y, si el
   # "Blueprint sync" no lo aplica solo, créalo a mano en el dashboard con este
   # mismo comando y el mismo valor de JOBS_RUN_TOKEN que el Web Service.
+  #
+  # COMO SE COMPRUEBA QUE ESTA VIVO: `GET /health` -> `jobs.trabajos[]`. Los
+  # trabajos `assignment-maintenance` y `alert-engine` deben estar en "ok";
+  # "nunca" significa que este cron no existe y "obsoleto" que dejo de correr.
+  # El estado sale de la tabla `JobRun`, asi que sobrevive a que el servicio se
+  # duerma o se reinicie. OJO: `/health` informa pero NUNCA devuelve 503 por un
+  # trabajo obsoleto, para no provocar un bucle de reinicios.
   - type: cron
     name: app-gestion-jobs
     runtime: docker

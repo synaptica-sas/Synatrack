@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { getLogger } from "../../infra/logger.js";
 import { runAlertEngine } from "../alerts/alerts.service.js";
 import { runAssignmentMaintenance } from "../assignments/assignments.job.js";
+import { registrarEjecucion } from "./job-runs.service.js";
 
 /** De dónde salió la ejecución. Solo sirve para el log y la respuesta HTTP. */
 export type OrigenCiclo = "arranque" | "intervalo" | "http";
@@ -85,21 +86,46 @@ export async function runMaintenanceCycle(
 
   try {
     for (const trabajo of TRABAJOS) {
-      const inicioTrabajo = Date.now();
+      const inicioTrabajo = new Date();
+      let resultado: ResultadoTrabajo;
+
       try {
         await trabajo.ejecutar(prisma);
-        const duracionMs = Date.now() - inicioTrabajo;
-        trabajos.push({ nombre: trabajo.nombre, ok: true, duracionMs });
+        const duracionMs = Date.now() - inicioTrabajo.getTime();
+        resultado = { nombre: trabajo.nombre, ok: true, duracionMs };
+        trabajos.push(resultado);
         log.info({ trabajo: trabajo.nombre, duracionMs, origen }, "[Jobs] Trabajo completado");
       } catch (err) {
-        const duracionMs = Date.now() - inicioTrabajo;
+        const duracionMs = Date.now() - inicioTrabajo.getTime();
         const error = err instanceof Error ? err.message : String(err);
-        trabajos.push({ nombre: trabajo.nombre, ok: false, duracionMs, error });
+        resultado = { nombre: trabajo.nombre, ok: false, duracionMs, error };
+        trabajos.push(resultado);
         // Se registra y se sigue con el resto: un trabajo caído no debe impedir
         // que corran los demás ni tumbar el servidor.
         log.error(
           { err, trabajo: trabajo.nombre, duracionMs, origen },
           "[Jobs] Trabajo fallido; el ciclo continúa con los demás",
+        );
+      }
+
+      // Rastro PERSISTENTE, fuera del try/catch de arriba para que el resultado
+      // del trabajo no dependa de si se pudo guardar. `registrarEjecucion` ya
+      // se traga sus propios errores; el try es el último cerrojo para que
+      // observar no pueda romper lo observado ni hacer que este ciclo rechace.
+      try {
+        await registrarEjecucion(prisma, {
+          jobName: resultado.nombre,
+          origin: origen,
+          startedAt: inicioTrabajo,
+          finishedAt: new Date(),
+          durationMs: resultado.duracionMs,
+          ok: resultado.ok,
+          error: resultado.error,
+        });
+      } catch (err) {
+        log.error(
+          { err, trabajo: resultado.nombre },
+          "[Jobs] No se pudo dejar rastro de la ejecución; el ciclo continúa",
         );
       }
     }

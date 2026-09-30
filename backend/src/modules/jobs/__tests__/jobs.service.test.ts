@@ -18,6 +18,14 @@ vi.mock("../../alerts/alerts.service.js", () => ({
   runAlertEngine: () => motorDeAlertas(),
 }));
 
+// El registro persistente se simula: aquí solo interesa QUÉ se manda a guardar.
+// Que la fila llegue de verdad a `JobRun` se prueba en `tests/routes/`.
+const registrarEjecucion = vi.fn<(...args: unknown[]) => Promise<boolean>>();
+
+vi.mock("../job-runs.service.js", () => ({
+  registrarEjecucion: (...args: unknown[]) => registrarEjecucion(...args),
+}));
+
 const {
   hayCicloEnCurso,
   runMaintenanceCycle,
@@ -41,6 +49,7 @@ describe("runMaintenanceCycle", () => {
   beforeEach(() => {
     mantenimientoAsignaciones.mockReset().mockResolvedValue(undefined);
     motorDeAlertas.mockReset().mockResolvedValue(undefined);
+    registrarEjecucion.mockReset().mockResolvedValue(true);
     stopJobsScheduler();
   });
 
@@ -94,6 +103,41 @@ describe("runMaintenanceCycle", () => {
     });
     expect(resultado.trabajos[1]).toMatchObject({ nombre: "alert-engine", ok: true });
     // El segundo trabajo corrió pese al fallo del primero.
+    expect(motorDeAlertas).toHaveBeenCalledTimes(1);
+    expect(hayCicloEnCurso()).toBe(false);
+  });
+
+  it("deja rastro persistente de cada trabajo, con el error del que falló", async () => {
+    mantenimientoAsignaciones.mockRejectedValue(new Error("base caída"));
+
+    await runMaintenanceCycle(prismaFalso, "intervalo");
+
+    expect(registrarEjecucion).toHaveBeenCalledTimes(2);
+
+    const [, fallido] = registrarEjecucion.mock.calls[0] as [unknown, Record<string, unknown>];
+    expect(fallido).toMatchObject({
+      jobName: "assignment-maintenance",
+      origin: "intervalo",
+      ok: false,
+      error: "base caída",
+    });
+    expect(fallido.startedAt).toBeInstanceOf(Date);
+    expect(fallido.finishedAt).toBeInstanceOf(Date);
+
+    const [, correcto] = registrarEjecucion.mock.calls[1] as [unknown, Record<string, unknown>];
+    expect(correcto).toMatchObject({ jobName: "alert-engine", origin: "intervalo", ok: true });
+    expect(correcto.error).toBeUndefined();
+  });
+
+  it("si no se puede guardar el rastro, el ciclo termina igual (observar no rompe lo observado)", async () => {
+    registrarEjecucion.mockRejectedValue(new Error("JobRun no existe"));
+
+    const resultado = await runMaintenanceCycle(prismaFalso, "http");
+
+    // El fallo al registrar se contabiliza contra el trabajo, pero ni tumba el
+    // ciclo ni impide que el siguiente trabajo corra, y el cerrojo se libera.
+    expect(resultado.omitido).toBe(false);
+    expect(resultado.trabajos).toHaveLength(2);
     expect(motorDeAlertas).toHaveBeenCalledTimes(1);
     expect(hayCicloEnCurso()).toBe(false);
   });
