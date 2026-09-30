@@ -1,5 +1,12 @@
 import type { PrismaClient } from "@prisma/client";
-import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
+import {
+  buildRateMap,
+  conversionStatus,
+  createConversionLedger,
+  convertAmountFallback,
+  describeMissingRates,
+  type ConversionStatus,
+} from "../../utils/currency.js";
 import { addDays } from "../../utils/capacity.js";
 import { computeEVM } from "../../utils/evm.js";
 import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
@@ -64,6 +71,17 @@ async function resolveAlert(
   });
 }
 
+/**
+ * Sufijo para el texto de una alerta cuyas cifras salieron de una conversión
+ * incompleta (DEP-32). El motor de alertas no devuelve una respuesta HTTP: su
+ * lector es la fila `Alert`, así que la advertencia tiene que viajar en el
+ * propio mensaje y en `metadata`, que es Json libre y no exige migración.
+ */
+function sufijoConversion(estado: ConversionStatus): string {
+  if (!estado.incomplete) return "";
+  return ` ⚠ Cifras aproximadas: faltan tasas de cambio (${estado.missingPairs.join(", ")}).`;
+}
+
 export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
   const fxConfigs = await prisma.fxConfig.findMany();
   const rateMap = buildRateMap(fxConfigs);
@@ -82,16 +100,19 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
   });
 
   for (const project of projects) {
-    const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap);
+    // Un libro por proyecto (DEP-32): la alerta habla de ESTE proyecto.
+    const ledger = createConversionLedger();
+
+    const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap, ledger);
     if (budget === 0) continue;
 
     const laborCost = project.timeEntries.reduce((s, e) => {
       const rate = Number(e.consultant.hourlyRate ?? 0);
-      return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
+      return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap, ledger);
     }, 0);
 
     const expensesCost = project.financialEntries.reduce(
-      (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap),
+      (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap, ledger),
       0,
     );
 
@@ -99,13 +120,22 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
     const usedPct = (spent / budget) * 100;
     const alertThreshold = Number(project.budgetAlertPct ?? 90);
 
+    const conversion = conversionStatus(ledger);
+    if (conversion.incomplete) {
+      getLogger().warn(
+        { motor: "alert-engine", regla: "presupuesto", projectId: project.id, baseCurrency, missingPairs: conversion.missingPairs },
+        describeMissingRates(conversion.missingPairs),
+      );
+    }
+    const avisoFx = sufijoConversion(conversion);
+
     if (usedPct > 100) {
       await upsertAlert(prisma, {
         type: "BUDGET_EXCEEDED",
         severity: "CRITICAL",
         projectId: project.id,
-        message: `Proyecto "${project.name}" ha superado el presupuesto (${usedPct.toFixed(1)}% usado)`,
-        metadata: { usedPct, spent, budget, currency: baseCurrency },
+        message: `Proyecto "${project.name}" ha superado el presupuesto (${usedPct.toFixed(1)}% usado)${avisoFx}`,
+        metadata: { usedPct, spent, budget, currency: baseCurrency, conversion },
       });
       await resolveAlert(prisma, "BUDGET_WARNING", project.id);
     } else if (usedPct >= alertThreshold) {
@@ -113,8 +143,8 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         type: "BUDGET_WARNING",
         severity: "WARNING",
         projectId: project.id,
-        message: `Proyecto "${project.name}" ha consumido ${usedPct.toFixed(1)}% del presupuesto`,
-        metadata: { usedPct, spent, budget, currency: baseCurrency },
+        message: `Proyecto "${project.name}" ha consumido ${usedPct.toFixed(1)}% del presupuesto${avisoFx}`,
+        metadata: { usedPct, spent, budget, currency: baseCurrency, conversion },
       });
       await resolveAlert(prisma, "BUDGET_EXCEEDED", project.id);
     } else {
@@ -147,6 +177,14 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
     const budget = fin.budget;
     const spent = fin.totalCostActual;
 
+    if (fin.conversion.incomplete) {
+      getLogger().warn(
+        { motor: "alert-engine", regla: "margen-cpi", projectId: project.id, baseCurrency, missingPairs: fin.conversion.missingPairs },
+        describeMissingRates(fin.conversion.missingPairs),
+      );
+    }
+    const avisoFxFin = sufijoConversion(fin.conversion);
+
     // Alerta de margen. El umbral sale SIEMPRE de `project.marginThreshold`;
     // ANTES estaba hardcodeado a 15 aquí, ignorando el valor por proyecto.
     if (fin.grossMarginActualPct !== null) {
@@ -157,8 +195,8 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
           type: "MARGIN_BELOW_THRESHOLD",
           severity: marginPct < threshold * 0.5 ? "CRITICAL" : "WARNING",
           projectId: project.id,
-          message: `Proyecto "${project.name}" tiene margen bruto de ${marginPct.toFixed(1)}% (umbral ${threshold}%)`,
-          metadata: { marginPct, revenueRecognized: fin.revenueRecognized, spent, threshold, currency: baseCurrency },
+          message: `Proyecto "${project.name}" tiene margen bruto de ${marginPct.toFixed(1)}% (umbral ${threshold}%)${avisoFxFin}`,
+          metadata: { marginPct, revenueRecognized: fin.revenueRecognized, spent, threshold, currency: baseCurrency, conversion: fin.conversion },
         });
       } else {
         await resolveAlert(prisma, "MARGIN_BELOW_THRESHOLD", project.id);
@@ -180,8 +218,8 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
           type: "FORECAST_DEVIATION",
           severity: evm.cpi < 0.75 ? "CRITICAL" : "WARNING",
           projectId: project.id,
-          message: `Proyecto "${project.name}" tiene CPI de ${evm.cpi.toFixed(2)} — rendimiento de costo bajo umbral (0.85)`,
-          metadata: { cpi: evm.cpi, spi: evm.spi, eac: evm.eac, currency: baseCurrency },
+          message: `Proyecto "${project.name}" tiene CPI de ${evm.cpi.toFixed(2)} — rendimiento de costo bajo umbral (0.85)${avisoFxFin}`,
+          metadata: { cpi: evm.cpi, spi: evm.spi, eac: evm.eac, currency: baseCurrency, conversion: fin.conversion },
         });
       } else {
         await resolveAlert(prisma, "FORECAST_DEVIATION", project.id);

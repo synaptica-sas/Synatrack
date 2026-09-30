@@ -4,9 +4,18 @@
  * fuera del frontend y fuera de las rutas, para que sean testeables.
  */
 
-import { convertAmountFallback, type FxRateRecord, buildRateMap } from "./currency.js";
+import {
+  convertAmountFallback,
+  conversionStatus,
+  createConversionLedger,
+  mergeConversionLedger,
+  type ConversionLedger,
+  type ConversionStatus,
+  type FxRateRecord,
+  buildRateMap,
+} from "./currency.js";
 
-export type { FxRateRecord };
+export type { FxRateRecord, ConversionLedger, ConversionStatus };
 
 // ─── Tipos de entrada ─────────────────────────────────────────────────────────
 
@@ -83,11 +92,12 @@ export function getAdjustedForecastCost(
   approvedHoursInPeriod: number,
   rateMap: Map<string, number>,
   baseCurrency: string,
+  ledger?: ConversionLedger,
 ): number {
   const effectiveCostRate = forecast.hourlyRate ?? consultant.hourlyRate ?? 0;
   const remainingHours = Math.max(forecast.hoursProjected - approvedHoursInPeriod, 0);
   const costInForecastCurrency = remainingHours * effectiveCostRate;
-  return convertAmountFallback(costInForecastCurrency, forecast.currency, baseCurrency, rateMap);
+  return convertAmountFallback(costInForecastCurrency, forecast.currency, baseCurrency, rateMap, ledger);
 }
 
 /**
@@ -99,11 +109,12 @@ export function getAdjustedForecastRevenue(
   approvedHoursInPeriod: number,
   rateMap: Map<string, number>,
   baseCurrency: string,
+  ledger?: ConversionLedger,
 ): number {
   if (!forecast.sellRate) return 0;
   const remainingHours = Math.max(forecast.hoursProjected - approvedHoursInPeriod, 0);
   const revenueInForecastCurrency = remainingHours * forecast.sellRate;
-  return convertAmountFallback(revenueInForecastCurrency, forecast.currency, baseCurrency, rateMap);
+  return convertAmountFallback(revenueInForecastCurrency, forecast.currency, baseCurrency, rateMap, ledger);
 }
 
 // ─── Umbrales por defecto (un solo sitio, con nombre) ────────────────────────
@@ -181,6 +192,13 @@ export type ProjectFinancialsInput = {
   forecasts: ProjectForecastInput[];
   rateMap: Map<string, number>;
   baseCurrency: string;
+  /**
+   * Libro de faltantes compartido (DEP-32). Opcional: el cálculo siempre lleva
+   * el suyo propio y devuelve su estado en `conversion`; si se pasa uno, además
+   * vuelca ahí sus faltantes, que es lo que permite a `/stats/overview` y
+   * `/stats/portfolio` acumular los de todos los proyectos en un solo indicador.
+   */
+  ledger?: ConversionLedger;
 };
 
 export type ProjectFinancialsResult = {
@@ -219,6 +237,13 @@ export type ProjectFinancialsResult = {
   budgetAlertPct: number;
   belowMarginThreshold: boolean;
   alertLevel: "ok" | "warning" | "exceeded";
+
+  /**
+   * Estado de la conversión a `baseCurrency` (DEP-32). `incomplete: true`
+   * significa que al menos un importe se sumó SIN convertir por falta de tasa,
+   * así que TODOS los montos de este resultado son aproximados.
+   */
+  conversion: ConversionStatus;
 };
 
 /**
@@ -248,15 +273,20 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   const marginThreshold = resolveMarginThreshold(input.marginThreshold);
   const budgetAlertPct = resolveBudgetAlertPct(input.budgetAlertPct);
 
+  // Libro PROPIO (DEP-32): si se usara directamente el del llamador, el
+  // `conversion` de este proyecto arrastraría los faltantes de los anteriores.
+  // Al final se vuelca en el del llamador, si lo hay.
+  const ledger = createConversionLedger();
+
   // Presupuesto y valor contractual en moneda base
-  const budgetBase = convertAmountFallback(budget, budgetCurrency, baseCurrency, rateMap);
+  const budgetBase = convertAmountFallback(budget, budgetCurrency, baseCurrency, rateMap, ledger);
   const contractValue = sellPrice
-    ? convertAmountFallback(sellPrice, sellCurrency, baseCurrency, rateMap)
+    ? convertAmountFallback(sellPrice, sellCurrency, baseCurrency, rateMap, ledger)
     : 0;
 
   // Ingresos reconocidos
   const revenueRecognized = revenueEntries.reduce(
-    (sum, r) => sum + convertAmountFallback(r.amount, r.currency, baseCurrency, rateMap),
+    (sum, r) => sum + convertAmountFallback(r.amount, r.currency, baseCurrency, rateMap, ledger),
     0,
   );
   const revenuePending = Math.max(contractValue - revenueRecognized, 0);
@@ -264,14 +294,14 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   // Costo laboral real: horas aprobadas * tarifa del consultor
   const laborCostActual = approvedTimeEntries.reduce((sum, entry) => {
     const rate = entry.hourlyRate ?? 0;
-    return sum + convertAmountFallback(entry.hours * rate, entry.rateCurrency, baseCurrency, rateMap);
+    return sum + convertAmountFallback(entry.hours * rate, entry.rateCurrency, baseCurrency, rateMap, ledger);
   }, 0);
 
   const approvedHours = approvedTimeEntries.reduce((sum, entry) => sum + entry.hours, 0);
 
   // Gastos reales
   const expensesActual = expenses.reduce(
-    (sum, e) => sum + convertAmountFallback(e.amount, e.currency, baseCurrency, rateMap),
+    (sum, e) => sum + convertAmountFallback(e.amount, e.currency, baseCurrency, rateMap, ledger),
     0,
   );
 
@@ -301,6 +331,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
       approvedInPeriod,
       rateMap,
       baseCurrency,
+      ledger,
     );
 
     revenueProjected += getAdjustedForecastRevenue(
@@ -308,6 +339,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
       approvedInPeriod,
       rateMap,
       baseCurrency,
+      ledger,
     );
   }
 
@@ -329,6 +361,9 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   // Alerta de desvío presupuestal, sobre el TOTAL PROYECTADO (real + forecast).
   const alertLevel: "ok" | "warning" | "exceeded" =
     projectedPct > 100 ? "exceeded" : projectedPct >= budgetAlertPct ? "warning" : "ok";
+
+  // Se propagan los faltantes al libro del llamador (totales agregados).
+  if (input.ledger) mergeConversionLedger(input.ledger, ledger);
 
   return {
     budget: budgetBase,
@@ -355,6 +390,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     budgetAlertPct,
     belowMarginThreshold: grossMarginActualPct !== null && grossMarginActualPct < marginThreshold,
     alertLevel,
+    conversion: conversionStatus(ledger),
   };
 }
 
@@ -495,6 +531,9 @@ export type ProfitabilityResult = {
   marginThreshold: number;
   belowMarginThreshold: boolean;
   alertLevel: "ok" | "warning" | "exceeded";
+
+  /** Estado de la conversión a `baseCurrency` (DEP-32). */
+  conversion: ConversionStatus;
 };
 
 export type ProfitabilityInput = {
@@ -512,6 +551,8 @@ export type ProfitabilityInput = {
   forecasts: Array<ForecastInput & { consultantId: string; consultant: ConsultantInput; startDate: string; endDate: string }>;
   fxConfigs: FxRateRecord[];
   baseCurrency: string;
+  /** Libro de faltantes compartido (DEP-32). Ver `ProjectFinancialsInput`. */
+  ledger?: ConversionLedger;
 };
 
 export function calculateProfitability(input: ProfitabilityInput): ProfitabilityResult {
@@ -530,6 +571,7 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     forecasts: input.forecasts,
     rateMap: buildRateMap(input.fxConfigs),
     baseCurrency: input.baseCurrency,
+    ledger: input.ledger,
   });
 
   return {
@@ -554,5 +596,6 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     marginThreshold: f.marginThreshold,
     belowMarginThreshold: f.belowMarginThreshold,
     alertLevel: f.alertLevel,
+    conversion: f.conversion,
   };
 }

@@ -3,7 +3,15 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
+import {
+  buildRateMap,
+  conversionStatus,
+  createConversionLedger,
+  convertAmountFallback,
+  describeMissingRates,
+  hasMissingRates,
+  missingRatePairs,
+} from "../../utils/currency.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const closePayloadSchema = z.object({
@@ -63,25 +71,47 @@ export async function snapshotsRoutes(app: FastifyInstance) {
       ]);
 
       const rateMap = buildRateMap(fxConfigs);
+      // DEP-32. El cierre mensual es el único sitio donde el total NO se puede
+      // "degradar con aviso": se congela en `MonthlySnapshot` y se consulta
+      // después sin ningún canal que lleve la advertencia (la tabla no tiene
+      // columna para ello y añadirla exige migración). Por eso aquí la
+      // conversión incompleta bloquea la escritura con 422 en vez de guardar un
+      // número aproximado como si fuera exacto. Es un fallo accionable y
+      // reintentable: basta cargar la tasa que falta y volver a cerrar.
+      const ledger = createConversionLedger();
 
       const laborCostActual = timeEntries.reduce((s, e) => {
         const rate = Number(e.consultant.hourlyRate ?? 0);
-        return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap);
+        return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap, ledger);
       }, 0);
 
       const expensesActual = expenses.reduce(
-        (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap),
+        (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap, ledger),
         0,
       );
 
       const revenueRecognized = revenueEntries.reduce(
-        (s, r) => s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap),
+        (s, r) => s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap, ledger),
         0,
       );
 
       const contractValue = project.sellPrice
-        ? convertAmountFallback(Number(project.sellPrice), project.sellCurrency, baseCurrency, rateMap)
+        ? convertAmountFallback(Number(project.sellPrice), project.sellCurrency, baseCurrency, rateMap, ledger)
         : 0;
+
+      if (hasMissingRates(ledger)) {
+        const missingPairs = missingRatePairs(ledger);
+        request.log.warn(
+          { endpoint: "POST /api/snapshots/close", projectId, year, month, baseCurrency, missingPairs },
+          describeMissingRates(missingPairs),
+        );
+        return reply.status(422).send({
+          message:
+            `No se puede cerrar ${year}-${String(month).padStart(2, "0")}: faltan tasas de cambio ` +
+            `(${missingPairs.join(", ")}). Cargue las tasas en Tasas FX y vuelva a intentarlo.`,
+          conversion: conversionStatus(ledger),
+        });
+      }
 
       const totalCostActual = laborCostActual + expensesActual;
       const grossMargin = revenueRecognized - totalCostActual;

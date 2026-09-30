@@ -3,7 +3,15 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { buildRateMap, convertAmountFallback } from "../../utils/currency.js";
+import {
+  buildRateMap,
+  conversionStatus,
+  createConversionLedger,
+  convertAmountFallback,
+  describeMissingRates,
+  hasMissingRates,
+  missingRatePairs,
+} from "../../utils/currency.js";
 import { computeEVM } from "../../utils/evm.js";
 import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
@@ -56,6 +64,20 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const fin = computeProjectFinancials(
         toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency),
       );
+
+      // DEP-32: un total que no se pudo convertir del todo deja rastro en el log
+      // y viaja al cliente en `data.conversion`.
+      if (fin.conversion.incomplete) {
+        request.log.warn(
+          {
+            endpoint: "/api/projects/:id/detail",
+            projectId: project.id,
+            baseCurrency,
+            missingPairs: fin.conversion.missingPairs,
+          },
+          describeMissingRates(fin.conversion.missingPairs),
+        );
+      }
 
       const budget = fin.budget;
       const laborCostActual = fin.laborCostActual;
@@ -152,6 +174,8 @@ export async function projectDetailRoutes(app: FastifyInstance) {
             openIssues: project.issues.filter((i) => i.status === "OPEN" || i.status === "IN_PROGRESS").length,
             pendingChanges: project.changeRequests.filter((c) => c.status === "PENDING").length,
           },
+          // Estado de la conversión a `baseCurrency` (DEP-32).
+          conversion: fin.conversion,
         },
       };
     },
@@ -246,7 +270,11 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const rateMap = buildRateMap(fxConfigs);
       const baseCurrency = fxConfigs[0]?.baseCode ?? "USD";
 
-      const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap);
+      // Libro de faltantes de esta curva (DEP-32): presupuesto, horas y gastos
+      // se suman en `baseCurrency` y cualquiera puede quedar sin convertir.
+      const ledger = createConversionLedger();
+
+      const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap, ledger);
       const bac = budget;
       const start = project.startDate;
       const end = project.endDate;
@@ -260,12 +288,12 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       for (const entry of project.timeEntries) {
         const dateKey = entry.workDate.toISOString().slice(0, 10);
         const rate = Number(entry.consultant.hourlyRate ?? 0);
-        const cost = convertAmountFallback(Number(entry.hours) * rate, entry.consultant.rateCurrency, baseCurrency, rateMap);
+        const cost = convertAmountFallback(Number(entry.hours) * rate, entry.consultant.rateCurrency, baseCurrency, rateMap, ledger);
         costByDate.set(dateKey, (costByDate.get(dateKey) ?? 0) + cost);
       }
       for (const expense of project.financialEntries) {
         const dateKey = expense.entryDate.toISOString().slice(0, 10);
-        const cost = convertAmountFallback(Number(expense.amount), expense.currency, baseCurrency, rateMap);
+        const cost = convertAmountFallback(Number(expense.amount), expense.currency, baseCurrency, rateMap, ledger);
         costByDate.set(dateKey, (costByDate.get(dateKey) ?? 0) + cost);
       }
 
@@ -303,11 +331,24 @@ export async function projectDetailRoutes(app: FastifyInstance) {
         }
       }
 
+      if (hasMissingRates(ledger)) {
+        request.log.warn(
+          {
+            endpoint: "/api/projects/:id/timeline",
+            projectId: id,
+            baseCurrency,
+            missingPairs: missingRatePairs(ledger),
+          },
+          describeMissingRates(missingRatePairs(ledger)),
+        );
+      }
+
       return {
         data: {
           projectId: id,
           projectName: project.name,
           baseCurrency,
+          conversion: conversionStatus(ledger),
           bac,
           startDate: start,
           endDate: end,

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildRateMap } from "../currency.js";
+import { buildRateMap, createConversionLedger, missingRatePairs } from "../currency.js";
 import {
   DEFAULT_BUDGET_ALERT_PCT,
   DEFAULT_MARGIN_THRESHOLD_PCT,
@@ -178,6 +178,8 @@ describe("computeProjectFinancials — casos borde", () => {
     });
     // Fallback documentado de convertAmountFallback: el monto queda sin convertir.
     expect(f.expensesActual).toBe(5_000);
+    // DEP-32: y el resultado lo dice, en vez de parecer un total correcto.
+    expect(f.conversion).toEqual({ incomplete: true, missingPairs: ["JPY->USD"] });
   });
 
   it("moneda con tasa: convierte a la base", () => {
@@ -186,6 +188,88 @@ describe("computeProjectFinancials — casos borde", () => {
       expenses: [{ amount: 4_000_000, currency: "COP" }],
     });
     expect(f.expensesActual).toBeCloseTo(1_000, 6);
+    expect(f.conversion).toEqual({ incomplete: false, missingPairs: [] });
+  });
+});
+
+// ─── DEP-32: conversión incompleta en el cálculo unificado ───────────────────
+
+describe("computeProjectFinancials — marca de conversión incompleta", () => {
+  it("todo convertible: conversion.incomplete es false", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      expenses: [{ amount: 4_000_000, currency: "COP" }],
+      revenueEntries: [{ amount: 200_000_000, currency: "COP" }],
+    });
+    expect(f.conversion.incomplete).toBe(false);
+    expect(f.conversion.missingPairs).toEqual([]);
+  });
+
+  it("un total mezclado con un par sin tasa queda marcado como incompleto", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      // 2.000 USD (convertibles) + 5.000 JPY (sin par JPY->USD).
+      expenses: [
+        { amount: 2_000, currency: "USD" },
+        { amount: 5_000, currency: "JPY" },
+      ],
+    });
+    // El número sigue saliendo (degradar, no caer)...
+    expect(f.expensesActual).toBe(7_000);
+    // ...pero ya no miente en silencio.
+    expect(f.conversion.incomplete).toBe(true);
+    expect(f.conversion.missingPairs).toEqual(["JPY->USD"]);
+  });
+
+  it("acumula los faltantes de todos los conceptos del proyecto", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      budgetCurrency: "BRL",
+      expenses: [{ amount: 5_000, currency: "JPY" }],
+      revenueEntries: [{ amount: 1_000, currency: "CLP" }],
+    });
+    expect(f.conversion.missingPairs).toEqual(["BRL->USD", "CLP->USD", "JPY->USD"]);
+  });
+
+  it("vuelca los faltantes en el libro del llamador sin contaminar su propio estado", () => {
+    const consolidado = createConversionLedger();
+
+    const limpio = computeProjectFinancials({ ...base, ledger: consolidado });
+    expect(limpio.conversion.incomplete).toBe(false);
+
+    const sucio = computeProjectFinancials({
+      ...base,
+      expenses: [{ amount: 5_000, currency: "JPY" }],
+      ledger: consolidado,
+    });
+    expect(sucio.conversion.missingPairs).toEqual(["JPY->USD"]);
+
+    // Un tercer proyecto limpio NO hereda el faltante del anterior...
+    const otroLimpio = computeProjectFinancials({ ...base, ledger: consolidado });
+    expect(otroLimpio.conversion.incomplete).toBe(false);
+
+    // ...pero el consolidado de la petición sí lo conserva.
+    expect(missingRatePairs(consolidado)).toEqual(["JPY->USD"]);
+  });
+
+  it("el forecast en moneda sin tasa también marca el total", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      forecasts: [
+        {
+          consultantId: "c1",
+          hoursProjected: 100,
+          hourlyRate: 50,
+          sellRate: 80,
+          currency: "JPY",
+          startDate: "2026-07-01",
+          endDate: "2026-09-30",
+          consultant: { hourlyRate: 50, rateCurrency: "JPY" },
+        },
+      ],
+    });
+    expect(f.conversion.incomplete).toBe(true);
+    expect(f.conversion.missingPairs).toEqual(["JPY->USD"]);
   });
 });
 

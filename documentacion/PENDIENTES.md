@@ -89,10 +89,6 @@ botella; `AuditLog` además crece más rápido desde que guarda `before` y `afte
 
 ### Medio
 
-**DEP-32 — La conversión de moneda falla en silencio.** `convertAmountFallback` devuelve el
-importe sin convertir cuando no hay tasa, en vez de señalarlo. Los importes salen en su
-moneda original pero rotulados con la moneda base. Afecta especialmente a la nómina.
-
 **`GET /api/projects/:id/detail` escribe dentro de una lectura.** Si el `healthStatus`
 calculado difiere del guardado, hace un `update` dentro de un `GET`, y sin auditarlo.
 

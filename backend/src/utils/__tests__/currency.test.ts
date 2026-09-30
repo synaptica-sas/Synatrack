@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { buildRateMap, convertAmount, convertAmountFallback } from "../currency.js";
+import {
+  buildRateMap,
+  convertAmount,
+  convertAmountFallback,
+  conversionStatus,
+  createConversionLedger,
+  describeMissingRates,
+  hasMissingRates,
+  mergeConversionLedger,
+  missingRatePairs,
+} from "../currency.js";
 
 const configs = [
   { baseCode: "USD", quoteCode: "COP", rate: 4200 },
@@ -145,5 +155,113 @@ describe("convertAmount — precisión numérica", () => {
     // 3.7 PEN = 1 USD = 4200 COP → 1 PEN ≈ 4200/3.7 ≈ 1135.13 COP
     const result = convertAmount(3.7, "PEN", "COP", map);
     expect(result).toBeCloseTo(4200, 1);
+  });
+});
+
+// ─── DEP-32: el libro de faltantes ───────────────────────────────────────────
+//
+// El bug: `convertAmountFallback` devuelve el monto SIN convertir cuando no hay
+// tasa, así que un importe en COP se sumaba a un total en USD como si fuera USD
+// y el resultado salía rotulado con la moneda base, sin ninguna marca. Estas
+// pruebas fijan que el fallo ahora queda anotado y que la matemática de las
+// conversiones que SÍ tienen tasa no cambió.
+
+describe("convertAmountFallback — libro de faltantes", () => {
+  const rateMap = buildRateMap(configs);
+
+  it("conversión directa con tasa: convierte y NO anota nada", () => {
+    const ledger = createConversionLedger();
+    expect(convertAmountFallback(1, "USD", "COP", rateMap, ledger)).toBe(4200);
+    expect(hasMissingRates(ledger)).toBe(false);
+    expect(missingRatePairs(ledger)).toEqual([]);
+  });
+
+  it("conversión con pivote: convierte y NO anota nada", () => {
+    const ledger = createConversionLedger();
+    // COP -> EUR no existe directo; se pivota por USD.
+    const resultado = convertAmountFallback(4200, "COP", "EUR", rateMap, ledger);
+    expect(resultado).toBeCloseTo(0.92, 6);
+    expect(hasMissingRates(ledger)).toBe(false);
+  });
+
+  it("misma moneda: devuelve el monto y NO anota nada", () => {
+    const ledger = createConversionLedger();
+    expect(convertAmountFallback(500, "USD", "USD", rateMap, ledger)).toBe(500);
+    expect(hasMissingRates(ledger)).toBe(false);
+  });
+
+  it("par sin tasa (el bug): devuelve el monto sin convertir PERO lo anota", () => {
+    const ledger = createConversionLedger();
+    // El número no cambia: degradar, no caer.
+    expect(convertAmountFallback(500, "JPY", "BRL", rateMap, ledger)).toBe(500);
+    // Pero ya no es indistinguible de un total correcto.
+    expect(hasMissingRates(ledger)).toBe(true);
+    expect(missingRatePairs(ledger)).toEqual(["JPY->BRL"]);
+  });
+
+  it("sin libro se comporta exactamente como antes (compatibilidad)", () => {
+    expect(convertAmountFallback(500, "JPY", "BRL", rateMap)).toBe(500);
+    expect(convertAmountFallback(1, "USD", "COP", rateMap)).toBe(4200);
+  });
+
+  it("un monto de 0 sin tasa no marca el total: aporta 0 esté convertido o no", () => {
+    const ledger = createConversionLedger();
+    expect(convertAmountFallback(0, "JPY", "USD", rateMap, ledger)).toBe(0);
+    expect(hasMissingRates(ledger)).toBe(false);
+  });
+
+  it("el mismo par repetido se anota una sola vez", () => {
+    const ledger = createConversionLedger();
+    convertAmountFallback(10, "JPY", "USD", rateMap, ledger);
+    convertAmountFallback(20, "JPY", "USD", rateMap, ledger);
+    convertAmountFallback(30, "BRL", "USD", rateMap, ledger);
+    expect(missingRatePairs(ledger)).toEqual(["BRL->USD", "JPY->USD"]);
+  });
+
+  it("un total mezclado queda marcado como incompleto", () => {
+    const ledger = createConversionLedger();
+    // 1 USD convertido correctamente + 5000 JPY que se cuelan sin convertir.
+    const total =
+      convertAmountFallback(1, "USD", "COP", rateMap, ledger) +
+      convertAmountFallback(5_000, "JPY", "COP", rateMap, ledger);
+
+    expect(total).toBe(9_200); // 4200 + 5000 (los 5000 NO son pesos)
+    const estado = conversionStatus(ledger);
+    expect(estado.incomplete).toBe(true);
+    expect(estado.missingPairs).toEqual(["JPY->COP"]);
+  });
+});
+
+describe("conversionStatus / mergeConversionLedger / describeMissingRates", () => {
+  const rateMap = buildRateMap(configs);
+
+  it("un libro limpio reporta incomplete:false y lista vacía", () => {
+    expect(conversionStatus(createConversionLedger())).toEqual({
+      incomplete: false,
+      missingPairs: [],
+    });
+  });
+
+  it("merge acumula los faltantes de varios cálculos sin duplicar", () => {
+    const proyecto1 = createConversionLedger();
+    const proyecto2 = createConversionLedger();
+    convertAmountFallback(10, "JPY", "USD", rateMap, proyecto1);
+    convertAmountFallback(10, "JPY", "USD", rateMap, proyecto2);
+    convertAmountFallback(10, "BRL", "USD", rateMap, proyecto2);
+
+    const consolidado = createConversionLedger();
+    mergeConversionLedger(consolidado, proyecto1);
+    mergeConversionLedger(consolidado, proyecto2);
+
+    expect(missingRatePairs(consolidado)).toEqual(["BRL->USD", "JPY->USD"]);
+    // El libro de origen no se toca.
+    expect(missingRatePairs(proyecto1)).toEqual(["JPY->USD"]);
+  });
+
+  it("el mensaje de log nombra los pares que faltaron", () => {
+    const mensaje = describeMissingRates(["JPY->USD", "BRL->USD"]);
+    expect(mensaje).toContain("JPY->USD");
+    expect(mensaje).toContain("BRL->USD");
+    expect(mensaje).toContain("SIN convertir");
   });
 });

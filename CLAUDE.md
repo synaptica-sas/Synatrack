@@ -195,8 +195,9 @@ permisos hardcodeada en `App.tsx` (`handleSwitchRole`, el simulador de rol para 
    Sigue en pie la regla: nunca `prisma db push` fuera de un prototipo local.
 2. **El error handler global devuelve `detail` y `stack` al cliente en producción** (`src/app.ts`).
 3. **No hay scheduler**: `runAssignmentMaintenance` y `runAlertEngine` corren una sola vez al arrancar.
-4. **Bug de FX en `GET /api/projects/:id/profitability`**: reconstruye el rateMap con `key.split("_")`
-   cuando `buildRateMap` usa `"->"` -> las conversiones caen al fallback sin convertir.
+4. ~~**Bug de FX en `GET /api/projects/:id/profitability`**~~ — **RESUELTO**. La ruta ya pasa los
+   `FxConfig` crudos a `calculateProfitability`, que construye el mapa con `buildRateMap`; del
+   `key.split("_")` solo queda un comentario histórico en `projects.routes.ts:348`.
 5. **Tres cálculos de rentabilidad distintos** (`financial.ts`, `/stats/overview`, `/portfolio`,
    `project-detail`) y `marginThreshold` hardcodeado a 15 en stats y alerts.
 6. **Auditoría parcial**: horas, horas extra, gastos, ingresos, consultores y usuarios no dejan rastro.

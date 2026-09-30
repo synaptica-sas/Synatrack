@@ -3,7 +3,14 @@ import { AppRole, TimeEntryStatus } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { buildRateMap } from "../../utils/currency.js";
+import {
+  buildRateMap,
+  conversionStatus,
+  createConversionLedger,
+  describeMissingRates,
+  missingRatePairs,
+  hasMissingRates,
+} from "../../utils/currency.js";
 import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
 import { computeEVM } from "../../utils/evm.js";
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
@@ -41,6 +48,9 @@ export async function statsRoutes(app: FastifyInstance) {
       const fxConfigs = await prisma.fxConfig.findMany();
       const rateMap = buildRateMap(fxConfigs);
       const baseCurrency = query.baseCurrency ?? fxConfigs[0]?.baseCode ?? "USD";
+      // Libro de faltantes de TODA la petición (DEP-32): los totales agregan
+      // proyectos, así que un solo par sin tasa ya ensucia el consolidado.
+      const ledgerPeticion = createConversionLedger();
       // Un solo "ahora" por petición; las utilidades no leen el reloj.
       const now = new Date();
 
@@ -81,9 +91,10 @@ export async function statsRoutes(app: FastifyInstance) {
 
         // Cálculo financiero unificado (utils/financial.ts) — misma fórmula que
         // /portfolio, el detalle del proyecto y el motor de alertas.
-        const fin = computeProjectFinancials(
-          toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
-        );
+        const fin = computeProjectFinancials({
+          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
+          ledger: ledgerPeticion,
+        });
 
         const spent = fin.totalCostActual;
         const budget = fin.budget;
@@ -156,6 +167,8 @@ export async function statsRoutes(app: FastifyInstance) {
           alertLevel,
           // EVM
           evm,
+          // Conversión a `displayCurrency` (DEP-32)
+          conversion: fin.conversion,
         };
       });
 
@@ -213,7 +226,22 @@ export async function statsRoutes(app: FastifyInstance) {
         }),
       );
 
-      return { data: { baseCurrency, projects: byProject, totals, byProjectType } };
+      if (hasMissingRates(ledgerPeticion)) {
+        request.log.warn(
+          { endpoint: "/api/stats/overview", baseCurrency, missingPairs: missingRatePairs(ledgerPeticion) },
+          describeMissingRates(missingRatePairs(ledgerPeticion)),
+        );
+      }
+
+      return {
+        data: {
+          baseCurrency,
+          projects: byProject,
+          totals,
+          byProjectType,
+          conversion: conversionStatus(ledgerPeticion),
+        },
+      };
     },
   );
 
@@ -232,6 +260,9 @@ export async function statsRoutes(app: FastifyInstance) {
       const fxConfigs = await prisma.fxConfig.findMany();
       const rateMap = buildRateMap(fxConfigs);
       const baseCurrency = query.baseCurrency ?? fxConfigs[0]?.baseCode ?? "USD";
+      // Libro de faltantes de TODA la petición (DEP-32): los totales agregan
+      // proyectos, así que un solo par sin tasa ya ensucia el consolidado.
+      const ledgerPeticion = createConversionLedger();
       // Un solo "ahora" por petición; las utilidades no leen el reloj.
       const now = new Date();
 
@@ -263,9 +294,10 @@ export async function statsRoutes(app: FastifyInstance) {
         // ANTES: este endpoint sumaba `hoursProjected * consultant.hourlyRate`
         // sin descontar lo ya aprobado, ignorando `forecast.hourlyRate` y
         // convirtiendo desde la moneda del consultor en vez de la del forecast.
-        const fin = computeProjectFinancials(
-          toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
-        );
+        const fin = computeProjectFinancials({
+          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
+          ledger: ledgerPeticion,
+        });
 
         const spent = fin.totalCostActual;
         const budget = fin.budget;
@@ -336,6 +368,8 @@ export async function statsRoutes(app: FastifyInstance) {
           openHighRisks,
           openIssues,
           criticalIssues,
+          // Conversión a `displayCurrency` (DEP-32)
+          conversion: fin.conversion,
         };
       });
 
@@ -360,7 +394,21 @@ export async function statsRoutes(app: FastifyInstance) {
         alertCount: portfolioProjects.filter((p) => p.alertLevel !== "ok").length,
       };
 
-      return { data: { baseCurrency, projects: portfolioProjects, summary } };
+      if (hasMissingRates(ledgerPeticion)) {
+        request.log.warn(
+          { endpoint: "/api/stats/portfolio", baseCurrency, missingPairs: missingRatePairs(ledgerPeticion) },
+          describeMissingRates(missingRatePairs(ledgerPeticion)),
+        );
+      }
+
+      return {
+        data: {
+          baseCurrency,
+          projects: portfolioProjects,
+          summary,
+          conversion: conversionStatus(ledgerPeticion),
+        },
+      };
     },
   );
 }

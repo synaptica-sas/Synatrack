@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
-import { buildRateMap } from "../../utils/currency.js";
+import { buildRateMap, describeMissingRates } from "../../utils/currency.js";
 import { calculateProfitability, splitFinancialEntries } from "../../utils/financial.js";
 
 /**
@@ -351,6 +351,21 @@ export async function projectsRoutes(app: FastifyInstance) {
         fxConfigs,
         baseCurrency,
       });
+
+      // DEP-32: si algún importe se sumó sin convertir, queda en el log del
+      // servidor con el par exacto y viaja al cliente en `conversion`, que
+      // `calculateProfitability` ya incluye en su resultado.
+      if (profitability.conversion.incomplete) {
+        request.log.warn(
+          {
+            endpoint: "/api/projects/:id/profitability",
+            projectId: project.id,
+            baseCurrency,
+            missingPairs: profitability.conversion.missingPairs,
+          },
+          describeMissingRates(profitability.conversion.missingPairs),
+        );
+      }
 
       return {
         data: {
