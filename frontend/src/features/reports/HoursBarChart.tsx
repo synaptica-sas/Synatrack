@@ -126,7 +126,13 @@ export function HoursBarChart({
           return (
             <g
               key={bar.key}
-              className={isHovered ? "report-col hovered" : "report-col"}
+              className={[
+                "report-col",
+                isHovered ? "hovered" : "",
+                // El fin de semana se dibuja igual pero atenuado: se distingue
+                // de la jornada habitual sin ocultar el dato.
+                bar.weekend ? "weekend" : "",
+              ].filter(Boolean).join(" ")}
               onMouseEnter={() => setHovered(bar.key)}
               onMouseLeave={() => setHovered(null)}
             >

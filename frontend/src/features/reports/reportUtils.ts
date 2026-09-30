@@ -22,6 +22,8 @@ export type ReportBar = {
   excess: number;
   /** regular + excess. */
   total: number;
+  /** Sábado o domingo. La barra se dibuja igual, pero atenuada. */
+  weekend?: boolean;
 };
 
 /** Reparte las horas de un día entre jornada y exceso. */
@@ -108,39 +110,14 @@ export function barsByConsultant(entries: TimeEntry[]): ReportBar[] {
 const DIAS = ["lun.", "mar.", "mié.", "jue.", "vie.", "sáb.", "dom."];
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-/** Los cinco días laborables de la semana: de lunes a viernes. */
-export function workWeekDays(weekStart: string): string[] {
-  return weekDays(weekStart).slice(0, 5);
-}
-
-/** ¿Cae en sábado o domingo? Los días ISO de la semana van de lunes a domingo. */
-export function isWeekendDay(isoDay: string, weekStart: string): boolean {
-  return !workWeekDays(weekStart).includes(isoDay);
-}
-
 /**
- * Horas registradas en sábado o domingo. El informe no las dibuja, pero
- * tampoco las tira: se muestran aparte para que un fin de semana trabajado no
- * desaparezca sin dejar rastro.
- */
-export function weekendHours(entries: TimeEntry[], weekStart: string): number {
-  const laborables = new Set(workWeekDays(weekStart));
-  let total = 0;
-  for (const entry of entries) {
-    if (!laborables.has(entry.workDate.slice(0, 10))) total += numberish(entry.hours);
-  }
-  return roundHours(total);
-}
-
-/** Deja fuera las entradas de sábado y domingo. */
-export function onlyWeekdays(entries: TimeEntry[], weekStart: string): TimeEntry[] {
-  const laborables = new Set(workWeekDays(weekStart));
-  return entries.filter((entry) => laborables.has(entry.workDate.slice(0, 10)));
-}
-
-/**
- * Una barra por día laborable, de lunes a viernes. Se devuelven los cinco
- * aunque estén a cero, para que los huecos se vean como lo que son.
+ * Una barra por cada día de la semana, de lunes a domingo. Se devuelven los
+ * siete aunque estén a cero, para que los huecos se vean como lo que son.
+ *
+ * El sábado y el domingo se incluyen: `Consultant.allowWeekendWork` indica que
+ * trabajar en fin de semana está contemplado, y dejarlos fuera hacía que esas
+ * horas no cuadraran con ningún total de la pantalla. Se dibujan atenuados
+ * para que se distingan de la jornada habitual sin esconder el dato.
  *
  * El exceso se calcula por consultor dentro de cada día y luego se suma, de
  * modo que la barra de un día con varias personas solo se pone roja en la
@@ -149,7 +126,7 @@ export function onlyWeekdays(entries: TimeEntry[], weekStart: string): TimeEntry
 export function barsByDay(entries: TimeEntry[], weekStart: string): ReportBar[] {
   const byDay = hoursByDayAndConsultant(entries);
 
-  return workWeekDays(weekStart).map((day, index) => {
+  return weekDays(weekStart).map((day, index) => {
     const porConsultor = byDay.get(day);
     let regular = 0;
     let excess = 0;
@@ -168,6 +145,8 @@ export function barsByDay(entries: TimeEntry[], weekStart: string): ReportBar[] 
       regular: roundHours(regular),
       excess: roundHours(excess),
       total: roundHours(regular + excess),
+      // Los días ISO de la semana van de lunes a domingo: los dos últimos.
+      weekend: index >= 5,
     };
   });
 }

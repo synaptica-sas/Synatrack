@@ -4,9 +4,7 @@ import {
   barsByConsultant,
   barsByDay,
   formatHms,
-  onlyWeekdays,
   totals,
-  weekendHours,
 } from "../features/reports/reportUtils";
 import type { TimeEntry } from "../services/api";
 
@@ -103,17 +101,17 @@ describe("Barras por consultor", () => {
 });
 
 describe("Barras por día", () => {
-  it("devuelve los cinco días laborables aunque estén vacíos", () => {
+  it("devuelve los siete días de la semana aunque estén vacíos", () => {
     const bars = barsByDay([entry("a", "Ana", LUNES, 5)], LUNES);
 
-    expect(bars).toHaveLength(5);
+    expect(bars).toHaveLength(7);
     expect(bars[0].label).toBe("lun., sep 21");
     expect(bars[0].total).toBe(5);
     expect(bars[1].total).toBe(0);
-    expect(bars[4].label).toBe("vie., sep 25");
+    expect(bars[6].label).toBe("dom., sep 27");
   });
 
-  it("no incluye sábado ni domingo", () => {
+  it("incluye sábado y domingo, y los marca como fin de semana", () => {
     const bars = barsByDay(
       [
         entry("a", "Ana", LUNES, 5),
@@ -123,9 +121,33 @@ describe("Barras por día", () => {
       LUNES,
     );
 
-    expect(bars).toHaveLength(5);
-    expect(bars.map((b) => b.label)).not.toContain("sáb., sep 26");
-    expect(bars.map((b) => b.label)).not.toContain("dom., sep 27");
+    expect(bars).toHaveLength(7);
+    expect(bars[5].label).toBe("sáb., sep 26");
+    expect(bars[5].total).toBe(4);
+    expect(bars[6].label).toBe("dom., sep 27");
+    expect(bars[6].total).toBe(3);
+
+    // Solo los dos últimos van marcados: la columna se atenúa, no se oculta.
+    expect(bars.map((b) => b.weekend)).toEqual([false, false, false, false, false, true, true]);
+  });
+
+  it("las horas de fin de semana entran en el total de la semana", () => {
+    const bars = barsByDay(
+      [
+        entry("a", "Ana", LUNES, 5),
+        entry("a", "Ana", SABADO, 4),
+      ],
+      LUNES,
+    );
+
+    expect(totals(bars).total).toBe(9);
+  });
+
+  it("un sábado de más de 8 h también genera exceso", () => {
+    const bars = barsByDay([entry("a", "Ana", SABADO, 10)], LUNES);
+
+    expect(bars[5].regular).toBe(8);
+    expect(bars[5].excess).toBe(2);
   });
 
   it("la jornada es de cada persona: tres consultores a 8 h no generan exceso", () => {
@@ -167,46 +189,6 @@ describe("Barras por día", () => {
   it("ignora entradas fuera de la semana pedida", () => {
     const bars = barsByDay([entry("a", "Ana", "2026-09-14", 6)], LUNES);
     expect(bars.every((b) => b.total === 0)).toBe(true);
-  });
-});
-
-describe("El fin de semana se aparta, no se pierde", () => {
-  it("onlyWeekdays deja fuera sábado y domingo", () => {
-    const todas = [
-      entry("a", "Ana", LUNES, 5),
-      entry("a", "Ana", SABADO, 4),
-      entry("a", "Ana", DOMINGO, 3),
-    ];
-
-    const laborables = onlyWeekdays(todas, LUNES);
-    expect(laborables).toHaveLength(1);
-    expect(laborables[0].workDate.slice(0, 10)).toBe(LUNES);
-  });
-
-  it("weekendHours suma lo que queda fuera, para poder avisarlo", () => {
-    const todas = [
-      entry("a", "Ana", LUNES, 5),
-      entry("a", "Ana", SABADO, 4),
-      entry("b", "Beto", DOMINGO, 3.5),
-    ];
-
-    expect(weekendHours(todas, LUNES)).toBe(7.5);
-  });
-
-  it("sin horas en fin de semana el aviso no aparece", () => {
-    expect(weekendHours([entry("a", "Ana", LUNES, 5)], LUNES)).toBe(0);
-  });
-
-  it("el total de las barras cuadra con las horas laborables, sin el fin de semana", () => {
-    const todas = [
-      entry("a", "Ana", LUNES, 5),
-      entry("a", "Ana", MARTES, 3),
-      entry("a", "Ana", SABADO, 4),
-    ];
-
-    const bars = barsByDay(onlyWeekdays(todas, LUNES), LUNES);
-    expect(totals(bars).total).toBe(8);
-    expect(weekendHours(todas, LUNES)).toBe(4);
   });
 });
 

@@ -4,15 +4,7 @@ import { downloadCsv } from "../../utils/csv";
 import { listAllTimeEntries, type Consultant, type TimeEntry } from "../../services/api";
 import { addDays, formatWeekRange, startOfWeek, todayIso } from "../timesheet/timesheetUtils";
 import { HoursBarChart } from "./HoursBarChart";
-import {
-  DAILY_LIMIT,
-  barsByConsultant,
-  barsByDay,
-  formatHms,
-  onlyWeekdays,
-  totals,
-  weekendHours,
-} from "./reportUtils";
+import { DAILY_LIMIT, barsByConsultant, barsByDay, formatHms, totals } from "./reportUtils";
 
 export function ReportsTab({
   consultants,
@@ -55,19 +47,12 @@ export function ReportsTab({
     void reload();
   }, [reload]);
 
-  // La gráfica es siempre por día laborable. El filtro de consultor cambia de
-  // quién son esas horas, no lo que representa cada columna.
-  //
-  // El fin de semana se descarta en un único punto, y a partir de ahí todo
-  // (gráfica, tablas, totales y CSV) habla de lunes a viernes. Las horas de
-  // sábado o domingo no se pierden: se cuentan aparte y se avisan, porque en
-  // este sistema el trabajo en fin de semana existe -- Consultant tiene
-  // allowWeekendWork -- y esconderlo sin más falsearía el informe.
-  const laborables = useMemo(() => onlyWeekdays(entries, weekStart), [entries, weekStart]);
-  const finDeSemana = useMemo(() => weekendHours(entries, weekStart), [entries, weekStart]);
-
-  const bars = useMemo(() => barsByDay(laborables, weekStart), [laborables, weekStart]);
-  const porConsultor = useMemo(() => barsByConsultant(laborables), [laborables]);
+  // La gráfica cubre la semana entera, de lunes a domingo. El filtro de
+  // consultor cambia de quién son esas horas, no lo que representa cada
+  // columna. El sábado y el domingo entran en los totales como cualquier otro
+  // día; se distinguen por el tono atenuado de su columna, no por omisión.
+  const bars = useMemo(() => barsByDay(entries, weekStart), [entries, weekStart]);
+  const porConsultor = useMemo(() => barsByConsultant(entries), [entries]);
   const resumen = useMemo(() => totals(bars), [bars]);
 
   const nombreConsultor = consultants.find((c) => c.id === consultantId)?.fullName;
@@ -123,7 +108,7 @@ export function ReportsTab({
               <input type="checkbox" checked={onlyApproved} onChange={(e) => setOnlyApproved(e.target.checked)} />
               Solo aprobadas
             </label>
-            <button type="button" className="ghost" onClick={handleExport} disabled={laborables.length === 0}>
+            <button type="button" className="ghost" onClick={handleExport} disabled={entries.length === 0}>
               Exportar CSV
             </button>
           </div>
@@ -131,7 +116,7 @@ export function ReportsTab({
 
         <div className="report-kpis">
           <div>
-            <span>{unaPersona ? nombreConsultor ?? "Consultor" : "Total del equipo"} (lun–vie)</span>
+            <span>{unaPersona ? nombreConsultor ?? "Consultor" : "Total del equipo"}</span>
             <strong>{formatHms(resumen.total)}</strong>
           </div>
           <div>
@@ -143,13 +128,6 @@ export function ReportsTab({
             <strong className={resumen.excess > 0 ? "bad" : undefined}>{formatHms(resumen.excess)}</strong>
           </div>
         </div>
-
-        {finDeSemana > 0 && (
-          <p className="report-weekend-note">
-            Además hay <strong>{formatHms(finDeSemana)}</strong> registradas en sábado o domingo, que
-            la gráfica no muestra porque solo cubre los días laborables.
-          </p>
-        )}
 
         {loading ? (
           <p className="loading">Calculando…</p>
@@ -167,15 +145,15 @@ export function ReportsTab({
 
         <p className="ts-hint">
           {unaPersona
-            ? `Cada columna es un día laborable de ${nombreConsultor ?? "el consultor"}. Lo que pasa de ${DAILY_LIMIT} h aparece en rojo.`
-            : `Cada columna suma el día de todo el equipo, de lunes a viernes. El tramo rojo es lo que alguien excedió de su jornada de ${DAILY_LIMIT} h, no lo que el equipo pasa de ${DAILY_LIMIT} h entre todos.`}
+            ? `Cada columna es un día de ${nombreConsultor ?? "el consultor"}, de lunes a domingo. Lo que pasa de ${DAILY_LIMIT} h aparece en rojo.`
+            : `Cada columna suma el día de todo el equipo, de lunes a domingo. El tramo rojo es lo que alguien excedió de su jornada de ${DAILY_LIMIT} h, no lo que el equipo pasa de ${DAILY_LIMIT} h entre todos.`}
         </p>
       </article>
 
       {!unaPersona && porConsultor.length > 0 && (
         <article className="card">
           <h3 className="section-header-title section-header-title--tight">
-            Horas por consultor (lunes a viernes)
+            Horas por consultor (semana completa)
           </h3>
           <div className="table-wrap">
             <table>
