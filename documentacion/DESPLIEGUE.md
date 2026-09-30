@@ -29,8 +29,12 @@ producción**.
 ### Ramas
 
 - `main`: la rama que mira producción.
-- `dev`: donde se integra el trabajo. Hoy va muy por delante de `main`.
+- `dev`: donde se integra el trabajo.
 - Ramas `fix/*`, `feat/*` y `docs/*` de trabajo.
+
+**Al 30/09/2026 `main` y `dev` están idénticas** (`3300eb5`), con los 69 cambios acumulados
+desde la versión del 2 de septiembre que **sigue siendo la que se ejecuta en producción**. Es
+decir: las ramas ya están fusionadas, pero **el despliegue todavía no se ha hecho**.
 
 **No hay un flujo de promoción acordado** entre ramas, y **la rama que Render y Vercel tienen
 conectada no está declarada en el repositorio** (`render.yaml` no fija `branch`): hay que
@@ -42,6 +46,20 @@ formal, este es el sitio donde documentarlo.
 ---
 
 ## 2. Llevar `dev` a producción
+
+> ### ⚠ El orden importa: primero la base, después el backend, después el frontend
+>
+> El workflow de Azure Static Web Apps **despliega el frontend en cada push a `main`**, sin
+> esperar a nada más. Como `main` ya se movió, es posible que el frontend nuevo ya esté
+> publicado contra el backend viejo.
+>
+> Eso rompe de forma visible **Horas → Aprobaciones** y **Horas Extra → Historial**: el frontend
+> nuevo espera `{ data, meta }` de los listados paginados y el backend viejo devuelve solo la
+> lista. Si alguien reporta esas dos pantallas rotas antes de completar el despliegue, **ésta es
+> la causa y se arregla desplegando el backend**, no tocando el frontend.
+>
+> El orden correcto es: **1)** rehacer la base (§2.3), **2)** cargar las tasas (§2.4),
+> **3)** desplegar el backend en Render, **4)** comprobar (§4). El frontend ya va solo.
 
 ### 2.1 Por qué hay que rehacer la base de Supabase
 
@@ -310,6 +328,9 @@ Conviene avisarlo antes, para que nadie piense que algo se rompió:
 
 ## 6. Si algo sale mal
 
+- **Horas → Aprobaciones y Horas Extra → Historial salen vacías o con error**: el frontend está
+  desplegado y el backend no. Esas dos pantallas esperan listados paginados (`{ data, meta }`) y
+  el backend viejo devuelve una lista suelta. Se arregla desplegando el backend.
 - **`migrate deploy` falla**: no insistas ni uses `db push`. Es lo que causó el drift
   original. Si el error es "ya existe", el esquema no quedó vacío en el paso 1.
 - **El esquema no coincide en el paso 3**: no despliegues. El código espera columnas que la
