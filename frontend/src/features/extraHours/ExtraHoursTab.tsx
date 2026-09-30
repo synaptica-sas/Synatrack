@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
@@ -407,9 +407,20 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   // Cambiar el filtro de consultor vuelve SIEMPRE a la página 1: quedarse en
   // la página 5 de un filtro que ahora tiene dos páginas mostraría una tabla
   // vacía sin motivo aparente.
+  //
+  // Ojo con las dependencias: NO puede depender de la identidad de
+  // `loadHistoryPage`. `onError` llega del padre como función declarada, así que
+  // cambia en cada render; el efecto se volvía a disparar y devolvía la tabla a
+  // la página 1 justo después de pulsar "siguiente". Depende solo del filtro, y
+  // llama al cargador por referencia.
+  const loadHistoryPageRef = useRef(loadHistoryPage);
   useEffect(() => {
-    void loadHistoryPage(1);
+    loadHistoryPageRef.current = loadHistoryPage;
   }, [loadHistoryPage]);
+
+  useEffect(() => {
+    void loadHistoryPageRef.current(1);
+  }, [historyConsultantFilter]);
 
   // Load initial data
   useEffect(() => {

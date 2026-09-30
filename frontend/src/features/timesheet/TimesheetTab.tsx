@@ -398,10 +398,22 @@ export function TimesheetTab({
   // Al entrar en la vista, y cada vez que cambia el filtro, se vuelve SIEMPRE a
   // la página 1: conservar la página actual dejaría al usuario en una que quizá
   // ya no existe con el filtro nuevo, y vería una tabla vacía sin motivo.
+  //
+  // Ojo con las dependencias: NO puede depender de la identidad de
+  // `loadApprovals`. `onError` llega del padre como función declarada, así que
+  // cambia en cada render; el efecto se volvía a disparar y devolvía la tabla a
+  // la página 1 justo después de que el usuario pulsara "siguiente", dejando el
+  // paginador clavado en la primera página. Depende solo de lo que de verdad
+  // debe reiniciar la paginación, y llama al cargador por referencia.
+  const loadApprovalsRef = useRef(loadApprovals);
+  useEffect(() => {
+    loadApprovalsRef.current = loadApprovals;
+  }, [loadApprovals]);
+
   useEffect(() => {
     if (view !== "approvals") return;
-    void loadApprovals(1);
-  }, [view, loadApprovals]);
+    void loadApprovalsRef.current(1);
+  }, [view, approvalStatus]);
 
   async function handleReview(id: string, action: "approve" | "reject") {
     try {
