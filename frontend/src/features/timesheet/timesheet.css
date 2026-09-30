@@ -402,3 +402,90 @@ body.dark .ts-empty-note,
 body.dark .ts-hint code       { background: rgba(255, 255, 255, 0.04); }
 body.dark .tk-entry           { border-bottom-color: rgba(255, 255, 255, 0.05); }
 body.dark .ts-task-pill       { background: rgba(96, 165, 250, 0.16); color: #93c5fd; }
+
+/* ── Grupos por proyecto (plegables) ──
+   Cada proyecto es una fila de cabecera que resume sus tareas; al desplegarla
+   aparecen debajo, sangradas. El cronómetro crea una fila por cada
+   descripción distinta, y sin agrupar la grilla crecía sin orden. */
+.ts-group > td {
+  background: var(--color-primary-05);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ts-group.open > td { border-bottom-color: transparent; }
+
+.ts-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.2rem 0;
+  background: none;
+  border: none;
+  color: var(--text-strong);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ts-group-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.ts-group-caret {
+  flex: 0 0 auto;
+  width: 1rem;
+  color: var(--color-accent);
+  font-size: 0.8rem;
+}
+
+.ts-group-name {
+  font-weight: 700;
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-group-count {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-accent-15);
+  color: var(--color-accent);
+}
+
+.ts-group-hours {
+  display: block;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+/* Filas de tarea: sangradas bajo su proyecto. */
+.ts-indent { position: relative; }
+
+.ts-indent::before {
+  content: "";
+  position: absolute;
+  left: 0.9rem;
+  top: 0;
+  bottom: 0;
+  border-left: 2px solid var(--color-accent-30);
+}
+
+.ts-task-row .ts-col-task { padding-left: 0.2rem; }
+
+.ts-expand-all {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+body.dark .ts-group > td { background: rgba(255, 255, 255, 0.03); }

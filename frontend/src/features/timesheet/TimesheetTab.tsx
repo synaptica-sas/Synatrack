@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { SectionLayout } from "../../components/SectionLayout";
@@ -65,6 +65,30 @@ function rowKeyOf(projectId: string, activityId: string | null, description: str
 
 const emptyDraft = { projectId: "", activityId: "", description: "" };
 
+/**
+ * Proyectos desplegados en la grilla. Se recuerda por navegador para que la
+ * semana siguiente se abra igual; es una comodidad, así que si el
+ * almacenamiento no está disponible simplemente arranca todo plegado.
+ */
+const EXPANDED_KEY = "synatrack.timesheet.expandedProjects";
+
+function loadExpanded(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(EXPANDED_KEY);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveExpanded(ids: Set<string>) {
+  try {
+    window.localStorage.setItem(EXPANDED_KEY, JSON.stringify([...ids]));
+  } catch {
+    // Sin almacenamiento el plegado dura lo que la sesión: no es un error.
+  }
+}
+
 export function TimesheetTab({
   projects,
   consultants,
@@ -81,6 +105,20 @@ export function TimesheetTab({
   onError: (msg: string) => void;
 }) {
   const [view, setView] = useState<"week" | "approvals">("week");
+  // Cada proyecto es una fila plegable que despliega sus tareas: el cronómetro
+  // crea una fila por cada descripción distinta, y sin agrupar la grilla crece
+  // sin orden semana tras semana.
+  const [expanded, setExpanded] = useState<Set<string>>(() => loadExpanded());
+
+  const toggleProject = useCallback((projectId: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      saveExpanded(next);
+      return next;
+    });
+  }, []);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(todayIso()));
 
   const [myConsultant, setMyConsultant] = useState<Consultant | null>(null);
@@ -236,6 +274,25 @@ export function TimesheetTab({
     });
   }, [weekEntries, draftRows, projects]);
 
+  /** Filas agrupadas por proyecto, conservando el orden alfabético de `rows`. */
+  const groups = useMemo(() => {
+    const porProyecto = new Map<string, TimesheetRow[]>();
+    for (const row of rows) {
+      const lista = porProyecto.get(row.projectId) ?? [];
+      lista.push(row);
+      porProyecto.set(row.projectId, lista);
+    }
+    return Array.from(porProyecto, ([projectId, tareas]) => ({ projectId, tareas }));
+  }, [rows]);
+
+  const allExpanded = groups.length > 0 && groups.every((g) => expanded.has(g.projectId));
+
+  function setAllExpanded(open: boolean) {
+    const next = open ? new Set(groups.map((g) => g.projectId)) : new Set<string>();
+    saveExpanded(next);
+    setExpanded(next);
+  }
+
   const dayTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const day of days) totals[day] = 0;
@@ -258,6 +315,14 @@ export function TimesheetTab({
 
   function rowTotal(row: TimesheetRow) {
     return days.reduce((sum, day) => sum + cellHours(row, day), 0);
+  }
+
+  function groupDayHours(tareas: TimesheetRow[], day: string) {
+    return tareas.reduce((sum, row) => sum + cellHours(row, day), 0);
+  }
+
+  function groupTotal(tareas: TimesheetRow[]) {
+    return tareas.reduce((sum, row) => sum + rowTotal(row), 0);
   }
 
   // ── Edición de celdas ──────────────────────────────────────────────────────
@@ -349,6 +414,13 @@ export function TimesheetTab({
       ...prev,
       { key, projectId: newRow.projectId, activityId, description, cells: {} },
     ]);
+    // Si el proyecto estaba plegado, la fila recién creada quedaría oculta.
+    setExpanded((prev) => {
+      if (prev.has(newRow.projectId)) return prev;
+      const next = new Set(prev).add(newRow.projectId);
+      saveExpanded(next);
+      return next;
+    });
     setNewRow(emptyDraft);
   }
 
@@ -561,6 +633,15 @@ export function TimesheetTab({
                   ))}
                 </select>
               )}
+              {groups.length > 0 && (
+                <button
+                  type="button"
+                  className="ghost ts-expand-all"
+                  onClick={() => setAllExpanded(!allExpanded)}
+                >
+                  {allExpanded ? "Plegar todo" : "Desplegar todo"}
+                </button>
+              )}
               <div className="ts-weektotal">
                 <span>Total semana</span>
                 <strong>{formatHoursTotal(weekTotal)}</strong>
@@ -606,14 +687,49 @@ export function TimesheetTab({
                     </tr>
                   )}
 
-                  {rows.map((row) => {
-                    const project = projects.find((p) => p.id === row.projectId);
+                  {groups.map(({ projectId, tareas }) => {
+                    const project = projects.find((p) => p.id === projectId);
+                    const abierto = expanded.has(projectId);
+                    return (
+                      <Fragment key={projectId}>
+                        {/* Cabecera del proyecto: resume sus tareas y las despliega. */}
+                        <tr className={`ts-group${abierto ? " open" : ""}`}>
+                          <td className="ts-col-project" colSpan={2}>
+                            <button
+                              type="button"
+                              className="ts-group-toggle"
+                              onClick={() => toggleProject(projectId)}
+                              aria-expanded={abierto}
+                              title={abierto ? "Plegar tareas" : "Desplegar tareas"}
+                            >
+                              <span className="ts-group-caret" aria-hidden="true">{abierto ? "▾" : "▸"}</span>
+                              <span className="ts-group-name">{project?.name ?? "Proyecto"}</span>
+                              <span className="ts-group-count">
+                                {tareas.length} {tareas.length === 1 ? "tarea" : "tareas"}
+                              </span>
+                            </button>
+                          </td>
+                          {days.map((day, index) => {
+                            const horas = groupDayHours(tareas, day);
+                            return (
+                              <td
+                                key={day}
+                                className={`ts-col-day${isWeekend(index) ? " weekend" : ""}${day === today ? " today" : ""}`}
+                              >
+                                <span className="ts-group-hours">{formatHoursShort(horas) || "—"}</span>
+                              </td>
+                            );
+                          })}
+                          <td className="ts-col-total">{formatHoursTotal(groupTotal(tareas))}</td>
+                          {gridEditable && <td className="ts-col-actions" />}
+                        </tr>
+
+                        {abierto && tareas.map((row) => {
                     const activity = activities.find((a) => a.id === row.activityId);
                     return (
-                      <tr key={row.key}>
-                        <td className="ts-col-project" title={project?.name}>
-                          {project?.name ?? "—"}
-                        </td>
+                      <tr key={row.key} className="ts-task-row">
+                        {/* El proyecto ya está en la cabecera: aquí solo sangría. */}
+                        <td className="ts-col-project ts-indent" aria-hidden="true" />
                         <td className="ts-col-task">
                           {activity && <span className="ts-task-pill">{activity.title}</span>}
                           <span className="ts-task-desc" title={row.description}>
@@ -698,6 +814,9 @@ export function TimesheetTab({
                           </td>
                         )}
                       </tr>
+                    );
+                        })}
+                      </Fragment>
                     );
                   })}
                 </tbody>
