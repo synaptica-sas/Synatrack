@@ -6,7 +6,7 @@ Este documento describe todo lo que la rama `dev` aporta frente a la versión qu
 producción, y dice con franqueza qué falta antes de poder desplegarla.
 
 La versión en producción es del **2 de septiembre**. Desde entonces el trabajo acumulado es de
-**69 cambios** sobre 448 archivos, repartidos entre cuatro personas:
+**69 cambios** sobre 448 archivos, repartidos entre tres personas:
 
 | Persona | Cambios | Aportación principal |
 |---|---|---|
