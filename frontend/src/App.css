@@ -6798,3 +6798,55 @@ body.dark .card .meter__value--danger.meter__value--danger.meter__value--danger 
 }
 body.dark td .cell-empty.cell-empty { color: var(--text-muted); }
 body.dark .card .confirm-dialog__body.confirm-dialog__body { color: var(--text-soft); }
+
+/* ── Aviso de conversión de moneda incompleta ──────────────────────────────
+   El backend publica `conversion: { incomplete, missingPairs }` en los
+   endpoints agregados. Cuando falta una tasa, el importe se suma SIN convertir
+   y el total queda aproximado. No es un error —la cifra sigue sirviendo—, así
+   que el aviso es de advertencia y va en línea: reusa `.notice--warning` y
+   `.state-chip--warning`, sin colores nuevos ni tokens nuevos.
+
+   Los tokens `--state-warning-*` ya son sensibles al tema: `index.css` los
+   define en claro (`#fffbeb` / `#8a5300`) y `body.dark` de este mismo archivo
+   los reasigna a un tinte ámbar translúcido con texto `--color-accent`. Por eso
+   aquí no hace falta ningún color propio: basta con usarlos. */
+
+.conversion-notice__foot {
+  margin-top: var(--space-2);
+}
+
+/* `.chip-button` está cableado a los tonos de peligro y, además, pinta el
+   fondo con `--card-bg`: en modo oscuro deja texto ámbar oscuro sobre una
+   tarjeta oscura. Esta variante fija su propio fondo para que el contraste no
+   dependa del tema. */
+.chip-button--warning {
+  border-color: var(--state-warning-border);
+  background: var(--state-warning-bg);
+  color: var(--state-warning-strong);
+}
+
+.chip-button--warning:hover {
+  background: var(--state-warning-solid);
+  border-color: var(--state-warning-solid);
+  color: var(--state-warning-on-solid);
+}
+
+/* `body.dark .card div` (0,3,2) aplana el pie del aviso cuando el aviso vive
+   dentro de una tarjeta; y la variante ámbar del botón necesita ganarle a
+   `body.dark button.ghost` si alguien le añade esa clase. Se repite la clase
+   para subir el peso sin `!important`, como el resto del bloque. */
+body.dark .card .conversion-notice .notice__text.notice__text { color: var(--state-warning-strong); }
+body.dark .chip-button--warning.chip-button--warning {
+  background: var(--state-warning-bg);
+  color: var(--state-warning-strong);
+}
+body.dark .chip-button--warning.chip-button--warning:hover {
+  background: var(--state-warning-solid);
+  color: var(--state-warning-on-solid);
+}
+
+/* Separa la marca del nombre del proyecto en la celda de la tabla. */
+.conversion-chip {
+  margin-left: var(--space-2);
+  vertical-align: middle;
+}

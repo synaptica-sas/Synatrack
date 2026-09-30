@@ -21,6 +21,7 @@ import {
   type ProjectSortField,
 } from "./dashboardUtils";
 import { PageHeader } from "../../components/PageHeader";
+import { ConversionNotice, ConversionChip } from "../../components/ConversionNotice";
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -453,6 +454,7 @@ export function DashboardTab({
   statsLoading,
   onError,
   onDrillTo,
+  onIrATasasFx,
 }: {
   projects: Project[];
   timeEntries: TimeEntry[];
@@ -467,6 +469,8 @@ export function DashboardTab({
   statsLoading: boolean;
   onError: (msg: string) => void;
   onDrillTo?: (tab: TabId, financialPanel?: FinancialPanel) => void;
+  /** Atajo a la pantalla de Tasas FX desde el aviso de conversión incompleta. */
+  onIrATasasFx?: () => void;
 }) {
   const [stats, setStats] = useState<StatsOverview | null>(initialStats);
   const [baseCurrency, setBaseCurrency] = useState(initialBaseCurrency);
@@ -886,6 +890,15 @@ export function DashboardTab({
           </div>
         }
       />
+
+      {/* El backend avisa cuando un total se sumó sin convertir por falta de
+          tasa: la cifra sigue sirviendo, pero es aproximada y hay que decirlo. */}
+      <ConversionNotice
+        conversion={stats?.conversion}
+        contexto="Los totales del tablero"
+        onIrATasasFx={onIrATasasFx}
+      />
+
       <section className="grid">
 
       {/* Tarea 3: Portfolio Health — arriba del todo */}
@@ -1338,7 +1351,10 @@ export function DashboardTab({
                       </span>
                     </td>
                     <td className="sticky-1 cell-strong cell-small" data-label="Empresa">{row.company}</td>
-                    <td className="sticky-2 cell-strong" data-label="Proyecto">{row.projectName}</td>
+                    <td className="sticky-2 cell-strong" data-label="Proyecto">
+                      {row.projectName}
+                      <ConversionChip conversion={row.conversion} />
+                    </td>
                     <td data-label="Presupuesto">{fmt(row.budget, dc)}</td>
                     <td data-label="Gasto real">{fmt(row.spent, dc)}</td>
                     <td className={row.remainingBudget < 0 ? "tone-danger" : undefined} data-label="Disponible">{fmt(row.remainingBudget, dc)}</td>

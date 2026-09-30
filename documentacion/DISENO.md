@@ -595,6 +595,42 @@ las capturas, todos corregidos al final de `App.css`:
   alternador de panel de Financiero, pero es el estilo global de `button` y cambiarlo toca
   las 16 pantallas: no es una decisión de esta pasada. Queda anotado.
 
+### Clases añadidas al avisar de la conversión de moneda incompleta
+
+Cinco endpoints agregados publican `conversion: { incomplete, missingPairs }`. Cuando falta
+la tasa de un par, el importe se suma **sin convertir** y el total queda aproximado aunque
+venga rotulado con la moneda base. El aviso es de **advertencia, no de error**: la cifra
+sigue siendo útil, así que va en línea y no bloquea nada.
+
+Casi todo sale de clases que ya existían (`.notice`, `.notice--warning`, `.notice__title`,
+`.notice__text`, `.state-chip--warning`, `.chip-button`). Lo nuevo es mínimo:
+
+| Clase | Para qué |
+|---|---|
+| `.conversion-notice__foot` | Separa del cuerpo el pie del aviso, donde va el atajo a Tasas FX |
+| `.chip-button--warning` | Variante ámbar de `.chip-button`. La base está cableada a los tonos de peligro **y pinta el fondo con `--card-bg`**, lo que en oscuro deja texto ámbar sobre tarjeta oscura; la variante fija su propio fondo con `--state-warning-bg` para no depender del tema |
+| `.conversion-chip` | Solo separación: la marca `▲ Aprox.` junto al nombre del proyecto en la tabla |
+
+Tres decisiones que conviene conocer:
+
+1. **Dos niveles, no uno.** `.conversion-notice` dice que el consolidado de la pantalla es
+   aproximado; `.conversion-chip` marca la fila del proyecto concreto que lo causa, con
+   `data.projects[].conversion`. Sin el segundo, el aviso de arriba no tiene a dónde señalar.
+   La regla de reparto es **un solo aviso completo por pantalla**: en Detalle de Proyecto la
+   Curva S lleva la marca compacta junto a su título, no un segundo aviso, porque el de la
+   cabecera ya dice qué falta y dónde se carga.
+2. **El texto traduce el dato técnico.** Los pares llegan como `"COP->USD"` y en pantalla se
+   leen "de COP a USD" (`utils/conversionStatus.ts`, con pruebas). A partir de cinco pares se
+   resume con "y N más" para que el aviso no crezca sin control.
+3. **El color no viaja solo**: icono `▲` más el título "Cifras aproximadas" y la palabra
+   "Aprox." en el chip. El aviso es `role="status"`, no `role="alert"`: informa sin
+   interrumpir la lectura.
+
+Contraste medido sobre **estilo computado** (no sobre la captura), componiendo las capas
+translúcidas, en Tablero y Portafolio y en los dos temas: ocho medidas, de 5,72:1 a 7,49:1,
+todas por encima de 4,5:1. El chip dentro de la tabla del Tablero queda en 6,36:1 en oscuro
+gracias a la regla `body.dark td .state-chip--warning` que ya existía.
+
 ### Especificidad: la trampa de `body.dark .card`
 
 Al migrar el Tablero salieron dos reglas heredadas que le ganan a cualquier clase de patrón:
@@ -746,6 +782,13 @@ En `documentacion/capturas/`, generadas con Playwright sobre el entorno local:
   proyectos en verde, así que para estas capturas se interceptó la respuesta de
   `/api/stats/portfolio` y se forzaron un `YELLOW` y un `RED`. **Solo afecta a la captura**,
   no hay ningún cambio en la app ni en los datos.
+- `conversion-*` (`-antes-` / `-despues-`): el aviso de conversión de moneda incompleta, en
+  Tablero, Portafolio y Detalle de Proyecto (más `conversion-detalle-curva-*`, que enseña la
+  marca compacta junto al título de la Curva S), claro y oscuro, a 1440px, y el Tablero también a 400px. Para
+  provocar el estado se creó un gasto en **XTS** —código ISO reservado para pruebas, sin tasa
+  cargada— sobre un proyecto demo, y se borró después. El "antes" se capturó desde una copia
+  limpia del `HEAD` servida en el puerto 5174, con los **mismos datos**: la diferencia entre
+  las dos capturas es solo el aviso.
 - `encabezado-antes-*` / `encabezado-despues-*`: el `PageHeader` en contexto (Portafolio),
   claro y oscuro, a 400px.
 - `alertas-antes-*` / `alertas-despues-*`: el Centro de Alertas, claro y oscuro, a 400px.

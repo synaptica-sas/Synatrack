@@ -249,8 +249,28 @@ export type StatsProjectRow = {
   alertLevel: AlertLevel;
 };
 
+/**
+ * Estado de la conversión de moneda de una respuesta agregada.
+ *
+ * Lo publican `/api/stats/overview`, `/api/stats/portfolio`,
+ * `/api/projects/:id/detail`, `/api/projects/:id/profitability` y
+ * `/api/projects/:id/timeline`. Cuando `incomplete` es `true`, al menos un
+ * importe se sumó SIN convertir porque faltaba la tasa de su par, de modo que
+ * el total es aproximado pese a venir rotulado con la moneda base.
+ *
+ * Es opcional en los tipos porque una respuesta de un backend anterior no lo
+ * trae; `undefined` se trata como "conversión completa".
+ */
+export type ConversionStatus = {
+  incomplete: boolean;
+  /** Pares "FROM->TO" sin tasa. Se traducen a español en `utils/conversionStatus.ts`. */
+  missingPairs: string[];
+};
+
 export type StatsOverview = {
   baseCurrency: string;
+  /** Aviso de conversión del consolidado de la pantalla. */
+  conversion?: ConversionStatus;
   projects: StatsProjectRowEnriched[];
   totals: {
     budget: number;
@@ -1386,6 +1406,8 @@ export type ProjectDetailSummary = {
 };
 
 export type ProjectDetail = {
+  /** Aviso de conversión de las cifras financieras del proyecto. */
+  conversion?: ConversionStatus;
   project: ProjectDetailProject;
   financials: ProjectDetailFinancials;
   evm: EVMResult | null;
@@ -1398,6 +1420,8 @@ export type ProjectDetail = {
 };
 
 export type PortfolioProject = {
+  /** Aviso de conversión de este proyecto en concreto. */
+  conversion?: ConversionStatus;
   projectId: string;
   projectName: string;
   company: string;
@@ -1443,12 +1467,16 @@ export type PortfolioSummary = {
 
 export type Portfolio = {
   baseCurrency: string;
+  /** Aviso de conversión del consolidado del portafolio. */
+  conversion?: ConversionStatus;
   projects: PortfolioProject[];
   summary: PortfolioSummary;
 };
 
 // ── StatsProjectRow enriched with PMP data ──
 export type StatsProjectRowEnriched = StatsProjectRow & {
+  /** Aviso de conversión de este proyecto en concreto. */
+  conversion?: ConversionStatus;
   phase: ProjectPhase | null;
   completionPct: number;
   healthStatus: HealthStatus;
@@ -1646,6 +1674,8 @@ export async function deleteChangeRequest(projectId: string, id: string): Promis
 // ─── Project Timeline ──────────────────────────────────────────────────────────
 
 export type ProjectTimeline = {
+  /** Aviso de conversión de la curva de costo acumulado. */
+  conversion?: ConversionStatus;
   projectId: string;
   projectName: string;
   baseCurrency: string;

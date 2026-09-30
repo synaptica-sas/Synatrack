@@ -5,6 +5,7 @@ import { textoCriteriosSalud, claseMargen, PRESENTACION_SALUD } from "../../util
 import { PROJECT_STATUS_LABELS, label } from "../../utils/statusLabels";
 import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
+import { ConversionNotice, ConversionChip } from "../../components/ConversionNotice";
 
 /**
  * Pantalla de referencia del sistema de diseño.
@@ -127,9 +128,12 @@ function toneIndiceEvm(valor: number | null | undefined): Tone {
 
 export function PortfolioTab({
   onOpenProject,
+  onIrATasasFx,
 }: {
   canWrite?: boolean;
   onOpenProject?: (id: string) => void;
+  /** Atajo a la pantalla de Tasas FX desde el aviso de conversión incompleta. */
+  onIrATasasFx?: () => void;
 }) {
   const { portfolio, loading, error, reload } = usePortfolio(true);
   const [healthFilter, setHealthFilter] = useState<HealthStatus | "">("");
@@ -246,6 +250,12 @@ export function PortfolioTab({
             </button>
           </>
         }
+      />
+
+      <ConversionNotice
+        conversion={portfolio.conversion}
+        contexto="Los totales del portafolio"
+        onIrATasasFx={onIrATasasFx}
       />
 
       {/* Resumen del portafolio */}
@@ -408,7 +418,10 @@ export function PortfolioTab({
                 className={p.healthStatus === "RED" ? "row-danger" : p.healthStatus === "YELLOW" ? "row-warning" : undefined}
               >
                 <td><RagBadge status={p.healthStatus} marginThreshold={p.marginThreshold} /></td>
-                <td className="cell-strong">{p.projectName}</td>
+                <td className="cell-strong">
+                  {p.projectName}
+                  <ConversionChip conversion={p.conversion} />
+                </td>
                 <td>{p.company}</td>
                 <td className="cell-small">
                   {p.projectType === "TIME_AND_MATERIAL" ? "T&M" : p.projectType === "FIXED_PRICE" ? "FP" : "Staff"}

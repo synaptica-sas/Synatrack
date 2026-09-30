@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "../../components/PageHeader";
+import { ConversionNotice, ConversionChip } from "../../components/ConversionNotice";
 import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_TYPE_LABELS, RISK_STATUS_LABELS, ASSIGNMENT_STATUS_LABELS, ISSUE_SEVERITY_LABELS, ISSUE_STATUS_LABELS, label } from "../../utils/statusLabels";
 import { PRESENTACION_SALUD, textoCriteriosSalud } from "../../utils/projectHealth";
 import { CountryFlag } from "../../components/CountryFlag";
@@ -365,7 +366,14 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
 
       {/* EVM Burndown chart */}
       <div className="panel">
-        <div className="section-title">Curva S — Valor planeado vs Costo real (EVM)</div>
+        {/* El costo real de la curva puede traer importes sin convertir. Aquí va
+            la marca compacta y no un segundo aviso completo: el de la cabecera
+            de la pantalla ya explica qué falta y dónde se carga, y repetirlo
+            entero a media pantalla sería ruido, no información. */}
+        <div className="section-title">
+          Curva S — Valor planeado vs Costo real (EVM)
+          <ConversionChip conversion={timeline?.conversion} />
+        </div>
         {timeline ? (
           <BurndownChart timeline={timeline} />
         ) : (
@@ -1008,11 +1016,14 @@ export function ProjectDetailTab({
   canWrite,
   onBack,
   onError,
+  onIrATasasFx,
 }: {
   projectId: string;
   canWrite: boolean;
   onBack: () => void;
   onError: (msg: string) => void;
+  /** Atajo a la pantalla de Tasas FX desde el aviso de conversión incompleta. */
+  onIrATasasFx?: () => void;
 }) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1067,6 +1078,12 @@ export function ProjectDetailTab({
             <RagBadge status={detail.project.healthStatus} />
           </>
         }
+      />
+
+      <ConversionNotice
+        conversion={detail.conversion}
+        contexto="Las cifras financieras de este proyecto"
+        onIrATasasFx={onIrATasasFx}
       />
 
       {/* Sub-tabs nav */}

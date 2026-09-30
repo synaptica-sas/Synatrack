@@ -1391,6 +1391,14 @@ function App() {
     setActiveTab(tab);
   }
 
+  /**
+   * Atajo desde el aviso de conversión incompleta a la pantalla donde se
+   * arregla. Es `undefined` si el rol no puede ver Tasas FX: el aviso cae
+   * entonces a su versión de solo texto, en vez de ofrecer un botón que
+   * llevaría a una pestaña que no existe para ese usuario.
+   */
+  const irATasasFx = can("fx:read") ? () => drillTo("fx") : undefined;
+
   // ── Not authenticated ────────────────────────────────────────────────────
   if (!authUser) {
     if (loading) {
@@ -1797,11 +1805,16 @@ function App() {
                   statsLoading={statsHook.loading}
                   onError={handleError}
                   onDrillTo={drillTo}
+                  onIrATasasFx={irATasasFx}
                 />
               )}
 
               {activeTab === "portfolio" && (
-                <PortfolioTab canWrite={can("projects:write")} onOpenProject={openProject} />
+                <PortfolioTab
+                  canWrite={can("projects:write")}
+                  onOpenProject={openProject}
+                  onIrATasasFx={irATasasFx}
+                />
               )}
 
               {activeTab === "projects" && (
@@ -1811,6 +1824,7 @@ function App() {
                     canWrite={can("projects:write")}
                     onBack={() => setOpenProjectId(null)}
                     onError={handleError}
+                    onIrATasasFx={irATasasFx}
                   />
                 ) : (
                   <ProjectsTab
