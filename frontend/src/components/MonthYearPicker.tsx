@@ -32,19 +32,16 @@ export function MonthYearPicker({
   const availableYears = YEAR_OPTIONS.filter((y) => y >= minYear);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-      <label
-        htmlFor={`${id ?? label}-month`}
-        style={{ fontSize: "0.7rem", color: "var(--color-accent)", fontWeight: 600 }}
-      >
+    <div className="field-stack month-year-picker">
+      <label className="field-label" htmlFor={`${id ?? label}-month`}>
         {label}
       </label>
-      <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+      <div className="month-year-picker__row">
         <select
           id={`${id ?? label}-month`}
           value={value.month}
           onChange={(e) => handleMonthChange(Number(e.target.value))}
-          style={{ fontSize: "0.82rem", padding: "0.35rem 0.5rem", flex: "1 1 auto" }}
+          className="control-sm month-year-picker__month"
           aria-label={`${label} — mes`}
         >
           {MONTHS_LONG_ES.map((name, idx) => {
@@ -63,7 +60,7 @@ export function MonthYearPicker({
         <select
           value={value.year}
           onChange={(e) => handleYearChange(Number(e.target.value))}
-          style={{ fontSize: "0.82rem", padding: "0.35rem 0.5rem" }}
+          className="control-sm month-year-picker__year"
           aria-label={`${label} — año`}
         >
           {availableYears.map((y) => (

@@ -187,13 +187,15 @@ grep -c 'style={{' frontend/src/features/<pantalla>.tsx
 |---|---|---|
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
 | `App.tsx` (landing y layout) | 93 | 42 |
-| `features/forecasts/ForecastsTab.tsx` | 39 | 19 |
-| `features/consultants/ConsultantsTab.tsx` | 39 | 0 |
-| `features/projects/ProjectsTab.tsx` | 24 | 3 |
-| `components/SearchableSelect.tsx` | 13 | 2 |
 
-Totales globales sobre `frontend/src/**/*.tsx` tras esta pasada: **490 estilos en línea y
-130 colores literales** (venían de 1.576 y 575 en la rama `dev`).
+**Eso es todo lo que queda.** Las dos son las decididas a propósito para más adelante:
+`ActivitiesTab` está a la espera de una decisión de producto sobre si el módulo se retira, y
+`App.tsx` se hará aparte porque es landing y layout y por tanto afecta a las 16 pantallas.
+
+Totales globales sobre `frontend/src/**/*.tsx` tras esta pasada: **340 estilos en línea y
+100 colores literales** (venían de 1.576 y 575 en la rama `dev`). De los 340, 316 están en
+esos dos archivos; los 24 restantes se reparten entre pantallas ya migradas y son **valores
+calculados**, el único uso legítimo.
 
 **Ya migrados** (puntos 1, 2 y 3 del orden recomendado):
 
@@ -296,6 +298,54 @@ nativa del formulario antes de llegar al servidor). Capturas en
   1440 y 400px sobre cinco estados de la pantalla (estimador, las tres pestañas de la guía y
   el calibrador) y una auditoría de `getComputedStyle` de 35 selectores en ambos temas.
   Capturas en `documentacion/capturas/estimaciones-*` (`-antes-`/`-despues-`).
+
+- **Cola de pantallas medianas y componentes menores** (doce archivos) — **162 → 12
+  estilos en línea y 30 → 0 colores literales**. Los 12 que quedan son todos valores
+  calculados o ya documentados como tales. Por archivo:
+
+  | Archivo | Estilos en línea | Colores literales |
+  |---|---|---|
+  | `features/consultants/ConsultantsTab.tsx` | 39 → **0** | 0 → 0 |
+  | `features/forecasts/ForecastsTab.tsx` | 39 → **1** | 19 → **0** |
+  | `features/projects/ProjectsTab.tsx` | 24 → **1** | 3 → **0** |
+  | `features/reports/ReportsTab.tsx` | 19 → **0** | 0 → 0 |
+  | `components/SearchableSelect.tsx` | 13 → **0** | 2 → **0** |
+  | `features/dashboard/DashboardTab.tsx` | 6 → 6 | 0 → 0 |
+  | `components/EmptyState.tsx` | 5 → **0** | 2 → **0** |
+  | `components/MonthYearPicker.tsx` | 5 → **0** | 0 → 0 |
+  | `components/ConfirmDialog.tsx` | 3 → **0** | 4 → **0** |
+  | `components/CountryFlag.tsx` | 3 → **1** | 0 → 0 |
+  | `features/financial/FinancialTab.tsx` | 3 → **0** | 0 → 0 |
+  | `features/portfolio/PortfolioTab.tsx` | 3 → 3 | 0 → 0 |
+
+  Se empezó por los cinco componentes compartidos, que aparecen dentro de las pantallas
+  grandes, y eso resolvió de paso parte de lo demás. Casi todo salió de vocabulario que ya
+  existía: `.field-label` absorbió **18 etiquetas** escritas a mano entre Consultores y
+  Proyectos, `.meter`/`.meter__track`/`.meter__fill--*` absorbió las dos barras de progreso
+  que cada pantalla se había inventado, y `.cell-right`/`.cell-strong` resolvió los 19
+  estilos de Informes de una vez. Lo nuevo lleva prefijo `cons-`, `fore-` o `proy-`, salvo
+  seis utilidades genuinamente compartidas (`.no-select`, `.control-block`, `.span-2`,
+  `.cell-nowrap`, `.meter__fill--info`, `.field-help--warning`).
+
+  Lo sustancial: `RagBadge` de Proyectos pintaba el semáforo con el color de fondo y `#fff`
+  encima —el error de `DISENO.md` §5.3: sobre el verde y el ámbar de marca el blanco se queda
+  en 2,6:1— y pasa a `PRESENTACION_SALUD` + `.status-badge--*`; la barra de ejecución de
+  Proyecciones tenía su propio semáforo (`#dc2626`/`#f59e0b`/`#2563eb`) sin modo oscuro; el
+  formulario de Proyecciones fijaba `background: #ffffff`, así que en oscuro se quedaba
+  blanco; y `SearchableSelect`, que usan cinco pantallas, marcaba el foco con el naranja de
+  Tailwind `#ea580c`. **`ReportsTab` se revisó y su `features/reports/reports.css` está bien
+  como está** —tokenizado, con su paleta validada para daltonismo— así que no se tocó: solo
+  se pasaron a clase los 19 estilos de alineación de su tabla.
+
+  La auditoría de `getComputedStyle` en ambos temas destapó **cuatro fallos que las capturas
+  no mostraban**, todos corregidos: `.status-badge--*` perdía su texto navy dentro de una
+  tarjeta en oscuro (`body.dark .card span:not(.pill)`, (0,3,2), le gana a un modificador de
+  dos clases) y salía en gris claro sobre el verde de marca, 2,4:1 —afecta también a
+  Portafolio y Tablero, que la comparten—; el botón «Asignar» perdía su relleno verde
+  (`body.dark button.ghost`, (0,2,2)); y `.meter__value` y `.cell-empty` se aplanaban al
+  blanco de la tarjeta. El detalle está en `DISENO.md` §6, sección "Clases añadidas al cerrar
+  la cola de pantallas medianas". Capturas en `documentacion/capturas/consultores-*`,
+  `proyecciones-*`, `proyectos-*`, `informes-*` y `financiero-*` (`-antes-`/`-despues-`).
 
 ### Orden recomendado, y por qué
 

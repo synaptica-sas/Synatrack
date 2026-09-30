@@ -17,39 +17,31 @@ import {
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SectionLayout } from "../../components/SectionLayout";
 import { downloadCsv } from "../../utils/csv";
-import { backendHealthToResult, textoCriteriosSalud } from "../../utils/projectHealth";
+import { PRESENTACION_SALUD, textoCriteriosSalud } from "../../utils/projectHealth";
 import { ValidationErrorBox } from "../../components/ValidationErrorBox";
 import { isValidationError } from "../../utils/validation";
 import { CurrencyInput } from "../../components/CurrencyInput";
 
 function RagBadge({ status, marginThreshold }: { status: HealthStatus | undefined; marginThreshold?: number | null }) {
-  if (!status) return <span style={{ color: "var(--color-sec-gray)", fontSize: "0.75rem" }}>—</span>;
-  const result = backendHealthToResult(status);
+  if (!status) return <span className="cell-dash">—</span>;
+  const salud = PRESENTACION_SALUD[status];
   return (
     <span
-      style={{
-        display: "inline-block",
-        padding: "0.15rem 0.45rem",
-        borderRadius: "9999px",
-        background: result.color,
-        color: "#fff",
-        fontWeight: 700,
-        fontSize: "0.7rem",
-        letterSpacing: "0.04em",
-      }}
+      className={`status-badge status-badge--${salud.modificador}`}
       title={textoCriteriosSalud(marginThreshold)}
     >
-      {result.label}
+      {salud.etiqueta}
     </span>
   );
 }
 
 function BudgetBar({ pct }: { pct: number }) {
   const capped = Math.min(pct, 100);
-  const color = pct > 100 ? "var(--color-sec-red)" : pct > 90 ? "var(--color-accent)" : "var(--color-sec-green)";
+  const tono = pct > 100 ? "danger" : pct > 90 ? "warning" : "success";
   return (
-    <div style={{ width: "6rem", height: "0.5rem", background: "var(--color-primary-10)", borderRadius: "9999px", overflow: "hidden" }}>
-      <div style={{ width: `${capped}%`, height: "100%", background: color, transition: "width 0.3s" }} />
+    <div className="meter__track proy-bar">
+      {/* Ancho calculado: el único uso legítimo de un estilo en línea. */}
+      <div className={`meter__fill meter__fill--${tono}`} style={{ width: `${capped}%` }} />
     </div>
   );
 }
@@ -290,7 +282,7 @@ export function ProjectsTab({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       <PageHeader
         icon="◻"
         title="Gestión de Proyectos"
@@ -365,7 +357,7 @@ export function ProjectsTab({
               value={form.budgetAlertPct}
               onChange={(e) => setForm((p) => ({ ...p, budgetAlertPct: e.target.value }))}
             />
-            <p style={{ gridColumn: "1 / -1", margin: 0, fontSize: "0.72rem", lineHeight: 1.4, color: "var(--text-soft)" }}>
+            <p className="field-help span-full proy-note">
               <strong>Umbral de margen</strong>: vacío significa «sin umbral propio» y se aplica el valor por defecto del
               sistema (15 %). <strong>Aviso de presupuesto</strong>: vacío significa «no modificar»; este campo no admite
               vacío y conserva su valor actual (90 % por defecto).
@@ -373,12 +365,12 @@ export function ProjectsTab({
             <input type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required />
             <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required />
             <textarea placeholder="Descripción" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
-            <label style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", fontSize: "0.85rem", color: "var(--text-soft)", cursor: "pointer", whiteSpace: "nowrap" }}>
+            <label className="proy-check-label">
               <input
                 type="checkbox"
                 checked={form.allowExtraHours}
                 onChange={(e) => setForm((p) => ({ ...p, allowExtraHours: e.target.checked }))}
-                style={{ width: "auto", height: "auto", margin: 0 }}
+                className="proy-check-input"
               />
               HE Habilitadas
             </label>
@@ -388,9 +380,9 @@ export function ProjectsTab({
         table={
           <>
             {/* Filters */}
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+            <div className="proy-filters">
               <div>
-                <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-sec-blue)", marginBottom: "0.25rem" }}>Proyecto</label>
+                <label className="field-label">Proyecto</label>
                 <SearchableSelect
                   options={projectOptions}
                   value={projectFilter}
@@ -401,7 +393,7 @@ export function ProjectsTab({
                 />
               </div>
               <div>
-                <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-sec-blue)", marginBottom: "0.25rem" }}>Empresa</label>
+                <label className="field-label">Empresa</label>
                 <SearchableSelect
                   options={companyOptions}
                   value={companyFilter}
@@ -412,11 +404,11 @@ export function ProjectsTab({
                 />
               </div>
               <div>
-                <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--color-sec-blue)", marginBottom: "0.25rem" }}>Salud</label>
+                <label className="field-label">Salud</label>
                 <select
                   value={healthFilter}
                   onChange={(e) => setHealthFilter(e.target.value as HealthStatus | "")}
-                  style={{ width: "100%", height: "42px", padding: "0.6rem 0.75rem", borderRadius: "10px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text)" }}
+                  className="select-control"
                 >
                   <option value="">Todas</option>
                   <option value="GREEN">Saludable</option>
@@ -453,32 +445,32 @@ export function ProjectsTab({
                           <td><RagBadge status={stats?.healthStatus} marginThreshold={stats?.marginThreshold} /></td>
                           <td>{project.name}</td>
                           <td>{project.company}</td>
-                          <td style={{ fontSize: "0.75rem" }} title={project.projectManagerEmail ?? "Sin PM asignado"}>
+                          <td className="cell-small" title={project.projectManagerEmail ?? "Sin PM asignado"}>
                             {project.projectManagerEmail ?? "—"}
                           </td>
-                          <td style={{ fontSize: "0.75rem" }}>
+                          <td className="cell-small">
                             {project.projectType === "TIME_AND_MATERIAL" ? "T&M" :
                              project.projectType === "FIXED_PRICE" ? "FP" : "Staff"}
                           </td>
-                          <td><span className={`pill ${project.status === "ACTIVE" ? "ok" : project.status === "PAUSED" ? "warn" : "neutral"}`}>{label(PROJECT_STATUS_LABELS, project.status)}</span></td>
-                          <td style={{ whiteSpace: "nowrap" }}>
+                          <td><span className={`state-chip state-chip--${project.status === "ACTIVE" ? "success" : project.status === "PAUSED" ? "warning" : "neutral"}`}>{label(PROJECT_STATUS_LABELS, project.status)}</span></td>
+                          <td className="cell-nowrap">
                             {stats
                               ? money(stats.budget, stats.displayCurrency)
                               : money(numberish(project.budget), project.currency)}
                           </td>
                           <td>
                             {stats ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                              <div className="proy-bar-cell">
                                 <BudgetBar pct={stats.usedBudgetPercent} />
-                                <span style={{ fontSize: "0.68rem", color: "#6b7280" }}>{stats.usedBudgetPercent.toFixed(1)}%</span>
+                                <span className="proy-bar-pct">{stats.usedBudgetPercent.toFixed(1)}%</span>
                               </div>
                             ) : "—"}
                           </td>
                           <td>
                             {stats ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                              <div className="proy-bar-cell">
                                 <BudgetBar pct={stats.completionPct} />
-                                <span style={{ fontSize: "0.68rem", color: "#6b7280" }}>{stats.completionPct.toFixed(0)}%</span>
+                                <span className="proy-bar-pct">{stats.completionPct.toFixed(0)}%</span>
                               </div>
                             ) : "—"}
                           </td>
@@ -607,7 +599,7 @@ export function ProjectsTab({
                 value={editForm.budgetAlertPct}
                 onChange={(e) => setEditForm((p) => p && { ...p, budgetAlertPct: e.target.value })}
               />
-              <p style={{ gridColumn: "span 2", margin: 0, fontSize: "0.72rem", lineHeight: 1.4, color: "var(--text-soft)" }}>
+              <p className="field-help span-2 proy-note">
                 <strong>Umbral de margen</strong>: vaciarlo lo desasigna y el proyecto vuelve al valor por defecto del
                 sistema (15 %). <strong>Aviso de presupuesto</strong>: vaciarlo <em>no</em> lo borra; el campo no admite
                 vacío y conserva el valor actual (90 % por defecto).
@@ -615,15 +607,15 @@ export function ProjectsTab({
               <input type="date" value={editForm.startDate} onChange={(e) => setEditForm((p) => p && { ...p, startDate: e.target.value })} required />
               <input type="date" value={editForm.endDate} onChange={(e) => setEditForm((p) => p && { ...p, endDate: e.target.value })} required />
               <textarea value={editForm.description} onChange={(e) => setEditForm((p) => p && { ...p, description: e.target.value })} placeholder="Descripción" />
-              <div style={{ gridColumn: "span 2", display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.25rem 0" }}>
+              <div className="span-2 proy-check-row">
                 <input
                   type="checkbox"
                   id="editAllowExtraHours"
                   checked={editForm.allowExtraHours}
                   onChange={(e) => setEditForm((p) => p && { ...p, allowExtraHours: e.target.checked })}
-                  style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                  className="proy-check-box"
                 />
-                <label htmlFor="editAllowExtraHours" style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-soft)", cursor: "pointer" }}>
+                <label htmlFor="editAllowExtraHours" className="proy-check-text">
                   Habilitar Horas Extras para este proyecto
                 </label>
               </div>

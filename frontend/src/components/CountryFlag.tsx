@@ -12,25 +12,23 @@ export function CountryFlag({ country, showName = true, size = 20 }: CountryFlag
   const height = Math.round(size * 0.75);
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
+    <span className="country-flag">
       {flagUrl ? (
         <img
+          className="country-flag__img"
           src={flagUrl}
-          alt={`${name} flag`}
+          alt={`Bandera de ${name}`}
           width={size}
           height={height}
-          style={{
-            borderRadius: "2px",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-            objectFit: "cover",
-            flexShrink: 0,
-          }}
           loading="lazy"
         />
       ) : (
-        <span style={{ fontSize: `${size * 0.8}px` }}>🌐</span>
+        // Tamaño calculado a partir de la prop `size`: no puede salir de una clase.
+        <span className="country-flag__fallback" style={{ fontSize: `${size * 0.8}px` }} aria-hidden="true">
+          🌐
+        </span>
       )}
-      {showName && <span>{name}</span>}
+      {showName && <span className="country-flag__name">{name}</span>}
     </span>
   );
 }

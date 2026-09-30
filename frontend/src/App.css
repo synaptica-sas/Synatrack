@@ -6418,3 +6418,383 @@ body.dark .card .est-compare__seg--real.est-compare__seg--real   { color: var(--
 body.dark .card .est-weight-toggle.est-weight-toggle           { color: var(--state-warning-strong); }
 body.dark .card .est-weights__lead.est-weights__lead           { color: var(--text-soft); }
 body.dark .card .est-reco.est-reco                             { color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COLA DE PANTALLAS MEDIANAS Y COMPONENTES MENORES
+   Componentes compartidos (SearchableSelect, EmptyState, ConfirmDialog,
+   MonthYearPicker, CountryFlag) y las pantallas Consultores, Proyecciones,
+   Proyectos, Tablero, Financiero y Portafolio.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Estado vacío: ranura de acción ──────────────────────────────────────── */
+.empty-state__action { margin-top: var(--space-3); }
+
+/* ── Bandera de país ──────────────────────────────────────────────────────
+   El radio es de 2px a propósito: la bandera mide 20×15px y `--radius-sm`
+   (6px) le comería las esquinas. No es un color, así que no necesita token. */
+.country-flag { display: inline-flex; align-items: center; gap: var(--space-1); }
+.country-flag__img {
+  border-radius: 2px;
+  box-shadow: var(--shadow-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+.country-flag__fallback { line-height: 1; }
+
+/* ── Selector de mes y año ────────────────────────────────────────────────
+   La etiqueta iba en `--color-accent` a 0,7rem: 1,9:1 sobre blanco (§5.5).
+   Pasa a `.field-label`, como ya se hizo en Capacidad. */
+.month-year-picker__row { display: flex; gap: var(--space-1); align-items: center; }
+.month-year-picker__month { flex: 1 1 auto; min-width: 0; }
+
+/* ── Diálogo de confirmación ──────────────────────────────────────────────
+   Se repite la clase para llegar a (0,2,0) y ganarle a `.modal-title`. */
+.modal-title--danger.modal-title--danger { color: var(--state-danger-strong); }
+.confirm-dialog__body {
+  padding: var(--space-4) 0;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+/* ── Selector con búsqueda ────────────────────────────────────────────────
+   El foco iba en `#ea580c` (naranja de Tailwind) con un halo
+   `rgba(234,88,12,.15)`, y el desplegable en `rgba(154,79,15,.15)`: ninguno
+   de los tres es de la paleta de Synaptica. Pasan al ámbar de marca y a
+   `--shadow-lg`. El resaltado de coincidencia era `#fde047`. */
+.searchable-select-container { position: relative; width: 100%; }
+
+.searchable-select-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0.6rem var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.88rem;
+  user-select: none;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+
+.searchable-select-container.is-open .searchable-select-trigger {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-10);
+}
+
+.searchable-select-container.is-disabled .searchable-select-trigger {
+  background: var(--state-neutral-bg);
+  color: var(--text-soft);
+  cursor: not-allowed;
+}
+
+.searchable-select-value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 20px);
+}
+
+.searchable-select-freetext {
+  width: 100%;
+  border: none;
+  background: transparent;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
+}
+
+.searchable-select-caret {
+  font-size: 0.65rem;
+  color: var(--color-accent);
+  transition: transform 0.22s ease;
+}
+.searchable-select-container.is-open .searchable-select-caret { transform: rotate(180deg); }
+
+.searchable-select-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: selectDropdownFade 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.searchable-select-search {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+
+.searchable-select-search__input.searchable-select-search__input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.searchable-select-list {
+  overflow-y: auto;
+  flex: 1;
+  max-height: 220px;
+  padding: var(--space-1) 0;
+}
+
+.searchable-select-option {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--text);
+  background: transparent;
+  transition: background-color 0.1s;
+}
+.searchable-select-option.is-highlighted { background: var(--color-accent-05); }
+.searchable-select-option.is-selected {
+  background: var(--color-accent-10);
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.searchable-select-empty {
+  padding: 0.6rem var(--space-3);
+  font-size: 0.82rem;
+  color: var(--text-soft);
+  font-style: italic;
+  text-align: center;
+}
+
+.searchable-select-mark {
+  background: var(--color-accent);
+  color: var(--state-warning-on-solid);
+  padding: 0.05rem 0.1rem;
+  border-radius: 2px;
+}
+
+/* Dentro de `.card`, en oscuro, `body.dark .card div` pesa (0,2,2) y
+   `body.dark .card span:not(.pill)` (0,3,2): fuerzan `color: inherit` y
+   aplanan el selector. Se sube el peso repitiendo clase, sin `!important`. */
+body.dark .card .searchable-select-trigger.searchable-select-trigger { color: var(--text); }
+body.dark .card .is-disabled .searchable-select-trigger.searchable-select-trigger { color: var(--text-soft); }
+body.dark .card .searchable-select-option.searchable-select-option { color: var(--text); }
+body.dark .card .searchable-select-option.is-selected.is-selected { color: var(--color-accent); }
+body.dark .card .searchable-select-empty.searchable-select-empty { color: var(--text-soft); }
+body.dark .card .searchable-select-caret.searchable-select-caret.searchable-select-caret { color: var(--color-accent); }
+
+/* ── Consultores ──────────────────────────────────────────────────────────
+   Las 15 etiquetas de campo iban en `--color-accent` a 0,75rem (1,9:1 sobre
+   blanco, §5.5) y pasan a `.field-label`. Las píldoras `.pill ok/warn/neutral`
+   pasan a `.state-chip--*`, como ya se hizo en Capacidad, Perfil y Auditoría;
+   una de ellas era `.pill warning`, un modificador que no existe, y por eso
+   llevaba el color escrito a mano en el `style`. */
+.cons-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-2);
+}
+
+.cons-filter-select {
+  width: 100%;
+  padding: var(--space-2) 0.6rem;
+  font-size: 0.82rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  color: var(--text);
+}
+
+/* Alto del botón de envío, para que quede a ras de los controles de su fila. */
+.cons-btn-tall { height: 42px; }
+
+/* La casilla que comparte fila con campos etiquetados baja hasta su línea. */
+.cons-check-aligned { margin-top: 1.25rem; }
+
+/* Proporciones propias de la fila de tarifa del modal de edición. */
+.cons-edit-row-3.cons-edit-row-3 { grid-template-columns: 0.8fr 1.2fr 1fr auto auto; }
+
+/* Se repite la clase: `button.ghost` pesa (0,1,1) y le gana a un modificador
+   de una sola clase (la misma trampa que en la Calculadora de Estimaciones). */
+.cons-btn-assign.cons-btn-assign {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: var(--state-success-bg);
+  border-color: var(--state-success-border);
+  color: var(--state-success-strong);
+}
+body.dark td .cons-btn-assign.cons-btn-assign { color: var(--state-success-strong); }
+
+/* Utilidad: el texto de una casilla no debe seleccionarse al hacer doble clic. */
+.no-select { user-select: none; }
+
+/* ── Proyecciones ─────────────────────────────────────────────────────────
+   La barra de ejecución tenía su propia paleta (`#dc2626`, `#f59e0b`,
+   `#2563eb` sobre pista `#e5e7eb`): un cuarto semáforo, sin modo oscuro.
+   Pasa a `.meter`, que ya existía; el único estilo en línea que queda en la
+   pantalla es el ancho calculado del relleno. El formulario fijaba
+   `background: #ffffff`, así que en oscuro se quedaba blanco. */
+.meter__fill--info { background: var(--state-info-solid); }
+.meter__value--danger.meter__value--danger { color: var(--state-danger-strong); }
+body.dark .card .meter__value--danger.meter__value--danger { color: var(--state-danger-strong); }
+
+/* Variante de aviso de `.field-help`, para el texto de presupuesto ajustado. */
+.field-help--warning.field-help--warning { color: var(--state-warning-strong); }
+body.dark .card .field-help--warning.field-help--warning { color: var(--state-warning-strong); }
+
+/* Hermano de `.btn-block` para controles de formulario. */
+.control-block { width: 100%; }
+
+.fore-presets {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.fore-form {
+  background: var(--card-bg);
+  padding: var(--space-6);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.fore-row { display: grid; gap: 0.7rem; }
+.fore-row--lg { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.fore-row--md { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: start; }
+.fore-row--sm { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: start; }
+
+.fore-submit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-color);
+  padding-top: var(--space-3);
+  margin-top: var(--space-1);
+}
+.fore-submit-row__msg { flex: 1; }
+.fore-range-error.fore-range-error { margin: 0; font-size: 0.78rem; }
+
+.fore-cell-date { font-size: 0.8rem; white-space: nowrap; }
+.fore-help-block { display: block; margin: var(--space-1) 0 0; }
+
+@media (max-width: 560px) {
+  .fore-submit-row { flex-direction: column; align-items: stretch; }
+}
+
+/* ── Proyectos ────────────────────────────────────────────────────────────
+   `RagBadge` pintaba el semáforo con `result.color` de fondo y `#fff` encima,
+   el error que describe §5.3: sobre el verde y el ámbar de marca el blanco se
+   queda en 2,6:1. Pasa a `PRESENTACION_SALUD` + `.status-badge--*`, que es el
+   camino que ya usan Portafolio y Tablero. La barra de presupuesto pasa a
+   `.meter__track`/`.meter__fill--*`. */
+.proy-bar { width: 6rem; flex: none; }
+.proy-bar-cell { display: flex; flex-direction: column; gap: 0.15rem; }
+.proy-bar-pct { font-size: 0.68rem; color: var(--text-muted); }
+body.dark .card .proy-bar-pct.proy-bar-pct { color: var(--text-muted); }
+
+.proy-filters {
+  display: grid;
+  grid-template-columns: 2fr 2fr 1fr;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+@media (max-width: 720px) {
+  .proy-filters { grid-template-columns: 1fr; }
+}
+
+.proy-note.proy-note { margin: 0; }
+
+.proy-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.proy-check-input.proy-check-input { width: auto; height: auto; margin: 0; }
+.proy-check-box.proy-check-box { width: 16px; height: 16px; cursor: pointer; }
+.proy-check-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; }
+.proy-check-text { font-size: 0.85rem; font-weight: 700; color: var(--text-soft); cursor: pointer; }
+
+/* `grid-column: span 2`, hermano de `.span-full` para rejillas de dos columnas. */
+.span-2 { grid-column: span 2; }
+
+/* Celda que no debe partirse en dos líneas (importes, rangos de fecha). */
+.cell-nowrap { white-space: nowrap; }
+
+/* ── Financiero ───────────────────────────────────────────────────────────
+   Los dos botones de panel reusan `.btn-compact` y ahora declaran
+   `aria-pressed`: cuál está activo se percibía solo por el relleno. */
+.fin-panel-toggle {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+
+/* ── Correcciones de especificidad en modo oscuro ─────────────────────────
+   Encontradas auditando `getComputedStyle`, no a ojo (la misma lección de
+   Gastos y Estimaciones). */
+
+/* `.status-badge` es un relleno sólido, así que su texto debe ser el
+   `--state-*-on-solid` correspondiente. Dentro de una `.card` en oscuro,
+   `body.dark .card span:not(.pill)` pesa (0,3,2) y le ganaba a un modificador
+   de dos clases: la insignia salía en gris claro sobre el verde de marca,
+   2,4:1. Afecta a Proyectos, Portafolio y Tablero, que la comparten. */
+body.dark .card .status-badge--success.status-badge--success { color: var(--state-success-on-solid); }
+body.dark .card .status-badge--warning.status-badge--warning { color: var(--state-warning-on-solid); }
+body.dark .card .status-badge--danger.status-badge--danger   { color: var(--state-danger-on-solid); }
+body.dark .card .status-badge--neutral.status-badge--neutral { color: var(--state-neutral-on-solid); }
+body.dark .card .status-badge--info.status-badge--info       { color: var(--state-info-on-solid); }
+body.dark td .status-badge--success.status-badge--success { color: var(--state-success-on-solid); }
+body.dark td .status-badge--warning.status-badge--warning { color: var(--state-warning-on-solid); }
+body.dark td .status-badge--danger.status-badge--danger   { color: var(--state-danger-on-solid); }
+
+/* La cifra de un medidor es texto secundario: sin esto se aplanaba al mismo
+   blanco que el resto de la tarjeta y perdía su jerarquía. */
+body.dark .card .meter__value.meter__value { color: var(--text-muted); }
+
+/* `body.dark button.ghost` pesa (0,2,2) y le ganaba al relleno verde del
+   botón «Asignar», que se quedaba con el fondo de un ghost cualquiera. */
+body.dark button.cons-btn-assign.cons-btn-assign {
+  background: var(--state-success-bg);
+  border-color: var(--state-success-border);
+  color: var(--state-success-strong);
+}
+
+/* Estas tres van al final a propósito: compiten con reglas de este mismo
+   bloque y con `body.dark td` / `body.dark .card div`, que pesan (0,1,2) y
+   (0,2,2). Se resuelven repitiendo clase, no con `!important`. */
+body.dark td .meter__value--danger.meter__value--danger,
+body.dark .card .meter__value--danger.meter__value--danger.meter__value--danger {
+  color: var(--state-danger-strong);
+}
+body.dark td .cell-empty.cell-empty { color: var(--text-muted); }
+body.dark .card .confirm-dialog__body.confirm-dialog__body { color: var(--text-soft); }

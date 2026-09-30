@@ -91,7 +91,7 @@ export function ReportsTab({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       <PageHeader
         icon="▧"
         title="Informes"
@@ -172,7 +172,7 @@ export function ReportsTab({
 
       {!unaPersona && porConsultor.length > 0 && (
         <article className="card">
-          <h3 className="section-header-title" style={{ marginBottom: "0.75rem" }}>
+          <h3 className="section-header-title section-header-title--tight">
             Horas por consultor (lunes a viernes)
           </h3>
           <div className="table-wrap">
@@ -180,20 +180,20 @@ export function ReportsTab({
               <thead>
                 <tr>
                   <th>Consultor</th>
-                  <th style={{ textAlign: "right" }}>Dentro de jornada</th>
-                  <th style={{ textAlign: "right" }}>Exceso</th>
-                  <th style={{ textAlign: "right" }}>Total</th>
+                  <th className="cell-right">Dentro de jornada</th>
+                  <th className="cell-right">Exceso</th>
+                  <th className="cell-right">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {porConsultor.map((b) => (
                   <tr key={b.key}>
                     <td>{b.label}</td>
-                    <td style={{ textAlign: "right" }}>{formatHms(b.regular)}</td>
-                    <td style={{ textAlign: "right" }} className={b.excess > 0 ? "report-cell-excess" : undefined}>
+                    <td className="cell-right">{formatHms(b.regular)}</td>
+                    <td className={b.excess > 0 ? "cell-right report-cell-excess" : "cell-right"}>
                       {b.excess > 0 ? formatHms(b.excess) : "—"}
                     </td>
-                    <td style={{ textAlign: "right", fontWeight: 700 }}>{formatHms(b.total)}</td>
+                    <td className="cell-right cell-strong">{formatHms(b.total)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -203,7 +203,7 @@ export function ReportsTab({
       )}
 
       <article className="card">
-        <h3 className="section-header-title" style={{ marginBottom: "0.75rem" }}>
+        <h3 className="section-header-title section-header-title--tight">
           Los mismos datos de la gráfica, en tabla
         </h3>
         <div className="table-wrap">
@@ -211,29 +211,29 @@ export function ReportsTab({
             <thead>
               <tr>
                 <th>Día</th>
-                <th style={{ textAlign: "right" }}>Dentro de jornada</th>
-                <th style={{ textAlign: "right" }}>Exceso</th>
-                <th style={{ textAlign: "right" }}>Total</th>
+                <th className="cell-right">Dentro de jornada</th>
+                <th className="cell-right">Exceso</th>
+                <th className="cell-right">Total</th>
               </tr>
             </thead>
             <tbody>
               {bars.map((b) => (
                 <tr key={b.key}>
                   <td>{b.label}</td>
-                  <td style={{ textAlign: "right" }}>{formatHms(b.regular)}</td>
-                  <td style={{ textAlign: "right" }} className={b.excess > 0 ? "report-cell-excess" : undefined}>
+                  <td className="cell-right">{formatHms(b.regular)}</td>
+                  <td className={b.excess > 0 ? "cell-right report-cell-excess" : "cell-right"}>
                     {b.excess > 0 ? formatHms(b.excess) : "—"}
                   </td>
-                  <td style={{ textAlign: "right", fontWeight: 700 }}>{formatHms(b.total)}</td>
+                  <td className="cell-right cell-strong">{formatHms(b.total)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
-                <td style={{ fontWeight: 700 }}>Total</td>
-                <td style={{ textAlign: "right", fontWeight: 700 }}>{formatHms(resumen.regular)}</td>
-                <td style={{ textAlign: "right", fontWeight: 700 }}>{formatHms(resumen.excess)}</td>
-                <td style={{ textAlign: "right", fontWeight: 700 }}>{formatHms(resumen.total)}</td>
+                <td className="cell-strong">Total</td>
+                <td className="cell-right cell-strong">{formatHms(resumen.regular)}</td>
+                <td className="cell-right cell-strong">{formatHms(resumen.excess)}</td>
+                <td className="cell-right cell-strong">{formatHms(resumen.total)}</td>
               </tr>
             </tfoot>
           </table>

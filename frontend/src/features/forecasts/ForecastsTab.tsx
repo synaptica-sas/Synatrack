@@ -64,14 +64,15 @@ function ForecastProgress({
   if (hoursProjected <= 0) return null;
   const pct = Math.min((approvedHours / hoursProjected) * 100, 100);
   const isOver = approvedHours > hoursProjected;
-  const barColor = isOver ? "#dc2626" : pct >= 80 ? "#f59e0b" : "#2563eb";
+  const tono = isOver ? "danger" : pct >= 80 ? "warning" : "info";
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: "8rem" }}>
-      <div style={{ flex: 1, height: "6px", background: "#e5e7eb", borderRadius: "3px", overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: "3px", transition: "width 0.3s" }} />
+    <div className="meter">
+      <div className="meter__track">
+        {/* Ancho calculado: el único uso legítimo de un estilo en línea. */}
+        <div className={`meter__fill meter__fill--${tono}`} style={{ width: `${pct}%` }} />
       </div>
-      <span style={{ fontSize: "0.7rem", color: isOver ? "#dc2626" : "#6b7280", whiteSpace: "nowrap" }}>
+      <span className={isOver ? "meter__value meter__value--danger" : "meter__value"}>
         {approvedHours.toFixed(0)}/{hoursProjected.toFixed(0)}h
       </span>
     </div>
@@ -305,7 +306,7 @@ export function ForecastsTab({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div className="section-stack">
       <PageHeader
         icon="◷"
         title="Proyecciones de Staffing"
@@ -320,13 +321,12 @@ export function ForecastsTab({
         form={
           <>
             {/* Preset chips */}
-            <div style={{ display: "flex", gap: "0.35rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+            <div className="fore-presets">
               {PRESETS.map(({ label, fn }) => (
                 <button
                   key={label}
                   type="button"
-                  className="ghost"
-                  style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem" }}
+                  className="ghost btn-sm"
                   onClick={() => applyPreset(fn)}
                 >
                   {label}
@@ -334,11 +334,11 @@ export function ForecastsTab({
               ))}
             </div>
 
-            <form onSubmit={(e) => void handleCreate(e)} className="form-grid" style={{ background: "#ffffff", padding: "1.25rem", borderRadius: "10px", border: "1px solid var(--border-color)" }}>
+            <form onSubmit={(e) => void handleCreate(e)} className="form-grid fore-form">
               {createError && <ValidationErrorBox message={createError} />}
               
               {/* Linea 1: Proyecto y Consultor */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.7rem" }}>
+              <div className="fore-row fore-row--lg">
                 <select value={form.projectId} onChange={(e) => setForm((p) => ({ ...p, projectId: e.target.value }))} required>
                   <option value="" disabled hidden>Selecciona proyecto *</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -364,24 +364,24 @@ export function ForecastsTab({
               </div>
 
               {/* Linea 2: Fechas y Horas */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.7rem", alignItems: "start" }}>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <label htmlFor="form-date-from" style={{ fontSize: "0.75rem", color: "var(--color-accent)", fontWeight: 700, marginBottom: "0.2rem" }}>Fecha inicio *</label>
+              <div className="fore-row fore-row--md">
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="form-date-from">Fecha inicio *</label>
                   <input id="form-date-from" type="date" value={form.dateFrom} onChange={(e) => setDateFrom(e.target.value)} required />
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <label htmlFor="form-date-to" style={{ fontSize: "0.75rem", color: "var(--color-accent)", fontWeight: 700, marginBottom: "0.2rem" }}>Fecha fin *</label>
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="form-date-to">Fecha fin *</label>
                   <input id="form-date-to" type="date" value={form.dateTo} min={form.dateFrom} onChange={(e) => setForm((p) => ({ ...p, dateTo: e.target.value }))} required />
                   {durationLabel && !rangeError && (
-                    <span style={{ fontSize: "0.72rem", color: "var(--color-accent)", fontWeight: 500, marginTop: "0.25rem" }}>
+                    <span className="field-help">
                       📅 Duración: {durationLabel}
                     </span>
                   )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  <label htmlFor="form-hours" style={{ fontSize: "0.75rem", color: "var(--color-accent)", fontWeight: 700, marginBottom: "0.2rem" }}>Horas proyectadas *</label>
+                <div className="field-stack">
+                  <label className="field-label" htmlFor="form-hours">Horas proyectadas *</label>
                   <input
                     id="form-hours"
                     type="number"
@@ -394,7 +394,7 @@ export function ForecastsTab({
                     required
                   />
                   {hoursError && (
-                    <span style={{ fontSize: "0.72rem", color: "#dc2626", fontWeight: 600, marginTop: "0.25rem" }}>
+                    <span className="field-error">
                       ⚠ {hoursError}
                     </span>
                   )}
@@ -402,12 +402,12 @@ export function ForecastsTab({
               </div>
 
               {/* Linea 3: Moneda y Tarifas */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.7rem", alignItems: "start" }}>
+              <div className="fore-row fore-row--sm">
                 <select value={form.currency} onChange={(e) => setForm((p) => ({ ...p, currency: e.target.value }))}>
                   {currencyOptions.map((c) => <option key={`fc-${c}`} value={c}>{c}</option>)}
                 </select>
 
-                <div style={{ display: "flex", flexDirection: "column" }}>
+                <div className="field-stack">
                   <CurrencyInput
                     currency={form.currency}
                     placeholder={`Costo/h (${form.currency})`}
@@ -415,12 +415,7 @@ export function ForecastsTab({
                     onChange={(v) => setForm((p) => ({ ...p, hourlyRate: v }))}
                   />
                   {budgetWarning && (
-                    <span style={{
-                      fontSize: "0.72rem",
-                      color: budgetWarning.startsWith("⚠") ? "#dc2626" : "#d97706",
-                      fontWeight: budgetWarning.startsWith("⚠") ? 600 : 400,
-                      marginTop: "0.25rem"
-                    }}>
+                    <span className={budgetWarning.startsWith("⚠") ? "field-error" : "field-help field-help--warning"}>
                       {budgetWarning}
                     </span>
                   )}
@@ -442,10 +437,10 @@ export function ForecastsTab({
               </div>
 
               {/* Submit Line */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--color-primary-10)", paddingTop: "0.75rem", marginTop: "0.25rem" }}>
-                <div style={{ flex: 1 }}>
+              <div className="fore-submit-row">
+                <div className="fore-submit-row__msg">
                   {rangeError && (
-                    <p style={{ margin: 0, color: "#dc2626", fontSize: "0.78rem", fontWeight: 600 }}>
+                    <p className="field-error fore-range-error">
                       ⚠ {rangeError}
                     </p>
                   )}
@@ -460,7 +455,7 @@ export function ForecastsTab({
         table={
           <>
             {/* Filters */}
-            <div className="form-grid filters-grid" style={{ marginBottom: "0.75rem" }}>
+            <div className="form-grid filters-grid filters-grid--spaced">
               <select value={filterProject} onChange={(e) => setFilterProject(e.target.value)}>
                 <option value="">Todos los proyectos</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -509,9 +504,9 @@ export function ForecastsTab({
                         <tr key={f.id}>
                           <td>{f.project.name}</td>
                           <td>{f.consultant.fullName}</td>
-                          <td style={{ fontSize: "0.8rem", whiteSpace: "nowrap" }}>{formatDate(f.startDate)}</td>
-                          <td style={{ fontSize: "0.8rem", whiteSpace: "nowrap" }}>{formatDate(f.endDate)}</td>
-                          <td style={{ fontSize: "0.8rem", textAlign: "right" }}>{calcDias(f.startDate, f.endDate)}</td>
+                          <td className="fore-cell-date">{formatDate(f.startDate)}</td>
+                          <td className="fore-cell-date">{formatDate(f.endDate)}</td>
+                          <td className="fore-cell-date cell-right">{calcDias(f.startDate, f.endDate)}</td>
                           <td>
                             <ForecastProgress
                               approvedHours={approved}
@@ -553,7 +548,7 @@ export function ForecastsTab({
                   </tbody>
                 </table>
                 {filtered.length === 0 && !loading && (
-                  <p style={{ textAlign: "center", color: "#6b7280", padding: "1.5rem", fontSize: "0.875rem" }}>
+                  <p className="empty-note empty-note--center">
                     Sin proyecciones para los filtros seleccionados.
                   </p>
                 )}
@@ -590,8 +585,8 @@ export function ForecastsTab({
                 {consultants.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
               </select>
               <div>
-                <label htmlFor="edit-start-date" style={{ display: "block", fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.2rem" }}>
-                  Fecha inicio <span style={{ color: "#dc2626" }}>*</span>
+                <label className="field-label" htmlFor="edit-start-date">
+                  Fecha inicio <span className="tone-danger">*</span>
                 </label>
                 <input
                   id="edit-start-date"
@@ -600,12 +595,12 @@ export function ForecastsTab({
                   max={editForm.endDate || undefined}
                   onChange={(e) => setEditForm((p) => p && { ...p, startDate: e.target.value })}
                   required
-                  style={{ width: "100%" }}
+                  className="control-block"
                 />
               </div>
               <div>
-                <label htmlFor="edit-end-date" style={{ display: "block", fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.2rem" }}>
-                  Fecha fin <span style={{ color: "#dc2626" }}>*</span>
+                <label className="field-label" htmlFor="edit-end-date">
+                  Fecha fin <span className="tone-danger">*</span>
                 </label>
                 <input
                   id="edit-end-date"
@@ -614,10 +609,10 @@ export function ForecastsTab({
                   min={editForm.startDate || undefined}
                   onChange={(e) => setEditForm((p) => p && { ...p, endDate: e.target.value })}
                   required
-                  style={{ width: "100%" }}
+                  className="control-block"
                 />
                 {editForm.startDate && editForm.endDate && editForm.startDate <= editForm.endDate && (
-                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.72rem", color: "#6b7280" }}>
+                  <p className="field-help fore-help-block">
                     {formatDateRange(editForm.startDate, editForm.endDate)} · {calcDias(editForm.startDate, editForm.endDate)} días
                   </p>
                 )}
@@ -632,12 +627,12 @@ export function ForecastsTab({
                   onChange={(e) => setEditForm((p) => p && { ...p, hoursProjected: e.target.value })}
                   placeholder={`Horas (${MIN_HORAS}–${MAX_HORAS_PERIODO})`}
                   required
-                  style={{ width: "100%" }}
+                  className="control-block"
                 />
                 {(() => {
                   const h = Number(editForm.hoursProjected);
-                  if (h < MIN_HORAS) return <p style={{ margin: "0.2rem 0 0", fontSize: "0.72rem", color: "#dc2626" }}>⚠ Mínimo {MIN_HORAS}h</p>;
-                  if (h > MAX_HORAS_PERIODO) return <p style={{ margin: "0.2rem 0 0", fontSize: "0.72rem", color: "#dc2626" }}>⚠ Máximo {MAX_HORAS_PERIODO}h</p>;
+                  if (h < MIN_HORAS) return <p className="field-error fore-help-block">⚠ Mínimo {MIN_HORAS}h</p>;
+                  if (h > MAX_HORAS_PERIODO) return <p className="field-error fore-help-block">⚠ Máximo {MAX_HORAS_PERIODO}h</p>;
                   return null;
                 })()}
               </div>

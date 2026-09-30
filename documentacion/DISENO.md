@@ -480,6 +480,121 @@ ejemplo salen en blanco en vez de en su tono (la misma limitación ya anotada en
 Perfil y Usuarios); y `.summary-row`, que es CSS previo compartido, conserva sus literales
 `#ffd8a8` y `rgba(255, 156, 44, 0.05)` — reescribirla es tocar CSS que no es de esta pantalla.
 
+### Clases añadidas al cerrar la cola de pantallas medianas
+
+Doce archivos —cinco componentes compartidos y siete pantallas— pasaron de **162 estilos en
+línea y 30 colores literales a 12 y 0**. Los 12 restantes son todos valores calculados o ya
+documentados como tales:
+
+| Archivo | Estilos en línea | Colores literales |
+|---|---|---|
+| `features/consultants/ConsultantsTab.tsx` | 39 → **0** | 0 → 0 |
+| `features/forecasts/ForecastsTab.tsx` | 39 → **1** | 19 → **0** |
+| `features/projects/ProjectsTab.tsx` | 24 → **1** | 3 → **0** |
+| `features/reports/ReportsTab.tsx` | 19 → **0** | 0 → 0 |
+| `components/SearchableSelect.tsx` | 13 → **0** | 2 → **0** |
+| `features/dashboard/DashboardTab.tsx` | 6 → 6 | 0 → 0 |
+| `components/EmptyState.tsx` | 5 → **0** | 2 → **0** |
+| `components/MonthYearPicker.tsx` | 5 → **0** | 0 → 0 |
+| `components/ConfirmDialog.tsx` | 3 → **0** | 4 → **0** |
+| `components/CountryFlag.tsx` | 3 → **1** | 0 → 0 |
+| `features/financial/FinancialTab.tsx` | 3 → **0** | 0 → 0 |
+| `features/portfolio/PortfolioTab.tsx` | 3 → 3 | 0 → 0 |
+
+Los 12 que quedan, uno por uno: el ancho calculado del relleno del medidor en Proyecciones y
+en Proyectos (2), los tres `flexGrow` de la barra de salud y los tres `maxWidth` de los SVG
+de ancho fluido del Tablero (6, ya documentados en la pasada anterior), los dos `flexGrow` de
+la barra apilada de Portafolio (2, mas una mención en su comentario de cabecera que el `grep`
+cuenta) y el tamaño de fuente del globo de respaldo de `CountryFlag`, que sale de su prop
+`size` (1).
+
+**Se empezo por los componentes compartidos**, que viven dentro de las pantallas grandes, y
+eso resolvio de paso parte de lo demás. La mayor parte salió de vocabulario ya existente:
+
+- **`.field-label` absorbió 18 etiquetas** escritas a mano (15 en Consultores, 3 en
+  Proyectos). Todas iban en `--color-accent` o `--color-sec-blue` a 0,75rem; el ámbar sobre
+  blanco se queda en 1,9:1 y no vale para ese tamaño (sección 5.5). Es la misma sustitución
+  que ya se hizo en Capacidad.
+- **`.meter`/`.meter__track`/`.meter__fill--*`/`.meter__value` absorbió las dos barras de
+  progreso** que Proyecciones y Proyectos se habían inventado por separado.
+- **`.cell-right` y `.cell-strong` resolvieron los 19 estilos de Informes** de una vez: eran
+  todos `textAlign: "right"` y `fontWeight: 700` de celdas de tabla.
+- También `.section-stack`, `.field-stack`, `.field-help`, `.field-error`, `.state-chip--*`,
+  `.status-badge--*`, `.select-control`, `.control-sm`, `.btn-sm`, `.btn-compact`,
+  `.btn-danger`, `.modal-card--sm`, `.modal-title`, `.modal-actions--spaced`,
+  `.filters-grid--spaced`, `.empty-state__*`, `.empty-note--center`, `.cell-small`,
+  `.cell-dash`, `.cell-empty--roomy`, `.inline-actions`, `.span-full` y `.tone-danger`.
+
+Lo nuevo lleva prefijo de pantalla, salvo las piezas genuinamente compartidas:
+
+| Clase | Para qué |
+|---|---|
+| `.no-select`, `.control-block`, `.span-2`, `.cell-nowrap` | Utilidades que faltaban: texto de casilla no seleccionable, control a ancho completo (hermano de `.btn-block`), `grid-column: span 2` (hermano de `.span-full`) y celda que no se parte en dos líneas |
+| `.meter__fill--info` | Faltaba el modificador de información del medidor |
+| `.field-help--warning` | Variante de aviso de `.field-help`, para el texto de presupuesto ajustado |
+| `.empty-state__action` | La ranura de acción de `.empty-state`, que no existía |
+| `.country-flag`, `__img`, `__fallback`, `__name` | La bandera de país. El radio es de 2px a propósito: mide 20x15px y `--radius-sm` (6px) le comería las esquinas |
+| `.month-year-picker__row`, `__month` | La fila de los dos selectores del selector de mes y año |
+| `.modal-title--danger`, `.confirm-dialog__body` | Título en rojo y cuerpo del diálogo de confirmación |
+| `.searchable-select-container/-trigger/-value/-freetext/-caret/-dropdown/-search(__input)/-list/-option/-empty/-mark` | El selector con búsqueda, entero. Solo tenía CSS para `:hover`; todo lo demás se pintaba a maño |
+| `.cons-filters`, `.cons-filter-select`, `.cons-btn-tall`, `.cons-check-aligned`, `.cons-edit-row-3`, `.cons-btn-assign` | Consultores: rejilla de filtros, su select estrecho, alturas y proporciones de fila, y el botón «Asignar» |
+| `.fore-presets`, `.fore-form`, `.fore-row` (+ `--lg/--md/--sm`), `.fore-submit-row` (+ `__msg`), `.fore-range-error`, `.fore-cell-date`, `.fore-help-block` | Proyecciones: atajos de fecha, formulario, sus tres rejillas y el pie de envío |
+| `.proy-bar`, `.proy-bar-cell`, `.proy-bar-pct`, `.proy-filters`, `.proy-note`, `.proy-check-label/-input/-box/-row/-text` | Proyectos: barra de presupuesto en una celda, filtros y las dos casillas de horas extra |
+| `.fin-panel-toggle` | Financiero: la fila de los dos botónes de panel |
+| `.section-header-title--tight` | Informes: el título de sección pegado a su tabla |
+
+Seis cosas que conviene saber:
+
+1. **`RagBadge` de Proyectos pintaba el semáforo con `result.color` de fondo y `#fff`
+   encima**, que es exactamente el error de la sección 5.3: sobre el verde y el ámbar de
+   marca el blanco se queda en 2,6:1. Pasa a `PRESENTACION_SALUD` + `.status-badge--*`, el
+   camino que ya usaban Portafolio y Tablero. `backendHealthToResult` deja de usarse allí.
+2. **La barra de ejecución de Proyecciones tenía su propio semáforo** (`#dc2626`, `#f59e0b`,
+   `#2563eb` sobre pista `#e5e7eb`): un cuarto juego de colores, de Tailwind, sin modo
+   oscuro. Pasa a `.meter`, que ya existía. Lo mismo la barra de presupuesto de Proyectos.
+3. **El formulario de Proyecciones fijaba `background: "#ffffff"`**, así que en modo oscuro
+   se quedaba blanco. Es el mismo fallo encontrado cinco veces al migrar Horas Extra.
+4. **`SearchableSelect` marcaba el foco con `#ea580c`** —el naranja de Tailwind, no el ámbar
+   de Synaptica— con halo `rgba(234,88,12,.15)`, sombra `rgba(154,79,15,.15)` y el resaltado
+   de coincidencia en `#fde047`. Lo usan cinco pantallas, así que arreglarlo las mejora todas
+   a la vez. De paso, el campo de búsqueda del desplegable no tenía nombre accesible.
+5. **`ReportsTab` se revisó y su `features/reports/reports.css` está bien como está**:
+   tokenizado, con una paleta validada contra deuteranopia y su propio modo oscuro. **No se
+   tocó.** Sus 19 estilos en línea no eran valores calculados —las barras las dibuja
+   `HoursBarChart`, que ya es SVG con clases— sino alíneacion de tabla, y salieron con
+   clases existentes.
+6. **`components/EmptyState.tsx` no lo importa nadie.** Se migró igualmente (queda en 0/0),
+   pero es código muerto: candidato a `BACKLOG_DEPURACION.md`. `features/expenses/` define su
+   propio `EmptyState` local, que es el que de verdad se usa.
+
+**Cuatro fallos de modo oscuro que solo aparecieron al auditar `getComputedStyle`**, no en
+las capturas, todos corregidos al final de `App.css`:
+
+1. **`.status-badge--*` perdía su color de texto dentro de una tarjeta en oscuro.**
+   `body.dark .card span:not(.pill)` pesa (0,3,2) y le gana a un modificador de dos clases,
+   así que la insignia salía en gris claro (`#e2e8f0`) sobre el verde de marca: **2,4:1**.
+   Afecta también a Portafolio y Tablero, que comparten la clase. Resuelto repitiendo la
+   clase hasta (0,4,1), y con su gemela para `body.dark td`.
+2. **El botón «Asignar» perdía su relleno verde**: `body.dark button.ghost` pesa (0,2,2) y le
+   gana a `.cons-btn-assign.cons-btn-assign` (0,2,0). Es la trampa ya conocida de `.ghost`,
+   ahora con el agravante de que en oscuro gana por número de *elementos*.
+3. **`.meter__value` y `.cell-empty` se aplanaban al blanco de la tarjeta**, perdiendo su
+   jerarquía de texto secundario.
+4. El propio arreglo de (3) tapaba a `.meter__value--danger`: **una regla nueva puede ganarle
+   a otra regla nueva**. Por eso las tres correcciones finales van al final del bloque, en su
+   propia sección comentada.
+
+**Tres límites conocidos que NO se tocaron**, por ser CSS compartido por toda la aplicación:
+
+- `body.dark h1..h6 { color: #f8fafc !important }` sigue ganando, así que en oscuro el título
+  en rojo del diálogo de confirmación sale en blanco. Misma limitación ya anotada en Horas
+  Extra, Perfil y Estimaciones.
+- `body.dark th` pinta la cabecera de tabla en ámbar con (0,1,2), que le gana a `.cell-right`
+  puesta en un `th`. Solo afecta al color, no a la alíneacion, que es lo que se buscaba.
+- **El botón primario de la aplicación es ámbar con texto blanco** (2,6:1). Se ve en el
+  alternador de panel de Financiero, pero es el estilo global de `button` y cambiarlo toca
+  las 16 pantallas: no es una decisión de esta pasada. Queda anotado.
+
 ### Especificidad: la trampa de `body.dark .card`
 
 Al migrar el Tablero salieron dos reglas heredadas que le ganan a cualquier clase de patrón:
@@ -522,10 +637,10 @@ Tailwind; el cambio de nombre es deliberado para que nadie vuelva a meter un col
 
 Medido con `grep -o 'style={{'` y `grep -oiE '#[0-9a-f]{3,8}'` sobre `frontend/src/**/*.tsx`.
 
-| | Antes (rama `dev`) | Tras Portafolio | Tras Encabezado/Alertas/Tablero | Tras Toast…Capacidad | Ahora (tras Gastos, Perfil/Usuarios/Auditoría/FX y Estimaciones) |
-|---|---|---|---|---|---|
-| Colores literales en `.tsx` | 575 | 533 | 428 | 229 | **130** |
-| Estilos en línea en `.tsx` | 1576 | 1528 | 1372 | 903 | **490** |
+| | Antes (rama `dev`) | Tras Portafolio | Tras Encabezado/Alertas/Tablero | Tras Toast…Capacidad | Tras Gastos/Perfil/Estimaciones | Ahora (tras la cola de medianas) |
+|---|---|---|---|---|---|---|
+| Colores literales en `.tsx` | 575 | 533 | 428 | 229 | 130 | **100** |
+| Estilos en línea en `.tsx` | 1576 | 1528 | 1372 | 903 | 490 | **340** |
 
 ### Lo migrado en esta pasada
 
@@ -549,9 +664,11 @@ de la paleta de Synaptica.
 |---|---|---|
 | `features/activities/ActivitiesTab.tsx` | 223 | 58 |
 | `App.tsx` (landing y layout) | 93 | 42 |
-| `features/forecasts/ForecastsTab.tsx` | 39 | 19 |
-| `features/consultants/ConsultantsTab.tsx` | 39 | 0 |
-| `features/projects/ProjectsTab.tsx` | 24 | 3 |
+
+**No queda nada más.** De los 340 estilos en línea globales, 316 están en esos dos archivos y
+los 24 restantes son valores calculados repartidos por pantallas ya migradas.
+`ActivitiesTab` espera una decisión de producto sobre si el módulo se retira; `App.tsx` se
+hará aparte porque es landing y layout y se ve en las 16 pantallas.
 
 **Ya migrados desde esta tabla**: `components/AlertsPanel.tsx`, `components/Toast.tsx`,
 `components/ValidationErrorBox.tsx`, `components/DateRangePicker.tsx`, `components/RagChat.tsx`,
@@ -646,6 +763,19 @@ En `documentacion/capturas/`, generadas con Playwright sobre el entorno local:
   un diff desplegado). Las de `-antes-` se tomaron levantando un segundo servidor de Vite
   sobre un `git worktree` en `HEAD`, en otro puerto, porque el servidor de desarrollo
   compartido estaba en ese momento a medio recompilar por otra migración en paralelo.
+
+- `consultores-*`, `proyectos-*`, `informes-*`, `financiero-*` y `proyecciones-despues-*`
+  (`-antes-` / `-despues-`): la cola de pantallas medianas, claro y oscuro, a 1440 y 400px.
+  Más dos estados que la navegación simple no muestra porque el formulario de alta arranca
+  plegado: `proyecciones-form-*` y `consultores-form-*`, que es donde vive el grueso de lo
+  migrado (las etiquetas de campo, la rejilla del formulario y el pie de envío).
+  Las `proyecciones-antes-*` son las de una pasada anterior y **no se regeneraron**, para no
+  pisar capturas ya commiteadas; por eso su barra lateral es la de aquel momento.
+  Las demás `-antes-` se tomaron levantando un segundo servidor de Vite sobre un
+  `git worktree` en `HEAD`. **Tiene que correr en el puerto 4173**: el backend solo devuelve
+  cabecera CORS a `5173` y `4173`, así que en cualquier otro puerto la app se queda en la
+  portada con «No se pudo contactar con el servidor» y las capturas salen de la portada, no
+  de la pantalla. Pasó en el primer intento.
 
 Dos avisos sobre estas tres últimas, por honestidad:
 

@@ -25,20 +25,17 @@ export function ConfirmDialog({
   return createPortal(
     <div className="modal-overlay" onClick={onCancel}>
       <div
-        className="modal-card"
-        style={{ maxWidth: "28rem" }}
+        className="modal-card modal-card--sm"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">
-          <h3 style={{ color: danger ? "#dc2626" : undefined }}>{title}</h3>
+          <h3 className={danger ? "modal-title modal-title--danger" : "modal-title"}>{title}</h3>
         </div>
-        <div style={{ padding: "1rem 0", color: "var(--text-soft, #374151)", lineHeight: 1.5 }}>
-          {message}
-        </div>
+        <div className="confirm-dialog__body">{message}</div>
         <div className="modal-actions">
           <button
             type="button"
-            style={danger ? { background: "#dc2626", borderColor: "#dc2626" } : undefined}
+            className={danger ? "btn-danger" : undefined}
             onClick={onConfirm}
           >
             {confirmLabel}

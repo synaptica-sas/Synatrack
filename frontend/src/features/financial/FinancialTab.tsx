@@ -60,20 +60,20 @@ export function FinancialTab({
   return (
     <div>
       {showToggle && (
-        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div className="fin-panel-toggle" role="group" aria-label="Panel financiero">
           <button
             type="button"
-            className={panel === "expenses" ? "" : "ghost"}
+            className={panel === "expenses" ? "btn-compact" : "ghost btn-compact"}
+            aria-pressed={panel === "expenses"}
             onClick={() => onPanelChange("expenses")}
-            style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
           >
             ⊟ Panel Gastos
           </button>
           <button
             type="button"
-            className={panel === "revenue" ? "" : "ghost"}
+            className={panel === "revenue" ? "btn-compact" : "ghost btn-compact"}
+            aria-pressed={panel === "revenue"}
             onClick={() => onPanelChange("revenue")}
-            style={{ fontSize: "0.85rem", padding: "0.4rem 0.8rem", borderRadius: "8px" }}
           >
             ⊕ Panel Ingresos
           </button>

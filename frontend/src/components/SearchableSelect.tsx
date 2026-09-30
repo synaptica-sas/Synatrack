@@ -142,27 +142,10 @@ export function SearchableSelect({
       ref={containerRef}
       className={`searchable-select-container ${isOpen ? "is-open" : ""} ${disabled ? "is-disabled" : ""}`}
       onKeyDown={handleKeyDown}
-      style={{ position: "relative", width: "100%" }}
     >
       <div
         className="searchable-select-trigger"
         onClick={() => !disabled && setIsOpen(!isOpen)}
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          width: "100%",
-          padding: "0.6rem 0.75rem",
-          borderRadius: "10px",
-          border: isOpen ? "1px solid #ea580c" : "1px solid var(--border-color)",
-          background: disabled ? "var(--state-neutral-bg)" : "var(--card-bg)",
-          color: disabled ? "var(--text-soft)" : "var(--text)",
-          cursor: disabled ? "not-allowed" : "pointer",
-          fontSize: "0.88rem",
-          boxShadow: isOpen ? "0 0 0 3px rgba(234, 88, 12, 0.15)" : "none",
-          transition: "border-color 0.2s, box-shadow 0.2s, background-color 0.2s",
-          userSelect: "none"
-        }}
       >
         {allowFreeText ? (
           <input
@@ -176,17 +159,7 @@ export function SearchableSelect({
             }}
             placeholder={placeholder}
             disabled={disabled}
-            style={{
-              width: "100%",
-              border: "none",
-              background: "transparent",
-              outline: "none",
-              padding: 0,
-              margin: 0,
-              fontSize: "inherit",
-              fontFamily: "inherit",
-              color: "inherit",
-            }}
+            className="searchable-select-freetext"
             onClick={(e) => {
               e.stopPropagation();
               setIsOpen(true);
@@ -194,48 +167,19 @@ export function SearchableSelect({
             onFocus={() => setIsOpen(true)}
           />
         ) : (
-          <span style={{
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: "calc(100% - 20px)"
-          }}>
+          <span className="searchable-select-value">
             {selectedOption ? selectedOption.label : (emptyLabel || placeholder)}
           </span>
         )}
-        <span style={{
-          fontSize: "0.65rem",
-          color: "var(--color-accent)",
-          transition: "transform 0.22s ease",
-          transform: isOpen ? "rotate(180deg)" : "rotate(0deg)"
-        }}>
-          ▼
-        </span>
+        <span className="searchable-select-caret" aria-hidden="true">▼</span>
       </div>
 
       {isOpen && (
         <div
           className="searchable-select-dropdown"
-          style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            marginTop: "6px",
-            background: "var(--card-bg)",
-            border: "1px solid var(--border-color)",
-            borderRadius: "10px",
-            boxShadow: "0 10px 25px -5px rgba(154, 79, 15, 0.15), 0 8px 10px -6px rgba(154, 79, 15, 0.15)",
-            zIndex: 1000,
-            maxHeight: "280px",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-            animation: "selectDropdownFade 0.18s cubic-bezier(0.16, 1, 0.3, 1)"
-          }}
         >
           {!allowFreeText && (
-            <div style={{ padding: "0.5rem", borderBottom: "1px solid var(--border-color)", background: "var(--card-bg)" }}>
+            <div className="searchable-select-search">
               <input
                 ref={searchInputRef}
                 type="text"
@@ -243,17 +187,8 @@ export function SearchableSelect({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
-                style={{
-                  width: "100%",
-                  padding: "0.4rem 0.6rem",
-                  fontSize: "0.82rem",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border-color)",
-                  background: "var(--card-bg)",
-                  color: "var(--text)",
-                  outline: "none",
-                  boxSizing: "border-box"
-                }}
+                className="searchable-select-search__input"
+                aria-label={placeholder}
               />
             </div>
           )}
@@ -261,12 +196,6 @@ export function SearchableSelect({
           <div
             ref={optionsListRef}
             className="searchable-select-list"
-            style={{
-              overflowY: "auto",
-              flex: 1,
-              maxHeight: "220px",
-              padding: "0.25rem 0"
-            }}
           >
             {emptyLabel && (!allowFreeText ? search === "" : true) && (
               <div
@@ -278,28 +207,13 @@ export function SearchableSelect({
                   setSearch("");
                 }}
                 onMouseEnter={() => setHighlightedIndex(-1)}
-                style={{
-                  padding: "0.5rem 0.75rem",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                  color: value === "" ? "var(--color-accent)" : "var(--text)",
-                  background: value === ""
-                    ? "var(--color-accent-10)"
-                    : highlightedIndex === -1
-                      ? "var(--color-accent-05)"
-                      : "transparent",
-                  fontWeight: value === "" ? 700 : 400,
-                  transition: "background-color 0.1s"
-                }}
               >
                 {emptyLabel}
               </div>
             )}
 
             {filteredOptions.length === 0 ? (
-              <div style={{ padding: "0.6rem 0.75rem", fontSize: "0.82rem", color: "var(--text-soft)", fontStyle: "italic", textAlign: "center" }}>
-                No se encontraron resultados
-              </div>
+              <div className="searchable-select-empty">No se encontraron resultados</div>
             ) : (
               filteredOptions.map((opt, idx) => {
                 const isSelected = value === opt.value;
@@ -329,29 +243,12 @@ export function SearchableSelect({
                       }
                     }}
                     onMouseEnter={() => setHighlightedIndex(idx)}
-                    style={{
-                      padding: "0.5rem 0.75rem",
-                      fontSize: "0.85rem",
-                      cursor: "pointer",
-                      color: isSelected ? "var(--color-accent)" : "var(--text)",
-                      background: isSelected
-                        ? "var(--color-accent-10)"
-                        : isHighlighted
-                          ? "var(--color-accent-05)"
-                          : "transparent",
-                      fontWeight: isSelected ? 700 : 400,
-                      transition: "background-color 0.1s",
-                      display: "flex",
-                      alignItems: "center"
-                    }}
                   >
                     <span>
                       {hasSearch ? (
                         parts.map((part, i) => 
                           part.toLowerCase() === search.toLowerCase() ? (
-                            <mark key={i} style={{ background: "#fde047", color: "inherit", padding: "0.05rem 0.1rem", borderRadius: "2px" }}>
-                              {part}
-                            </mark>
+                            <mark key={i} className="searchable-select-mark">{part}</mark>
                           ) : (
                             part
                           )
