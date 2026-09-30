@@ -18,3 +18,6 @@ graphify-out/
 # Cache de Python de las skills
 __pycache__/
 *.pyc
+
+# Capturas y trazas del servidor MCP de Playwright (se regeneran)
+.playwright-mcp/

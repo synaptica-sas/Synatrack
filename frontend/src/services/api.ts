@@ -2044,6 +2044,10 @@ export type Activity = {
   dueDate: string | null;
   completedDate: string | null;
   estimatedHours: string;
+  /**
+   * Derivado: lo calcula el backend sumando las horas registradas que apuntan
+   * a esta actividad. No se envia al crear ni al editar.
+   */
   actualHours: string;
   status: ActivityStatus;
   priority: ActivityPriority;
@@ -2080,7 +2084,6 @@ export async function createActivity(payload: {
   dueDate?: string | null;
   completedDate?: string | null;
   estimatedHours: number;
-  actualHours: number;
   status: ActivityStatus;
   priority: ActivityPriority;
   comments?: string | null;
@@ -2101,7 +2104,6 @@ export async function updateActivity(
     dueDate?: string | null;
     completedDate?: string | null;
     estimatedHours: number;
-    actualHours: number;
     status: ActivityStatus;
     priority: ActivityPriority;
     comments?: string | null;
