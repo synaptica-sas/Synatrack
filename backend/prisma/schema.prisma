@@ -21,6 +21,10 @@ enum TimeEntryStatus {
 enum TimeEntrySource {
   MANUAL
   TIMESHEET
+  // Historico: el cronometro escribia TIMER hasta el 2026-09-30. Ahora produce
+  // TIMESHEET, porque es una forma de rellenar el timesheet y sus horas cuentan
+  // en el informe igual que las demas. No quedan filas con este valor; se
+  // conserva en el enum porque quitarlo en Postgres obliga a recrear el tipo.
   TIMER
 }
 

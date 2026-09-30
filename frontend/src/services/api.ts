@@ -149,6 +149,11 @@ export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type TimeEntryConsultant = Consultant;
 
 /** De donde salio el registro: formulario clasico, grilla semanal o cronometro. */
+/**
+ * De donde salio el registro. `TIMER` es historico: el cronometro ahora produce
+ * `TIMESHEET`, porque sus horas cuentan en el informe como las demas. Las que
+ * vinieron del cronometro son las unicas con `startedAt` y `endedAt`.
+ */
 export type TimeEntrySource = "MANUAL" | "TIMESHEET" | "TIMER";
 
 export type TimeEntryActivityRef = { id: string; title: string };

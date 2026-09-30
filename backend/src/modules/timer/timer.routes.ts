@@ -228,7 +228,12 @@ export async function timerRoutes(app: FastifyInstance) {
             hours,
             description: timer.description,
             activityId: timer.activityId,
-            source: TimeEntrySource.TIMER,
+            // El cronómetro es una forma cómoda de rellenar el timesheet, no
+            // un registro aparte: lo que produce SON horas de timesheet, y por
+            // eso cuentan en el informe como cualquier otra. Que vinieron del
+            // cronómetro se sigue sabiendo porque son las únicas con
+            // `startedAt` y `endedAt`.
+            source: TimeEntrySource.TIMESHEET,
             startedAt: timer.startedAt,
             endedAt,
             status: TimeEntryStatus.PENDING,
