@@ -62,6 +62,35 @@ const rejectPayloadSchema = z.object({
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
 
+const descriptionsQuerySchema = z.object({
+  projectId: z.string().min(1).optional(),
+  consultantId: z.string().min(1).optional(),
+});
+
+/** Una tarea tal como la identifica la grilla: descripción + actividad. */
+const taskRefSchema = z.object({
+  description: z.string().trim().max(500),
+  activityId: z.string().min(1).nullable(),
+});
+
+const mergeTaskSchema = z.object({
+  projectId: z.string().min(1),
+  consultantId: z.string().min(1).optional(),
+  from: taskRefSchema,
+  to: taskRefSchema,
+});
+
+/**
+ * Filtro por descripción que trata igual "Tarea", "tarea" y la ausencia de
+ * descripción que la grilla muestra como vacía. Es el mismo criterio con el
+ * que la grilla agrupa filas, así que fusionar una fila afecta exactamente a
+ * los registros que esa fila muestra.
+ */
+function descriptionFilter(description: string): Prisma.TimeEntryWhereInput {
+  if (description === "") return { OR: [{ description: null }, { description: "" }] };
+  return { description: { equals: description, mode: "insensitive" } };
+}
+
 /** Normaliza una fecha a medianoche UTC para que una celda del día sea única. */
 function toUtcDay(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -131,6 +160,165 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     async (request) => {
       const consultant = await findMyConsultant(request);
       return { data: consultant };
+    },
+  );
+
+  /**
+   * Descripciones de tarea que ya usó un consultor, de la más reciente a la más
+   * antigua. Alimentan el autocompletado del rastreador y del timesheet: si la
+   * gente elige una tarea existente en vez de reescribirla, las horas caen en
+   * la misma fila y no aparece una nueva por cada errata.
+   *
+   * Se deduplican sin distinguir mayúsculas, igual que agrupa la grilla, y se
+   * conserva la grafía del uso más reciente.
+   */
+  app.get(
+    "/descriptions",
+    {
+      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT])],
+    },
+    async (request, reply) => {
+      const query = descriptionsQuerySchema.parse(request.query);
+
+      const target = await resolveTargetConsultantId(request, query.consultantId);
+      if ("error" in target) {
+        return reply.status(403).send({ message: target.error });
+      }
+
+      const grupos = await prisma.timeEntry.groupBy({
+        by: ["description"],
+        where: {
+          consultantId: target.consultantId,
+          ...(query.projectId ? { projectId: query.projectId } : {}),
+          description: { not: null },
+          NOT: { description: "" },
+        },
+        _max: { createdAt: true },
+        _count: { _all: true },
+        orderBy: { _max: { createdAt: "desc" } },
+        take: 200,
+      });
+
+      const vistas = new Set<string>();
+      const data: { description: string; uses: number; lastUsedAt: Date | null }[] = [];
+      for (const g of grupos) {
+        const description = (g.description ?? "").trim();
+        const clave = description.toLowerCase();
+        if (!description || vistas.has(clave)) continue;
+        vistas.add(clave);
+        data.push({ description, uses: g._count._all, lastUsedAt: g._max.createdAt });
+        if (data.length >= 50) break;
+      }
+
+      return { data };
+    },
+  );
+
+  /**
+   * Fusiona dos tareas: todas las horas de `from` pasan a llamarse como `to`,
+   * en toda la historia del consultor en ese proyecto, no solo en la semana
+   * visible. Si solo se fusionara la semana, la errata seguiría viva en las
+   * anteriores y el autocompletado la seguiría sugiriendo.
+   *
+   * Cambia la etiqueta, nunca las horas. Aun así respeta dos reglas del resto
+   * del módulo: no toca meses cerrados, y un consultor solo reetiqueta sus
+   * horas pendientes (las aprobadas ya las revisó alguien tal como estaban).
+   * Lo que se salta se devuelve contado para poder explicarlo en pantalla.
+   */
+  app.post(
+    "/merge-task",
+    {
+      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT])],
+    },
+    async (request, reply) => {
+      const payload = mergeTaskSchema.parse(request.body);
+
+      const mismaTarea =
+        payload.from.description.toLowerCase() === payload.to.description.toLowerCase() &&
+        payload.from.activityId === payload.to.activityId;
+      if (mismaTarea) {
+        return reply.status(400).send({ message: "No se puede fusionar una tarea consigo misma" });
+      }
+
+      const target = await resolveTargetConsultantId(request, payload.consultantId);
+      if ("error" in target) {
+        return reply.status(403).send({ message: target.error });
+      }
+
+      const activity = await resolveActivityId(payload.to.activityId, target.consultantId);
+      if (!activity.ok) {
+        return reply.status(400).send({ message: activity.error });
+      }
+
+      const roles = request.authUser?.roles ?? [];
+      const esRevisor = roles.includes(AppRole.ADMIN) || roles.includes(AppRole.PM);
+
+      const candidatas = await prisma.timeEntry.findMany({
+        where: {
+          consultantId: target.consultantId,
+          projectId: payload.projectId,
+          activityId: payload.from.activityId,
+          ...descriptionFilter(payload.from.description),
+        },
+      });
+
+      // Meses cerrados: se consulta cada mes distinto una sola vez.
+      const mesesCerrados = new Set<string>();
+      const mesesVistos = new Set<string>();
+      for (const e of candidatas) {
+        const mes = `${e.workDate.getUTCFullYear()}-${e.workDate.getUTCMonth()}`;
+        if (mesesVistos.has(mes)) continue;
+        mesesVistos.add(mes);
+        if (await isMonthClosed(payload.projectId, e.workDate)) mesesCerrados.add(mes);
+      }
+
+      let saltadasCerradas = 0;
+      let saltadasRevisadas = 0;
+      const aFusionar = candidatas.filter((e) => {
+        const mes = `${e.workDate.getUTCFullYear()}-${e.workDate.getUTCMonth()}`;
+        if (mesesCerrados.has(mes)) {
+          saltadasCerradas++;
+          return false;
+        }
+        if (!esRevisor && e.status !== TimeEntryStatus.PENDING) {
+          saltadasRevisadas++;
+          return false;
+        }
+        return true;
+      });
+
+      const actualizadas = await prisma.$transaction(
+        aFusionar.map((e) =>
+          prisma.timeEntry.update({
+            where: { id: e.id },
+            data: {
+              description: payload.to.description || null,
+              activityId: activity.activityId,
+            },
+          }),
+        ),
+      );
+
+      // La auditoría va después de confirmar, como en el resto del módulo.
+      for (let i = 0; i < actualizadas.length; i++) {
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.timeEntry,
+          entityId: actualizadas[i].id,
+          action: "UPDATE",
+          changedBy: request.authUser!.email,
+          before: aFusionar[i] as unknown as Record<string, unknown>,
+          after: actualizadas[i] as unknown as Record<string, unknown>,
+          request,
+        });
+      }
+
+      return {
+        data: {
+          merged: actualizadas.length,
+          skippedClosedMonth: saltadasCerradas,
+          skippedReviewed: saltadasRevisadas,
+        },
+      };
     },
   );
 

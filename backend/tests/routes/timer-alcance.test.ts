@@ -156,7 +156,11 @@ describe("/api/timer: alcance y propiedad", () => {
       expect(parado.statusCode).toBe(201);
       expect(parado.json().data.consultantId).toBe(escenario.consultorA.id);
       expect(parado.json().data.status).toBe("PENDING");
-      expect(parado.json().data.source).toBe("TIMER");
+      // El cronómetro produce horas de timesheet, no un origen aparte: así
+      // cuentan en el informe. La procedencia queda en startedAt/endedAt.
+      expect(parado.json().data.source).toBe("TIMESHEET");
+      expect(parado.json().data.startedAt).not.toBeNull();
+      expect(parado.json().data.endedAt).not.toBeNull();
     });
 
     it("no se puede enganchar el cronómetro a una tarea de otro consultor", async () => {

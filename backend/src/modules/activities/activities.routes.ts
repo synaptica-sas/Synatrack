@@ -1,10 +1,46 @@
 import type { FastifyInstance } from "fastify";
-import { AppRole } from "@prisma/client";
+import { AppRole, Prisma, TimeEntryStatus } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
+
+/**
+ * Las horas reales de una actividad se CALCULAN sumando los registros de horas
+ * que apuntan a ella, no se escriben a mano.
+ *
+ * Antes `actualHours` era una columna que el formulario rellenaba, así que
+ * convivían dos contabilidades del mismo trabajo -- la de `Activity` y la de
+ * `TimeEntry` -- sin que nada las conciliara: se podían anotar 8 h en una
+ * actividad y 0 en el timesheet, y el informe, la capacidad y el coste del
+ * proyecto no se enteraban. Con el cálculo al leer hay una sola fuente de
+ * verdad y no puede desincronizarse.
+ *
+ * Se excluyen las rechazadas: horas que un aprobador tumbó no son trabajo
+ * hecho. Las pendientes sí cuentan, porque el trabajo ya ocurrió.
+ */
+async function conHorasReales<T extends { id: string }>(activities: T[]) {
+  if (activities.length === 0) return activities;
+
+  const sumas = await prisma.timeEntry.groupBy({
+    by: ["activityId"],
+    where: {
+      activityId: { in: activities.map((a) => a.id) },
+      status: { not: TimeEntryStatus.REJECTED },
+    },
+    _sum: { hours: true },
+  });
+
+  const porActividad = new Map(
+    sumas.map((s) => [s.activityId, s._sum.hours ?? new Prisma.Decimal(0)]),
+  );
+
+  return activities.map((a) => ({
+    ...a,
+    actualHours: porActividad.get(a.id) ?? new Prisma.Decimal(0),
+  }));
+}
 
 const activityPayloadSchema = z.object({
   title: z.string().trim().min(1, "El título es requerido").max(100, "El título no puede exceder los 100 caracteres"),
@@ -16,7 +52,6 @@ const activityPayloadSchema = z.object({
   dueDate: z.coerce.date().optional().nullable(),
   completedDate: z.coerce.date().optional().nullable(),
   estimatedHours: z.coerce.number().min(0, "Las horas estimadas no pueden ser negativas"),
-  actualHours: z.coerce.number().min(0, "Las horas reales no pueden ser negativas").default(0),
   status: z.enum(["pending", "in_progress", "completed", "cancelled", "blocked"]).default("pending"),
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   comments: z.string().trim().max(1000, "Los comentarios no pueden exceder los 1000 caracteres").optional().nullable(),
@@ -147,7 +182,7 @@ export async function activitiesRoutes(app: FastifyInstance) {
             orderBy,
           });
 
-      return { data: entries };
+      return { data: await conHorasReales(entries) };
     },
   );
 
@@ -195,7 +230,6 @@ export async function activitiesRoutes(app: FastifyInstance) {
           dueDate: payload.dueDate || null,
           completedDate: payload.completedDate || null,
           estimatedHours: payload.estimatedHours,
-          actualHours: payload.actualHours,
           status: payload.status,
           priority: payload.priority,
           comments: payload.comments,
@@ -215,7 +249,8 @@ export async function activitiesRoutes(app: FastifyInstance) {
         request,
       });
 
-      return reply.status(201).send({ data: activity });
+      const [conHoras] = await conHorasReales([activity]);
+      return reply.status(201).send({ data: conHoras });
     },
   );
 
@@ -273,7 +308,6 @@ export async function activitiesRoutes(app: FastifyInstance) {
           dueDate: payload.dueDate || null,
           completedDate: payload.completedDate || null,
           estimatedHours: payload.estimatedHours,
-          actualHours: payload.actualHours,
           status: payload.status,
           priority: payload.priority,
           comments: payload.comments,
@@ -294,7 +328,8 @@ export async function activitiesRoutes(app: FastifyInstance) {
         request,
       });
 
-      return { data: updated };
+      const [conHoras] = await conHorasReales([updated]);
+      return { data: conHoras };
     },
   );
 

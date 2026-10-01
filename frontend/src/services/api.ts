@@ -149,6 +149,11 @@ export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type TimeEntryConsultant = Consultant;
 
 /** De donde salio el registro: formulario clasico, grilla semanal o cronometro. */
+/**
+ * De donde salio el registro. `TIMER` es historico: el cronometro ahora produce
+ * `TIMESHEET`, porque sus horas cuentan en el informe como las demas. Las que
+ * vinieron del cronometro son las unicas con `startedAt` y `endedAt`.
+ */
 export type TimeEntrySource = "MANUAL" | "TIMESHEET" | "TIMER";
 
 export type TimeEntryActivityRef = { id: string; title: string };
@@ -730,6 +735,41 @@ export async function updateTimeEntry(
 
 export async function deleteTimeEntry(id: string): Promise<void> {
   await request<void>(`/api/time-entries/${id}`, "DELETE");
+}
+
+/** Una descripción de tarea ya usada, para sugerirla al escribir. */
+export type TaskDescription = { description: string; uses: number; lastUsedAt: string | null };
+
+/**
+ * Descripciones que el consultor ya usó, de la más reciente a la más antigua.
+ * Sin `projectId`, las de todos sus proyectos.
+ */
+export async function listTaskDescriptions(params: {
+  projectId?: string;
+  consultantId?: string;
+}): Promise<TaskDescription[]> {
+  const query = new URLSearchParams();
+  if (params.projectId) query.set("projectId", params.projectId);
+  if (params.consultantId) query.set("consultantId", params.consultantId);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<ApiEnvelope<TaskDescription[]>>(`/api/time-entries/descriptions${suffix}`);
+  return response.data;
+}
+
+/**
+ * Fusiona dos tareas de un proyecto: todas las horas de `from` pasan a `to`,
+ * en toda la historia, no solo en la semana visible.
+ */
+export async function mergeTask(payload: {
+  projectId: string;
+  consultantId?: string;
+  from: { description: string; activityId: string | null };
+  to: { description: string; activityId: string | null };
+}): Promise<{ merged: number; skippedClosedMonth: number; skippedReviewed: number }> {
+  const response = await request<
+    ApiEnvelope<{ merged: number; skippedClosedMonth: number; skippedReviewed: number }>
+  >("/api/time-entries/merge-task", "POST", payload);
+  return response.data;
 }
 
 // -- Cronometro (Tracker) --------------------------------------------------
@@ -2052,6 +2092,10 @@ export type Activity = {
   dueDate: string | null;
   completedDate: string | null;
   estimatedHours: string;
+  /**
+   * Derivado: lo calcula el backend sumando las horas registradas que apuntan
+   * a esta actividad. No se envia al crear ni al editar.
+   */
   actualHours: string;
   status: ActivityStatus;
   priority: ActivityPriority;
@@ -2088,7 +2132,6 @@ export async function createActivity(payload: {
   dueDate?: string | null;
   completedDate?: string | null;
   estimatedHours: number;
-  actualHours: number;
   status: ActivityStatus;
   priority: ActivityPriority;
   comments?: string | null;
@@ -2109,7 +2152,6 @@ export async function updateActivity(
     dueDate?: string | null;
     completedDate?: string | null;
     estimatedHours: number;
-    actualHours: number;
     status: ActivityStatus;
     priority: ActivityPriority;
     comments?: string | null;

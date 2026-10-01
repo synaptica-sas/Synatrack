@@ -361,7 +361,10 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
           scheduledDate: new Date(ev.start).toISOString(),
           dueDate: new Date(ev.end).toISOString(),
           estimatedHours: ev.duration,
-          actualHours: ev.duration,
+          // Ya no se declaran horas reales al importar: una reunión del
+          // calendario es lo previsto, no tiempo registrado. Las horas reales
+          // aparecerán cuando se registren en Horas o en el Rastreador contra
+          // esta actividad.
           status: "completed",
           priority: "medium",
           comments: "Importado automáticamente de Teams"
@@ -613,7 +616,6 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
         dueDate: formDueDate ? new Date(formDueDate).toISOString() : null,
         completedDate: formStatus === "completed" ? new Date().toISOString() : null,
         estimatedHours: Number(formEstimatedHours),
-        actualHours: Number(formActualHours),
         status: formStatus,
         priority: formPriority,
         comments: formComments.trim() || null,
@@ -1750,15 +1752,16 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
               </div>
 
               <div>
-                <label className="form-label" style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-accent)" }}>Horas Reales (Ejecutadas) *</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  required
-                  value={formActualHours}
-                  onChange={(e) => setFormActualHours(e.target.value)}
-                />
+                <label className="form-label" style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--color-accent)" }}>Horas Reales (Ejecutadas)</label>
+                {/* Ya no se escribe: sale de sumar las horas que el timesheet y
+                    el cronómetro registraron contra esta actividad. Tenerlo como
+                    campo editable creaba dos contabilidades del mismo trabajo
+                    que nadie conciliaba. */}
+                <input type="number" value={formActualHours} readOnly disabled />
+                <p style={{ fontSize: "0.7rem", color: "var(--text-soft)", margin: "0.3rem 0 0", lineHeight: 1.4 }}>
+                  Se calcula solo, sumando las horas que registres en Horas o en el
+                  Rastreador y enlaces a esta actividad.
+                </p>
               </div>
 
               <div>

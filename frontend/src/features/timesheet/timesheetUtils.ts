@@ -90,18 +90,33 @@ export function formatClock(totalSeconds: number): string {
 /** Horas decimales → "8:30". Devuelve cadena vacía para 0, para no ensuciar la grilla. */
 export function formatHoursShort(hours: number): string {
   if (!hours) return "";
-  const totalMinutes = Math.round(hours * 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${h}:${String(m).padStart(2, "0")}`;
+  return formatDuration(hours);
+}
+
+/**
+ * Duración de un registro como "HH:MM:SS": 2 h -> "02:00:00", 53 s ->
+ * "00:00:53". Es el formato de TODAS las pantallas de horas -- timesheet,
+ * rastreador e informe -- para que una cifra se lea igual en cualquiera.
+ *
+ * Siempre con segundos, a propósito. Antes se abreviaba ("2:00" si no había
+ * segundos sueltos), y al mezclar en la misma grilla "2:00" con "0:00:53" el
+ * total "2:00:53" parecía un "2:00" con ":53" pegado detrás, aunque la suma
+ * fuera correcta.
+ *
+ * Redondea al segundo, no trunca: la columna guarda 4 decimales de hora, y 53 s
+ * se guardan como 0,0147 h = 52,92 s. Truncar mostraría 52.
+ */
+export function formatDuration(hours: number): string {
+  const totalSeconds = Math.round(Math.max(0, hours) * 3600);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
 /** Horas decimales → "8:30", mostrando también el cero (para los totales). */
 export function formatHoursTotal(hours: number): string {
-  const totalMinutes = Math.round(Math.max(0, hours) * 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  return `${h}:${String(m).padStart(2, "0")}`;
+  return formatDuration(hours);
 }
 
 /**
@@ -118,10 +133,24 @@ export function parseHoursInput(raw: string): number | null {
   const text = raw.trim().toLowerCase().replace(",", ".");
   if (!text) return 0;
 
+  // "0:00:43" -- lo que ahora se muestra cuando quedan segundos sueltos. Va
+  // primero para que el valor mostrado vuelva a entrar tal cual y una celda
+  // que solo se visita no se reescriba.
+  const hms = text.match(/^(\d+):([0-5]?\d):([0-5]?\d)$/);
+  if (hms) {
+    return Number(hms[1]) + Number(hms[2]) / 60 + Number(hms[3]) / 3600;
+  }
+
   // "1:30"
   const colon = text.match(/^(\d+):([0-5]?\d)$/);
   if (colon) {
     return Number(colon[1]) + Number(colon[2]) / 60;
+  }
+
+  // "45s"
+  const seconds = text.match(/^(\d+(?:\.\d+)?)\s*s$/);
+  if (seconds) {
+    return Number(seconds[1]) / 3600;
   }
 
   // "90m" / "90min"
@@ -145,9 +174,16 @@ export function parseHoursInput(raw: string): number | null {
   return null;
 }
 
-/** Redondea a 2 decimales, que es la precisión que guarda la base de datos. */
+/**
+ * Redondea a los 4 decimales que guarda la columna (resolución de 0.36 s).
+ *
+ * Con 2 decimales, editar una celda que venía del cronómetro le cambiaba el
+ * valor: 43 segundos (0.0119 h) se convertían en 0.01 h, y al volver a
+ * guardarla desde lo que se mostraba acababa en 0.02 h. El redondeo del
+ * formulario tiene que ser al menos tan fino como el de la base.
+ */
 export function roundHours(hours: number): number {
-  return Math.round(hours * 100) / 100;
+  return Math.round(hours * 10_000) / 10_000;
 }
 
 /** `Decimal` de Prisma llega como string; esto lo convierte sin romperse. */

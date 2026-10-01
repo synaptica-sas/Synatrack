@@ -8,11 +8,13 @@ import {
   getMyConsultant,
   getRunningTimer,
   listActivities,
+  listTaskDescriptions,
   listAllTimeEntries,
   startTimer,
   stopTimer,
   updateRunningTimer,
   type Activity,
+  type TaskDescription,
   type Consultant,
   type Project,
   type RunningTimer,
@@ -21,6 +23,7 @@ import {
 import {
   addDays,
   formatClock,
+  formatDuration,
   formatWeekRange,
   numberish,
   startOfWeek,
@@ -53,7 +56,7 @@ function entryDuration(entry: TimeEntry): string {
     const ms = new Date(entry.endedAt).getTime() - new Date(entry.startedAt).getTime();
     if (ms >= 0) return formatClock(ms / 1000);
   }
-  return formatClock(numberish(entry.hours) * 3600);
+  return formatDuration(numberish(entry.hours));
 }
 
 /** Hora local "9:05" a partir de un instante ISO. */
@@ -83,6 +86,8 @@ export function TrackerTab({
   const [consultantResolved, setConsultantResolved] = useState(false);
   const [timer, setTimer] = useState<RunningTimer | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  // Tareas ya usadas, para autocompletar la descripción del cronómetro.
+  const [suggestions, setSuggestions] = useState<TaskDescription[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -195,6 +200,32 @@ export function TrackerTab({
       cancelled = true;
     };
   }, [myConsultant, targetConsultantId]);
+
+  // Sugerencias de descripción: las del proyecto elegido (o de todos si aún no
+  // hay proyecto). Se recargan al terminar una medición, porque puede haber
+  // una tarea nueva. Si fallan, solo se pierde el autocompletado.
+  useEffect(() => {
+    const consultantId = targetConsultantId || myConsultant?.id;
+    if (!consultantId) {
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await listTaskDescriptions({
+          consultantId,
+          ...(projectId ? { projectId } : {}),
+        });
+        if (!cancelled) setSuggestions(data);
+      } catch {
+        if (!cancelled) setSuggestions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [myConsultant, targetConsultantId, projectId, entries]);
 
   // ── Reloj ──────────────────────────────────────────────────────────────────
 
@@ -451,7 +482,16 @@ export function TrackerTab({
           onChange={(e) => handleDescriptionChange(e.target.value)}
           disabled={!canWrite}
           aria-label="Descripción de la tarea"
+          list="tk-task-suggestions"
+          autoComplete="off"
         />
+        {/* Elegir una tarea ya usada, en vez de reescribirla, hace que la
+            medición caiga en la misma fila del timesheet. */}
+        <datalist id="tk-task-suggestions">
+          {suggestions.map((t) => (
+            <option key={t.description} value={t.description} />
+          ))}
+        </datalist>
 
         <select
           className="tk-project"
@@ -562,7 +602,7 @@ export function TrackerTab({
           </div>
           <div className="ts-weektotal">
             <span>Total semana</span>
-            <strong>{formatClock(weekTotal * 3600)}</strong>
+            <strong>{formatDuration(weekTotal)}</strong>
           </div>
         </div>
 
@@ -577,7 +617,7 @@ export function TrackerTab({
             <section key={group.day} className="tk-day">
               <header className="tk-day-head">
                 <strong>{dayHeading(group.day, today)}</strong>
-                <span>{formatClock(group.total * 3600)}</span>
+                <span>{formatDuration(group.total)}</span>
               </header>
               <ul className="tk-entries">
                 {group.entries.map((entry) => (

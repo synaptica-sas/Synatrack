@@ -66,7 +66,7 @@ Nada de esto se puede resolver leyendo código.
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
 | D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con **0,85 / 1,00** y **90 % / 100 %**, pero `utils/health.ts` calcula la salud con **0,75** y **0,9**. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
 | D-8 | **¿Se va a usar el módulo de Actividades?** El cronómetro y el timesheet permiten enlazar cada registro a una `Activity` para poder comparar horas estimadas con reales, pero no hay ninguna creada: el desplegable solo ofrece "Sin tarea" y parece roto. O se empieza a usar, o se retira el selector de las dos pantallas. | Decisión de producto |
-| D-9 | **¿Las horas de sábado y domingo cuentan en el informe semanal?** Hoy el informe cubre de lunes a viernes y avisa aparte si hay horas en fin de semana, para no ocultarlas. Pero `Consultant.allowWeekendWork` existe, así que trabajar en fin de semana está contemplado: hay que decidir si entran en los totales o se siguen tratando como excepción. | Depende de cómo se factura y se controla la jornada |
+| ~~D-9~~ | ~~**¿Las horas de sábado y domingo cuentan en el informe semanal?**~~ **Resuelta el 2026-09-30: sí cuentan.** El informe vuelve a cubrir los siete días y esas horas entran en los totales como cualquier otra; las columnas de sábado y domingo se dibujan atenuadas para distinguirlas de la jornada habitual sin ocultar el dato. | — |
 
 ---
 
