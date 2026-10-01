@@ -75,30 +75,21 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
     expect(despues.status).toBe(ExtraHourStatus.PENDING_PM);
   });
 
-  it("los dos niveles de aprobación de horas extra dejan cada uno su APPROVE", async () => {
+  it("la aprobación única del PM deja un APPROVE con el salto a APPROVED", async () => {
     const entrada = await crearHoraExtra({
       consultantId: escenario.consultorA.id,
       projectId: escenario.projectId,
       fecha: new Date(Date.UTC(2026, 4, 6)),
     });
 
-    // Nivel 1: aprobación operativa del PM -> PENDING_FINANCE.
-    const nivel1 = await app.inject({
+    // Aprobación única: PENDING_PM -> APPROVED en un solo paso.
+    const aprobacion = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
       headers: comoRol(AppRole.ADMIN),
     });
-    expect(nivel1.statusCode).toBe(200);
-    expect(nivel1.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
-
-    // Nivel 2: autorización de pago -> APPROVED.
-    const nivel2 = await app.inject({
-      method: "PATCH",
-      url: `/api/extra-hours/${entrada.id}/approve`,
-      headers: comoRol(AppRole.ADMIN),
-    });
-    expect(nivel2.statusCode).toBe(200);
-    expect(nivel2.json().data.status).toBe(ExtraHourStatus.APPROVED);
+    expect(aprobacion.statusCode).toBe(200);
+    expect(aprobacion.json().data.status).toBe(ExtraHourStatus.APPROVED);
 
     idsAuditados.push(entrada.id);
     const registros = await prisma.auditLog.findMany({
@@ -106,23 +97,17 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
       orderBy: { createdAt: "asc" },
     });
 
-    // Un registro por nivel: es lo que permite responder "quién aprobó el pago".
-    expect(registros).toHaveLength(2);
-    expect(registros.every((r) => r.changedBy === ADMIN_EMAIL)).toBe(true);
+    // Un único registro: es lo que permite responder "quién aprobó el pago".
+    expect(registros).toHaveLength(1);
+    expect(registros[0].changedBy).toBe(ADMIN_EMAIL);
 
-    const diffNivel1 = registros[0].diff as Record<string, { before: unknown; after: unknown }>;
-    expect(diffNivel1.status).toEqual({
+    const diff = registros[0].diff as Record<string, { before: unknown; after: unknown }>;
+    expect(diff.status).toEqual({
       before: ExtraHourStatus.PENDING_PM,
-      after: ExtraHourStatus.PENDING_FINANCE,
-    });
-
-    const diffNivel2 = registros[1].diff as Record<string, { before: unknown; after: unknown }>;
-    expect(diffNivel2.status).toEqual({
-      before: ExtraHourStatus.PENDING_FINANCE,
       after: ExtraHourStatus.APPROVED,
     });
-    // El nivel 2 es el que sella `approvedBy`, y el diff lo recoge.
-    expect(diffNivel2.approvedBy.after).toBe(ADMIN_EMAIL);
+    // Esa misma aprobación sella `approvedBy`, y el diff lo recoge.
+    expect(diff.approvedBy.after).toBe(ADMIN_EMAIL);
   });
 
   it("rechazar horas extra deja un REJECT con el motivo en el diff", async () => {

@@ -39,6 +39,12 @@ Resumen de lo que hay que hacer:
       detalle completo está en `GET /api/jobs/status` (ADMIN o `JOBS_RUN_TOKEN`).
 - [ ] Revisar si las tasas de cambio quedaron congeladas durante los meses en que el cron
       apuntaba a un host que no existía.
+- [ ] **Avisar a Nómina de que pierde su bandeja de aprobación.** La aprobación de horas extra
+      pasó a un solo nivel (solo el PM). Al desplegar, la migración
+      `20260930120000_aprobacion_unica_pm` **aprueba automáticamente todas las solicitudes que
+      estaban esperando a Nómina** (`PENDING_FINANCE`) y las deja listas para pago. Es
+      idempotente y deja su rastro en la bitácora. Conviene avisar antes: alguien de Nómina va
+      a abrir la pantalla y no va a encontrar su pestaña.
 - [ ] **Avisar al equipo de que varios proyectos van a cambiar de color.** El semáforo
       ahora usa el umbral configurado de cada proyecto en vez de un 15 fijo, y el
       portafolio dejó de contar el forecast dos veces. Si hay informes ya entregados con
@@ -67,6 +73,19 @@ Nada de esto se puede resolver leyendo código.
 ## 2. Pendientes técnicos, por valor
 
 ### Alto
+
+**El estado `PENDING_FINANCE` quedó muerto pero sigue en el enum.**
+Desde `20260930120000_aprobacion_unica_pm` ninguna solicitud puede llegar a ese estado: el PM
+aprueba y queda en `APPROVED`. Se conservó el valor a propósito, porque el histórico de
+`AuditLog` lo guarda dentro de `before`/`after` y quitarlo dejaría esos registros sin un
+estado legible. **No hay nada que hacer hoy**; queda anotado para que nadie lo reintroduzca
+por accidente ni lo borre sin entender el coste. Si algún día se limpia el histórico de
+auditoría, entonces sí se puede retirar del enum.
+
+Efecto colateral pendiente de decidir: `calculateExtraHours.ts` sigue incluyendo
+`PENDING_FINANCE` en las dos consultas que acumulan horas para el límite semanal. Es
+inofensivo (no hay filas con ese estado) y se dejó intacto a propósito para no tocar la
+lógica de cálculo de recargos, pero es código que ya no puede hacer nada.
 
 **DEP-41 — La jornada laboral no se puede configurar.**
 `CapacityConfig` tiene `hoursPerDay` (8 por defecto) y `workDaysPerWeek` (5), por consultor

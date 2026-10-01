@@ -35,7 +35,7 @@ El insumo en [`contexto/`](contexto/) (plantilla `Plantilla_Monitoreo_Presupuest
 
 - Un registro único y auditable de horas, gastos e ingresos por proyecto.
 - Cálculo automático de indicadores financieros (EVM, márgenes, salud del proyecto) que antes se calculaban a mano.
-- Un motor de reglas de horas extra multi-país (Colombia, Perú, Chile, México, Ecuador, Argentina, España) con flujo de aprobación dual (PM → Finanzas), evitando cálculos manuales de nómina propensos a error.
+- Un motor de reglas de horas extra multi-país (Colombia, Perú, Chile, México, Ecuador, Argentina, España) con aprobación única del PM, evitando cálculos manuales de nómina propensos a error.
 - Alertas proactivas (presupuesto, margen, cronograma) en vez de detección reactiva de problemas.
 - Control de acceso por rol integrado con la identidad corporativa (Microsoft Entra ID).
 
@@ -716,10 +716,8 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING_PM: Consultor/PM/Admin crea la solicitud
-    PENDING_PM --> PENDING_FINANCE: PM (o delegado) aprueba
-    PENDING_PM --> REJECTED: PM (o delegado) rechaza
-    PENDING_FINANCE --> APPROVED: Finanzas aprueba
-    PENDING_FINANCE --> REJECTED: Finanzas rechaza
+    PENDING_PM --> APPROVED: PM (o delegado, o ADMIN) aprueba
+    PENDING_PM --> REJECTED: PM (o delegado, o ADMIN) rechaza
     REJECTED --> [*]: Estado terminal
     APPROVED --> [*]: Estado terminal, elegible para nómina (GET /payroll)
 ```
@@ -740,9 +738,9 @@ stateDiagram-v2
 8. **Backend** dispara `notifyNewExtraHourRequest()` de forma *fire-and-forget* (un fallo de correo no rompe la respuesta al usuario) — email al PM del proyecto.
 9. **Backend** responde `201 { data: entry, warnings }`.
 10. **Frontend** actualiza el estado local (`reload()` del hook o actualización optimista) y muestra un toast de éxito.
-11. **Usuario** (PM) ve la solicitud en su listado (`GET /api/extra-hours`, filtrado a "las suyas o de sus proyectos") y la aprueba (`PATCH /:id/approve`) — el backend valida que sea el PM del proyecto, el Admin, o alguien con una `ApprovalDelegation` activa; pasa a `PENDING_FINANCE` y notifica a Nómina/Teams.
-12. **Usuario** (Finanzas) aprueba el nivel final (`PATCH /:id/approve` de nuevo, misma ruta pero rama distinta por estado) → pasa a `APPROVED`, se registran `approvedAt`/`approvedBy`, y se notifica por correo al consultor.
-13. La entrada `APPROVED` queda disponible en `GET /api/extra-hours/payroll` (consolidado mensual, convertido a USD vía `FxConfig`) para que Finanzas procese el pago.
+11. **Usuario** (PM) ve la solicitud en su listado (`GET /api/extra-hours`, filtrado a "las suyas o de sus proyectos") y la aprueba (`PATCH /:id/approve`) — el backend valida que sea el PM del proyecto, el Admin, o alguien con una `ApprovalDelegation` activa. Esa aprobación es la **única** necesaria: pasa directamente a `APPROVED`, se registran `approvedAt`/`approvedBy`, se notifica por correo al consultor y a Nómina/Teams.
+12. La entrada `APPROVED` queda disponible en `GET /api/extra-hours/payroll` (consolidado mensual, convertido a USD vía `FxConfig`) para que Finanzas procese el pago. **Finanzas no aprueba ni rechaza**: `PATCH /:id/approve` y `/:id/reject` solo admiten `ADMIN` y `PM`. Si hay un problema de caja se resuelve fuera del sistema.
+13. El estado `PENDING_FINANCE` queda obsoleto (migración `20260930120000_aprobacion_unica_pm`): ya no se produce, pero sigue en el enum porque el histórico de `AuditLog` lo contiene.
 
 ---
 

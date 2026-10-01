@@ -166,7 +166,7 @@ describe("Un PM asignado puede aprobar horas extra de nivel 1", () => {
     expect(enBase?.status).toBe(ExtraHourStatus.PENDING_PM);
   });
 
-  it("con el PM asignado por la API, la aprobación de nivel 1 pasa a PENDING_FINANCE", async () => {
+  it("con el PM asignado por la API, su aprobación deja la solicitud en APPROVED", async () => {
     // Se asigna por la ruta, no escribiendo en la base: es justo lo que DEP-37
     // hacía imposible.
     const asignacion = await app.inject({
@@ -200,10 +200,10 @@ describe("Un PM asignado puede aprobar horas extra de nivel 1", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
+    expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
 
     const enBase = await prisma.extraHourEntry.findUnique({ where: { id: entrada.id } });
-    expect(enBase?.status).toBe(ExtraHourStatus.PENDING_FINANCE);
+    expect(enBase?.status).toBe(ExtraHourStatus.APPROVED);
   });
 
   it("un PM de otro proyecto sigue sin poder aprobar", async () => {

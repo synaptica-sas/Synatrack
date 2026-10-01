@@ -617,6 +617,11 @@ model ChangeRequest {
 
 enum ExtraHourStatus {
   PENDING_PM
+  /// OBSOLETO desde `20260930120000_aprobacion_unica_pm`. La aprobación de
+  /// Finanzas dejó de existir: el PM aprueba y la solicitud queda APPROVED.
+  /// El valor se conserva —sin producirse nunca— porque el histórico de
+  /// `AuditLog` lo guarda dentro de `before`/`after` para siempre y quitarlo
+  /// dejaría esos registros sin un estado legible. No escribir filas con él.
   PENDING_FINANCE
   APPROVED
   REJECTED

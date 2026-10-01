@@ -32,7 +32,7 @@ corresponda en vez de hacerlo todo desde la sesión principal.
 de **PMO / control de proyectos de consultoría** para Synaptica. Cubre el ciclo completo:
 
 - **Gobierno**: dashboard de KPIs, portafolio con semáforo RAG y métricas EVM (CPI/SPI), CRUD de proyectos, matriz de capacidad.
-- **Operación**: consultores, registro y aprobación de horas, actividades, horas extra con recargos por ley y doble aprobación (PM → Finanzas), gastos.
+- **Operación**: consultores, registro y aprobación de horas, actividades, horas extra con recargos por ley y aprobación única del PM, gastos.
 - **Financiero**: ingresos/facturación, proyecciones (forecasts), calculadora de estimaciones, tasas FX.
 - **Administración**: usuarios y roles, configuración de horas extra por país, bitácora de auditoría.
 

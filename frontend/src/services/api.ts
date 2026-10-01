@@ -1783,6 +1783,14 @@ export async function updateProfile(payload: {
 
 // ─── Extra Hours ───────────────────────────────────────────────────────────────
 
+/**
+ * Estados de una solicitud de horas extra.
+ *
+ * `PENDING_FINANCE` está OBSOLETO: el segundo nivel de aprobación (Nómina) se
+ * eliminó y el PM aprueba directamente a `APPROVED`. Se conserva en el tipo
+ * porque el backend mantiene el valor en el enum para que el histórico de la
+ * bitácora siga siendo legible; ninguna solicitud nueva puede llegar con él.
+ */
 export type ExtraHourStatus = "PENDING_PM" | "PENDING_FINANCE" | "APPROVED" | "REJECTED";
 
 export type ExtraHourEntry = {

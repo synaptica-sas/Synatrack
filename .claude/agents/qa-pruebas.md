@@ -18,13 +18,14 @@ se rompe**. Si terminas una revisión sin haber intentado romper nada, no la hic
 
 El riesgo de este sistema no está repartido por igual. En orden:
 
-1. **Dinero y nómina**: horas extra (recargos, doble aprobación PM→Finanzas), conversión
+1. **Dinero y nómina**: horas extra (recargos, aprobación única del PM), conversión
    FX, rentabilidad, cierre mensual. Un error aquí se paga.
 2. **Autorización**: que un rol no vea ni escriba lo que no le toca. Prueba *con el rol
    equivocado*, no solo con admin. El bypass de demo entra siempre como ADMIN, así que
    probar solo en local oculta exactamente esta clase de fallas.
-3. **Flujos de estado**: PENDING→APPROVED/REJECTED, PENDING_PM→PENDING_FINANCE→APPROVED,
-   y las transiciones inválidas (aprobar dos veces, aprobar algo rechazado, editar un mes
+3. **Flujos de estado**: PENDING→APPROVED/REJECTED, PENDING_PM→APPROVED (la aprobación
+   del PM es la única; `PENDING_FINANCE` quedó obsoleto y ya no se produce), y las
+   transiciones inválidas (aprobar dos veces, aprobar algo rechazado, editar un mes
    cerrado).
 4. **Casos borde de fecha y moneda**: cruce de medianoche, festivos, meses cerrados,
    monedas sin tasa configurada.

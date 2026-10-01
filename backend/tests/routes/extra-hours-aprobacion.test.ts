@@ -32,37 +32,29 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
     await app.close();
   });
 
-  it("la aprobación final guarda el correo del token aunque el cliente mande otro approvedBy", async () => {
+  it("la aprobación guarda el correo del token aunque el cliente mande otro approvedBy", async () => {
     const entrada = await crearHoraExtra({
       consultantId: escenario.consultorA.id,
       projectId: escenario.projectId,
       fecha: new Date(Date.UTC(2026, 3, 5)),
     });
 
-    // Nivel 1 (PM/ADMIN): pasa a PENDING_FINANCE, todavía sin `approvedBy`.
-    const nivel1 = await app.inject({
+    // Aprobación única: una sola llamada deja la solicitud APPROVED y escribe
+    // `approvedBy`. El `approvedBy` del cuerpo se ignora.
+    const res = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
       headers: comoRol(AppRole.ADMIN),
       payload: { approvedBy: "PM Falsificado" },
     });
-    expect(nivel1.statusCode).toBe(200);
-    expect(nivel1.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
 
-    // Nivel 2 (FINANCE/ADMIN): aquí sí se escribe `approvedBy`.
-    const nivel2 = await app.inject({
-      method: "PATCH",
-      url: `/api/extra-hours/${entrada.id}/approve`,
-      headers: comoRol(AppRole.ADMIN),
-      payload: { approvedBy: "Nómina Falsificada" },
-    });
-
-    expect(nivel2.statusCode).toBe(200);
-    expect(nivel2.json().data.status).toBe(ExtraHourStatus.APPROVED);
-    expect(nivel2.json().data.approvedBy).toBe(ADMIN_EMAIL);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
+    expect(res.json().data.approvedBy).toBe(ADMIN_EMAIL);
 
     const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
     expect(enBase.approvedBy).toBe(ADMIN_EMAIL);
+    expect(enBase.approvedAt).not.toBeNull();
   });
 
   it("aprobar sin cuerpo funciona: el endpoint ya no exige approvedBy", async () => {
@@ -79,7 +71,7 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
+    expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
   });
 
   it("el rechazo guarda el correo del token y conserva el motivo enviado por el cliente", async () => {
@@ -123,13 +115,18 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
 });
 
 /**
- * Niveles de aprobación de horas extra (DEP-17).
+ * Aprobación única del PM.
  *
- * `approve` y `reject` comparten ahora `getExtraHourAuthLevel`. Estas pruebas
- * fijan el comportamiento de ambos en los dos niveles del flujo, para que la
- * unificación no pueda cambiar quién puede autorizar un pago.
+ * El dueño del producto eliminó el segundo nivel (Finanzas): el PM conoce el
+ * estado de salud de su proyecto, así que si aprueba las horas es porque se
+ * pueden pagar. Finanzas desembolsa —consulta `GET /payroll`—, no decide.
+ *
+ * Estas pruebas fijan quién puede autorizar un pago, que es lo que no puede
+ * cambiar por accidente: el PM del proyecto, un ADMIN o un delegado vigente, y
+ * nadie más. `approve` y `reject` comparten el veredicto (`canReviewExtraHour`,
+ * DEP-17), así que ambos se prueban juntos.
  */
-describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar en cada nivel", () => {
+describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar", () => {
   let app: FastifyInstance;
   let escenario: EscenarioBasico;
   let pmEmail: string;
@@ -155,7 +152,7 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar en cada ni
     });
   }
 
-  it("nivel 1: el PM del proyecto aprueba y la solicitud pasa a PENDING_FINANCE", async () => {
+  it("el PM del proyecto aprueba y la solicitud queda directamente en APPROVED", async () => {
     const entrada = await nuevaEntrada(1);
     const res = await app.inject({
       method: "PATCH",
@@ -163,10 +160,16 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar en cada ni
       headers: comoRol(AppRole.PM, pmEmail),
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
+    expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
+    expect(res.json().data.approvedBy).toBe(pmEmail);
+
+    // Sin pasos intermedios: nadie más tiene que tocarla.
+    const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe(ExtraHourStatus.APPROVED);
+    expect(enBase.approvedAt).not.toBeNull();
   });
 
-  it("nivel 1: un PM ajeno al proyecto recibe 403 tanto al aprobar como al rechazar", async () => {
+  it("un PM ajeno al proyecto recibe 403 tanto al aprobar como al rechazar", async () => {
     const entrada = await nuevaEntrada(2);
     const aprobar = await app.inject({
       method: "PATCH",
@@ -182,19 +185,35 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar en cada ni
       payload: { rejectionNote: "No corresponde" },
     });
     expect(rechazar.statusCode).toBe(403);
+
+    const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe(ExtraHourStatus.PENDING_PM);
   });
 
-  it("nivel 1: Finanzas no puede aprobar todavía", async () => {
+  it("Finanzas ya no puede aprobar ni rechazar: 403 en ambos", async () => {
     const entrada = await nuevaEntrada(3);
-    const res = await app.inject({
+
+    const aprobar = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
       headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
     });
-    expect(res.statusCode).toBe(403);
+    expect(aprobar.statusCode).toBe(403);
+
+    const rechazar = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/reject`,
+      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
+      payload: { rejectionNote: "Fuera de presupuesto" },
+    });
+    expect(rechazar.statusCode).toBe(403);
+
+    // Y la solicitud sigue intacta: Finanzas no movió nada.
+    const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe(ExtraHourStatus.PENDING_PM);
   });
 
-  it("nivel 1: una delegación vigente habilita a quien no es PM", async () => {
+  it("una delegación vigente habilita a quien no es PM", async () => {
     const entrada = await nuevaEntrada(4);
     const delegacion = await prisma.approvalDelegation.create({
       data: {
@@ -212,12 +231,12 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar en cada ni
       headers: comoRol(AppRole.PM, DELEGADO_EMAIL),
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.status).toBe(ExtraHourStatus.PENDING_FINANCE);
+    expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
 
     await prisma.approvalDelegation.delete({ where: { id: delegacion.id } });
   });
 
-  it("nivel 1: una delegación vencida no habilita a nadie", async () => {
+  it("una delegación vencida no habilita a nadie", async () => {
     const entrada = await nuevaEntrada(5);
     const delegacion = await prisma.approvalDelegation.create({
       data: {
@@ -239,54 +258,110 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar en cada ni
     await prisma.approvalDelegation.delete({ where: { id: delegacion.id } });
   });
 
-  it("nivel 2: el PM ya no puede aprobar ni rechazar; Finanzas sí", async () => {
+  it("una solicitud ya aprobada no se puede volver a aprobar ni rechazar (409)", async () => {
     const entrada = await nuevaEntrada(6);
-    const nivel1 = await app.inject({
+    const aprobacion = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
       headers: comoRol(AppRole.PM, pmEmail),
     });
-    expect(nivel1.statusCode).toBe(200);
+    expect(aprobacion.statusCode).toBe(200);
 
-    const pmIntenta = await app.inject({
+    // El estado es terminal: ni siquiera quien la aprobó puede reabrirla.
+    const otraVez = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
       headers: comoRol(AppRole.PM, pmEmail),
     });
-    expect(pmIntenta.statusCode).toBe(403);
+    expect(otraVez.statusCode).toBe(409);
 
-    const pmRechaza = await app.inject({
+    const rechazar = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/reject`,
       headers: comoRol(AppRole.PM, pmEmail),
-      payload: { rejectionNote: "Ya no me toca" },
+      payload: { rejectionNote: "Me arrepentí" },
     });
-    expect(pmRechaza.statusCode).toBe(403);
-
-    const finanzas = await app.inject({
-      method: "PATCH",
-      url: `/api/extra-hours/${entrada.id}/approve`,
-      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
-    });
-    expect(finanzas.statusCode).toBe(200);
-    expect(finanzas.json().data.status).toBe(ExtraHourStatus.APPROVED);
+    expect(rechazar.statusCode).toBe(409);
   });
 
-  it("nivel 2: Finanzas puede rechazar una solicitud ya aprobada por el PM", async () => {
+  it("el rechazo del PM deja la solicitud en REJECTED con su motivo", async () => {
     const entrada = await nuevaEntrada(7);
-    await app.inject({
-      method: "PATCH",
-      url: `/api/extra-hours/${entrada.id}/approve`,
-      headers: comoRol(AppRole.PM, pmEmail),
-    });
-
     const res = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/reject`,
-      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
-      payload: { rejectionNote: "Fuera de presupuesto" },
+      headers: comoRol(AppRole.PM, pmEmail),
+      payload: { rejectionNote: "No estaba autorizado por el cliente" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.status).toBe(ExtraHourStatus.REJECTED);
+    expect(res.json().data.rejectionNote).toBe("No estaba autorizado por el cliente");
+  });
+});
+
+/**
+ * Lo que el PM aprueba llega a nómina sin ningún paso intermedio.
+ *
+ * Es la razón por la que eliminar el segundo nivel no deja a Finanzas sin
+ * información: `GET /payroll` filtra por `APPROVED`, y ahora el PM produce ese
+ * estado directamente.
+ */
+describe("GET /api/extra-hours/payroll: lo aprobado por el PM entra en el consolidado", () => {
+  let app: FastifyInstance;
+  let escenario: EscenarioBasico;
+  let pmEmail: string;
+
+  beforeAll(async () => {
+    app = await crearAppDePrueba();
+    escenario = await crearEscenarioBasico("eh-payroll");
+    pmEmail = `pm.${escenario.prefijo}@synaptica.test`;
+  });
+
+  afterAll(async () => {
+    await limpiarEscenario(escenario);
+    await app.close();
+  });
+
+  it("tras la única aprobación del PM, la solicitud aparece en el reporte de nómina", async () => {
+    const entrada = await crearHoraExtra({
+      consultantId: escenario.consultorA.id,
+      projectId: escenario.projectId,
+      fecha: new Date(Date.UTC(2026, 5, 10)),
+    });
+
+    const nombreConsultor = `Consultor A ${escenario.prefijo}`;
+
+    // Antes de aprobar no está: el consolidado solo mira APPROVED.
+    const antes = await app.inject({
+      method: "GET",
+      url: "/api/extra-hours/payroll?year=2026&month=6",
+      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
+    });
+    expect(antes.statusCode).toBe(200);
+    expect(
+      antes.json().data.find((c: { consultantName: string }) => c.consultantName === nombreConsultor),
+    ).toBeUndefined();
+
+    // Una sola aprobación, la del PM.
+    const aprobacion = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, pmEmail),
+    });
+    expect(aprobacion.statusCode).toBe(200);
+    expect(aprobacion.json().data.status).toBe(ExtraHourStatus.APPROVED);
+
+    // Y ya está en el consolidado que usa Finanzas para pagar.
+    const despues = await app.inject({
+      method: "GET",
+      url: "/api/extra-hours/payroll?year=2026&month=6",
+      headers: comoRol(AppRole.FINANCE, "nomina@synaptica.test"),
+    });
+    expect(despues.statusCode).toBe(200);
+    const fila = despues
+      .json()
+      .data.find((c: { consultantName: string }) => c.consultantName === nombreConsultor);
+    expect(fila).toBeDefined();
+    expect(fila.totalHours).toBe(2);
+    expect(fila.totalAmountLocal).toBe(100);
   });
 });

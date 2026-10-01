@@ -151,7 +151,7 @@ const LEGISLATIONS: Record<string, LegislationInfo> = {
 
 export function ExtraHoursTab({ projects, consultants, authUser, can, onError, configModeOnly = false }: ExtraHoursTabProps) {
   // Sub-navigation tabs
-  const [activeSubTab, setActiveSubTab] = useState<"report" | "pm" | "finance" | "payroll" | "config" | "holidays" | "delegations">(
+  const [activeSubTab, setActiveSubTab] = useState<"report" | "pm" | "payroll" | "config" | "holidays" | "delegations">(
     configModeOnly ? "config" : "report"
   );
 
@@ -167,12 +167,11 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     pageSize: 50,
     totalPages: 1,
   });
-  // Los dos buzones de aprobación se piden COMPLETOS y por estado: son colas de
+  // El buzón de aprobación se pide COMPLETO y por estado: es una cola de
   // trabajo, y el número del botón de la pestaña es un total, no un recuento de
-  // la primera página. Si se paginaran, un aprobador dejaría de ver solicitudes
+  // la primera página. Si se paginara, un aprobador dejaría de ver solicitudes
   // sin enterarse.
   const [pmPendingEntries, setPmPendingEntries] = useState<ExtraHourEntry[]>([]);
-  const [financePendingEntries, setFinancePendingEntries] = useState<ExtraHourEntry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
   // Supported countries from backend
@@ -347,19 +346,19 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     [historyConsultantFilter, onError],
   );
 
-  /** Los dos buzones, completos, recorriendo sus páginas a propósito. */
+  /**
+   * El buzón de aprobación, completo, recorriendo sus páginas a propósito.
+   *
+   * Antes eran dos (PM y Nómina). La aprobación de Finanzas se eliminó: lo que
+   * el PM aprueba queda aprobado y pasa directo al cierre de nómina.
+   */
   const loadPendingInboxes = useCallback(async () => {
     try {
-      const [pm, finanzas] = await Promise.all([
-        listAllExtraHours({ status: "PENDING_PM" }),
-        listAllExtraHours({ status: "PENDING_FINANCE" }),
-      ]);
+      const pm = await listAllExtraHours({ status: "PENDING_PM" });
       setPmPendingEntries(pm);
-      setFinancePendingEntries(finanzas);
     } catch (err) {
       setPmPendingEntries([]);
-      setFinancePendingEntries([]);
-      onError(err instanceof Error ? err.message : "Error al cargar los buzones de aprobación");
+      onError(err instanceof Error ? err.message : "Error al cargar el buzón de aprobación");
     }
   }, [onError]);
 
@@ -780,9 +779,11 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
    */
   const getStatusLabel = (status: string): { label: string; tone: string } => {
     switch (status) {
-      case "PENDING_PM": return { label: "Pte. PM (Nivel 1)", tone: "warning" };
-      case "PENDING_FINANCE": return { label: "Pte. Nómina (Nivel 2)", tone: "info" };
-      case "APPROVED": return { label: "Aprobada total", tone: "success" };
+      case "PENDING_PM": return { label: "Pendiente del PM", tone: "warning" };
+      // Estado retirado: ya no se produce. La etiqueta se conserva para que el
+      // histórico y la bitácora de solicitudes viejas sigan siendo legibles.
+      case "PENDING_FINANCE": return { label: "Pte. Nómina (flujo anterior)", tone: "info" };
+      case "APPROVED": return { label: "Aprobada", tone: "success" };
       case "REJECTED": return { label: "Rechazada", tone: "danger" };
       default: return { label: status, tone: "neutral" };
     }
@@ -846,17 +847,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   className={activeSubTab === "pm" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("pm")}
                 >
-                  👥 Aprobaciones PM ({pmPendingEntries.length})
-                </button>
-              )}
-
-              {can("extrahours:review") && (authUser?.roles.includes("FINANCE") || authUser?.roles.includes("ADMIN")) && (
-                <button
-                  type="button"
-                  className={activeSubTab === "finance" ? "toolbar-btn" : "toolbar-btn ghost"}
-                  onClick={() => setActiveSubTab("finance")}
-                >
-                  💰 Aprobaciones Nómina ({financePendingEntries.length})
+                  👥 Aprobaciones ({pmPendingEntries.length})
                 </button>
               )}
 
@@ -1217,10 +1208,10 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
       {activeSubTab === "pm" && (
         <div className="card card--roomy">
           <h3 className="card-title">
-            Buzón de Aprobaciones del Supervisor (Nivel 1)
+            Buzón de Aprobaciones del Supervisor (PM)
           </h3>
           <p className="card-lead">
-            Revisa y valida de forma operativa las horas extra registradas en tus proyectos. Luego pasarán a Nómina.
+            Revisa las horas extra registradas en tus proyectos. Tu aprobación es la única necesaria: lo que apruebes queda aprobado y pasa directamente al cierre de nómina para su pago.
           </p>
 
           {pmPendingEntries.length === 0 ? (
@@ -1269,86 +1260,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                             onClick={() => void handleApprove(entry.id)}
                           >
                             {approvingId === entry.id ? "Aprobando..." : "✓ Aprobar"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-sm btn-danger-soft"
-                            onClick={() => { setRejectionTargetId(entry.id); setRejectionNote(""); }}
-                          >
-                            ✕ Rechazar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* --- FINANCE/PAYROLL APPROVALS SUB-TAB --- */}
-      {activeSubTab === "finance" && (
-        <div className="card card--roomy">
-          <h3 className="card-title">
-            Buzón de Aprobaciones de Nómina / Recursos Humanos (Nivel 2)
-          </h3>
-          <p className="card-lead">
-            Valida financieramente para consolidar en el pago final.
-          </p>
-
-          {financePendingEntries.length === 0 ? (
-            <p className="empty-note">No hay solicitudes pendientes de validación final.</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Consultor</th>
-                    <th>Identificación</th>
-                    <th>País</th>
-                    <th>Proyecto</th>
-                    <th>Fecha</th>
-                    <th>Horario</th>
-                    <th>Horas</th>
-                    <th>Monto Local</th>
-                    <th>Observaciones</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {financePendingEntries.map((entry) => (
-                    <tr key={entry.id}>
-                      <td><strong>{entry.consultant?.fullName}</strong></td>
-                      {/* `undefined` = el rol no puede ver el documento (DEP-38); `null` = no lo tiene cargado. */}
-                      <td>{entry.consultant?.identification === undefined ? "—" : entry.consultant.identification || "No asignado"}</td>
-                      <td><CountryFlag country={entry.consultant?.country || "Default"} /></td>
-                      <td>{entry.project?.name}</td>
-                      <td>{entry.date.slice(0, 10)}</td>
-                      <td>{entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}</td>
-                      <td>
-                        <strong>{Number(entry.totalHours).toFixed(1)}</strong>
-                        <span className="cell-meta">
-                          D:{Number(entry.diurnal).toFixed(1)} N:{Number(entry.nocturnal).toFixed(1)} F:{Number(Number(entry.diurnalHoliday) + Number(entry.nocturnalHoliday)).toFixed(1)}
-                        </span>
-                      </td>
-                      <td>
-                        <strong>${Number(entry.totalAmount).toLocaleString("es-CO")}</strong>
-                        <span className="cell-meta">{entry.consultant?.rateCurrency || "COP"}</span>
-                      </td>
-                      <td>
-                        <span className="cell-note">{entry.observations || "Sin observaciones"}</span>
-                      </td>
-                      <td>
-                        <div className="inline-actions">
-                          <button
-                            type="button"
-                            className="btn-sm btn-success"
-                            disabled={approvingId === entry.id}
-                            onClick={() => void handleApprove(entry.id)}
-                          >
-                            {approvingId === entry.id ? "Aprobando..." : "✓ Aprobar Pago"}
                           </button>
                           <button
                             type="button"
@@ -1943,7 +1854,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               🤝 Delegación de Aprobaciones
             </h3>
             <p className="section-intro__text">
-              Permite a los Directores de Proyecto (PM) delegar temporalmente la aprobación Nivel 1 a un consultor normal para un proyecto y rango de fechas específico.
+              Permite a los Directores de Proyecto (PM) delegar temporalmente la aprobación de horas extra a un consultor normal para un proyecto y rango de fechas específico.
             </p>
           </div>
 

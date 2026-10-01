@@ -904,7 +904,7 @@ function LandingPage({ darkMode, toggleDarkMode, onLoginClick, errorMessage }: {
               </svg>
             </div>
             <h3>Aprobación Eficiente</h3>
-            <p>Validación de horas extra en dos niveles (PM y Nómina) con recargos adaptados automáticamente a cada legislación local.</p>
+            <p>Validación de horas extra con una sola aprobación, la del PM, y recargos adaptados automáticamente a cada legislación local.</p>
           </div>
 
           {/* Card 3: Planificación de Recursos */}

@@ -132,7 +132,7 @@ export async function notifyNewExtraHourRequest(params: {
   
   const html = `
     <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
-      <h2 style="color: #9a4f0f;">Aprobación Operativa Pendiente (Nivel 1)</h2>
+      <h2 style="color: #9a4f0f;">Aprobación Pendiente</h2>
       <p>Hola,</p>
       <p>El consultor <strong>${escaparHtml(consultantName)}</strong> ha registrado una nueva solicitud de horas extra para el proyecto <strong>"${escaparHtml(projectName)}"</strong>.</p>
       <table style="border-collapse: collapse; width: 100%; max-width: 400px; margin: 15px 0;">
@@ -156,9 +156,16 @@ export async function notifyNewExtraHourRequest(params: {
 }
 
 /**
- * Notifica al departamento de Nómina y/o canal de Teams que el PM ha aprobado las horas extras y requiere aprobación de Nivel 2.
+ * Notifica al departamento de Nómina y/o canal de Teams que hay horas extra
+ * **aprobadas y listas para pagar**.
+ *
+ * Antes este correo pedía a Nómina la aprobación de nivel 2. Ese nivel se
+ * eliminó: el PM es quien decide, y lo que aprueba se paga. El aviso se
+ * conserva porque Nómina sigue necesitando enterarse de que hay un desembolso
+ * nuevo; lo que cambia es que ya no le pide que decida nada, solo que lo
+ * procese desde el cierre consolidado.
  */
-export async function notifyExtraHourApprovedByPM(params: {
+export async function notifyExtraHourApprovedForPayroll(params: {
   consultantName: string;
   identification: string;
   date: string;
@@ -172,14 +179,14 @@ export async function notifyExtraHourApprovedByPM(params: {
   const { consultantName, identification, date, hours, totalAmount, currency, projectName, approvedByPM, observations } = params;
 
   // 1. Enviar notificación por correo a Nómina
-  const subject = `[Nómina] Horas Extra aprobadas por PM - ${consultantName}`;
-  const text = `Hola Nómina,\n\nEl Project Manager ${approvedByPM} ha otorgado la aprobación operativa de Nivel 1 para las horas extra de ${consultantName}.\n\nDetalles:\n- Consultor: ${consultantName}\n- Identificación: ${identification}\n- Proyecto: ${projectName}\n- Fecha: ${date}\n- Horas aprobadas: ${hours} horas\n- Monto a pagar: ${totalAmount.toLocaleString()} ${currency}\n- Observaciones: ${observations || "Ninguna"}\n\nPor favor, ingresa a la plataforma para otorgar la aprobación final de pago de Nivel 2.\n\nAtentamente,\nApp Gestión Synaptica`;
-  
+  const subject = `[Nómina] Horas Extra aprobadas para pago - ${consultantName}`;
+  const text = `Hola Nómina,\n\nEl Project Manager ${approvedByPM} ha aprobado las horas extra de ${consultantName}. Quedan aprobadas y listas para el pago; no requieren ninguna validación adicional.\n\nDetalles:\n- Consultor: ${consultantName}\n- Identificación: ${identification}\n- Proyecto: ${projectName}\n- Fecha: ${date}\n- Horas aprobadas: ${hours} horas\n- Monto a pagar: ${totalAmount.toLocaleString()} ${currency}\n- Observaciones: ${observations || "Ninguna"}\n\nYa aparecen en el cierre consolidado de nómina del mes correspondiente.\n\nAtentamente,\nApp Gestión Synaptica`;
+
   const html = `
     <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
-      <h2 style="color: #16a34a;">Validación de Nómina Pendiente (Nivel 2)</h2>
+      <h2 style="color: #16a34a;">Horas Extra aprobadas para pago</h2>
       <p>Hola Nómina,</p>
-      <p>El Project Manager <strong>${escaparHtml(approvedByPM)}</strong> ha otorgado la aprobación operativa de Nivel 1 para las horas extra de <strong>${escaparHtml(consultantName)}</strong>.</p>
+      <p>El Project Manager <strong>${escaparHtml(approvedByPM)}</strong> ha aprobado las horas extra de <strong>${escaparHtml(consultantName)}</strong>. Quedan aprobadas y listas para el pago; no requieren ninguna validación adicional.</p>
       <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 15px 0;">
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0; width: 150px;">Consultor</td>
@@ -210,7 +217,7 @@ export async function notifyExtraHourApprovedByPM(params: {
           <td style="padding: 8px; border: 1px solid #f4d4b6;">${escaparHtml(observations || "Ninguna")}</td>
         </tr>
       </table>
-      <p>Por favor, ingresa a la sección de <strong>Aprobaciones de Nómina</strong> para otorgar el visto bueno definitivo para el pago.</p>
+      <p>Ya aparecen en el <strong>Cierre Consolidado de Nómina</strong> del mes correspondiente, listas para procesar el pago.</p>
       <br/>
       <hr style="border: none; border-top: 1px solid #f4d4b6;" />
       <p style="font-size: 0.8rem; color: #888;">Mensaje automático de la Plataforma de Gestión de Proyectos Synaptica.</p>
@@ -225,9 +232,9 @@ export async function notifyExtraHourApprovedByPM(params: {
       "@type": "MessageCard",
       "@context": "http://schema.org/extensions",
       "themeColor": "2563eb",
-      "summary": `Horas Extra Aprobadas por PM - ${consultantName}`,
+      "summary": `Horas Extra aprobadas para pago - ${consultantName}`,
       "sections": [{
-        "activityTitle": "📝 Aprobación Operativa de Horas Extra (Nivel 1)",
+        "activityTitle": "💰 Horas Extra aprobadas, listas para pago",
         "activitySubtitle": `Aprobado por: ${approvedByPM}`,
         "facts": [
           { "name": "Consultor:", "value": consultantName },
@@ -312,7 +319,8 @@ export async function notifyFeedbackReceived(params: {
 }
 
 /**
- * Notifica al consultor que su solicitud de horas extras ha sido aprobada de forma definitiva (Nivel 2).
+ * Notifica al consultor que su solicitud de horas extras ha sido aprobada por el PM.
+ * Con la aprobación única del PM, esa es ya la aprobación definitiva.
  */
 export async function notifyExtraHourFullyApproved(params: {
   consultantName: string;
@@ -326,13 +334,13 @@ export async function notifyExtraHourFullyApproved(params: {
   if (!consultantEmail) return;
 
   const subject = `[Horas Extra] Solicitud aprobada - ${projectName}`;
-  const text = `Hola ${consultantName},\n\nTu solicitud de horas extra para el proyecto "${projectName}" ha sido aprobada de forma definitiva por ${approvedBy}.\n\nDetalles:\n- Fecha: ${date}\n- Horas aprobadas: ${hours} horas\n\nAtentamente,\nApp Gestión Synaptica`;
+  const text = `Hola ${consultantName},\n\nTu solicitud de horas extra para el proyecto "${projectName}" ha sido aprobada por ${approvedBy}.\n\nDetalles:\n- Fecha: ${date}\n- Horas aprobadas: ${hours} horas\n\nAtentamente,\nApp Gestión Synaptica`;
 
   const html = `
     <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
       <h2 style="color: #16a34a;">✅ Solicitud de Horas Extra Aprobada</h2>
       <p>Hola <strong>${escaparHtml(consultantName)}</strong>,</p>
-      <p>Tu solicitud de horas extra para el proyecto <strong>"${escaparHtml(projectName)}"</strong> ha recibido la aprobación final por parte de <strong>${escaparHtml(approvedBy)}</strong> y se ha registrado para el pago de nómina.</p>
+      <p>Tu solicitud de horas extra para el proyecto <strong>"${escaparHtml(projectName)}"</strong> ha sido aprobada por <strong>${escaparHtml(approvedBy)}</strong> y se ha registrado para el pago de nómina.</p>
       <table style="border-collapse: collapse; width: 100%; max-width: 400px; margin: 15px 0;">
         <tr>
           <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fff8f0; width: 150px;">Fecha</td>
@@ -353,7 +361,7 @@ export async function notifyExtraHourFullyApproved(params: {
 }
 
 /**
- * Notifica al consultor que su solicitud de horas extras ha sido rechazada por el PM o por Nómina.
+ * Notifica al consultor que su solicitud de horas extras ha sido rechazada por el PM (o su delegado / un administrador).
  */
 export async function notifyExtraHourRejected(params: {
   consultantName: string;

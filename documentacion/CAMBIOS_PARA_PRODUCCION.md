@@ -55,7 +55,8 @@ Apareció **cinco veces** el mismo patrón: el sistema usaba un dato para decidi
 existía ningún formulario para configurarlo, así que siempre valía lo mismo.
 
 El caso con más impacto: **no se podía asignar el Project Manager de un proyecto**, y sin eso
-**el flujo de aprobación de horas extra por parte del PM simplemente no funcionaba**. También se
+**el flujo de aprobación de horas extra por parte del PM simplemente no funcionaba** (ver también
+"Las horas extra ya no pasan por Nómina", más abajo). También se
 habilitaron los umbrales de margen y alerta de presupuesto, y el documento de identidad del
 consultor.
 
@@ -97,6 +98,32 @@ inconsistencias.
 Al construir el timesheet y el cronómetro aparecieron preguntas que no puede responder un
 desarrollador, y en vez de resolverlas por su cuenta las dejó planteadas con sus opciones. Ese
 trabajo es la base del documento `DECISIONES_REUNION.md`.
+
+### Las horas extra ya no pasan por Nómina
+
+Hasta ahora una solicitud de horas extra necesitaba **dos vistos buenos**: primero el del Director
+de Proyecto y después el de Nómina. Eran dos bandejas, dos personas y dos esperas para pagar unas
+horas que ya se habían trabajado.
+
+**A partir de esta versión basta con la aprobación del Director de Proyecto.** El razonamiento es
+que es él quien conoce el estado de salud de su proyecto: si aprueba las horas, es porque el
+proyecto puede asumirlas. Nómina **desembolsa, no decide**.
+
+Qué cambia en la práctica:
+
+- El Director de Proyecto aprueba y las horas quedan aprobadas en ese mismo momento.
+- Nómina deja de tener bandeja de aprobación. Sigue viendo, como siempre, el **cierre consolidado
+  del mes** con todo lo aprobado y su importe, que es lo que necesita para pagar, y sigue
+  recibiendo el aviso por correo cada vez que hay un importe nuevo aprobado.
+- Nómina ya no puede aprobar ni rechazar. Si aparece un problema de caja, se resuelve fuera del
+  sistema.
+- **Las solicitudes que estaban esperando a Nómina quedan aprobadas automáticamente** al
+  desplegar. Ya tenían el visto bueno del Director de Proyecto, que con la regla nueva es el
+  único necesario. El cambio queda registrado en la bitácora, explicado, para que nadie se
+  pregunte por qué cambiaron solas de estado.
+
+En pantalla desaparece la segunda bandeja y las etiquetas "Nivel 1" y "Nivel 2", que ya no
+significan nada cuando solo hay un nivel.
 
 ### Auditoría completa
 

@@ -8,7 +8,7 @@ import { normalizeCountry, SUPPORTED_COUNTRIES } from "../../utils/country.js";
 import { getHolidaysForYear } from "../../utils/holidays.js";
 import { calculateExtraHours } from "../../utils/calculateExtraHours.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
-import { notifyNewExtraHourRequest, notifyExtraHourApprovedByPM, notifyExtraHourFullyApproved, notifyExtraHourRejected } from "../../utils/notifications.js";
+import { notifyNewExtraHourRequest, notifyExtraHourApprovedForPayroll, notifyExtraHourFullyApproved, notifyExtraHourRejected } from "../../utils/notifications.js";
 
 const extraHourPayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -230,9 +230,6 @@ async function ensureDefaultConfigs(): Promise<void> {
 
 export { ensureDefaultConfigs };
 
-/** Nivel del flujo de doble aprobación en el que se encuentra una solicitud. */
-export type ExtraHourAuthLevel = "PM" | "FINANCE";
-
 /** Lo mínimo que hace falta de la solicitud para decidir quién puede actuar. */
 type ExtraHourForAuth = {
   status: ExtraHourStatus;
@@ -246,29 +243,29 @@ type AuthUserForAuth = {
 };
 
 /**
- * Decide en qué nivel del flujo de doble aprobación (PM → Finanzas) está una
- * solicitud de horas extra y si el usuario autenticado puede actuar sobre ella.
+ * Decide si el usuario autenticado puede aprobar o rechazar una solicitud de
+ * horas extra.
  *
  * Existe porque `approve` y `reject` repetían esta comprobación palabra por
  * palabra (DEP-17). Devuelve solo el veredicto: cada handler conserva su propio
  * mensaje de error, que es lo único en lo que diferían.
  *
- * Reglas (idénticas a las que había en ambos handlers):
- *  - `PENDING_PM` (nivel 1): el PM del proyecto, un ADMIN, o quien tenga una
- *    delegación de aprobación vigente sobre ese proyecto.
- *  - cualquier otro estado (nivel 2, `PENDING_FINANCE`): FINANCE o ADMIN.
+ * **Aprobación única del PM.** Antes esto resolvía dos niveles (PM → Finanzas).
+ * El dueño del producto eliminó el segundo: el PM conoce el estado de salud de
+ * su proyecto, así que si aprueba las horas es porque se pueden pagar. Finanzas
+ * desembolsa —lo aprobado aparece directamente en `GET /payroll`—, no decide, y
+ * por eso ya no puede ni aprobar ni rechazar.
+ *
+ * Regla única: pueden actuar el PM del proyecto, un ADMIN, o quien tenga una
+ * delegación de aprobación vigente sobre ese proyecto. El estado no entra en la
+ * decisión: los handlers ya descartan antes lo que no es `PENDING_PM`.
  */
-export async function getExtraHourAuthLevel(
+export async function canReviewExtraHour(
   entry: ExtraHourForAuth,
   user: AuthUserForAuth,
-): Promise<{ level: ExtraHourAuthLevel; authorized: boolean }> {
+): Promise<{ authorized: boolean }> {
   const email = user.email.toLowerCase();
   const isAdmin = user.roles.includes(AppRole.ADMIN);
-  const isFinance = user.roles.includes(AppRole.FINANCE);
-
-  if (entry.status !== ExtraHourStatus.PENDING_PM) {
-    return { level: "FINANCE", authorized: isFinance || isAdmin };
-  }
 
   const isPM = entry.project?.projectManagerEmail?.toLowerCase() === email;
 
@@ -288,7 +285,7 @@ export async function getExtraHourAuthLevel(
     }
   }
 
-  return { level: "PM", authorized: isPM || isAdmin || hasDelegation };
+  return { authorized: isPM || isAdmin || hasDelegation };
 }
 
 /**
@@ -773,11 +770,15 @@ export async function extraHoursRoutes(app: FastifyInstance) {
     },
   );
 
-  // 6. Aprobar solicitud de horas extras (Flujo secuencial de 2 niveles)
+  // 6. Aprobar solicitud de horas extras (aprobación única del PM)
+  //
+  //    FINANCE ya no figura entre los roles autorizados: el segundo nivel de
+  //    aprobación se eliminó. Nómina consulta lo aprobado en `GET /payroll` y
+  //    desembolsa; no decide si se paga.
   app.patch(
     "/:id/approve",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])],
+      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
     },
     async (request, reply) => {
       const { id } = idParamsSchema.parse(request.params);
@@ -820,102 +821,76 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         }
       }
 
-      // Lógica de transición de estados. El nivel y el veredicto los decide
-      // `getExtraHourAuthLevel`, compartido con `reject` (DEP-17).
-      const auth = await getExtraHourAuthLevel(existing, user);
+      // Veredicto compartido con `reject` (DEP-17): PM del proyecto, ADMIN o
+      // delegado vigente. Ya no hay niveles que distinguir.
+      const auth = await canReviewExtraHour(existing, user);
 
-      if (auth.level === "PM") {
-        // Nivel 1: Requiere aprobación del PM del proyecto, Admin o Delegado
-        if (!auth.authorized) {
-          return reply.status(403).send({ message: "Solo el supervisor (PM) de este proyecto, un consultor con delegación activa o el Administrador pueden otorgar la aprobación operativa." });
-        }
-
-        const entry = await prisma.extraHourEntry.update({
-          where: { id },
-          data: {
-            status: ExtraHourStatus.PENDING_FINANCE,
-            rejectionNote: null,
-          },
-          include: { project: true, consultant: true },
-        });
-
-        // Notificar a Nómina/Finanzas que el PM ha aprobado las horas extras
-        notifyExtraHourApprovedByPM({
-          consultantName: entry.consultant.fullName,
-          identification: entry.consultant.identification || "N/A",
-          date: entry.date.toISOString().split("T")[0],
-          hours: Number(entry.totalHours),
-          totalAmount: Number(entry.totalAmount),
-          currency: entry.consultant.rateCurrency || "USD",
-          projectName: entry.project?.name || "Proyecto",
-          approvedByPM: email,
-          observations: entry.observations || undefined,
-        }).catch((err) => {
-          console.error("Error al enviar notificación de aprobación del PM a nómina:", err);
-        });
-
-        // Nivel 1 de la doble aprobación: aprobación operativa del PM.
-        await writeAudit(prisma, {
-          entity: AUDIT_ENTITIES.extraHourEntry,
-          entityId: entry.id,
-          action: "APPROVE",
-          changedBy: email,
-          before: existing as unknown as Record<string, unknown>,
-          after: entry as unknown as Record<string, unknown>,
-          request,
-        });
-
-        return { data: entry };
-      } else {
-        // Nivel 2: Requiere aprobación de Finanzas / Recursos Humanos (Lina) o Admin
-        if (!auth.authorized) {
-          return reply.status(403).send({ message: "Solo el personal de Finanzas / Nómina o el Administrador pueden otorgar la aprobación final para pago." });
-        }
-
-        const entry = await prisma.extraHourEntry.update({
-          where: { id },
-          data: {
-            status: ExtraHourStatus.APPROVED,
-            approvedAt: new Date(),
-            approvedBy: email,
-            rejectionNote: null,
-          },
-          include: { project: true, consultant: true },
-        });
-
-        // Notify the consultant of the final approval (Level 2)
-        notifyExtraHourFullyApproved({
-          consultantName: entry.consultant.fullName,
-          consultantEmail: entry.consultant.email || "",
-          date: entry.date.toISOString().split("T")[0],
-          hours: Number(entry.totalHours),
-          projectName: entry.project?.name || "Proyecto",
-          approvedBy: email,
-        }).catch((err) => {
-          console.error("Error al enviar notificación de aprobación final al consultor:", err);
-        });
-
-        // Nivel 2 de la doble aprobación: es la autorización de pago.
-        await writeAudit(prisma, {
-          entity: AUDIT_ENTITIES.extraHourEntry,
-          entityId: entry.id,
-          action: "APPROVE",
-          changedBy: email,
-          before: existing as unknown as Record<string, unknown>,
-          after: entry as unknown as Record<string, unknown>,
-          request,
-        });
-
-        return { data: entry };
+      if (!auth.authorized) {
+        return reply.status(403).send({ message: "Solo el supervisor (PM) de este proyecto, un consultor con delegación activa o el Administrador pueden aprobar estas horas extra." });
       }
+
+      // Aprobación única: la del PM ya es la autorización de pago, así que aquí
+      // se escriben `approvedAt` y `approvedBy` y la solicitud queda elegible
+      // para el consolidado de nómina sin ningún paso intermedio.
+      const entry = await prisma.extraHourEntry.update({
+        where: { id },
+        data: {
+          status: ExtraHourStatus.APPROVED,
+          approvedAt: new Date(),
+          approvedBy: email,
+          rejectionNote: null,
+        },
+        include: { project: true, consultant: true },
+      });
+
+      // Aviso al consultor de que sus horas quedaron aprobadas.
+      notifyExtraHourFullyApproved({
+        consultantName: entry.consultant.fullName,
+        consultantEmail: entry.consultant.email || "",
+        date: entry.date.toISOString().split("T")[0],
+        hours: Number(entry.totalHours),
+        projectName: entry.project?.name || "Proyecto",
+        approvedBy: email,
+      }).catch((err) => {
+        console.error("Error al enviar notificación de aprobación al consultor:", err);
+      });
+
+      // Aviso a Nómina. Ya no le pide que apruebe —no puede—, le avisa de que
+      // hay un importe aprobado que tendrá que desembolsar. Se conserva porque
+      // sin él Nómina solo se entera consultando el consolidado a mano.
+      notifyExtraHourApprovedForPayroll({
+        consultantName: entry.consultant.fullName,
+        identification: entry.consultant.identification || "N/A",
+        date: entry.date.toISOString().split("T")[0],
+        hours: Number(entry.totalHours),
+        totalAmount: Number(entry.totalAmount),
+        currency: entry.consultant.rateCurrency || "USD",
+        projectName: entry.project?.name || "Proyecto",
+        approvedByPM: email,
+        observations: entry.observations || undefined,
+      }).catch((err) => {
+        console.error("Error al enviar notificación de horas extra aprobadas a nómina:", err);
+      });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.extraHourEntry,
+        entityId: entry.id,
+        action: "APPROVE",
+        changedBy: email,
+        before: existing as unknown as Record<string, unknown>,
+        after: entry as unknown as Record<string, unknown>,
+        request,
+      });
+
+      return { data: entry };
     },
   );
 
-  // 7. Rechazar solicitud
+  // 7. Rechazar solicitud (mismo alcance que aprobar: solo el nivel del PM)
   app.patch(
     "/:id/reject",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])],
+      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
     },
     async (request, reply) => {
       const { id } = idParamsSchema.parse(request.params);
@@ -961,14 +936,12 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       // Validar quién tiene permiso de rechazar. Mismo helper que `approve`
       // (DEP-17): el veredicto es común, el mensaje de error es el de aquí.
-      const auth = await getExtraHourAuthLevel(existing, user);
+      const auth = await canReviewExtraHour(existing, user);
 
       if (!auth.authorized) {
-        const message =
-          auth.level === "PM"
-            ? "Solo el PM de este proyecto, un consultor con delegación activa o el Administrador pueden rechazar en este nivel."
-            : "Solo Finanzas o el Administrador pueden rechazar en este nivel.";
-        return reply.status(403).send({ message });
+        return reply.status(403).send({
+          message: "Solo el PM de este proyecto, un consultor con delegación activa o el Administrador pueden rechazar estas horas extra.",
+        });
       }
 
       const entry = await prisma.extraHourEntry.update({
