@@ -1375,10 +1375,14 @@ function App() {
     }
   };
 
-  function handleError(msg: string) {
+  // Estable entre renders: las pestañas lo ponen en las dependencias de sus
+  // efectos de carga (Horas Extra, por ejemplo). Si cambiara en cada render,
+  // cada render de App relanzaría sus peticiones, y un error —que provoca otro
+  // render por el toast— acabaría en bucle hasta topar con el límite de peticiones.
+  const handleError = useCallback((msg: string) => {
     setError(msg);
     showToast(msg, "error");
-  }
+  }, [showToast]);
 
   function openProject(id: string) {
     setOpenProjectId(id);

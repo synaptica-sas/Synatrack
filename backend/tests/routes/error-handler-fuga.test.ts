@@ -55,3 +55,50 @@ describe("manejador global de errores: no filtra el interior en producción", ()
     expect(cuerpo.stack).toContain("Error: secreto interno");
   });
 });
+
+/**
+ * Los errores del cliente conservan su código. Antes el límite de peticiones
+ * salía como 500 "Internal server error": el plugin lanza el objeto de
+ * `errorResponseBuilder` y, sin `statusCode`, el manejador lo trataba como un
+ * fallo interno. En el frontend eso aparecía como "No se pudo iniciar sesión:
+ * Internal server error" cuando `/api/auth/me` caía dentro del tope.
+ */
+describe("manejador global de errores: respeta los códigos 4xx", () => {
+  let app: FastifyInstance | null = null;
+
+  afterEach(async () => {
+    await app?.close();
+    app = null;
+    vi.unstubAllEnvs();
+  });
+
+  it("superar el límite de peticiones responde 429 con su mensaje, no 500", async () => {
+    vi.stubEnv("RATE_LIMIT_MAX", "2");
+    app = await appQueExplota("production");
+
+    const codigos: number[] = [];
+    let ultima = "";
+    for (let i = 0; i < 3; i++) {
+      // Ruta registrada: las 404 no pasan por el limitador.
+      const res = await app.inject({ method: "GET", url: "/ruta-que-explota" });
+      codigos.push(res.statusCode);
+      ultima = res.body;
+    }
+
+    expect(codigos).toEqual([500, 500, 429]);
+    expect(JSON.parse(ultima).message).toMatch(/Demasiadas peticiones/);
+  });
+
+  it("un JSON mal formado responde 400, no 500", async () => {
+    app = await appQueExplota("production");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/ruta-que-explota",
+      headers: { "content-type": "application/json" },
+      payload: "{mal",
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+});

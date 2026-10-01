@@ -29,8 +29,9 @@ export async function buildApp() {
     try {
       const json = JSON.parse(rawBody);
       done(null, json);
-    } catch (err) {
-      done(err as Error);
+    } catch {
+      // JSON mal formado es un error del cliente (400), no del servidor.
+      done(Object.assign(new Error("El cuerpo de la petición no es un JSON válido."), { statusCode: 400 }));
     }
   });
 
@@ -49,7 +50,10 @@ export async function buildApp() {
     // El health check lo consulta Render cada pocos segundos; si lo bloqueamos,
     // el servicio se reinicia solo.
     allowList: (request) => request.url === "/health" || request.url === "/",
+    // El plugin LANZA este objeto, así que debe llevar `statusCode`: sin él, el
+    // error handler lo trataba como un fallo interno y respondía 500.
     errorResponseBuilder: (_request, context) => ({
+      statusCode: 429,
       message: `Demasiadas peticiones. Vuelve a intentarlo en ${context.after}.`,
     }),
   });
@@ -84,6 +88,16 @@ export async function buildApp() {
           message: issue.message,
         })),
       });
+    }
+
+    // Errores del cliente que ya traen su código (límite de peticiones, JSON mal
+    // formado, cuerpo demasiado grande...): se respetan en vez de volverlos 500.
+    const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+    if (typeof statusCode === "number" && statusCode >= 400 && statusCode < 500) {
+      const message = (error as { message?: unknown }).message;
+      return reply
+        .status(statusCode)
+        .send({ message: typeof message === "string" && message ? message : "Solicitud no válida" });
     }
 
     // El detalle y la traza van SIEMPRE al log del servidor.
