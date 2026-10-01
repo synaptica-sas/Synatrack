@@ -80,11 +80,10 @@ body.dark .report-chart {
 
 .report-col { cursor: default; }
 
-/* Sábado y domingo: mismas barras, un punto por detrás visualmente. */
-.report-col.weekend .report-bar { opacity: 0.55; }
+/* Sábado y domingo: el rótulo va atenuado, la barra no. Todas sus horas son
+   extra y el rojo tiene que leerse igual que el de cualquier otro día. */
 .report-col.weekend .report-cat,
 .report-col.weekend .report-value { opacity: 0.7; }
-.report-col.weekend.hovered .report-bar,
 .report-col.weekend.hovered .report-cat,
 .report-col.weekend.hovered .report-value { opacity: 1; }
 .report-col.hovered .report-bar { filter: brightness(1.08); }

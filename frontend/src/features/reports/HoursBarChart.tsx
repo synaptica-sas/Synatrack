@@ -72,7 +72,7 @@ export function HoursBarChart({
     <div className="report-chart">
       <div className="report-legend" aria-hidden="true">
         <span><i className="swatch regular" /> Dentro de jornada</span>
-        <span><i className="swatch excess" /> Exceso sobre {DAILY_LIMIT} h/día</span>
+        <span><i className="swatch excess" /> Horas extra (más de {DAILY_LIMIT} h/día o fin de semana)</span>
       </div>
 
       <svg
@@ -129,8 +129,8 @@ export function HoursBarChart({
               className={[
                 "report-col",
                 isHovered ? "hovered" : "",
-                // El fin de semana se dibuja igual pero atenuado: se distingue
-                // de la jornada habitual sin ocultar el dato.
+                // El fin de semana atenúa su rótulo; la barra no, porque todas
+                // sus horas son extra y el rojo debe verse.
                 bar.weekend ? "weekend" : "",
               ].filter(Boolean).join(" ")}
               onMouseEnter={() => setHovered(bar.key)}
@@ -193,7 +193,7 @@ export function HoursBarChart({
           <span>Total {formatHms(hoveredBar.total)}</span>
           <span>Dentro de jornada {formatHms(hoveredBar.regular)}</span>
           {hoveredBar.excess > 0 && (
-            <span className="excess">Exceso {formatHms(hoveredBar.excess)}</span>
+            <span className="excess">Horas extra {formatHms(hoveredBar.excess)}</span>
           )}
         </div>
       )}

@@ -51,7 +51,9 @@ describe("El exceso se mide por día, nunca sobre el total de la semana", () => 
   });
 
   it("8 h cada día no genera exceso, aunque la semana pase de 40", () => {
-    const dias = ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"];
+    // Solo días laborables (de lunes 21 a lunes 28, saltando el fin de semana):
+    // el sábado y el domingo serían horas extra por sí mismos.
+    const dias = ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-28"];
     const [ana] = barsByConsultant(dias.map((d) => entry("a", "Ana", d, 8)));
 
     expect(ana.total).toBe(48);
@@ -81,6 +83,15 @@ describe("El exceso se mide por día, nunca sobre el total de la semana", () => 
 });
 
 describe("Barras por consultor", () => {
+  it("las horas de fin de semana cuentan como extra en el total de la persona", () => {
+    const [ana] = barsByConsultant([
+      entry("a", "Ana", LUNES, 9),
+      entry("a", "Ana", SABADO, 3),
+    ]);
+
+    expect(ana).toMatchObject({ regular: 8, excess: 4, total: 12 });
+  });
+
   it("agrupa por persona y ordena de más a menos horas", () => {
     const bars = barsByConsultant([
       entry("a", "Ana", LUNES, 4),
@@ -143,11 +154,23 @@ describe("Barras por día", () => {
     expect(totals(bars).total).toBe(9);
   });
 
-  it("un sábado de más de 8 h también genera exceso", () => {
-    const bars = barsByDay([entry("a", "Ana", SABADO, 10)], LUNES);
+  it("todas las horas del sábado y el domingo son horas extra, aunque no pasen de 8", () => {
+    const bars = barsByDay(
+      [entry("a", "Ana", SABADO, 3), entry("a", "Ana", DOMINGO, 10)],
+      LUNES,
+    );
 
-    expect(bars[5].regular).toBe(8);
-    expect(bars[5].excess).toBe(2);
+    expect(bars[5]).toMatchObject({ regular: 0, excess: 3, total: 3 });
+    expect(bars[6]).toMatchObject({ regular: 0, excess: 10, total: 10 });
+  });
+
+  it("en el equipo, el fin de semana es extra para todos", () => {
+    const bars = barsByDay(
+      [entry("a", "Ana", SABADO, 2), entry("b", "Beto", SABADO, 4)],
+      LUNES,
+    );
+
+    expect(bars[5]).toMatchObject({ regular: 0, excess: 6 });
   });
 
   it("la jornada es de cada persona: tres consultores a 8 h no generan exceso", () => {

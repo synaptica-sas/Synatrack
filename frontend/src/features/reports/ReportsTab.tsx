@@ -49,8 +49,8 @@ export function ReportsTab({
 
   // La gráfica cubre la semana entera, de lunes a domingo. El filtro de
   // consultor cambia de quién son esas horas, no lo que representa cada
-  // columna. El sábado y el domingo entran en los totales como cualquier otro
-  // día; se distinguen por el tono atenuado de su columna, no por omisión.
+  // columna. El sábado y el domingo entran en los totales, y todas sus horas
+  // cuentan como horas extra.
   const bars = useMemo(() => barsByDay(entries, weekStart), [entries, weekStart]);
   const porConsultor = useMemo(() => barsByConsultant(entries), [entries]);
   const resumen = useMemo(() => totals(bars), [bars]);
@@ -70,7 +70,7 @@ export function ReportsTab({
         { key: "dia", label: "Fecha" },
         { key: "etiqueta", label: "Día" },
         { key: "dentroJornada", label: "Dentro de jornada" },
-        { key: "exceso", label: `Exceso sobre ${DAILY_LIMIT}h/día` },
+        { key: "exceso", label: `Horas extra (más de ${DAILY_LIMIT}h/día o fin de semana)` },
         { key: "total", label: "Total" },
       ],
       "informe-horas",
@@ -82,7 +82,7 @@ export function ReportsTab({
       <PageHeader
         icon="▧"
         title="Informes"
-        description="Horas trabajadas por día, destacando lo que excede la jornada de 8 horas diarias."
+        description="Horas trabajadas por día, destacando las horas extra: lo que excede la jornada de 8 horas entre semana y todo lo del sábado y el domingo."
       />
 
       <article className="card">
@@ -124,7 +124,7 @@ export function ReportsTab({
             <strong className="ok">{formatHms(resumen.regular)}</strong>
           </div>
           <div>
-            <span>Exceso sobre {DAILY_LIMIT} h/día</span>
+            <span>Horas extra</span>
             <strong className={resumen.excess > 0 ? "bad" : undefined}>{formatHms(resumen.excess)}</strong>
           </div>
         </div>
@@ -145,8 +145,8 @@ export function ReportsTab({
 
         <p className="ts-hint">
           {unaPersona
-            ? `Cada columna es un día de ${nombreConsultor ?? "el consultor"}, de lunes a domingo. Lo que pasa de ${DAILY_LIMIT} h aparece en rojo.`
-            : `Cada columna suma el día de todo el equipo, de lunes a domingo. El tramo rojo es lo que alguien excedió de su jornada de ${DAILY_LIMIT} h, no lo que el equipo pasa de ${DAILY_LIMIT} h entre todos.`}
+            ? `Cada columna es un día de ${nombreConsultor ?? "el consultor"}, de lunes a domingo. En rojo, las horas extra: lo que pasa de ${DAILY_LIMIT} h entre semana y todo lo del sábado y el domingo.`
+            : `Cada columna suma el día de todo el equipo, de lunes a domingo. En rojo, las horas extra: lo que alguien excedió de su jornada de ${DAILY_LIMIT} h entre semana (no lo que el equipo pasa de ${DAILY_LIMIT} h entre todos) y todo lo del sábado y el domingo.`}
         </p>
       </article>
 
@@ -161,7 +161,7 @@ export function ReportsTab({
                 <tr>
                   <th>Consultor</th>
                   <th className="cell-right">Dentro de jornada</th>
-                  <th className="cell-right">Exceso</th>
+                  <th className="cell-right">Horas extra</th>
                   <th className="cell-right">Total</th>
                 </tr>
               </thead>
@@ -192,7 +192,7 @@ export function ReportsTab({
               <tr>
                 <th>Día</th>
                 <th className="cell-right">Dentro de jornada</th>
-                <th className="cell-right">Exceso</th>
+                <th className="cell-right">Horas extra</th>
                 <th className="cell-right">Total</th>
               </tr>
             </thead>

@@ -1,7 +1,10 @@
 import type { TimeEntry } from "../../services/api";
 import { numberish, roundHours, weekDays } from "../timesheet/timesheetUtils";
 
-/** Jornada estándar. Por encima de esto, las horas cuentan como exceso. */
+/**
+ * Jornada estándar de lunes a viernes. Por encima de esto, las horas cuentan
+ * como horas extra. El sábado y el domingo no tienen jornada: todo es extra.
+ */
 export const DAILY_LIMIT = 8;
 
 /**
@@ -18,16 +21,26 @@ export type ReportBar = {
   label: string;
   /** Horas dentro de la jornada de 8 h. */
   regular: number;
-  /** Horas que exceden las 8 h de algún día. */
+  /** Horas extra: lo que excede las 8 h de un día laborable, más todo el fin de semana. */
   excess: number;
   /** regular + excess. */
   total: number;
-  /** Sábado o domingo. La barra se dibuja igual, pero atenuada. */
+  /** Sábado o domingo. Todas sus horas son extra; el rótulo del día se atenúa. */
   weekend?: boolean;
 };
 
-/** Reparte las horas de un día entre jornada y exceso. */
-function splitDay(hours: number) {
+/** Sábado o domingo, a partir de la fecha ISO ("YYYY-MM-DD"), en UTC. */
+export function isWeekendDay(day: string): boolean {
+  const weekday = new Date(`${day.slice(0, 10)}T00:00:00Z`).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
+
+/**
+ * Reparte las horas de un día entre jornada y horas extra. El sábado y el
+ * domingo no tienen jornada: todo lo que se trabaja esos días es hora extra.
+ */
+function splitDay(hours: number, weekend = false) {
+  if (weekend) return { regular: 0, excess: hours };
   return {
     regular: Math.min(hours, DAILY_LIMIT),
     excess: Math.max(hours - DAILY_LIMIT, 0),
@@ -89,8 +102,8 @@ export function barsByConsultant(entries: TimeEntry[]): ReportBar[] {
   for (const [id, { label, entries: suyas }] of porConsultor) {
     let regular = 0;
     let excess = 0;
-    for (const hours of hoursByDay(suyas).values()) {
-      const parte = splitDay(hours);
+    for (const [day, hours] of hoursByDay(suyas)) {
+      const parte = splitDay(hours, isWeekendDay(day));
       regular += parte.regular;
       excess += parte.excess;
     }
@@ -116,8 +129,8 @@ const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "o
  *
  * El sábado y el domingo se incluyen: `Consultant.allowWeekendWork` indica que
  * trabajar en fin de semana está contemplado, y dejarlos fuera hacía que esas
- * horas no cuadraran con ningún total de la pantalla. Se dibujan atenuados
- * para que se distingan de la jornada habitual sin esconder el dato.
+ * horas no cuadraran con ningún total de la pantalla. Como no tienen jornada,
+ * todas sus horas cuentan como horas extra y se pintan en rojo.
  *
  * El exceso se calcula por consultor dentro de cada día y luego se suma, de
  * modo que la barra de un día con varias personas solo se pone roja en la
@@ -128,12 +141,14 @@ export function barsByDay(entries: TimeEntry[], weekStart: string): ReportBar[] 
 
   return weekDays(weekStart).map((day, index) => {
     const porConsultor = byDay.get(day);
+    // Los días ISO de la semana van de lunes a domingo: los dos últimos.
+    const weekend = index >= 5;
     let regular = 0;
     let excess = 0;
 
     if (porConsultor) {
       for (const hours of porConsultor.values()) {
-        const parte = splitDay(hours);
+        const parte = splitDay(hours, weekend);
         regular += parte.regular;
         excess += parte.excess;
       }
@@ -145,8 +160,7 @@ export function barsByDay(entries: TimeEntry[], weekStart: string): ReportBar[] 
       regular: roundHours(regular),
       excess: roundHours(excess),
       total: roundHours(regular + excess),
-      // Los días ISO de la semana van de lunes a domingo: los dos últimos.
-      weekend: index >= 5,
+      weekend,
     };
   });
 }
