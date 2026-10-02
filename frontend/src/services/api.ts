@@ -713,6 +713,9 @@ export async function createTimeEntry(payload: {
   description?: string | null;
   activityId?: string | null;
   source?: TimeEntrySource;
+  /** Franja horaria opcional, en ISO. */
+  startedAt?: string | null;
+  endedAt?: string | null;
 }): Promise<TimeEntry> {
   const response = await request<ApiEnvelope<TimeEntry>>("/api/time-entries", "POST", payload);
   return response.data;
@@ -727,6 +730,8 @@ export async function updateTimeEntry(
     note?: string | null;
     projectId?: string;
     workDate?: string;
+    startedAt?: string | null;
+    endedAt?: string | null;
   },
 ): Promise<TimeEntry> {
   const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}`, "PATCH", payload);

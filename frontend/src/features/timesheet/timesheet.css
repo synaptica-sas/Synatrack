@@ -105,9 +105,9 @@
 .ts-grid {
   width: 100%;
   border-collapse: collapse;
-  /* Proyecto 10 + tarea 12 + 7 días y total a 5,4 + acciones: sin esto la
-     tabla comprime las columnas y las cifras HH:MM:SS se cortan. */
-  min-width: 68rem;
+  /* Proyecto 13 + 7 días a 6,4 + total 5,4 + acciones: sin esto la tabla
+     comprime las columnas y las cifras HH:MM:SS se cortan. */
+  min-width: 66rem;
 }
 
 .ts-grid th {
@@ -126,7 +126,6 @@
 }
 
 .ts-col-project { min-width: 10rem; max-width: 14rem; }
-.ts-col-task    { min-width: 12rem; }
 .ts-col-day     { width: 5.4rem; text-align: center; }
 .ts-col-total   { width: 5.4rem; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
 .ts-col-actions { width: 2.2rem; }
@@ -137,27 +136,13 @@
 .ts-col-day.weekend { background: var(--color-primary-05); }
 .ts-col-day.today   { background: var(--color-accent-10); }
 
-.ts-grid .ts-col-project,
-.ts-grid .ts-col-task {
+.ts-grid .ts-col-project {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.85rem;
   color: var(--text-strong);
 }
-
-.ts-task-pill {
-  display: inline-block;
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 0.08rem 0.4rem;
-  margin-right: 0.4rem;
-  border-radius: 5px;
-  background: var(--color-blue-10);
-  color: var(--color-sec-blue);
-}
-
-.ts-task-desc { color: var(--text-soft); }
 
 /* Celda editable: parece texto plano hasta que se pasa por encima o se enfoca. */
 .ts-cell {
@@ -219,20 +204,6 @@
   font-size: 0.75rem;
   line-height: 1;
 }
-
-/* ── Alta de fila ── */
-.ts-addrow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.9rem;
-  padding-top: 0.9rem;
-  border-top: 1px dashed var(--border-color);
-}
-
-.ts-addrow select { flex: 1 1 11rem; min-width: 9rem; }
-.ts-addrow input  { flex: 2 1 14rem; min-width: 10rem; }
-.ts-addrow button { flex: 0 0 auto; }
 
 .ts-hint {
   margin: 0.7rem 0 0;
@@ -403,104 +374,145 @@ body.dark .ts-cell:focus      { background: #0c0c1b; }
 body.dark .ts-empty-note,
 body.dark .ts-hint code       { background: rgba(255, 255, 255, 0.04); }
 body.dark .tk-entry           { border-bottom-color: rgba(255, 255, 255, 0.05); }
-body.dark .ts-task-pill       { background: rgba(96, 165, 250, 0.16); color: #93c5fd; }
 
-/* ── Grupos por proyecto (plegables) ──
-   Cada proyecto es una fila de cabecera que resume sus tareas; al desplegarla
-   aparecen debajo, sangradas. El cronómetro crea una fila por cada
-   descripción distinta, y sin agrupar la grilla crecía sin orden. */
-.ts-group > td {
-  background: var(--color-primary-05);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.ts-group.open > td { border-bottom-color: transparent; }
-
-.ts-group-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.2rem 0;
-  background: none;
-  border: none;
-  color: var(--text-strong);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.ts-group-toggle:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-.ts-group-caret {
-  flex: 0 0 auto;
-  width: 1rem;
-  color: var(--color-accent);
-  font-size: 0.8rem;
-}
-
-.ts-group-name {
-  font-weight: 700;
-  font-size: 0.88rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ts-group-count {
-  flex: 0 0 auto;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.05rem 0.45rem;
-  border-radius: 999px;
-  background: var(--color-accent-15);
-  color: var(--color-accent);
-}
-
-.ts-group-hours {
-  display: block;
-  text-align: center;
-  font-weight: 700;
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-strong);
-}
-
-/* Filas de tarea: sangradas bajo su proyecto. */
-.ts-indent { position: relative; }
-
-.ts-indent::before {
-  content: "";
-  position: absolute;
-  left: 0.9rem;
-  top: 0;
-  bottom: 0;
-  border-left: 2px solid var(--color-accent-30);
-}
-
-.ts-task-row .ts-col-task { padding-left: 0.2rem; }
-
+/* ── Grilla por proyecto (estilo Clockify) ──
+   Una fila por proyecto y una cajita por día. Las actividades no ocupan filas:
+   se anotan en la ventana "Editar tiempo" (⋮) y se leen en el letrero que
+   aparece al pasar el ratón por la celda. */
 .ts-expand-all {
   padding: 0.3rem 0.7rem;
   font-size: 0.78rem;
   white-space: nowrap;
 }
 
-body.dark .ts-group > td { background: rgba(255, 255, 255, 0.03); }
+.ts-col-actions { white-space: nowrap; width: auto; }
 
-/* ── Fusionar tareas y avisos ── */
-.ts-rowmerge {
-  padding: 0.15rem 0.4rem;
-  margin-right: 0.25rem;
-  font-size: 0.8rem;
-  line-height: 1;
+.ts-grid .ts-col-project { min-width: 13rem; max-width: 18rem; }
+.ts-grid .ts-col-day { width: 6.4rem; }
+.ts-grid td.ts-col-day { padding: 0.55rem 0.25rem; }
+.ts-grid .ts-project-row > td { border-bottom: 1px solid var(--border-color); }
+
+.ts-project-dot {
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.6rem;
+  border-radius: 50%;
+  background: var(--color-sec-purple, #a855f7);
+  vertical-align: middle;
 }
 
-.ts-col-actions { white-space: nowrap; width: auto; }
+.ts-project-name {
+  font-size: 0.92rem;
+  color: var(--text-strong);
+  vertical-align: middle;
+}
+
+/* Cajita + ⋮. Los puntos ocupan su propio hueco para no tapar la cifra. */
+.ts-cellwrap {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.ts-grid .ts-cell {
+  flex: 1 1 auto;
+  height: 2.3rem;
+  padding: 0 0.15rem;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--card-bg);
+  font-size: 0.8rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-strong);
+}
+
+.ts-grid .ts-cell:hover:not(:disabled) { border-color: var(--text-soft); }
+.ts-grid .ts-cell:focus { border-color: var(--color-accent); outline: none; }
+.ts-grid .ts-cell:disabled { background: transparent; cursor: default; }
+.ts-cell.saving { opacity: 0.5; }
+
+/* Celda que no se escribe (varios registros o ya revisada): se abre con clic. */
+.ts-grid .ts-cell-locked {
+  display: block;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--text-strong);
+}
+.ts-cell-locked.status-approved { color: var(--color-sec-green); font-weight: 700; }
+.ts-cell-locked.status-rejected { color: var(--color-sec-red); text-decoration: line-through; }
+
+.ts-cell-dots {
+  flex: 0 0 0.9rem;
+  width: 0.9rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-soft);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.ts-cellwrap:hover .ts-cell-dots,
+.ts-cell-dots:focus-visible { opacity: 1; color: var(--color-accent); }
+/* Sin puntos se reserva el mismo hueco, para que todas las cajitas midan igual. */
+.ts-cellwrap:not(.has-dots)::after { content: ""; flex: 0 0 0.9rem; }
+
+/* Fila para añadir un proyecto. */
+.ts-addproject {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+.ts-addproject-icon { color: var(--color-accent); font-size: 1.15rem; line-height: 1; }
+.ts-addproject select {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-accent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.2rem 0;
+}
+.ts-addproject select:disabled { color: var(--text-soft); cursor: default; }
+.ts-muted { color: var(--text-soft); font-weight: 400; }
+
+.ts-grid tfoot td { font-size: 0.8rem; background: var(--color-primary-05); padding-top: 0.7rem; padding-bottom: 0.7rem; }
+
+/* Letrero de actividades. Va con `position: fixed` porque la tabla está dentro
+   de un contenedor con scroll que recortaría un letrero absoluto. */
+.ts-tooltip {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, calc(-100% - 8px));
+  max-width: 18rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  background: #1f2937;
+  color: #f9fafb;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  white-space: pre-line;
+}
+.ts-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom: none;
+  border-top-color: #1f2937;
+}
+.ts-tooltip ul { margin: 0; padding-left: 1rem; }
 
 .ts-notice {
   display: flex;
@@ -522,20 +534,127 @@ body.dark .ts-group > td { background: rgba(255, 255, 255, 0.03); }
   line-height: 1;
 }
 
-.ts-merge {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+/* ── Ventana "Editar tiempo" ── */
+.modal-card.ts-edit {
+  width: min(38rem, 100%);
+  padding: 0;
+  border-radius: 6px;
 }
 
-.ts-merge p { margin: 0; }
-.ts-merge select { width: 100%; }
+.ts-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.ts-edit-header h3 { margin: 0; font-size: 1.6rem; font-weight: 400; color: var(--text-strong); }
+.ts-edit-close { padding: 0.2rem 0.5rem; font-size: 1.1rem; color: var(--text-soft); }
 
-/* Las duraciones van siempre en HH:MM:SS (8 caracteres): las celdas del día
-   se ajustan para que quepan sin cortarse. */
-.ts-grid td.ts-col-day { padding-left: 0.2rem; padding-right: 0.2rem; }
-.ts-cell,
-.ts-cell-locked,
-.ts-group-hours,
-.ts-grid tfoot td { font-size: 0.8rem; }
-.ts-cell { padding-left: 0.1rem; padding-right: 0.1rem; }
+.ts-edit-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.25rem 1.5rem 0;
+}
+.ts-edit-date { color: var(--text-soft); font-size: 0.9rem; }
+.ts-edit-project { color: var(--text-strong); font-size: 0.95rem; }
+
+.ts-edit-entry {
+  margin: 1.1rem 1.5rem 0;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border-color);
+}
+.ts-edit-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+}
+.ts-edit-locked { margin: 0 0 0.7rem; font-size: 0.82rem; color: var(--text-soft); }
+
+.ts-edit-times {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.5rem 3rem;
+  padding: 0 0 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.ts-edit-duration {
+  width: 8rem;
+  height: 3rem;
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ts-edit-range { display: flex; align-items: center; gap: 0.5rem; color: var(--text-soft); }
+.ts-edit-range input { width: 5.2rem; height: 3rem; text-align: center; font-variant-numeric: tabular-nums; }
+
+.ts-edit-field {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  align-items: start;
+  gap: 1rem;
+  margin: 1.1rem 0 0;
+  font-size: 0.95rem;
+  color: var(--text-strong);
+}
+.ts-edit-field span { padding-top: 0.5rem; }
+.ts-edit-field textarea { width: 100%; resize: vertical; font: inherit; font-size: 0.92rem; }
+
+/* Los campos editables van en blanco, como en la ventana de Clockify; el gris
+   queda solo para los deshabilitados (registros ya revisados). */
+.ts-edit input:not(:disabled),
+.ts-edit textarea:not(:disabled) {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+}
+.ts-edit input:not(:disabled):focus,
+.ts-edit textarea:not(:disabled):focus { border-color: var(--color-accent); outline: none; }
+
+.ts-edit-remove {
+  margin-top: 0.6rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--color-sec-red);
+}
+.ts-edit-add {
+  margin: 1rem 1.5rem 0;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+  color: var(--color-accent);
+}
+.ts-edit-error {
+  margin: 1rem 1.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--color-red-10, rgba(220, 38, 38, 0.08));
+  color: var(--color-sec-red);
+  font-size: 0.82rem;
+}
+
+.ts-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+.ts-edit-actions button:not(.ghost) { text-transform: uppercase; letter-spacing: 0.03em; min-width: 7rem; }
+
+@media (max-width: 640px) {
+  .ts-edit-field { grid-template-columns: 1fr; gap: 0.4rem; }
+  .ts-edit-times { padding-left: 0; gap: 1rem; }
+}
+
+body.dark .ts-grid tfoot td { background: rgba(255, 255, 255, 0.03); }

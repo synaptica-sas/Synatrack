@@ -24,6 +24,9 @@ const timeEntryPayloadSchema = z.object({
   description: z.string().trim().max(500).optional().nullable(),
   activityId: z.string().min(1).optional().nullable(),
   source: z.enum(["MANUAL", "TIMESHEET", "TIMER"]).optional(),
+  // Franja horaria opcional ("09:00 - 09:04" en la ventana de edición).
+  startedAt: z.coerce.date().nullable().optional(),
+  endedAt: z.coerce.date().nullable().optional(),
 });
 
 /** Edición de una entrada ya creada: una celda de la grilla semanal. */
@@ -34,7 +37,16 @@ const timeEntryUpdateSchema = z.object({
   note: z.string().trim().nullable().optional(),
   projectId: z.string().min(1).optional(),
   workDate: z.coerce.date().optional(),
+  startedAt: z.coerce.date().nullable().optional(),
+  endedAt: z.coerce.date().nullable().optional(),
 });
+
+/** Una franja con inicio y fin solo tiene sentido si el fin va después. */
+function franjaInvalida(startedAt: Date | null | undefined, endedAt: Date | null | undefined) {
+  return !!startedAt && !!endedAt && endedAt.getTime() <= startedAt.getTime();
+}
+
+const FRANJA_INVALIDA = "La hora de fin debe ser posterior a la de inicio.";
 
 const listQuerySchema = z.object({
   consultantId: z.string().optional(),
@@ -411,6 +423,10 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
 
       const workDate = toUtcDay(payload.workDate);
 
+      if (franjaInvalida(payload.startedAt, payload.endedAt)) {
+        return reply.status(400).send({ message: FRANJA_INVALIDA });
+      }
+
       const closed = await isMonthClosed(payload.projectId, workDate);
       if (closed) {
         return reply.status(400).send({
@@ -439,6 +455,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
           activityId: activity.activityId,
           source: (payload.source as TimeEntrySource) ?? TimeEntrySource.MANUAL,
           status: TimeEntryStatus.PENDING,
+          startedAt: payload.startedAt ?? null,
+          endedAt: payload.endedAt ?? null,
         },
       });
 
@@ -486,6 +504,13 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       const workDate = payload.workDate ? toUtcDay(payload.workDate) : existing.workDate;
       const projectId = payload.projectId ?? existing.projectId;
 
+      // La franja resultante combina lo que llega con lo que ya había.
+      const startedAt = payload.startedAt === undefined ? existing.startedAt : payload.startedAt;
+      const endedAt = payload.endedAt === undefined ? existing.endedAt : payload.endedAt;
+      if (franjaInvalida(startedAt, endedAt)) {
+        return reply.status(400).send({ message: FRANJA_INVALIDA });
+      }
+
       // Se comprueban el periodo de origen y el de destino: mover una entrada a
       // un mes cerrado, o sacarla de él, tampoco está permitido.
       for (const [checkProject, checkDate] of [
@@ -518,6 +543,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
           activityId,
           projectId: payload.projectId ?? undefined,
           workDate: payload.workDate ? workDate : undefined,
+          startedAt: payload.startedAt === undefined ? undefined : payload.startedAt,
+          endedAt: payload.endedAt === undefined ? undefined : payload.endedAt,
         },
       });
 

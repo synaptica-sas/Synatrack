@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SectionLayout } from "../../components/SectionLayout";
@@ -11,15 +11,10 @@ import {
   createTimeEntry,
   deleteTimeEntry,
   getMyConsultant,
-  listActivities,
   listAllTimeEntries,
-  listTaskDescriptions,
   listTimeEntries,
-  mergeTask,
   rejectTimeEntry,
   updateTimeEntry,
-  type TaskDescription,
-  type Activity,
   type Consultant,
   type PageMeta,
   type Project,
@@ -42,17 +37,16 @@ import {
   weekdayLabel,
 } from "./timesheetUtils";
 import {
-  buildRows,
-  projectsWithHoursOn,
-  rankByHours,
-  rowKeyOf,
-  rowsToCopy,
-  sortByRank,
-  type TimesheetRow,
+  buildProjectRows,
+  cellActivities,
+  cellHours,
+  projectsToCopy,
+  type ProjectRow,
 } from "./timesheetGrid";
+import { EditTimeDialog, type EditTimeChanges } from "./EditTimeDialog";
 
-const emptyDraft = { projectId: "", activityId: "", description: "" };
-
+/** Letrero con las actividades de una celda, anclado a la celda bajo el ratón. */
+type Tooltip = { key: string; lines: string[]; left: number; top: number };
 
 export function TimesheetTab({
   projects,
@@ -70,33 +64,6 @@ export function TimesheetTab({
   onError: (msg: string) => void;
 }) {
   const [view, setView] = useState<"week" | "approvals">("week");
-  // Cada proyecto es una fila plegable que despliega sus tareas: el cronómetro
-  // crea una fila por cada descripción distinta, y sin agrupar la grilla crece
-  // sin orden semana tras semana.
-  //
-  // Al llegar a una semana se despliegan solo los proyectos con horas HOY: lo
-  // que estás tocando queda a la vista y el resto plegado. Dentro de la misma
-  // semana se respetan los cambios que hagas a mano.
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  // Orden de las tareas, fijado al cargar la semana (ver `rankByHours`).
-  const [taskRank, setTaskRank] = useState<Map<string, number>>(() => new Map());
-
-  const toggleProject = useCallback((projectId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(projectId)) next.delete(projectId);
-      else next.add(projectId);
-      return next;
-    });
-  }, []);
-
-  const expandProjects = useCallback((ids: Iterable<string>) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) next.add(id);
-      return next;
-    });
-  }, []);
   const [weekStart, setWeekStart] = useState(() => startOfWeek(todayIso()));
 
   const [myConsultant, setMyConsultant] = useState<Consultant | null>(null);
@@ -105,10 +72,6 @@ export function TimesheetTab({
   const [consultantResolved, setConsultantResolved] = useState(false);
   const [consultantId, setConsultantId] = useState("");
   const [weekEntries, setWeekEntries] = useState<TimeEntry[]>([]);
-  // Semana y consultor de los datos cargados. Distingue "llegué a una semana
-  // nueva" de "recargué la misma tras guardar una celda".
-  const [loadedKey, setLoadedKey] = useState("");
-  const [activities, setActivities] = useState<Activity[]>([]);
   const [weekLoading, setWeekLoading] = useState(false);
 
   // -- Vista de aprobaciones -------------------------------------------------
@@ -126,21 +89,20 @@ export function TimesheetTab({
   const [approvalStatus, setApprovalStatus] = useState<TimeEntryStatus | "">("");
   const [exporting, setExporting] = useState(false);
 
-  // Filas que el usuario acaba de crear y aún no tienen ninguna hora cargada.
-  const [draftRows, setDraftRows] = useState<TimesheetRow[]>([]);
-  const [newRow, setNewRow] = useState(emptyDraft);
-  // Tareas ya usadas en el proyecto elegido, para autocompletar la descripción.
-  const [suggestions, setSuggestions] = useState<TaskDescription[]>([]);
-  // Fusión de tareas: la fila que se va a absorber y la que la absorbe.
-  const [mergeSource, setMergeSource] = useState<TimesheetRow | null>(null);
-  const [mergeTargetKey, setMergeTargetKey] = useState("");
-  const [merging, setMerging] = useState(false);
-  // Mensaje de lo que acaba de pasar (copia o fusión); no es un error.
+  // Proyectos que el usuario acaba de añadir y aún no tienen horas.
+  const [draftProjects, setDraftProjects] = useState<string[]>([]);
+  // Mensaje de lo que acaba de pasar (por ejemplo, la copia); no es un error.
   const [notice, setNotice] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
   // Texto que se está editando en cada celda, mientras no se haya guardado.
   const [cellDrafts, setCellDrafts] = useState<Record<string, string>>({});
   const [savingCells, setSavingCells] = useState<Record<string, boolean>>({});
+  // Celda abierta en la ventana "Editar tiempo".
+  const [editing, setEditing] = useState<{ projectId: string; day: string } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [tooltip, setTooltip] = useState<Tooltip | null>(null);
+  // Fila a punto de vaciarse: el ✕ borra horas, así que pide confirmación.
+  const [removeTarget, setRemoveTarget] = useState<ProjectRow | null>(null);
 
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const today = todayIso();
@@ -186,7 +148,6 @@ export function TimesheetTab({
         to: addDays(weekStart, 6),
       });
       setWeekEntries(data);
-      setLoadedKey(`${weekStart}|${consultantId}`);
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudieron cargar las horas de la semana");
     } finally {
@@ -198,113 +159,42 @@ export function TimesheetTab({
     void reloadWeek();
   }, [reloadWeek]);
 
-  useEffect(() => {
-    if (!consultantId) {
-      setActivities([]);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await listActivities({ consultantId });
-        if (!cancelled) setActivities(data);
-      } catch {
-        // Las actividades son opcionales: si fallan, el selector queda vacío
-        // y se puede seguir usando solo la descripción libre.
-        if (!cancelled) setActivities([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [consultantId]);
-
   // Al cambiar de semana o de consultor, las filas en borrador ya no aplican.
   const weekKeyRef = useRef(`${weekStart}|${consultantId}`);
   useEffect(() => {
     const key = `${weekStart}|${consultantId}`;
     if (weekKeyRef.current !== key) {
       weekKeyRef.current = key;
-      setDraftRows([]);
+      setDraftProjects([]);
       setCellDrafts({});
+      setTooltip(null);
     }
   }, [weekStart, consultantId]);
 
-  // Sugerencias para la descripción: las del proyecto elegido, o de todos si
-  // aún no se eligió ninguno. Fallar aquí solo quita el autocompletado.
-  useEffect(() => {
-    if (!consultantId) {
-      setSuggestions([]);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await listTaskDescriptions({
-          consultantId,
-          ...(newRow.projectId ? { projectId: newRow.projectId } : {}),
-        });
-        if (!cancelled) setSuggestions(data);
-      } catch {
-        if (!cancelled) setSuggestions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [consultantId, newRow.projectId, loadedKey]);
-
-  // Al llegar a una semana (no al recargarla tras guardar): orden de tareas por
-  // horas y proyectos abiertos. En la semana actual se abren los que tienen
-  // horas hoy; en otras semanas se llega todo plegado.
-  const appliedKeyRef = useRef("");
-  useEffect(() => {
-    if (!loadedKey || appliedKeyRef.current === loadedKey) return;
-    appliedKeyRef.current = loadedKey;
-
-    const filas = [...buildRows(weekEntries).values()];
-    setTaskRank(rankByHours(filas));
-    setExpanded(
-      weekStart === startOfWeek(today) ? projectsWithHoursOn(filas, today) : new Set<string>(),
-    );
-  }, [loadedKey, weekEntries, weekStart, today]);
-
   // ── Construcción de la grilla ──────────────────────────────────────────────
 
-  const rows = useMemo<TimesheetRow[]>(() => {
-    const byKey = buildRows(weekEntries);
+  const projectName = useCallback(
+    (id: string) => projects.find((p) => p.id === id)?.name ?? "Proyecto",
+    [projects],
+  );
 
-    // Las filas en borrador solo sobreviven mientras no existan ya con horas.
-    for (const draft of draftRows) {
-      if (!byKey.has(draft.key)) byKey.set(draft.key, draft);
+  /** Una fila por proyecto, en orden alfabético. */
+  const rows = useMemo<ProjectRow[]>(() => {
+    const byProject = buildProjectRows(weekEntries);
+    // Los proyectos recién añadidos solo se suman mientras no tengan horas.
+    for (const id of draftProjects) {
+      if (!byProject.has(id)) byProject.set(id, { projectId: id, cells: {} });
     }
+    return Array.from(byProject.values()).sort((a, b) =>
+      projectName(a.projectId).localeCompare(projectName(b.projectId)),
+    );
+  }, [weekEntries, draftProjects, projectName]);
 
-    return Array.from(byKey.values()).sort((a, b) => {
-      const projectA = projects.find((p) => p.id === a.projectId)?.name ?? "";
-      const projectB = projects.find((p) => p.id === b.projectId)?.name ?? "";
-      return projectA.localeCompare(projectB) || a.description.localeCompare(b.description);
-    });
-  }, [weekEntries, draftRows, projects]);
-
-  /** Filas agrupadas por proyecto, conservando el orden alfabético de `rows`. */
-  const groups = useMemo(() => {
-    const porProyecto = new Map<string, TimesheetRow[]>();
-    for (const row of rows) {
-      const lista = porProyecto.get(row.projectId) ?? [];
-      lista.push(row);
-      porProyecto.set(row.projectId, lista);
-    }
-    return Array.from(porProyecto, ([projectId, tareas]) => ({
-      projectId,
-      tareas: sortByRank(tareas, taskRank),
-    }));
-  }, [rows, taskRank]);
-
-  const allExpanded = groups.length > 0 && groups.every((g) => expanded.has(g.projectId));
-
-  function setAllExpanded(open: boolean) {
-    setExpanded(open ? new Set(groups.map((g) => g.projectId)) : new Set<string>());
-  }
+  /** Proyectos que aún se pueden añadir: los que no tienen ya una fila. */
+  const availableProjects = useMemo(
+    () => projects.filter((p) => !rows.some((r) => r.projectId === p.id)),
+    [projects, rows],
+  );
 
   const dayTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -321,51 +211,47 @@ export function TimesheetTab({
     [dayTotals],
   );
 
-  /** Suma de las horas de una celda; 0 si está vacía. */
-  function cellHours(row: TimesheetRow, day: string) {
-    return (row.cells[day] ?? []).reduce((sum, entry) => sum + numberish(entry.hours), 0);
-  }
-
-  function rowTotal(row: TimesheetRow) {
-    return days.reduce((sum, day) => sum + cellHours(row, day), 0);
-  }
-
-  function groupDayHours(tareas: TimesheetRow[], day: string) {
-    return tareas.reduce((sum, row) => sum + cellHours(row, day), 0);
-  }
-
-  function groupTotal(tareas: TimesheetRow[]) {
-    return tareas.reduce((sum, row) => sum + rowTotal(row), 0);
+  function rowTotal(row: ProjectRow) {
+    return days.reduce((sum, day) => sum + cellHours(row.cells[day]), 0);
   }
 
   // ── Edición de celdas ──────────────────────────────────────────────────────
 
-  const cellKey = (rowKey: string, day: string) => `${rowKey}|${day}`;
+  const cellKey = (projectId: string, day: string) => `${projectId}|${day}`;
 
-  async function saveCell(row: TimesheetRow, day: string, rawValue: string) {
-    const key = cellKey(row.key, day);
-    const entriesInCell = row.cells[day] ?? [];
-    const existing = entriesInCell.length === 1 ? entriesInCell[0] : undefined;
+  function clearCellDraft(key: string) {
+    setCellDrafts((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  async function refreshAll() {
+    await reloadWeek();
+    // El listado global alimenta la sub-pestaña de aprobaciones y el resto de
+    // la aplicación (dashboard, capacidad), así que también se refresca.
+    await onReload();
+  }
+
+  /**
+   * Guarda lo escrito en una celda. Solo se llega aquí con la celda vacía o con
+   * un único registro pendiente: con varios, la celda se edita en la ventana.
+   */
+  async function saveCell(row: ProjectRow, day: string, rawValue: string) {
+    const key = cellKey(row.projectId, day);
+    const existing = (row.cells[day] ?? [])[0];
     const parsed = parseHoursInput(rawValue);
 
     if (parsed === null) {
       onError(`"${rawValue}" no es una duración válida. Usa 1:30, 1,5 o 90m.`);
-      setCellDrafts((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+      clearCellDraft(key);
       return;
     }
 
     const hours = roundHours(parsed);
-    const previous = roundHours(numberish(existing?.hours));
-    if (hours === previous) {
-      setCellDrafts((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
+    if (hours === roundHours(numberish(existing?.hours))) {
+      clearCellDraft(key);
       return;
     }
 
@@ -374,28 +260,22 @@ export function TimesheetTab({
       if (hours === 0 && existing) {
         await deleteTimeEntry(existing.id);
       } else if (existing) {
-        await updateTimeEntry(existing.id, { hours });
+        // Si el registro tenía franja, el fin se mueve con la duración nueva.
+        const endedAt = existing.startedAt
+          ? new Date(new Date(existing.startedAt).getTime() + Math.round(hours * 3600) * 1000).toISOString()
+          : undefined;
+        await updateTimeEntry(existing.id, { hours, ...(endedAt ? { endedAt } : {}) });
       } else if (hours > 0) {
         await createTimeEntry({
           projectId: row.projectId,
           consultantId,
           workDate: day,
           hours,
-          description: row.description || null,
-          activityId: row.activityId,
           source: "TIMESHEET",
         });
       }
-
-      setCellDrafts((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-      await reloadWeek();
-      // El listado global alimenta la sub-pestaña de aprobaciones y el resto
-      // de la aplicación (dashboard, capacidad), así que también se refresca.
-      await onReload();
+      clearCellDraft(key);
+      await refreshAll();
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo guardar la hora");
     } finally {
@@ -407,32 +287,51 @@ export function TimesheetTab({
     }
   }
 
-  function handleAddRow(event: FormEvent) {
-    event.preventDefault();
-    if (!newRow.projectId) {
-      onError("Elige un proyecto para la nueva fila");
-      return;
+  /** Aplica lo que se guardó en la ventana "Editar tiempo". */
+  async function handleSaveEdit(changes: EditTimeChanges) {
+    if (!editing) return;
+    setSavingEdit(true);
+    try {
+      for (const id of changes.remove) await deleteTimeEntry(id);
+      for (const u of changes.update) {
+        await updateTimeEntry(u.id, {
+          hours: u.hours,
+          description: u.description,
+          startedAt: u.startedAt,
+          endedAt: u.endedAt,
+        });
+      }
+      for (const c of changes.create) {
+        await createTimeEntry({
+          projectId: editing.projectId,
+          consultantId,
+          workDate: editing.day,
+          hours: c.hours,
+          description: c.description,
+          startedAt: c.startedAt,
+          endedAt: c.endedAt,
+          source: "TIMESHEET",
+        });
+      }
+      setEditing(null);
+      clearCellDraft(cellKey(editing.projectId, editing.day));
+      await refreshAll();
+    } catch (err) {
+      // La ventana sigue abierta para que no se pierda lo escrito. Lo que ya se
+      // guardó antes del fallo se ve al recargar.
+      onError(err instanceof Error ? err.message : "No se pudo guardar el tiempo");
+      await reloadWeek();
+    } finally {
+      setSavingEdit(false);
     }
-
-    const activityId = newRow.activityId || null;
-    const description = newRow.description.trim();
-    const key = rowKeyOf(newRow.projectId, activityId, description);
-
-    if (rows.some((row) => row.key === key)) {
-      onError("Ya existe una fila con ese proyecto y esa tarea");
-      return;
-    }
-
-    setDraftRows((prev) => [
-      ...prev,
-      { key, projectId: newRow.projectId, activityId, description, cells: {} },
-    ]);
-    // Si el proyecto estaba plegado, la fila recién creada quedaría oculta.
-    expandProjects([newRow.projectId]);
-    setNewRow(emptyDraft);
   }
 
-  /** Trae las tareas de la semana anterior como filas vacías para rellenar. */
+  function handleAddProject(projectId: string) {
+    if (!projectId) return;
+    setDraftProjects((prev) => (prev.includes(projectId) ? prev : [...prev, projectId]));
+  }
+
+  /** Trae los proyectos de la semana anterior como filas vacías para rellenar. */
   async function handleCopyPreviousWeek() {
     if (!consultantId) return;
     setCopying(true);
@@ -443,19 +342,18 @@ export function TimesheetTab({
         from: addDays(weekStart, -7),
         to: addDays(weekStart, -1),
       });
-      const copiadas = rowsToCopy(anterior, new Set(rows.map((r) => r.key)));
-      if (copiadas.length === 0) {
+      const copiados = projectsToCopy(anterior, new Set(rows.map((r) => r.projectId)));
+      if (copiados.length === 0) {
         setNotice(
           anterior.length === 0
             ? "La semana anterior no tiene horas registradas."
-            : "Todas las tareas de la semana anterior ya están en esta.",
+            : "Todos los proyectos de la semana anterior ya están en esta.",
         );
         return;
       }
-      setDraftRows((prev) => [...prev, ...copiadas]);
-      expandProjects(copiadas.map((r) => r.projectId));
-      const n = copiadas.length;
-      setNotice(`${n} ${n === 1 ? "tarea copiada" : "tareas copiadas"} de la semana anterior, listas para rellenar.`);
+      setDraftProjects((prev) => [...prev, ...copiados.filter((id) => !prev.includes(id))]);
+      const n = copiados.length;
+      setNotice(`${n} ${n === 1 ? "proyecto copiado" : "proyectos copiados"} de la semana anterior, listos para rellenar.`);
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo copiar la semana anterior");
     } finally {
@@ -463,73 +361,37 @@ export function TimesheetTab({
     }
   }
 
-  /** Nombre visible de una tarea, para el diálogo de fusión. */
-  function taskLabel(row: TimesheetRow) {
-    const activity = activities.find((a) => a.id === row.activityId);
-    const partes = [activity?.title, row.description].filter(Boolean);
-    return partes.length > 0 ? partes.join(" · ") : "Sin descripción";
-  }
-
-  function openMerge(row: TimesheetRow) {
-    setMergeSource(row);
-    setMergeTargetKey("");
-  }
-
-  async function handleMerge() {
-    const source = mergeSource;
-    const destino = rows.find((r) => r.key === mergeTargetKey);
-    if (!source || !destino) return;
-
-    setMerging(true);
-    setNotice(null);
-    try {
-      const tieneHoras = Object.values(source.cells).some((l) => (l ?? []).length > 0);
-      if (tieneHoras) {
-        const res = await mergeTask({
-          projectId: source.projectId,
-          consultantId,
-          from: { description: source.description, activityId: source.activityId },
-          to: { description: destino.description, activityId: destino.activityId },
-        });
-        const motivos = [
-          res.skippedClosedMonth > 0 ? `${res.skippedClosedMonth} de meses cerrados` : "",
-          res.skippedReviewed > 0 ? `${res.skippedReviewed} ya revisados` : "",
-        ].filter(Boolean);
-        const verbo = res.merged === 1 ? "registro pasó" : "registros pasaron";
-        const extra = motivos.length > 0 ? ` No se movieron ${motivos.join(" y ")}.` : "";
-        setNotice(`${res.merged} ${verbo} a «${taskLabel(destino)}».${extra}`);
-      }
-      // Una fila en borrador no tiene registros: fusionarla es solo quitarla.
-      setDraftRows((prev) => prev.filter((d) => d.key !== source.key));
-      setMergeSource(null);
-      await reloadWeek();
-      await onReload();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "No se pudieron fusionar las tareas");
-    } finally {
-      setMerging(false);
-    }
-  }
-
-  async function handleRemoveRow(row: TimesheetRow) {
+  async function handleRemoveRow(row: ProjectRow) {
     const allEntries = days.flatMap((day) => row.cells[day] ?? []);
     const removable = allEntries.filter((entry) => entry.status === "PENDING");
     const blocked = allEntries.filter((entry) => entry.status !== "PENDING");
 
     if (blocked.length > 0) {
-      onError("Esta fila tiene horas ya revisadas; solo se pueden borrar las pendientes.");
+      onError("Esta fila tiene horas ya revisadas; solo se borraron las pendientes.");
     }
 
     try {
       for (const entry of removable) {
         await deleteTimeEntry(entry.id);
       }
-      setDraftRows((prev) => prev.filter((draft) => draft.key !== row.key));
-      await reloadWeek();
-      await onReload();
+      setDraftProjects((prev) => prev.filter((id) => id !== row.projectId));
+      await refreshAll();
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo eliminar la fila");
     }
+  }
+
+  /** Muestra el letrero de actividades sobre la celda. */
+  function showTooltip(key: string, entries: TimeEntry[], target: HTMLElement) {
+    if (entries.length === 0) return;
+    const rect = target.getBoundingClientRect();
+    const lines = cellActivities(entries);
+    setTooltip({
+      key,
+      lines: lines.length > 0 ? lines : ["Sin actividades registradas. Usa ⋮ para añadirlas."],
+      left: rect.left + rect.width / 2,
+      top: rect.top,
+    });
   }
 
   // ── Aprobaciones ───────────────────────────────────────────────────────────
@@ -640,17 +502,21 @@ export function TimesheetTab({
     );
   }
 
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const noConsultant = consultantResolved && !consultantId && !myConsultant && !canPickConsultant;
   const gridEditable = canWrite && !!consultantId;
+  const dayClass = (index: number, day: string) =>
+    `ts-col-day${isWeekend(index) ? " weekend" : ""}${day === today ? " today" : ""}`;
+  const editingRow = editing ? rows.find((r) => r.projectId === editing.projectId) : undefined;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
       <PageHeader
         icon="▥"
         title="Timesheet"
-        description="Carga tus horas de la semana en una grilla: una fila por proyecto y tarea, una columna por día."
+        description="Carga tus horas de la semana: una fila por proyecto, una columna por día. Con ⋮ anotas qué actividades hiciste."
       />
 
       <div className="ts-viewswitch" role="tablist" aria-label="Vistas del timesheet">
@@ -726,18 +592,9 @@ export function TimesheetTab({
                   className="ghost ts-expand-all"
                   onClick={() => void handleCopyPreviousWeek()}
                   disabled={copying}
-                  title="Trae las tareas de la semana pasada como filas vacías"
+                  title="Trae los proyectos de la semana pasada como filas vacías"
                 >
                   {copying ? "Copiando…" : "Copiar semana anterior"}
-                </button>
-              )}
-              {groups.length > 0 && (
-                <button
-                  type="button"
-                  className="ghost ts-expand-all"
-                  onClick={() => setAllExpanded(!allExpanded)}
-                >
-                  {allExpanded ? "Plegar todo" : "Desplegar todo"}
                 </button>
               )}
               <div className="ts-weektotal">
@@ -754,20 +611,16 @@ export function TimesheetTab({
             </p>
           )}
 
-          {weekLoading ? (
+          {weekLoading && rows.length === 0 ? (
             <p className="loading">Cargando semana…</p>
           ) : (
-            <div className="table-wrap">
+            <div className="table-wrap" onScroll={() => setTooltip(null)}>
               <table className="ts-grid">
                 <thead>
                   <tr>
-                    <th className="ts-col-project">Proyecto</th>
-                    <th className="ts-col-task">Tarea / Descripción</th>
+                    <th className="ts-col-project">Proyectos</th>
                     {days.map((day, index) => (
-                      <th
-                        key={day}
-                        className={`ts-col-day${isWeekend(index) ? " weekend" : ""}${day === today ? " today" : ""}`}
-                      >
+                      <th key={day} className={dayClass(index, day)}>
                         <span className="ts-day-name">{weekdayLabel(index)}</span>
                         <span className="ts-day-num">{dayOfMonth(day)}</span>
                       </th>
@@ -777,95 +630,49 @@ export function TimesheetTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.length === 0 && (
+                  {rows.length === 0 && !gridEditable && (
                     <tr>
-                      <td colSpan={days.length + (gridEditable ? 4 : 3)} className="ts-empty">
-                        No hay horas cargadas esta semana. Agrega una fila abajo para empezar.
+                      <td colSpan={days.length + 2} className="ts-empty">
+                        No hay horas cargadas esta semana.
                       </td>
                     </tr>
                   )}
 
-                  {groups.map(({ projectId, tareas }) => {
-                    const project = projects.find((p) => p.id === projectId);
-                    const abierto = expanded.has(projectId);
-                    return (
-                      <Fragment key={projectId}>
-                        {/* Cabecera del proyecto: resume sus tareas y las despliega. */}
-                        <tr className={`ts-group${abierto ? " open" : ""}`}>
-                          <td className="ts-col-project" colSpan={2}>
-                            <button
-                              type="button"
-                              className="ts-group-toggle"
-                              onClick={() => toggleProject(projectId)}
-                              aria-expanded={abierto}
-                              title={abierto ? "Plegar tareas" : "Desplegar tareas"}
+                  {rows.map((row) => (
+                    <tr key={row.projectId} className="ts-project-row">
+                      <td className="ts-col-project">
+                        <span className="ts-project-dot" aria-hidden="true" />
+                        <span className="ts-project-name" title={projectName(row.projectId)}>
+                          {projectName(row.projectId)}
+                        </span>
+                      </td>
+
+                      {days.map((day, index) => {
+                        const entries = row.cells[day] ?? [];
+                        const key = cellKey(row.projectId, day);
+                        const hours = cellHours(entries);
+                        const single = entries.length === 1 ? entries[0] : undefined;
+                        // Con varios registros no hay forma de repartir un número
+                        // nuevo entre ellos: se editan uno a uno en la ventana.
+                        const varios = entries.length > 1;
+                        const revisada = !!single && single.status !== "PENDING";
+                        const typable = gridEditable && !varios && !revisada;
+                        const draft = cellDrafts[key];
+                        const value = draft !== undefined ? draft : formatHoursShort(hours);
+                        const withDots = entries.length > 0;
+
+                        return (
+                          <td key={day} className={dayClass(index, day)}>
+                            <div
+                              className={`ts-cellwrap${withDots ? " has-dots" : ""}`}
+                              onMouseEnter={(e) => showTooltip(key, entries, e.currentTarget)}
+                              onMouseLeave={() => setTooltip((t) => (t?.key === key ? null : t))}
                             >
-                              <span className="ts-group-caret" aria-hidden="true">{abierto ? "▾" : "▸"}</span>
-                              <span className="ts-group-name">{project?.name ?? "Proyecto"}</span>
-                              <span className="ts-group-count">
-                                {tareas.length} {tareas.length === 1 ? "tarea" : "tareas"}
-                              </span>
-                            </button>
-                          </td>
-                          {days.map((day, index) => {
-                            const horas = groupDayHours(tareas, day);
-                            return (
-                              <td
-                                key={day}
-                                className={`ts-col-day${isWeekend(index) ? " weekend" : ""}${day === today ? " today" : ""}`}
-                              >
-                                <span className="ts-group-hours">{formatHoursShort(horas) || "—"}</span>
-                              </td>
-                            );
-                          })}
-                          <td className="ts-col-total">{formatHoursTotal(groupTotal(tareas))}</td>
-                          {gridEditable && <td className="ts-col-actions" />}
-                        </tr>
-
-                        {abierto && tareas.map((row) => {
-                    const activity = activities.find((a) => a.id === row.activityId);
-                    return (
-                      <tr key={row.key} className="ts-task-row">
-                        {/* El proyecto ya está en la cabecera: aquí solo sangría. */}
-                        <td className="ts-col-project ts-indent" aria-hidden="true" />
-                        <td className="ts-col-task">
-                          {activity && <span className="ts-task-pill">{activity.title}</span>}
-                          <span className="ts-task-desc" title={row.description}>
-                            {row.description || (activity ? "" : "Sin descripción")}
-                          </span>
-                        </td>
-
-                        {days.map((day, index) => {
-                          const entriesInCell = row.cells[day] ?? [];
-                          const key = cellKey(row.key, day);
-                          const hours = cellHours(row, day);
-                          const single = entriesInCell.length === 1 ? entriesInCell[0] : undefined;
-                          // Bloqueada si ya fue revisada, o si agrupa varios
-                          // registros del tracker que no se pueden reescribir
-                          // con un solo número.
-                          const locked =
-                            entriesInCell.length > 1 ||
-                            (!!single && single.status !== "PENDING");
-                          const draft = cellDrafts[key];
-                          const value = draft !== undefined ? draft : formatHoursShort(hours);
-
-                          const lockedTitle =
-                            entriesInCell.length > 1
-                              ? `${entriesInCell.length} registros ese día suman ${formatHoursTotal(hours)}. Edítalos uno a uno desde el Tracker.`
-                              : single
-                                ? `${label(TIME_ENTRY_STATUS_LABELS, single.status)} — ya no se puede editar`
-                                : undefined;
-
-                          return (
-                            <td
-                              key={day}
-                              className={`ts-col-day${isWeekend(index) ? " weekend" : ""}${day === today ? " today" : ""}`}
-                            >
-                              {gridEditable && !locked ? (
+                              {typable ? (
                                 <input
                                   className={`ts-cell${savingCells[key] ? " saving" : ""}`}
                                   inputMode="decimal"
-                                  placeholder="00:00:00"
+                                  placeholder=""
                                   value={value}
                                   disabled={savingCells[key]}
                                   onChange={(e) =>
@@ -875,68 +682,107 @@ export function TimesheetTab({
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") e.currentTarget.blur();
                                     if (e.key === "Escape") {
-                                      setCellDrafts((prev) => {
-                                        const next = { ...prev };
-                                        delete next[key];
-                                        return next;
-                                      });
+                                      clearCellDraft(key);
                                       e.currentTarget.blur();
                                     }
                                   }}
-                                  aria-label={`Horas del ${day}`}
+                                  aria-label={`Horas de ${projectName(row.projectId)} el ${day}`}
                                 />
                               ) : (
-                                <span
-                                  className={`ts-cell-locked${single ? ` status-${single.status.toLowerCase()}` : ""}`}
-                                  title={lockedTitle}
+                                <button
+                                  type="button"
+                                  className={`ts-cell ts-cell-locked${single ? ` status-${single.status.toLowerCase()}` : ""}`}
+                                  onClick={() => entries.length > 0 && setEditing({ projectId: row.projectId, day })}
+                                  disabled={entries.length === 0}
+                                  aria-label={
+                                    varios
+                                      ? `${entries.length} registros, ${formatHoursTotal(hours)}. Abrir para editar`
+                                      : `Horas del ${day}`
+                                  }
                                 >
-                                  {formatHoursShort(hours) || "—"}
-                                </span>
+                                  {formatHoursShort(hours)}
+                                </button>
                               )}
-                            </td>
-                          );
-                        })}
-
-                        <td className="ts-col-total">{formatHoursTotal(rowTotal(row))}</td>
-                        {gridEditable && (
-                          <td className="ts-col-actions">
-                            {tareas.length > 1 && (
-                              <button
-                                type="button"
-                                className="ghost ts-rowmerge"
-                                onClick={() => openMerge(row)}
-                                aria-label="Fusionar con otra tarea"
-                                title="Es la misma tarea que otra: pasar sus horas a esa"
-                              >
-                                ⇄
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              className="ghost ts-rowdel"
-                              onClick={() => void handleRemoveRow(row)}
-                              aria-label="Eliminar fila"
-                              title="Eliminar las horas pendientes de esta fila"
-                            >
-                              ✕
-                            </button>
+                              {withDots && (
+                                <button
+                                  type="button"
+                                  className="ts-cell-dots"
+                                  onClick={() => {
+                                    setTooltip(null);
+                                    setEditing({ projectId: row.projectId, day });
+                                  }}
+                                  aria-label="Editar tiempo y actividades"
+                                  title="Editar tiempo y actividades"
+                                >
+                                  ⋮
+                                </button>
+                              )}
+                            </div>
                           </td>
-                        )}
-                      </tr>
-                    );
-                        })}
-                      </Fragment>
-                    );
-                  })}
+                        );
+                      })}
+
+                      <td className="ts-col-total">{formatHoursTotal(rowTotal(row))}</td>
+                      {gridEditable && (
+                        <td className="ts-col-actions">
+                          <button
+                            type="button"
+                            className="ghost ts-rowdel"
+                            onClick={() =>
+                              rowTotal(row) > 0
+                                ? setRemoveTarget(row)
+                                : setDraftProjects((prev) => prev.filter((id) => id !== row.projectId))
+                            }
+                            aria-label="Quitar fila"
+                            title="Quitar el proyecto y sus horas pendientes de esta semana"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+
+                  {/* Fila para añadir un proyecto, como la última de Clockify. */}
+                  {gridEditable && (
+                    <tr className="ts-project-row ts-addrow-row">
+                      <td className="ts-col-project">
+                        <label className="ts-addproject">
+                          <span className="ts-addproject-icon" aria-hidden="true">⊕</span>
+                          <select
+                            value=""
+                            onChange={(e) => handleAddProject(e.target.value)}
+                            aria-label="Seleccionar proyecto"
+                            disabled={availableProjects.length === 0}
+                          >
+                            <option value="">
+                              {availableProjects.length === 0 ? "No hay más proyectos" : "Seleccionar proyecto"}
+                            </option>
+                            {availableProjects.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </td>
+                      {days.map((day, index) => (
+                        <td key={day} className={dayClass(index, day)}>
+                          <div className="ts-cellwrap">
+                            <input className="ts-cell" disabled aria-hidden="true" tabIndex={-1} />
+                          </div>
+                        </td>
+                      ))}
+                      <td className="ts-col-total ts-muted">{formatHoursTotal(0)}</td>
+                      <td className="ts-col-actions" />
+                    </tr>
+                  )}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={2}>Total por día</td>
+                    <td>Total:</td>
                     {days.map((day, index) => (
-                      <td
-                        key={day}
-                        className={`ts-col-day${isWeekend(index) ? " weekend" : ""}${day === today ? " today" : ""}`}
-                      >
+                      <td key={day} className={dayClass(index, day)}>
                         {formatHoursTotal(dayTotals[day] ?? 0)}
                       </td>
                     ))}
@@ -948,53 +794,27 @@ export function TimesheetTab({
             </div>
           )}
 
-          {gridEditable && (
-            <form className="ts-addrow" onSubmit={handleAddRow}>
-              <select
-                value={newRow.projectId}
-                onChange={(e) => setNewRow((p) => ({ ...p, projectId: e.target.value }))}
-                aria-label="Proyecto de la nueva fila"
+          {/* Al body: dentro de la tarjeta, un ancestro con `transform` hace
+              que `position: fixed` se mida desde él y el letrero sale desplazado. */}
+          {tooltip &&
+            createPortal(
+              <div
+                className="ts-tooltip"
+                role="tooltip"
+                style={{ left: tooltip.left, top: tooltip.top }}
               >
-                <option value="">Proyecto…</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={newRow.activityId}
-                onChange={(e) => setNewRow((p) => ({ ...p, activityId: e.target.value }))}
-                aria-label="Actividad de la nueva fila"
-              >
-                <option value="">Sin tarea asignada</option>
-                {activities
-                  .filter((a) => !newRow.projectId || !a.projectId || a.projectId === newRow.projectId)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.title}
-                    </option>
-                  ))}
-              </select>
-              <input
-                type="text"
-                placeholder="¿En qué trabajaste?"
-                value={newRow.description}
-                onChange={(e) => setNewRow((p) => ({ ...p, description: e.target.value }))}
-                aria-label="Descripción de la nueva fila"
-                list="ts-task-suggestions"
-                autoComplete="off"
-              />
-              {/* Tareas ya usadas: elegir una en vez de reescribirla hace que
-                  las horas caigan en la misma fila y no en una nueva. */}
-              <datalist id="ts-task-suggestions">
-                {suggestions.map((t) => (
-                  <option key={t.description} value={t.description} />
-                ))}
-              </datalist>
-              <button type="submit">+ Agregar fila</button>
-            </form>
-          )}
+                {tooltip.lines.length === 1 ? (
+                  <span>{tooltip.lines[0]}</span>
+                ) : (
+                  <ul>
+                    {tooltip.lines.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>,
+              document.body,
+            )}
 
           {notice && (
             <p className="ts-notice" role="status">
@@ -1005,43 +825,45 @@ export function TimesheetTab({
             </p>
           )}
 
+          {editing && (
+            <EditTimeDialog
+              key={`${editing.projectId}|${editing.day}`}
+              day={editing.day}
+              projectName={projectName(editing.projectId)}
+              entries={editingRow?.cells[editing.day] ?? []}
+              readOnly={!gridEditable}
+              saving={savingEdit}
+              onSave={(changes) => void handleSaveEdit(changes)}
+              onClose={() => setEditing(null)}
+            />
+          )}
+
           <ConfirmDialog
-            open={!!mergeSource}
-            title="Fusionar tareas"
-            confirmLabel={merging ? "Fusionando…" : "Fusionar"}
-            confirmDisabled={!mergeTargetKey || merging}
-            onCancel={() => setMergeSource(null)}
-            onConfirm={() => void handleMerge()}
+            open={!!removeTarget}
+            title="Quitar proyecto de la semana"
+            danger
+            confirmLabel="Quitar"
+            onCancel={() => setRemoveTarget(null)}
+            onConfirm={() => {
+              const row = removeTarget;
+              setRemoveTarget(null);
+              if (row) void handleRemoveRow(row);
+            }}
             message={
-              mergeSource && (
-                <div className="ts-merge">
-                  <p>
-                    Todas las horas de <strong>«{taskLabel(mergeSource)}»</strong> pasarán a la tarea
-                    que elijas, también las de semanas anteriores. Las horas no cambian, solo el nombre
-                    de la tarea.
-                  </p>
-                  <select
-                    value={mergeTargetKey}
-                    onChange={(e) => setMergeTargetKey(e.target.value)}
-                    aria-label="Tarea destino"
-                  >
-                    <option value="">Elige la tarea que se queda…</option>
-                    {rows
-                      .filter((r) => r.projectId === mergeSource.projectId && r.key !== mergeSource.key)
-                      .map((r) => (
-                        <option key={r.key} value={r.key}>
-                          {taskLabel(r)}
-                        </option>
-                      ))}
-                  </select>
-                </div>
+              removeTarget && (
+                <p>
+                  Se borrarán las horas pendientes de <strong>{projectName(removeTarget.projectId)}</strong>{" "}
+                  de esta semana ({formatHoursTotal(rowTotal(removeTarget))}). Las ya aprobadas o
+                  rechazadas no se tocan.
+                </p>
               )
             }
           />
 
           <p className="ts-hint">
-            Escribe las horas como <code>1:30</code>, <code>1,5</code> o <code>90m</code>. Se guardan
-            solas al salir de la celda y quedan pendientes de aprobación.
+            Escribe las horas como <code>1:30</code>, <code>1,5</code> o <code>90m</code>: se guardan
+            solas al salir de la celda. Con <strong>⋮</strong> anotas las actividades y la hora de
+            inicio y fin; al pasar el ratón por una celda las ves.
           </p>
         </article>
       )}

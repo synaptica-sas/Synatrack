@@ -3,112 +3,136 @@ import { numberish } from "./timesheetUtils";
 
 /**
  * Lógica pura de la grilla semanal: cómo se agrupan los registros en filas,
- * qué proyectos se abren al llegar, en qué orden van las tareas y qué filas se
- * copian de la semana anterior. Vive aparte de la pantalla para poder probarla
- * sin montar React.
+ * qué se muestra en el letrero de cada celda, qué se copia de la semana
+ * anterior y cómo se traduce la franja horaria de la ventana "Editar tiempo".
+ * Vive aparte de la pantalla para poder probarla sin montar React.
  */
 
 /**
- * Una fila de la grilla agrupa todas las horas de la semana que comparten
- * proyecto, actividad y descripción. La clave se construye con esos tres
- * campos para que escribir la misma tarea dos días seguidos caiga en la misma
- * fila, igual que en Clockify.
+ * Una fila por proyecto. Cada celda reúne TODOS los registros de ese proyecto
+ * en ese día, sea cual sea su descripción: lo que se hizo se ve en el letrero
+ * al pasar el ratón y se edita en la ventana de la celda, no en filas aparte.
  */
-export type TimesheetRow = {
-  key: string;
+export type ProjectRow = {
   projectId: string;
-  activityId: string | null;
-  description: string;
   /**
-   * Entradas de horas por día ISO. Normalmente hay una sola, pero el tracker
-   * puede generar varias el mismo día sobre la misma tarea (una por cada vez
-   * que se arranca y se detiene el cronómetro). En ese caso la celda muestra
-   * la suma y se bloquea, porque no habría forma de repartir un valor nuevo
-   * entre los registros originales sin inventarse el criterio.
+   * Registros por día ISO. Normalmente uno; el cronómetro puede dejar varios
+   * el mismo día (uno por cada vez que se arranca y se detiene).
    */
   cells: Record<string, TimeEntry[] | undefined>;
 };
 
-/** Mayúsculas y espacios de más no crean una fila nueva. */
-export function rowKeyOf(projectId: string, activityId: string | null, description: string) {
-  return `${projectId}::${activityId ?? ""}::${description.trim().toLowerCase()}`;
-}
-
-/** Agrupa los registros de la semana en filas de la grilla. */
-export function buildRows(entries: TimeEntry[]): Map<string, TimesheetRow> {
-  const byKey = new Map<string, TimesheetRow>();
+/** Agrupa los registros de la semana en una fila por proyecto. */
+export function buildProjectRows(entries: TimeEntry[]): Map<string, ProjectRow> {
+  const byProject = new Map<string, ProjectRow>();
   for (const entry of entries) {
-    const description = entry.description ?? "";
-    const key = rowKeyOf(entry.projectId, entry.activityId, description);
-    let row = byKey.get(key);
+    let row = byProject.get(entry.projectId);
     if (!row) {
-      row = { key, projectId: entry.projectId, activityId: entry.activityId, description, cells: {} };
-      byKey.set(key, row);
+      row = { projectId: entry.projectId, cells: {} };
+      byProject.set(entry.projectId, row);
     }
     const day = entry.workDate.slice(0, 10);
     row.cells[day] = [...(row.cells[day] ?? []), entry];
   }
-  return byKey;
+  return byProject;
 }
 
-/** Horas totales de una fila en la semana. */
-export function rowHours(row: TimesheetRow): number {
-  let total = 0;
-  for (const lista of Object.values(row.cells)) {
-    for (const e of lista ?? []) total += numberish(e.hours);
-  }
-  return total;
+/** Horas de una celda; 0 si está vacía. */
+export function cellHours(entries: TimeEntry[] | undefined): number {
+  return (entries ?? []).reduce((sum, e) => sum + numberish(e.hours), 0);
 }
 
 /**
- * Proyectos que tienen horas ese día. Son los que se despliegan al llegar a la
- * semana actual: lo que estás tocando hoy queda a la vista, y el resto plegado.
+ * Actividades de una celda para el letrero: cada línea de la descripción es
+ * una actividad. Se quitan las vacías y las repetidas (sin distinguir
+ * mayúsculas), conservando el orden en que se escribieron.
  */
-export function projectsWithHoursOn(rows: Iterable<TimesheetRow>, day: string): Set<string> {
-  const ids = new Set<string>();
-  for (const row of rows) {
-    const horas = (row.cells[day] ?? []).reduce((s, e) => s + numberish(e.hours), 0);
-    if (horas > 0) ids.add(row.projectId);
+export function cellActivities(entries: TimeEntry[] | undefined): string[] {
+  const vistas = new Set<string>();
+  const lista: string[] = [];
+  for (const entry of entries ?? []) {
+    for (const linea of (entry.description ?? "").split(/\r?\n/)) {
+      const texto = linea.trim();
+      const clave = texto.toLowerCase();
+      if (!texto || vistas.has(clave)) continue;
+      vistas.add(clave);
+      lista.push(texto);
+    }
+  }
+  return lista;
+}
+
+/**
+ * Proyectos de otra semana que aún no están en esta, para traerlos como filas
+ * vacías. Se devuelven en el orden en que aparecen.
+ */
+export function projectsToCopy(previousWeek: TimeEntry[], existing: Set<string>): string[] {
+  const ids: string[] = [];
+  for (const entry of previousWeek) {
+    if (existing.has(entry.projectId) || ids.includes(entry.projectId)) continue;
+    ids.push(entry.projectId);
   }
   return ids;
 }
 
-/**
- * Orden de las tareas: de más a menos horas en la semana, para que lo
- * importante quede arriba.
- *
- * Se calcula como una FOTO al cargar la semana, no en vivo. Si se reordenara
- * con cada celda guardada, la fila se movería mientras la estás editando y el
- * tabulador acabaría en la celda de otra tarea.
- */
-export function rankByHours(rows: Iterable<TimesheetRow>): Map<string, number> {
-  const ordenadas = [...rows].sort(
-    (a, b) => rowHours(b) - rowHours(a) || a.description.localeCompare(b.description),
-  );
-  return new Map(ordenadas.map((row, i) => [row.key, i]));
+// ── Franja horaria de la ventana "Editar tiempo" ─────────────────────────────
+
+const HHMM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+/** "HH:MM" en hora local de un instante ISO; "" si no hay instante. */
+export function timeOfDay(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-/** Ordena las tareas de un proyecto según la foto; las nuevas van al final. */
-export function sortByRank(tareas: TimesheetRow[], rank: Map<string, number>): TimesheetRow[] {
-  return [...tareas].sort((a, b) => {
-    const ra = rank.get(a.key) ?? Number.POSITIVE_INFINITY;
-    const rb = rank.get(b.key) ?? Number.POSITIVE_INFINITY;
-    return ra - rb || a.description.localeCompare(b.description);
-  });
+/** ¿Es una hora "HH:MM" válida? Acepta "9:05". */
+export function isValidTime(value: string): boolean {
+  return HHMM.test(value.trim());
+}
+
+/** Minutos desde medianoche de una hora "HH:MM" válida. */
+function minutesOf(value: string): number {
+  const [, h, m] = HHMM.exec(value.trim())!;
+  return Number(h) * 60 + Number(m);
+}
+
+/** Instante ISO de una hora local "HH:MM" en el día ISO dado. */
+export function combineDayTime(day: string, time: string): string {
+  const mins = minutesOf(time);
+  const [y, mo, d] = day.split("-").map(Number);
+  return new Date(y, mo - 1, d, Math.floor(mins / 60), mins % 60).toISOString();
+}
+
+/** Hora "HH:MM" que resulta de sumar una duración a una hora de inicio. */
+export function endTimeFrom(start: string, hours: number): string {
+  const total = minutesOf(start) + Math.round(hours * 60);
+  const mins = ((total % 1440) + 1440) % 1440;
+  return `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
 }
 
 /**
- * Filas vacías a partir de las tareas de otra semana, listas para rellenar.
- * Se omiten las que ya existen en la semana actual, para no duplicarlas.
+ * Horas entre dos horas "HH:MM" del mismo día; `null` si el fin no va después
+ * del inicio (la franja no cruza la medianoche).
  */
-export function rowsToCopy(
-  previousWeek: TimeEntry[],
-  existingKeys: Set<string>,
-): TimesheetRow[] {
-  const copiadas: TimesheetRow[] = [];
-  for (const row of buildRows(previousWeek).values()) {
-    if (existingKeys.has(row.key)) continue;
-    copiadas.push({ ...row, cells: {} });
-  }
-  return copiadas;
+export function hoursBetween(start: string, end: string): number | null {
+  const diff = minutesOf(end) - minutesOf(start);
+  return diff > 0 ? diff / 60 : null;
+}
+
+/**
+ * Franja a guardar a partir de la hora de inicio y la duración: el fin se
+ * calcula desde la duración exacta (con sus segundos), no desde el "HH:MM"
+ * redondeado que se ve en pantalla. Sin hora de inicio no hay franja.
+ */
+export function rangeFor(
+  day: string,
+  start: string,
+  hours: number,
+): { startedAt: string | null; endedAt: string | null } {
+  if (!start.trim()) return { startedAt: null, endedAt: null };
+  const startedAt = combineDayTime(day, start);
+  const endedAt = new Date(new Date(startedAt).getTime() + Math.round(hours * 3600) * 1000).toISOString();
+  return { startedAt, endedAt };
 }

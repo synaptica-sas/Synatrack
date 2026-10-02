@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildRows,
-  projectsWithHoursOn,
-  rankByHours,
-  rowKeyOf,
-  rowsToCopy,
-  sortByRank,
-  type TimesheetRow,
+  buildProjectRows,
+  cellActivities,
+  cellHours,
+  combineDayTime,
+  endTimeFrom,
+  hoursBetween,
+  isValidTime,
+  projectsToCopy,
+  rangeFor,
+  timeOfDay,
 } from "../features/timesheet/timesheetGrid";
 import type { TimeEntry } from "../services/api";
 
@@ -37,80 +40,99 @@ function entry(projectId: string, description: string | null, day: string, hours
 const LUNES = "2026-09-28";
 const MARTES = "2026-09-29";
 
-describe("Agrupación en filas", () => {
-  it("mayúsculas y espacios de más no abren una fila nueva", () => {
-    const filas = buildRows([
-      entry("p1", "Tarea", LUNES, 1),
-      entry("p1", "tarea ", MARTES, 2),
+describe("Una fila por proyecto", () => {
+  it("las descripciones distintas del mismo proyecto caen en la misma fila y celda", () => {
+    const rows = buildProjectRows([
+      entry("p1", "Diseño", LUNES, 1),
+      entry("p1", "Reunión", LUNES, 0.5),
+      entry("p1", null, MARTES, 2),
     ]);
-    expect(filas.size).toBe(1);
+
+    expect(rows.size).toBe(1);
+    const fila = rows.get("p1")!;
+    expect(fila.cells[LUNES]).toHaveLength(2);
+    expect(cellHours(fila.cells[LUNES])).toBe(1.5);
+    expect(cellHours(fila.cells[MARTES])).toBe(2);
   });
 
-  it("proyectos distintos son filas distintas aunque se llamen igual", () => {
-    const filas = buildRows([entry("p1", "Tarea", LUNES, 1), entry("p2", "Tarea", LUNES, 1)]);
-    expect(filas.size).toBe(2);
+  it("proyectos distintos son filas distintas", () => {
+    const rows = buildProjectRows([entry("p1", "x", LUNES, 1), entry("p2", "x", LUNES, 1)]);
+
+    expect([...rows.keys()].sort()).toEqual(["p1", "p2"]);
+  });
+
+  it("una celda vacía suma 0", () => {
+    expect(cellHours(undefined)).toBe(0);
   });
 });
 
-describe("Qué proyectos se abren al llegar", () => {
-  it("solo los que tienen horas ese día", () => {
-    const filas = buildRows([
-      entry("p1", "a", LUNES, 2),
-      entry("p2", "b", MARTES, 3),
-    ]).values();
-
-    expect(projectsWithHoursOn(filas, MARTES)).toEqual(new Set(["p2"]));
-  });
-});
-
-describe("Orden de las tareas", () => {
-  it("de más a menos horas en la semana", () => {
-    const filas = [...buildRows([
-      entry("p1", "poco", LUNES, 1),
-      entry("p1", "mucho", LUNES, 5),
-      entry("p1", "medio", LUNES, 3),
-    ]).values()];
-
-    const orden = sortByRank(filas, rankByHours(filas)).map((r) => r.description);
-    expect(orden).toEqual(["mucho", "medio", "poco"]);
+describe("Letrero de actividades", () => {
+  it("cada línea de la descripción es una actividad", () => {
+    expect(cellActivities([entry("p1", "mucho\nbastante\r\ndemasiado", LUNES, 1)])).toEqual([
+      "mucho",
+      "bastante",
+      "demasiado",
+    ]);
   });
 
-  it("es una foto: una tarea nueva va al final aunque tenga más horas", () => {
-    const iniciales = [...buildRows([entry("p1", "vieja", LUNES, 2)]).values()];
-    const rank = rankByHours(iniciales);
+  it("junta las de varios registros, sin vacías ni repetidas", () => {
+    const lineas = cellActivities([
+      entry("p1", "Diseño\n\n  ", LUNES, 1),
+      entry("p1", "diseño\nPruebas", LUNES, 1),
+      entry("p1", null, LUNES, 1),
+    ]);
 
-    const nueva: TimesheetRow = { ...iniciales[0], key: rowKeyOf("p1", null, "nueva"), description: "nueva" };
-    const orden = sortByRank([nueva, ...iniciales], rank).map((r) => r.description);
-
-    // No salta arriba mientras se edita: se reordena al volver a la semana.
-    expect(orden).toEqual(["vieja", "nueva"]);
+    expect(lineas).toEqual(["Diseño", "Pruebas"]);
   });
 });
 
 describe("Copiar la semana anterior", () => {
-  it("trae las tareas como filas vacías", () => {
-    const copiadas = rowsToCopy([entry("p1", "Reunión", "2026-09-21", 4)], new Set());
-
-    expect(copiadas).toHaveLength(1);
-    expect(copiadas[0].description).toBe("Reunión");
-    expect(copiadas[0].cells).toEqual({});
-  });
-
-  it("no duplica las que ya están en esta semana", () => {
-    const existente = rowKeyOf("p1", null, "reunión");
-    const copiadas = rowsToCopy(
-      [entry("p1", "Reunión", "2026-09-21", 4), entry("p1", "Otra", "2026-09-22", 1)],
-      new Set([existente]),
-    );
-
-    expect(copiadas.map((r) => r.description)).toEqual(["Otra"]);
-  });
-
-  it("una misma tarea repetida varios días se copia una sola vez", () => {
-    const copiadas = rowsToCopy(
-      [entry("p1", "Diaria", "2026-09-21", 1), entry("p1", "Diaria", "2026-09-22", 1)],
+  it("trae cada proyecto una sola vez, en orden de aparición", () => {
+    const ids = projectsToCopy(
+      [entry("p2", "a", LUNES, 1), entry("p1", "b", LUNES, 1), entry("p2", "c", MARTES, 1)],
       new Set(),
     );
-    expect(copiadas).toHaveLength(1);
+
+    expect(ids).toEqual(["p2", "p1"]);
+  });
+
+  it("no duplica los que ya están en esta semana", () => {
+    expect(projectsToCopy([entry("p1", "a", LUNES, 1)], new Set(["p1"]))).toEqual([]);
+  });
+});
+
+describe("Franja horaria", () => {
+  it("valida horas HH:MM", () => {
+    expect(isValidTime("09:00")).toBe(true);
+    expect(isValidTime("9:05")).toBe(true);
+    expect(isValidTime("24:00")).toBe(false);
+    expect(isValidTime("09:60")).toBe(false);
+    expect(isValidTime("")).toBe(false);
+  });
+
+  it("el fin es el inicio más la duración", () => {
+    expect(endTimeFrom("09:00", 4 / 60)).toBe("09:04");
+    expect(endTimeFrom("23:30", 1)).toBe("00:30");
+  });
+
+  it("la duración es la diferencia entre inicio y fin", () => {
+    expect(hoursBetween("09:00", "10:30")).toBe(1.5);
+    expect(hoursBetween("10:00", "09:00")).toBeNull();
+    expect(hoursBetween("10:00", "10:00")).toBeNull();
+  });
+
+  it("ida y vuelta entre hora local e instante ISO", () => {
+    expect(timeOfDay(combineDayTime(LUNES, "09:04"))).toBe("09:04");
+    expect(timeOfDay(null)).toBe("");
+  });
+
+  it("el fin guardado sale de la duración exacta, con sus segundos", () => {
+    const { startedAt, endedAt } = rangeFor(LUNES, "09:00", 43 / 3600);
+
+    expect(new Date(endedAt!).getTime() - new Date(startedAt!).getTime()).toBe(43_000);
+  });
+
+  it("sin hora de inicio no hay franja", () => {
+    expect(rangeFor(LUNES, "", 1)).toEqual({ startedAt: null, endedAt: null });
   });
 });
