@@ -144,6 +144,30 @@
 
 .sidebar-toggle:hover { background: var(--color-primary-10); }
 
+.sidebar-pin {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.3rem 0 0.3rem 0.5rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0.45;
+  border: 1px solid transparent;
+  transition: opacity 0.14s, background 0.14s, border-color 0.14s;
+}
+
+/* El emoji ignora `color`, así que el estado activo se marca con fondo/borde, no con tinte. */
+.sidebar-pin:hover { opacity: 0.8; background: var(--color-primary-10); }
+
+.sidebar-pin--active {
+  opacity: 1;
+  background: var(--color-accent-15);
+  border-color: var(--color-accent);
+}
+
 /* Hidden by default on desktop, shown on mobile */
 .sidebar-close-mobile {
   display: none;
@@ -800,8 +824,9 @@ th.sortable:hover { background: var(--color-primary-10); }
     max-height: 2rem !important;
     padding: 0.25rem 0.75rem 0.2rem !important;
   }
-  /* Hide desktop toggle on mobile */
-  .sidebar-toggle {
+  /* Hide desktop toggle y el pin en móvil: ahí "colapsado" es el drawer cerrado, no tiene sentido fijar */
+  .sidebar-toggle,
+  .sidebar-pin {
     display: none !important;
   }
   /* Show mobile close button */
@@ -1966,7 +1991,13 @@ body.dark .sidebar-toggle {
   color: #f1a323;
 }
 
+body.dark .sidebar-pin--active {
+  background: rgba(241, 163, 35, 0.15);
+  border-color: #f1a323;
+}
+
 body.dark .sidebar-toggle:hover,
+body.dark .sidebar-pin:hover,
 body.dark .sidebar-tab:hover {
   background: #1c1c38;
 }

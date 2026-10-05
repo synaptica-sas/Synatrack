@@ -1070,6 +1070,16 @@ function App() {
     }
   }, [darkMode]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth <= 860);
+  // Fija el menú expandido: evita que se recoja a solo íconos al navegar (no aplica en móvil, donde "colapsado" es el drawer cerrado).
+  const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem("sidebarPinned") === "true");
+  const toggleSidebarPinned = () => {
+    setSidebarPinned((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebarPinned", String(next));
+      if (next) setSidebarCollapsed(false);
+      return next;
+    });
+  };
   const [fxDrawerOpen, setFxDrawerOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
@@ -1741,6 +1751,16 @@ function App() {
           <div className="sidebar-header">
             <button
               type="button"
+              className={`sidebar-pin${sidebarPinned ? " sidebar-pin--active" : ""}`}
+              onClick={toggleSidebarPinned}
+              aria-pressed={sidebarPinned}
+              aria-label={sidebarPinned ? "Desfijar menú" : "Fijar menú expandido"}
+              title={sidebarPinned ? "Menú fijado: clic para desfijar" : "Fijar menú para que no se recoja al navegar"}
+            >
+              📌
+            </button>
+            <button
+              type="button"
               className="sidebar-toggle"
               onClick={() => setSidebarCollapsed((c) => !c)}
               aria-label={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
@@ -1766,7 +1786,12 @@ function App() {
                   key={tab.id}
                   type="button"
                   className={`sidebar-tab${activeTab === tab.id ? " active" : ""}`}
-                  onClick={() => { setActiveTab(tab.id); setSidebarCollapsed(true); if (tab.id !== "projects") setOpenProjectId(null); }}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    const isDesktop = typeof window !== "undefined" && window.innerWidth > 860;
+                    if (!(sidebarPinned && isDesktop)) setSidebarCollapsed(true);
+                    if (tab.id !== "projects") setOpenProjectId(null);
+                  }}
                   title={tab.label}
                   aria-current={activeTab === tab.id ? "page" : undefined}
                 >
