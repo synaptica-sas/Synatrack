@@ -5224,6 +5224,31 @@ body.dark .card .capacity-util.capacity-util--danger  { color: var(--state-dange
 
 .capacity-subtable th { font-weight: 600; }
 
+/* R-015: riesgos abiertos por consultor, dentro del detalle expandido de un proyecto. */
+.capacity-risks {
+  margin-top: var(--space-3);
+}
+
+.capacity-risks h4 {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+}
+
+.capacity-risks__list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.capacity-risks__list > li > ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  font-size: 0.8rem;
+}
+
 /* ── Controles sueltos ────────────────────────────────────────────────────── */
 /* Select estrecho dentro de la cabecera de una tarjeta (ventana de días). */
 .capacity-inline-select {

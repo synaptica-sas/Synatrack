@@ -1548,6 +1548,10 @@ export type Risk = {
   riskScore: number;
   category: string | null;
   owner: string | null;
+  // R-015: responsable cuando es un consultor del equipo. Convive con `owner`,
+  // que sigue sirviendo para un responsable externo.
+  consultantId: string | null;
+  consultant: { id: string; fullName: string } | null;
   mitigationPlan: string | null;
   contingencyPlan: string | null;
   status: RiskStatus;
@@ -1827,6 +1831,7 @@ export async function createRisk(projectId: string, payload: {
   impact: number;
   category?: string;
   owner?: string;
+  consultantId?: string | null;
   mitigationPlan?: string;
   contingencyPlan?: string;
 }): Promise<Risk> {
@@ -1841,6 +1846,7 @@ export async function updateRisk(projectId: string, id: string, payload: {
   impact: number;
   category?: string;
   owner?: string;
+  consultantId?: string | null;
   mitigationPlan?: string;
   contingencyPlan?: string;
 }): Promise<Risk> {

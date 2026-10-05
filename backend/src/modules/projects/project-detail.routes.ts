@@ -18,6 +18,7 @@ import { clasificarIndiceEvm } from "../../utils/healthThresholds.js";
 import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 import { cargarLibroDeTasas } from "../fx/rate-book.service.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { riskInclude } from "./risks.routes.js";
 
 const idSchema = z.object({ id: z.string().min(1) });
 
@@ -33,7 +34,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
         where: { id },
         include: {
           milestones: { orderBy: { plannedDate: "asc" } },
-          risks: { orderBy: [{ riskScore: "desc" }, { createdBy: "asc" }] },
+          risks: { orderBy: [{ riskScore: "desc" }, { createdBy: "asc" }], include: riskInclude },
           issues: { orderBy: [{ severity: "desc" }, { createdAt: "desc" }] },
           changeRequests: { orderBy: { createdAt: "desc" } },
           assignments: {

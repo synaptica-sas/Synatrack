@@ -1838,6 +1838,7 @@ function App() {
                     onBack={() => setOpenProjectId(null)}
                     onError={handleError}
                     onIrATasasFx={irATasasFx}
+                    consultants={consultantsHook.consultants}
                   />
                 ) : (
                   <ProjectsTab
@@ -1937,6 +1938,7 @@ function App() {
                   onError={handleError}
                   preselectedConsultantId={preselectedCapacityConsultantId}
                   onClearPreselectedConsultant={() => setPreselectedCapacityConsultantId(null)}
+                  onOpenProject={openProject}
                 />
               )}
 

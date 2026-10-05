@@ -14,6 +14,7 @@ import {
   getCapacityReleasing,
   listAssignments,
   listConsultantBlocks,
+  listRisks,
   type AllocationMode,
   type Assignment,
   type AssignmentStatus,
@@ -26,6 +27,7 @@ import {
   type Project,
   type ProjectCapacitySummary,
   type ReleasingEntry,
+  type Risk,
   listSupportedCountries,
 } from "../../services/api";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -129,6 +131,7 @@ export function CapacityTab({
   onError,
   preselectedConsultantId,
   onClearPreselectedConsultant,
+  onOpenProject,
 }: {
   projects: Project[];
   consultants: Consultant[];
@@ -136,6 +139,8 @@ export function CapacityTab({
   onError: (msg: string) => void;
   preselectedConsultantId?: string | null;
   onClearPreselectedConsultant?: () => void;
+  /** Para ir al detalle del proyecto desde los riesgos por consultor (R-015). */
+  onOpenProject?: (projectId: string) => void;
 }) {
   const [subTab, setSubTab] = useState<SubTab>("overview");
 
@@ -178,7 +183,7 @@ export function CapacityTab({
         <OverviewPanel projects={projects} consultants={consultants} onError={onError} />
       )}
       {subTab === "byProject" && (
-        <ByProjectPanel onError={onError} />
+        <ByProjectPanel onError={onError} onOpenProject={onOpenProject} />
       )}
       {subTab === "assignments" && (
         <AssignmentsPanel
@@ -579,12 +584,14 @@ function AssignmentDetail({ assignments }: { assignments: CapacityConsultantRow[
 
 // ─── By Project Panel ─────────────────────────────────────────────────────────
 
-function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
+function ByProjectPanel({ onError, onOpenProject }: { onError: (msg: string) => void; onOpenProject?: (projectId: string) => void }) {
   const [from, setFrom] = useState(firstDayOfMonth());
   const [to, setTo] = useState(lastDayOfMonth());
   const [rows, setRows] = useState<ProjectCapacitySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
+  const [risks, setRisks] = useState<Risk[]>([]);
+  const [risksLoading, setRisksLoading] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -599,6 +606,37 @@ function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
   }
 
   useEffect(() => { void load(); }, [from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function toggleExpand(projectId: string) {
+    if (expandedProject === projectId) {
+      setExpandedProject(null);
+      return;
+    }
+    setExpandedProject(projectId);
+    setRisksLoading(true);
+    try {
+      setRisks(await listRisks(projectId));
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Error cargando riesgos del proyecto");
+      setRisks([]);
+    } finally {
+      setRisksLoading(false);
+    }
+  }
+
+  // R-015: riesgos del proyecto expandido, agrupados por consultor responsable.
+  // Solo lectura: editar/crear riesgos sigue viviendo en Detalle del proyecto.
+  const riskGroups = useMemo(() => {
+    const open = risks.filter((r) => r.status === "OPEN" || r.status === "MITIGATED");
+    const map = new Map<string, { label: string; risks: Risk[] }>();
+    for (const r of open) {
+      const key = r.consultantId ?? "__sin_consultor__";
+      const label = r.consultant?.fullName ?? "Sin consultor asignado";
+      if (!map.has(key)) map.set(key, { label, risks: [] });
+      map.get(key)!.risks.push(r);
+    }
+    return Array.from(map.values());
+  }, [risks]);
 
   const totalHours = rows.reduce((s, r) => s + r.totalCommittedHours, 0);
 
@@ -651,34 +689,65 @@ function ByProjectPanel({ onError }: { onError: (msg: string) => void }) {
                         {/* `null` = el rol no puede ver tarifas (DEP-38); 0 = no hay costo. Ambos se pintan "—". */}
                         <td>{r.totalEstimatedCost !== null && r.totalEstimatedCost > 0 ? money(r.totalEstimatedCost, r.consultants[0]?.currency ?? "USD") : "—"}</td>
                         <td>
-                          {r.consultants.length > 0 && (
-                            <button type="button" className="ghost capacity-btn-row" onClick={() => setExpandedProject(expandedProject === r.projectId ? null : r.projectId)}>
-                              {expandedProject === r.projectId ? "▲" : `▼ ver detalle`}
-                            </button>
-                          )}
+                          <button type="button" className="ghost capacity-btn-row" onClick={() => void toggleExpand(r.projectId)}>
+                            {expandedProject === r.projectId ? "▲" : `▼ ver detalle`}
+                          </button>
                         </td>
                       </tr>
                       {expandedProject === r.projectId && (
                         <tr>
                           <td colSpan={7} className="capacity-detail-cell">
-                            <table className="capacity-subtable">
-                              <thead>
-                                <tr>
-                                  {["Consultor", "Horas comprometidas", "Costo estimado"].map((h) => (
-                                    <th key={h}>{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {r.consultants.map((c) => (
-                                  <tr key={c.consultantId}>
-                                    <td>{c.fullName}</td>
-                                    <td>{c.committedHours.toFixed(1)}h</td>
-                                    <td>{c.estimatedCost !== null && c.estimatedCost > 0 ? money(c.estimatedCost, c.currency) : "—"}</td>
+                            {r.consultants.length > 0 && (
+                              <table className="capacity-subtable">
+                                <thead>
+                                  <tr>
+                                    {["Consultor", "Horas comprometidas", "Costo estimado"].map((h) => (
+                                      <th key={h}>{h}</th>
+                                    ))}
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody>
+                                  {r.consultants.map((c) => (
+                                    <tr key={c.consultantId}>
+                                      <td>{c.fullName}</td>
+                                      <td>{c.committedHours.toFixed(1)}h</td>
+                                      <td>{c.estimatedCost !== null && c.estimatedCost > 0 ? money(c.estimatedCost, c.currency) : "—"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                            <div className="capacity-risks">
+                              <h4>Riesgos abiertos por consultor</h4>
+                              {risksLoading ? (
+                                <p className="loading">Cargando riesgos...</p>
+                              ) : riskGroups.length === 0 ? (
+                                <p className="fx-note">Sin riesgos abiertos para este proyecto.</p>
+                              ) : (
+                                <ul className="capacity-risks__list">
+                                  {riskGroups.map((g) => (
+                                    <li key={g.label}>
+                                      <strong>{g.label}</strong>
+                                      <ul>
+                                        {g.risks.map((risk) => (
+                                          <li key={risk.id}>
+                                            <span className={`score-dot score-dot--${risk.riskScore >= 6 ? "danger" : risk.riskScore >= 3 ? "warning" : "success"}`}>
+                                              {risk.riskScore}
+                                            </span>{" "}
+                                            {risk.title}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {onOpenProject && (
+                                <button type="button" className="ghost capacity-btn-row" onClick={() => onOpenProject(r.projectId)}>
+                                  Ver / editar en Detalle del proyecto
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )}

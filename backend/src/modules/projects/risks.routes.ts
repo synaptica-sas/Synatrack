@@ -14,9 +14,17 @@ const riskPayloadSchema = z.object({
   impact: z.coerce.number().int().min(1).max(3),
   category: z.string().optional(),
   owner: z.string().optional(),
+  // R-015: responsable cuando es un consultor del equipo. Convive con `owner`,
+  // que sigue sirviendo para un responsable externo. Cadena vacía desasigna.
+  consultantId: z
+    .union([z.literal(""), z.string().min(1)])
+    .nullish()
+    .transform((value) => (value === "" ? null : value)),
   mitigationPlan: z.string().optional(),
   contingencyPlan: z.string().optional(),
 });
+
+export const riskInclude = { consultant: { select: { id: true, fullName: true } } } as const;
 
 export async function risksRoutes(app: FastifyInstance) {
   app.get(
@@ -26,7 +34,11 @@ export async function risksRoutes(app: FastifyInstance) {
       const { projectId } = projectIdSchema.parse(request.params);
       const project = await prisma.project.findUnique({ where: { id: projectId } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
-      const risks = await prisma.risk.findMany({ where: { projectId }, orderBy: [{ riskScore: "desc" }, { identifiedAt: "desc" }] });
+      const risks = await prisma.risk.findMany({
+        where: { projectId },
+        include: riskInclude,
+        orderBy: [{ riskScore: "desc" }, { identifiedAt: "desc" }],
+      });
       return { data: risks };
     },
   );
@@ -39,8 +51,13 @@ export async function risksRoutes(app: FastifyInstance) {
       const payload = riskPayloadSchema.parse(request.body);
       const project = await prisma.project.findUnique({ where: { id: projectId } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
+      if (payload.consultantId) {
+        const consultant = await prisma.consultant.findUnique({ where: { id: payload.consultantId } });
+        if (!consultant) return reply.status(400).send({ message: "Consultor no encontrado" });
+      }
       const risk = await prisma.risk.create({
         data: { projectId, ...payload, riskScore: payload.probability * payload.impact, createdBy: request.authUser!.email },
+        include: riskInclude,
       });
       return reply.status(201).send({ data: risk });
     },
@@ -54,9 +71,14 @@ export async function risksRoutes(app: FastifyInstance) {
       const payload = riskPayloadSchema.parse(request.body);
       const existing = await prisma.risk.findFirst({ where: { id, projectId } });
       if (!existing) return reply.status(404).send({ message: "Riesgo no encontrado" });
+      if (payload.consultantId) {
+        const consultant = await prisma.consultant.findUnique({ where: { id: payload.consultantId } });
+        if (!consultant) return reply.status(400).send({ message: "Consultor no encontrado" });
+      }
       const risk = await prisma.risk.update({
         where: { id },
         data: { ...payload, riskScore: payload.probability * payload.impact },
+        include: riskInclude,
       });
       return { data: risk };
     },
