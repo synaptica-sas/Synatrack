@@ -1083,6 +1083,7 @@ function App() {
   const [fxDrawerOpen, setFxDrawerOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1093,6 +1094,19 @@ function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Sin pin, un clic fuera del menú también lo recoge (en escritorio; en móvil ya lo maneja el backdrop).
+  useEffect(() => {
+    if (sidebarPinned || sidebarCollapsed) return;
+    const handleClickOutsideSidebar = (event: MouseEvent) => {
+      if (window.innerWidth <= 860) return;
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
+        setSidebarCollapsed(true);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutsideSidebar);
+    return () => document.removeEventListener("mousedown", handleClickOutsideSidebar);
+  }, [sidebarPinned, sidebarCollapsed]);
 
   // --- Global Feedback States ---
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -1747,7 +1761,7 @@ function App() {
         )}
 
         {/* Sidebar */}
-        <nav className={`sidebar${sidebarCollapsed ? " collapsed" : ""}`} aria-label="Navegación principal">
+        <nav ref={sidebarRef} className={`sidebar${sidebarCollapsed ? " collapsed" : ""}`} aria-label="Navegación principal">
           <div className="sidebar-header">
             <button
               type="button"
