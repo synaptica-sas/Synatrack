@@ -634,3 +634,81 @@ Horas Extra respectivamente — ya existe para Horas Extra, falta para Horas reg
 Solicitante/Fecha). Verificación de estado contra `dev` hecha el 2026-10-05; si el código
 avanza, estas etiquetas quedan desactualizadas y hay que repetir la verificación antes de
 confiar en ellas para planear trabajo nuevo.
+
+---
+
+## 7. Plan de desarrollo — backlog Greysi repartido entre 3 personas
+
+Reparte los 27 ítems de §6.1 por **carga de trabajo estimada**, no por cantidad de ítems — una
+tarea grande no vale lo mismo que una chica. "Persona 1/2/3" son marcadores: sustitúyelos por
+los nombres reales al asignar. Los tamaños salen de lo ya verificado contra el código en §6.1,
+no de una sesión formal de planning poker:
+
+| Tamaño | Qué significa | Ejemplo en este backlog |
+|---|---|---|
+| **S** (1 punto) | Un archivo o dos, sin tocar el modelo de datos | Cambiar un `<input>` por `<select>`, agregar un botón |
+| **M** (2 puntos) | Backend y frontend juntos, o un campo nuevo con su migración | Campo nuevo + Zod + Prisma + formulario |
+| **L** (3 puntos) | Varias piezas coordinadas, o un concepto que no existe hoy | Comisiones/impuestos en Portafolio, riesgos por consultor |
+
+**Antes de repartir, se descuentan 7 de los 27:**
+
+- **6 ya resueltos, sin acción**: R-004, R-011, R-018, R-019, R-021, R-023 (el detalle de cada
+  uno está en §6.1).
+- **R-017 queda diferido, sin asignar.** Depende de que se resuelva D-8 (¿se usa Actividades o
+  se retira?, hoy en *StandBy*). Construir "que las horas se actualicen al completar una
+  actividad" antes de esa respuesta es trabajo que se tira si el módulo se retira.
+
+Quedan **20 ítems reales, 34 puntos entre los tres** (≈11-12 cada uno).
+
+### Persona 1 — Portafolio y Proyectos (11 puntos)
+
+| ID | Qué hay que hacer | Tamaño |
+|---|---|---|
+| R-007 | País de `<input>` libre a `<select>`, igual que ya existe en Consultores (`ConsultantsTab.tsx:327-329`) | S |
+| R-006 | Botón "Limpiar filtros" en Portafolio (reusar el patrón que ya existe en Dashboard) | S |
+| R-009 | Campo de costo en `Risk` y descontarlo del presupuesto en `financial.ts` | M |
+| R-010 | Campo "categoría" en `Project` — lista desplegable con opción "otra, especifica" | M |
+| R-005 | Que los KPI de resumen de Portafolio respeten el filtro activo (hoy leen el total sin filtrar, mismo bug que R-032 de §6.2) | M |
+| R-003 | Precio de venta visible en la tabla de Portafolio, y diseñar comisiones/impuestos/descuento (no existe hoy en ningún lado — necesita primero decidir qué campos lleva y cómo entran en el margen) | L |
+
+**Coordinar con Persona 3**: R-005 y R-009 tocan `stats.routes.ts`/`financial.ts`, los mismos
+archivos que el trabajo de Persona 3 sobre tasas de cambio. Avisarse antes de tocarlos para no
+pisarse.
+
+### Persona 2 — Dashboard y Capacidad (11 puntos)
+
+| ID | Qué hay que hacer | Tamaño |
+|---|---|---|
+| R-002 | Quitar los gráficos de horas extra del Dashboard (`DashboardTab.tsx:1500-1517`); la navegación a Horas ya funciona | S |
+| R-016 | Vista consolidada de costo total por consultor en Capacidad (hoy solo existe por proyecto) | S |
+| R-013 | Al crear una asignación, crear también su `Forecast` correspondiente | M |
+| R-014 | Opción de editar una asignación (hoy solo cancelar/completar/eliminar) — necesita endpoint `PATCH` | M |
+| R-001 | Resumen mensual por proyecto en el Dashboard, con clic que lleve a su ficha en Proyectos | M |
+| R-015 | Asociar riesgos a un consultor dentro de Capacidad — necesita `consultantId` en `Risk` | L |
+
+**Coordinar con Persona 1**: R-015 y R-009 tocan el mismo modelo `Risk`. Si se resuelven en
+paralelo, quien vaya segundo rebasa sobre una migración que el otro ya aplicó — decidir el
+orden antes de empezar, no a mitad de camino.
+
+### Persona 3 — Moneda transversal, Horas Extra y Gastos (12 puntos)
+
+| ID | Qué hay que hacer | Tamaño |
+|---|---|---|
+| R-024 | Que la delegación busque también en `Consultant` por correo, no solo en `User` | S |
+| R-025 | Categorías de "Capacitación" y "Horas extra" en Gastos; confirmar con negocio qué cubre "Servicios" | S |
+| R-027 | Buscador de proyecto en Gastos a `SearchableSelect`, igual que Portafolio | S |
+| R-026 | Mostrar el gasto en la moneda del proyecto por defecto, no en USD fijo (`ExpensesTab.tsx:61`) — arreglo rápido, independiente del siguiente punto | S |
+| **R-008 + R-012** | **La pieza de mayor apalancamiento del plan**: conectar `FxRateHistory`/`GET /api/fx/rate?date=` (ya existen) al cálculo financiero, para que presupuesto, gastos e ingresos se conviertan con la tasa de la fecha del contrato, no con la de hoy. Resuelve R-008 y R-012 a la vez — es un solo cambio, no dos | L |
+| R-022 | Cambiar la notificación de aprobación de horas extra de inmediata a un resumen semanal | M |
+| R-020 | Notificación semanal al PM con las horas pendientes de aprobar (hoy no existe para horas regulares) — comparte la infraestructura del job semanal con R-022, construirlos juntos | L |
+
+**De regalo**: R-008+R-012 también resuelve de fondo R-026 de este mismo bloque y, sin trabajo
+adicional, R-033/R-034 del backlog de Juan Espinosa (§6.2) — es la misma causa raíz, documentada
+ahí mismo.
+
+### Cómo verificar cada entrega
+
+Mismos comandos de siempre (§5 de este documento) y, si el cambio toca presentación, las reglas
+de `DISENO.md`. Al cerrar algo de este plan, actualiza su fila en §6.1 de **Abierto/Parcial** a
+**Resuelto** con el archivo y línea que lo confirme — es la misma disciplina que ya se usó para
+verificar el backlog completo, no hace falta inventar un formato nuevo.
