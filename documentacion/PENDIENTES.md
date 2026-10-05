@@ -632,7 +632,7 @@ Horas Extra respectivamente — ya existe para Horas Extra, falta para Horas reg
 | R-022 | Horas Extra | PM aprueba y notifica a Financiero | **Parcial.** Ya aprueba el PM en solitario y notifica a Nómina al aprobar. Falta que sea un resumen **semanal** en vez de notificación inmediata por solicitud. |
 | R-023 | Horas Extra | Calendario de solicitud solo desde hoy en adelante | **Resuelto**, con matiz: aplica a CONSULTANT; ADMIN/PM quedan exentos a propósito (para registrar en nombre de otros retroactivamente). |
 | R-024 | Horas Extra | Delegación falla, dice que el correo no existe | **Abierto, causa raíz identificada.** Exige que el correo exista en `User` (se crea solo al iniciar sesión), no en `Consultant`. Un consultor que nunca ha entrado falla al delegarle. |
-| R-025 | Gastos | Agregar categorías de capacitación y horas extra; aclarar qué cubre "Servicios" | **Abierto / Decisión.** No existen esas categorías en `categoryOptions` (`ExpensesTab.tsx:27`). Qué cubre "Servicios" no está documentado — hace falta que negocio lo defina. |
+| R-025 | Gastos | Agregar categorías de capacitación y horas extra; aclarar qué cubre "Servicios" | **Resuelto en su parte técnica** por D-4 (`d6b807c`). Las categorías de gasto salieron del código a un catálogo editable desde Administración: "Capacitación" ya existe —la recogió el barrido de la migración, estaba en uso sin figurar en la lista del código— y "Horas extra" se añade desde la pantalla sin desplegar. `ExpensesTab.tsx:27` ya solo es respaldo si la API no responde. **Queda la parte de negocio**: qué cubre "Servicios" sigue sin definir. |
 | R-026 | Gastos | Siempre aparece en USD sin importar la moneda elegida, y la conversión no coincide | **Parcial — mismo origen que R-008/R-012/R-033/R-034.** La fila expandida sí respeta la moneda original; la vista agrupada hardcodea USD por defecto. |
 | R-027 | Gastos | Buscar proyecto como lista desplegable | **Abierto.** Sigue siendo un `<input>` de texto libre; a diferencia de Portafolio/Proyectos, Gastos no migró a `SearchableSelect`. |
 
@@ -697,6 +697,11 @@ no de una sesión formal de planning poker:
 
 Quedan **20 ítems reales, 34 puntos entre los tres** (≈11-12 cada uno).
 
+> **Actualización 05/10/2026.** Dos ítems más cayeron sin tocarlos, de rebote de las decisiones
+> de negocio: **R-053** (ocultar Actividades) con D-8, y **R-025** (categorías de gasto) con D-4.
+> El bloque de Moneda queda en **11 puntos reales**. Antes de empezar cualquier ítem conviene
+> comprobar si sigue abierto: la base se movió mucho esta semana.
+
 ### Persona 1 — Portafolio y Proyectos (11 puntos)
 
 | ID | Qué hay que hacer | Tamaño |
@@ -727,12 +732,17 @@ pisarse.
 paralelo, quien vaya segundo rebasa sobre una migración que el otro ya aplicó — decidir el
 orden antes de empezar, no a mitad de camino.
 
-### Persona 3 — Moneda transversal, Horas Extra y Gastos (12 puntos)
+### Juan Mahecha — Moneda transversal, Horas Extra y Gastos (11 puntos)
+
+> **Tomado por Juan Mahecha el 05/10/2026.** Se elige este bloque a propósito: `R-008+R-012`
+> continúa directamente el trabajo de conversión de monedas que ya se hizo esta semana
+> (DEP-32, el libro de faltantes de `utils/currency.ts`), así que arranca con el contexto
+> puesto en vez de con una curva de aprendizaje.
 
 | ID | Qué hay que hacer | Tamaño |
 |---|---|---|
 | R-024 | Que la delegación busque también en `Consultant` por correo, no solo en `User` | S |
-| R-025 | Categorías de "Capacitación" y "Horas extra" en Gastos; confirmar con negocio qué cubre "Servicios" | S |
+| ~~R-025~~ | ~~Categorías de "Capacitación" y "Horas extra" en Gastos~~ — **ya resuelto por D-4**; solo queda preguntar a negocio qué cubre "Servicios" | — |
 | R-027 | Buscador de proyecto en Gastos a `SearchableSelect`, igual que Portafolio | S |
 | R-026 | Mostrar el gasto en la moneda del proyecto por defecto, no en USD fijo (`ExpensesTab.tsx:61`) — arreglo rápido, independiente del siguiente punto | S |
 | **R-008 + R-012** | **La pieza de mayor apalancamiento del plan**: conectar `FxRateHistory`/`GET /api/fx/rate?date=` (ya existen) al cálculo financiero, para que presupuesto, gastos e ingresos se conviertan con la tasa de la fecha del contrato, no con la de hoy. Resuelve R-008 y R-012 a la vez — es un solo cambio, no dos | L |
