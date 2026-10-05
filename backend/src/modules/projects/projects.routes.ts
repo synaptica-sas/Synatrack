@@ -5,7 +5,13 @@ import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { buildRateMap, describeMissingRates } from "../../utils/currency.js";
-import { calculateProfitability, splitFinancialEntries } from "../../utils/financial.js";
+import {
+  DEFAULT_MARGIN_CRITICAL_PCT,
+  DEFAULT_MARGIN_WARNING_PCT,
+  calculateProfitability,
+  marginThresholdsAreCoherent,
+  splitFinancialEntries,
+} from "../../utils/financial.js";
 
 /**
  * Correo del Project Manager del proyecto (DEP-37).
@@ -30,22 +36,23 @@ const projectManagerEmailSchema = z
   .transform((valor) => (valor === "" ? null : valor));
 
 /**
- * Umbrales porcentuales configurables por proyecto (`marginThreshold` y
- * `budgetAlertPct`).
+ * Umbrales porcentuales configurables por proyecto (`marginWarningPct`,
+ * `marginCriticalPct` y `budgetAlertPct`).
  *
  * Hasta R10 no estaban en este esquema, así que **no se podían asignar desde la
  * aplicación**: la columna quedaba siempre nula y todo caía al valor por defecto
- * (ver `DEFAULT_MARGIN_THRESHOLD_PCT` y `DEFAULT_BUDGET_ALERT_PCT` en
+ * (ver `DEFAULT_MARGIN_WARNING_PCT`, `DEFAULT_MARGIN_CRITICAL_PCT` y
+ * `DEFAULT_BUDGET_ALERT_PCT` en
  * `utils/financial.ts`). Es el mismo defecto que tenía `projectManagerEmail`
  * antes de R7: el backend leía un campo que nadie podía escribir.
  *
  * El cero es un valor legítimo y NO cae al default.
  *
- * Los dos campos se tratan distinto a propósito, porque el esquema de datos los
- * declara distinto: `marginThreshold` es `Decimal?` (nulable), así que una cadena
- * vacía lo desasigna y vuelve a null; `budgetAlertPct` es `Decimal @default(90)`
- * (no nulable), así que una cadena vacía significa "no tocar" y se deja que
- * mande el valor que ya tuviera la fila.
+ * Los campos se tratan distinto a propósito, porque el esquema de datos los
+ * declara distinto: los dos de margen son `Decimal?` (nulables), así que una
+ * cadena vacía los desasigna y vuelven a null; `budgetAlertPct` es
+ * `Decimal @default(90)` (no nulable), así que una cadena vacía significa
+ * "no tocar" y se deja que mande el valor que ya tuviera la fila.
  */
 const umbralBase = z.coerce
   .number()
@@ -62,7 +69,7 @@ const umbralNoNulableSchema = z
   .nullish()
   .transform((valor) => (valor === "" || valor === null ? undefined : valor));
 
-const projectPayloadSchema = z.object({
+const projectPayloadBaseSchema = z.object({
   name: z.string().trim().min(1),
   company: z.string().trim().min(1),
   country: z.string().trim().min(1),
@@ -80,8 +87,29 @@ const projectPayloadSchema = z.object({
   sellPrice: z.coerce.number().positive().optional(),
   sellCurrency: z.string().trim().toUpperCase().length(3).default("USD"),
   projectManagerEmail: projectManagerEmailSchema,
-  marginThreshold: umbralNulableSchema,
+  marginWarningPct: umbralNulableSchema,
+  marginCriticalPct: umbralNulableSchema,
   budgetAlertPct: umbralNoNulableSchema,
+});
+
+/**
+ * Coherencia de los dos umbrales de margen (D-2): el crítico es un suelo, así
+ * que no puede quedar por encima del de advertencia. Se valida sobre los valores
+ * YA resueltos (`marginThresholdsAreCoherent`), porque dejar un campo vacío
+ * significa "usa el de la empresa" y ese también entra en la comparación: poner
+ * crítico 40 y dejar la advertencia en blanco es incoherente contra el 30 por
+ * defecto, aunque el formulario no haya escrito nada.
+ */
+const projectPayloadSchema = projectPayloadBaseSchema.superRefine((body, ctx) => {
+  if (!marginThresholdsAreCoherent(body.marginWarningPct, body.marginCriticalPct)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["marginCriticalPct"],
+      message:
+        "el umbral crítico de margen no puede ser mayor que el de advertencia " +
+        `(advertencia por defecto: ${DEFAULT_MARGIN_WARNING_PCT}%, crítico por defecto: ${DEFAULT_MARGIN_CRITICAL_PCT}%)`,
+    });
+  }
 });
 
 const listProjectsQuerySchema = z.object({
@@ -154,7 +182,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
         projectManagerEmail: body.projectManagerEmail,
-        marginThreshold: body.marginThreshold,
+        marginWarningPct: body.marginWarningPct,
+        marginCriticalPct: body.marginCriticalPct,
         budgetAlertPct: body.budgetAlertPct,
       },
     });
@@ -225,7 +254,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
         projectManagerEmail: body.projectManagerEmail,
-        marginThreshold: body.marginThreshold,
+        marginWarningPct: body.marginWarningPct,
+        marginCriticalPct: body.marginCriticalPct,
         budgetAlertPct: body.budgetAlertPct,
       },
     });
@@ -320,7 +350,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         budgetCurrency: project.currency,
         sellPrice: project.sellPrice ? Number(project.sellPrice) : null,
         sellCurrency: project.sellCurrency,
-        marginThreshold: project.marginThreshold != null ? Number(project.marginThreshold) : null,
+        marginWarningPct: project.marginWarningPct != null ? Number(project.marginWarningPct) : null,
+        marginCriticalPct: project.marginCriticalPct != null ? Number(project.marginCriticalPct) : null,
         budgetAlertPct: project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
         revenueEntries,
         approvedTimeEntries: project.timeEntries.map((e) => ({

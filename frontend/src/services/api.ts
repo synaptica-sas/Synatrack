@@ -97,11 +97,12 @@ export type Project = {
   /** Correo del Project Manager. `null` si el proyecto no tiene PM asignado. */
   projectManagerEmail?: string | null;
   /**
-   * Umbral de margen bruto en % por debajo del cual el proyecto deja de estar en
-   * verde. `null` = sin umbral propio; el backend aplica su valor por defecto
-   * (`DEFAULT_MARGIN_THRESHOLD_PCT`, 15 %).
+   * Umbrales de margen bruto en % (decisión D-2). `null` = sin umbral propio; el
+   * backend aplica sus valores por defecto (`DEFAULT_MARGIN_WARNING_PCT` 30 % y
+   * `DEFAULT_MARGIN_CRITICAL_PCT` 15 %).
    */
-  marginThreshold?: string | null;
+  marginWarningPct?: string | null;
+  marginCriticalPct?: string | null;
   /**
    * % de consumo de presupuesto a partir del cual se avisa. No admite nulo: el
    * backend lo declara con valor por defecto (90 %).
@@ -248,6 +249,9 @@ export type FxConfig = {
   updatedAt: string;
 };
 
+/** Veredicto de margen del backend (D-2). */
+export type MarginLevel = "ok" | "warning" | "critical";
+
 export type AlertLevel = "ok" | "warning" | "exceeded";
 
 export type StatsProjectRow = {
@@ -278,11 +282,14 @@ export type StatsProjectRow = {
   grossMarginProjected: number;
   grossMarginProjectedPct: number | null;
   /**
-   * Umbral de margen ya resuelto por el backend (R10): el del proyecto, o el
-   * valor por defecto de 15 % si el proyecto no tiene uno propio. Siempre es un
-   * número: el frontend no debe volver a aplicar un default.
+   * Umbrales de margen ya resueltos por el backend (D-2): los del proyecto, o
+   * los valores por defecto (30 % advertencia, 15 % crítico) si no tiene
+   * propios. Siempre son números: el frontend no debe aplicar un default.
    */
-  marginThreshold: number;
+  marginWarningPct: number;
+  marginCriticalPct: number;
+  /** Veredicto de margen del servidor. No se recalcula en el cliente. */
+  marginLevel: MarginLevel;
   // Hours
   totalHours: number;
   approvedHours: number;
@@ -555,10 +562,12 @@ export async function createProject(payload: {
   /** Cadena vacía = sin PM. El backend la normaliza a minúsculas y a `null`. */
   projectManagerEmail?: string | null;
   /**
-   * Umbral de margen en % (0–100). Cadena vacía = sin umbral propio: el backend
-   * lo guarda como `null` y aplica su valor por defecto de 15 %.
+   * Umbrales de margen en % (0–100). Cadena vacía = sin umbral propio: el
+   * backend los guarda como `null` y aplica sus valores por defecto (30 / 15).
+   * El crítico no puede ser mayor que el de advertencia: el backend responde 400.
    */
-  marginThreshold?: string | number | null;
+  marginWarningPct?: string | number | null;
+  marginCriticalPct?: string | number | null;
   /**
    * Umbral de aviso de presupuesto en % (0–100). Cadena vacía = **no tocar**: el
    * campo no admite nulo y conserva el valor que ya tuviera (90 % por defecto).
@@ -587,8 +596,9 @@ export async function updateProject(
     allowExtraHours?: boolean;
     /** Cadena vacía = desasignar el PM. */
     projectManagerEmail?: string | null;
-    /** Cadena vacía = desasignar el umbral propio de margen (vuelve a `null`). */
-    marginThreshold?: string | number | null;
+    /** Cadena vacía = desasignar el umbral propio (vuelve a `null`). */
+    marginWarningPct?: string | number | null;
+    marginCriticalPct?: string | number | null;
     /** Cadena vacía = **no tocar**; el campo no admite nulo. */
     budgetAlertPct?: string | number | null;
   },
@@ -1485,8 +1495,10 @@ export type ProjectDetailFinancials = {
   revenueRecognized: number;
   grossMarginActual: number;
   grossMarginActualPct: number | null;
-  /** Umbral de margen ya resuelto por el backend (ver `StatsProjectRow`). */
-  marginThreshold: number;
+  /** Umbrales de margen ya resueltos por el backend (ver `StatsProjectRow`). */
+  marginWarningPct: number;
+  marginCriticalPct: number;
+  marginLevel: MarginLevel;
   projectedPct: number;
   projectedTotal: number;
   approvedHours: number;
@@ -1537,8 +1549,10 @@ export type PortfolioProject = {
   revenueRecognized: number;
   grossMarginActual: number;
   grossMarginActualPct: number | null;
-  /** Umbral de margen ya resuelto por el backend (ver `StatsProjectRow`). */
-  marginThreshold: number;
+  /** Umbrales de margen ya resueltos por el backend (ver `StatsProjectRow`). */
+  marginWarningPct: number;
+  marginCriticalPct: number;
+  marginLevel: MarginLevel;
   alertLevel: "ok" | "warning" | "exceeded";
   evm: EVMResult | null;
   totalMilestones: number;

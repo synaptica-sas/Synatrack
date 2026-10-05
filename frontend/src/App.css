@@ -4308,6 +4308,17 @@ body.dark .subtab.is-active { color: var(--state-warning-strong); }
    va siempre dentro: el tinte solo refuerza.
    `--filled` es el escalón superior (severidad Crítica frente a Alta): misma
    familia de color, más peso visual, sin inventar un matiz nuevo. */
+/* Margen bruto con su nivel al lado (decisión D-2: dos umbrales, tres estados).
+   El número conserva su tono y el `.state-chip` dice el nivel en palabras, para
+   que el color no sea el único portador de la información (WCAG 1.4.1). */
+.margen-celda {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .state-chip {
   display: inline-flex;
   align-items: center;

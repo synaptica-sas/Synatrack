@@ -166,7 +166,13 @@ model Project {
   status          ProjectStatus @default(ACTIVE)
   sellPrice       Decimal?      @db.Decimal(14, 2)
   sellCurrency    String        @default("USD")
-  marginThreshold      Decimal?      @db.Decimal(5, 2)
+  // Dos umbrales de margen bruto (decisión de negocio D-2). Nulos = "sin umbral
+  // propio": se aplican los valores por defecto de la empresa declarados en
+  // `utils/financial.ts` (30 % advertencia, 15 % crítico). Se mantienen nulables
+  // a propósito para que cambiar el criterio de la empresa no obligue a reescribir
+  // todas las filas. Invariante: crítico <= advertencia (validado en la ruta).
+  marginWarningPct     Decimal?      @db.Decimal(5, 2)
+  marginCriticalPct    Decimal?      @db.Decimal(5, 2)
   budgetAlertPct       Decimal       @default(90)    @db.Decimal(5, 2)
   // Gestión de proyecto
   healthStatus         HealthStatus  @default(GREEN)

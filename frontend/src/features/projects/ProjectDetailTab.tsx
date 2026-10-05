@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { ConversionNotice, ConversionChip } from "../../components/ConversionNotice";
 import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_TYPE_LABELS, RISK_STATUS_LABELS, ASSIGNMENT_STATUS_LABELS, ISSUE_SEVERITY_LABELS, ISSUE_STATUS_LABELS, label } from "../../utils/statusLabels";
-import { PRESENTACION_SALUD, textoCriteriosSalud } from "../../utils/projectHealth";
+import { PRESENTACION_SALUD, presentacionMargen, textoCriteriosSalud } from "../../utils/projectHealth";
 import { CountryFlag } from "../../components/CountryFlag";
 import {
   getProjectDetail,
@@ -77,11 +77,22 @@ function pct(n: number | null | undefined) {
  * La etiqueta es la pista que no depende del color; la insignia no lleva icono
  * por la misma razón que en Portafolio.
  */
-function RagBadge({ status, marginThreshold }: { status: HealthStatus | null | undefined; marginThreshold?: number | null }) {
+function RagBadge({
+  status,
+  marginWarningPct,
+  marginCriticalPct,
+}: {
+  status: HealthStatus | null | undefined;
+  marginWarningPct?: number | null;
+  marginCriticalPct?: number | null;
+}) {
   if (!status) return <span className="tone-muted">—</span>;
   const p = PRESENTACION_SALUD[status] ?? PRESENTACION_SALUD.GREEN;
   return (
-    <span className={`status-badge status-badge--${p.modificador}`} title={textoCriteriosSalud(marginThreshold)}>
+    <span
+      className={`status-badge status-badge--${p.modificador}`}
+      title={textoCriteriosSalud(marginWarningPct, marginCriticalPct)}
+    >
       {p.etiqueta}
     </span>
   );
@@ -94,6 +105,30 @@ function KpiCard({ label, value, sub }: { label: string; value: React.ReactNode;
       <div className="kpi-card__value">{value}</div>
       {sub && <div className="kpi-card__sub">{sub}</div>}
     </div>
+  );
+}
+
+/**
+ * Margen bruto con su nivel contra los dos umbrales del proyecto (D-2).
+ * El chip solo aparece cuando hay algo que decir; el número nunca desaparece.
+ */
+function MargenConNivel({
+  pct: margen,
+  marginWarningPct,
+  marginCriticalPct,
+}: {
+  pct: number | null;
+  marginWarningPct?: number | null;
+  marginCriticalPct?: number | null;
+}) {
+  const p = presentacionMargen(margen, marginWarningPct, marginCriticalPct);
+  return (
+    <span className="margen-celda">
+      <span className={p.tono}>{margen != null ? `${margen.toFixed(1)}%` : "—"}</span>
+      {p.nivel !== "ok" && p.nivel !== "no-medible" && (
+        <span className={`state-chip state-chip--${p.modificador}`}>{p.etiqueta}</span>
+      )}
+    </span>
   );
 }
 
@@ -290,13 +325,36 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
     <div className="section-stack">
       {/* KPI Row */}
       <div className="kpi-grid">
-        <KpiCard label="Salud" value={<RagBadge status={project.healthStatus} />} />
+        <KpiCard
+          label="Salud"
+          value={
+            <RagBadge
+              status={project.healthStatus}
+              marginWarningPct={financials.marginWarningPct}
+              marginCriticalPct={financials.marginCriticalPct}
+            />
+          }
+        />
         <KpiCard label="Avance" value={`${Number(project.completionPct ?? 0).toFixed(1)}%`} />
         <KpiCard label="CPI" value={evm?.cpi != null ? pct(evm.cpi) : "—"} sub="≥1 bajo presupuesto" />
         <KpiCard label="SPI" value={evm?.spi != null ? pct(evm.spi) : "—"} sub="≥1 adelantado" />
         <KpiCard label="Presupuesto" value={fmt(financials.budget, financials.displayCurrency)} sub={financials.displayCurrency} />
         <KpiCard label="Ejecutado" value={fmt(financials.spent, financials.displayCurrency)} sub={`${financials.usedBudgetPercent.toFixed(1)}% del presupuesto`} />
-        <KpiCard label="Margen" value={financials.grossMarginActualPct != null ? `${financials.grossMarginActualPct.toFixed(1)}%` : "—"} sub={fmt(financials.grossMarginActual, financials.displayCurrency)} />
+        {/*
+          El margen lleva su nivel en palabras además del tono: con dos umbrales
+          (D-2) el color ya no distingue por sí solo advertencia de crítico.
+        */}
+        <KpiCard
+          label="Margen"
+          value={
+            <MargenConNivel
+              pct={financials.grossMarginActualPct}
+              marginWarningPct={financials.marginWarningPct}
+              marginCriticalPct={financials.marginCriticalPct}
+            />
+          }
+          sub={`${fmt(financials.grossMarginActual, financials.displayCurrency)} · advertencia ${financials.marginWarningPct}% / crítico ${financials.marginCriticalPct}%`}
+        />
         {evm && <KpiCard label="EAC" value={evm.eac != null ? fmt(evm.eac, financials.displayCurrency) : "—"} sub="Estimación a terminación" />}
         {evm && <KpiCard label="VAC" value={evm.vac != null ? fmt(evm.vac, financials.displayCurrency) : "—"} sub={evm.vac != null ? (evm.vac >= 0 ? "Bajo presupuesto" : "Sobre presupuesto") : undefined} />}
         {evm && <KpiCard label="TCPI" value={evm.tcpi != null ? pct(evm.tcpi) : "—"} sub="Eficiencia requerida" />}

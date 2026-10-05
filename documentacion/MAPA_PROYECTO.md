@@ -2,9 +2,9 @@
 
 > **Archivo generado.** No lo edites a mano: corre `node scripts/generate-map.mjs`
 > después de agregar rutas, pantallas o módulos.
-> Generado el 2026-09-30.
+> Generado el 2026-10-05.
 
-Resumen: **136 endpoints**, **17 pantallas**,
+Resumen: **138 endpoints**, **17 pantallas**,
 **33 módulos de backend** y **30 de frontend**.
 
 ---
@@ -145,7 +145,9 @@ protege el endpoint (el mapa de `Permission` en `auth/roles.ts` solo gobierna la
 | PATCH | `/api/time-entries/:id` | ADMIN, PM, CONSULTANT | [backend/src/modules/time-entries/time-entries.routes.ts](backend/src/modules/time-entries/time-entries.routes.ts) |
 | PATCH | `/api/time-entries/:id/approve` | ADMIN, PM | [backend/src/modules/time-entries/time-entries.routes.ts](backend/src/modules/time-entries/time-entries.routes.ts) |
 | PATCH | `/api/time-entries/:id/reject` | ADMIN, PM | [backend/src/modules/time-entries/time-entries.routes.ts](backend/src/modules/time-entries/time-entries.routes.ts) |
+| GET | `/api/time-entries/descriptions` | ADMIN, PM, CONSULTANT | [backend/src/modules/time-entries/time-entries.routes.ts](backend/src/modules/time-entries/time-entries.routes.ts) |
 | GET | `/api/time-entries/me` | ADMIN, PM, CONSULTANT, FINANCE, VIEWER | [backend/src/modules/time-entries/time-entries.routes.ts](backend/src/modules/time-entries/time-entries.routes.ts) |
+| POST | `/api/time-entries/merge-task` | ADMIN, PM, CONSULTANT | [backend/src/modules/time-entries/time-entries.routes.ts](backend/src/modules/time-entries/time-entries.routes.ts) |
 | DELETE | `/api/timer` | (cualquier autenticado) | [backend/src/modules/timer/timer.routes.ts](backend/src/modules/timer/timer.routes.ts) |
 | GET | `/api/timer` | ...WRITE_ROLES, FINANCE, VIEWER | [backend/src/modules/timer/timer.routes.ts](backend/src/modules/timer/timer.routes.ts) |
 | PATCH | `/api/timer` | (cualquier autenticado) | [backend/src/modules/timer/timer.routes.ts](backend/src/modules/timer/timer.routes.ts) |
@@ -169,7 +171,7 @@ El permiso es el que decide si la pestaña aparece en el sidebar.
 | Operación | Rastreador | `tracker` | `time:read` | [frontend/src/features/tracker/TrackerTab.tsx](frontend/src/features/tracker/TrackerTab.tsx) |
 | Operación | Horas | `timeEntries` | `time:read` | - |
 | Operación | Informes | `reports` | `stats:read` | [frontend/src/features/reports/ReportsTab.tsx](frontend/src/features/reports/ReportsTab.tsx) |
-| Operación | Actividades | `activities` | `time:read` | [frontend/src/features/activities/ActivitiesTab.tsx](frontend/src/features/activities/ActivitiesTab.tsx) |
+| Operación | Actividades | `activities` | `activities:manage` | [frontend/src/features/activities/ActivitiesTab.tsx](frontend/src/features/activities/ActivitiesTab.tsx) |
 | Operación | Horas Extra | `extraHours` | `extrahours:read` | [frontend/src/features/extraHours/ExtraHoursTab.tsx](frontend/src/features/extraHours/ExtraHoursTab.tsx) |
 | Financiero | Ingresos/Gastos | `financial` | `-` | [frontend/src/features/financial/FinancialTab.tsx](frontend/src/features/financial/FinancialTab.tsx) |
 | Financiero | Proyecciones | `forecasts` | `forecasts:read` | [frontend/src/features/forecasts/ForecastsTab.tsx](frontend/src/features/forecasts/ForecastsTab.tsx) |
@@ -323,65 +325,68 @@ graph LR
   n0["App"] -->|4| n4["components"]
   n11["features/extraHours"] -->|4| n4["components"]
   n9["features/forecasts"] -->|4| n5["utils"]
+  n12["features/timesheet"] -->|4| n5["utils"]
   n4["components"] -->|3| n2["services"]
-  n12["features/activities"] -->|3| n4["components"]
-  n13["features/capacity"] -->|3| n4["components"]
+  n13["features/activities"] -->|3| n4["components"]
+  n14["features/capacity"] -->|3| n4["components"]
   n6["features/consultants"] -->|3| n5["utils"]
-  n14["features/portfolio"] -->|3| n4["components"]
+  n15["features/portfolio"] -->|3| n4["components"]
   n10["features/revenue"] -->|3| n5["utils"]
-  n15["features/timesheet"] -->|3| n5["utils"]
+  n12["features/timesheet"] -->|3| n2["services"]
+  n12["features/timesheet"] -->|3| n4["components"]
+  n16["test"] -->|3| n5["utils"]
   n0["App"] -->|2| n3["features/projects"]
-  n12["features/activities"] -->|2| n2["services"]
-  n16["features/admin"] -->|2| n4["components"]
-  n13["features/capacity"] -->|2| n5["utils"]
+  n13["features/activities"] -->|2| n2["services"]
+  n17["features/admin"] -->|2| n4["components"]
+  n14["features/capacity"] -->|2| n5["utils"]
   n8["features/dashboard"] -->|2| n5["utils"]
-  n17["features/estimations"] -->|2| n4["components"]
+  n18["features/estimations"] -->|2| n4["components"]
   n7["features/expenses"] -->|2| n5["utils"]
-  n18["features/fx"] -->|2| n4["components"]
-  n14["features/portfolio"] -->|2| n5["utils"]
+  n19["features/fx"] -->|2| n4["components"]
+  n15["features/portfolio"] -->|2| n5["utils"]
   n3["features/projects"] -->|2| n2["services"]
-  n19["features/reports"] -->|2| n2["services"]
-  n19["features/reports"] -->|2| n15["features/timesheet"]
-  n15["features/timesheet"] -->|2| n4["components"]
-  n20["features/tracker"] -->|2| n4["components"]
-  n21["test"] -->|2| n5["utils"]
+  n20["features/reports"] -->|2| n2["services"]
+  n20["features/reports"] -->|2| n12["features/timesheet"]
+  n21["features/tracker"] -->|2| n4["components"]
+  n16["test"] -->|2| n2["services"]
+  n16["test"] -->|2| n12["features/timesheet"]
   n0["App"] -->|1| n22["config"]
   n0["App"] -->|1| n23["auth"]
   n0["App"] -->|1| n2["services"]
   n0["App"] -->|1| n5["utils"]
   n0["App"] -->|1| n8["features/dashboard"]
   n0["App"] -->|1| n6["features/consultants"]
-  n0["App"] -->|1| n15["features/timesheet"]
-  n0["App"] -->|1| n20["features/tracker"]
-  n0["App"] -->|1| n19["features/reports"]
+  n0["App"] -->|1| n12["features/timesheet"]
+  n0["App"] -->|1| n21["features/tracker"]
+  n0["App"] -->|1| n20["features/reports"]
   n0["App"] -->|1| n9["features/forecasts"]
-  n0["App"] -->|1| n18["features/fx"]
-  n0["App"] -->|1| n16["features/admin"]
+  n0["App"] -->|1| n19["features/fx"]
+  n0["App"] -->|1| n17["features/admin"]
   n0["App"] -->|1| n24["features/audit"]
-  n0["App"] -->|1| n13["features/capacity"]
-  n0["App"] -->|1| n14["features/portfolio"]
+  n0["App"] -->|1| n14["features/capacity"]
+  n0["App"] -->|1| n15["features/portfolio"]
   n0["App"] -->|1| n25["features/alerts"]
   n0["App"] -->|1| n26["features/profile"]
   n0["App"] -->|1| n11["features/extraHours"]
-  n0["App"] -->|1| n17["features/estimations"]
-  n0["App"] -->|1| n12["features/activities"]
+  n0["App"] -->|1| n18["features/estimations"]
+  n0["App"] -->|1| n13["features/activities"]
   n0["App"] -->|1| n27["types"]
   n0["App"] -->|1| n28["features/financial"]
   n23["auth"] -->|1| n22["config"]
   n4["components"] -->|1| n27["types"]
   n4["components"] -->|1| n1["hooks"]
-  n12["features/activities"] -->|1| n27["types"]
-  n16["features/admin"] -->|1| n2["services"]
-  n16["features/admin"] -->|1| n5["utils"]
+  n13["features/activities"] -->|1| n27["types"]
+  n17["features/admin"] -->|1| n2["services"]
+  n17["features/admin"] -->|1| n5["utils"]
   n25["features/alerts"] -->|1| n4["components"]
   n25["features/alerts"] -->|1| n2["services"]
   n24["features/audit"] -->|1| n4["components"]
   n24["features/audit"] -->|1| n2["services"]
-  n13["features/capacity"] -->|1| n2["services"]
+  n14["features/capacity"] -->|1| n2["services"]
   n6["features/consultants"] -->|1| n2["services"]
   n8["features/dashboard"] -->|1| n2["services"]
   n8["features/dashboard"] -->|1| n27["types"]
-  n17["features/estimations"] -->|1| n2["services"]
+  n18["features/estimations"] -->|1| n2["services"]
   n11["features/extraHours"] -->|1| n2["services"]
   n11["features/extraHours"] -->|1| n5["utils"]
   n28["features/financial"] -->|1| n7["features/expenses"]
@@ -389,24 +394,22 @@ graph LR
   n28["features/financial"] -->|1| n2["services"]
   n28["features/financial"] -->|1| n27["types"]
   n9["features/forecasts"] -->|1| n2["services"]
-  n18["features/fx"] -->|1| n2["services"]
-  n18["features/fx"] -->|1| n5["utils"]
-  n14["features/portfolio"] -->|1| n2["services"]
-  n14["features/portfolio"] -->|1| n1["hooks"]
+  n19["features/fx"] -->|1| n2["services"]
+  n19["features/fx"] -->|1| n5["utils"]
+  n15["features/portfolio"] -->|1| n2["services"]
+  n15["features/portfolio"] -->|1| n1["hooks"]
   n26["features/profile"] -->|1| n4["components"]
   n26["features/profile"] -->|1| n2["services"]
   n3["features/projects"] -->|1| n1["hooks"]
-  n19["features/reports"] -->|1| n4["components"]
-  n19["features/reports"] -->|1| n5["utils"]
+  n20["features/reports"] -->|1| n4["components"]
+  n20["features/reports"] -->|1| n5["utils"]
   n10["features/revenue"] -->|1| n2["services"]
-  n15["features/timesheet"] -->|1| n2["services"]
-  n20["features/tracker"] -->|1| n5["utils"]
-  n20["features/tracker"] -->|1| n2["services"]
-  n20["features/tracker"] -->|1| n15["features/timesheet"]
+  n21["features/tracker"] -->|1| n5["utils"]
+  n21["features/tracker"] -->|1| n2["services"]
+  n21["features/tracker"] -->|1| n12["features/timesheet"]
   n29["main"] -->|1| n0["App"]
   n29["main"] -->|1| n4["components"]
   n29["main"] -->|1| n23["auth"]
   n2["services"] -->|1| n22["config"]
-  n21["test"] -->|1| n19["features/reports"]
-  n21["test"] -->|1| n2["services"]
+  n16["test"] -->|1| n20["features/reports"]
 ```

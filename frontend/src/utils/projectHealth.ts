@@ -13,8 +13,8 @@
  *     ya pintaban con `backendHealthToResult(healthStatus)`. Era código muerto
  *     que solo servía para volver a divergir.
  *  2. Sus reglas no eran las del backend ni con los umbrales reales: el backend
- *     compara contra `marginThreshold` del proyecto (rojo por debajo de la
- *     mitad del umbral, amarillo por debajo del umbral) y además mira CPI, SPI,
+ *     compara contra los DOS umbrales del proyecto (crítico por debajo del
+ *     umbral crítico, advertencia por debajo del de advertencia) y además mira CPI, SPI,
  *     riesgos altos abiertos e hitos atrasados, datos que el cliente no
  *     siempre tiene.
  *  3. Recalcular en el cliente solo puede producir un color que contradiga al
@@ -67,42 +67,114 @@ export function backendHealthToResult(status: "GREEN" | "YELLOW" | "RED"): Proje
 }
 
 /**
- * Valor por defecto de `marginThreshold` del backend
- * (`DEFAULT_MARGIN_THRESHOLD_PCT` en `backend/src/utils/financial.ts`).
- * Solo se usa como texto de respaldo cuando la respuesta no trae el umbral;
- * nunca para colorear nada.
+ * Valores por defecto de los DOS umbrales de margen del backend
+ * (`DEFAULT_MARGIN_WARNING_PCT` y `DEFAULT_MARGIN_CRITICAL_PCT` en
+ * `backend/src/utils/financial.ts`), fijados por la decisión de negocio D-2.
+ * Solo se usan como texto de respaldo cuando la respuesta no trae los umbrales;
+ * nunca para colorear nada por cuenta propia.
  */
-export const UMBRAL_MARGEN_POR_DEFECTO = 15;
+export const UMBRAL_ADVERTENCIA_POR_DEFECTO = 30;
+export const UMBRAL_CRITICO_POR_DEFECTO = 15;
+
+/** Vocabulario acordado del semáforo. No se cambia. */
+export type NivelMargen = "ok" | "warning" | "critical" | "no-medible";
+
+const PRESENTACION_MARGEN: Record<
+  NivelMargen,
+  { etiqueta: string; tono: "tone-success" | "tone-warning" | "tone-danger" | "tone-muted"; modificador: "success" | "warning" | "danger" | "neutral" }
+> = {
+  ok: { etiqueta: "Saludable", tono: "tone-success", modificador: "success" },
+  warning: { etiqueta: "Advertencia", tono: "tone-warning", modificador: "warning" },
+  critical: { etiqueta: "Crítico", tono: "tone-danger", modificador: "danger" },
+  "no-medible": { etiqueta: "No medible", tono: "tone-muted", modificador: "neutral" },
+};
+
+function umbralesEfectivos(
+  marginWarningPct?: number | null,
+  marginCriticalPct?: number | null,
+): { advertencia: number; critico: number } {
+  return {
+    advertencia:
+      marginWarningPct != null && Number.isFinite(marginWarningPct)
+        ? marginWarningPct
+        : UMBRAL_ADVERTENCIA_POR_DEFECTO,
+    critico:
+      marginCriticalPct != null && Number.isFinite(marginCriticalPct)
+        ? marginCriticalPct
+        : UMBRAL_CRITICO_POR_DEFECTO,
+  };
+}
 
 /**
- * Texto del tooltip con los criterios **reales** del backend. Recibe el
- * `marginThreshold` que viene en la propia respuesta para no inventar un valor.
+ * Texto del tooltip con los criterios **reales** del backend. Recibe los dos
+ * umbrales que vienen en la propia respuesta para no inventar valores.
  *
- * @param marginThreshold umbral resuelto del proyecto, tal como lo devuelve el
- *   API. Si llega `null`/`undefined` se dice explícitamente que no se conoce en
- *   vez de suponer uno.
+ * @param marginWarningPct umbral de advertencia ya resuelto por el API.
+ * @param marginCriticalPct umbral crítico ya resuelto por el API.
+ *   Si llegan `null`/`undefined` se dice explícitamente que no se conocen, en
+ *   vez de suponerlos.
  */
-export function textoCriteriosSalud(marginThreshold?: number | null): string {
-  const umbral =
-    marginThreshold != null && Number.isFinite(marginThreshold)
-      ? `${marginThreshold}%`
+export function textoCriteriosSalud(
+  marginWarningPct?: number | null,
+  marginCriticalPct?: number | null,
+): string {
+  const advertencia =
+    marginWarningPct != null && Number.isFinite(marginWarningPct)
+      ? `${marginWarningPct}%`
+      : "no informado por el API";
+  const critico =
+    marginCriticalPct != null && Number.isFinite(marginCriticalPct)
+      ? `${marginCriticalPct}%`
       : "no informado por el API";
 
   return (
     "Semáforo calculado por el servidor. " +
-    `Umbral de margen de este proyecto: ${umbral}. ` +
-    "ROJO: presupuesto proyectado excedido, riesgos altos abiertos, CPI o SPI < 0,75, " +
-    "o margen por debajo de la mitad del umbral. " +
-    "AMARILLO: aviso de presupuesto, hitos atrasados, CPI o SPI < 0,9, " +
-    "o margen por debajo del umbral. " +
-    "VERDE: ninguna de las anteriores."
+    `Umbrales de margen de este proyecto — advertencia: ${advertencia}, crítico: ${critico}. ` +
+    "Crítico: presupuesto proyectado excedido, riesgos altos abiertos, CPI o SPI < 0,75, " +
+    "o margen por debajo del umbral crítico. " +
+    "Advertencia: aviso de presupuesto, hitos atrasados, CPI o SPI < 0,9, " +
+    "o margen por debajo del umbral de advertencia. " +
+    "Saludable: ninguna de las anteriores."
   );
 }
 
 /**
- * Clase de tono del texto del margen bruto, contrastada contra el umbral
- * **real** del proyecto y no contra un literal. Devuelve el tono neutro cuando
- * el margen no es medible (sin ingresos reconocidos).
+ * Nivel del margen bruto contra los DOS umbrales del proyecto (D-2), con los
+ * mismos cortes exactos que `classifyMargin` en el backend: el umbral pertenece
+ * a la banda buena, así que 30,00 con advertencia 30 está saludable y 15,00 con
+ * crítico 15 es advertencia, no crítico.
+ */
+export function nivelMargen(
+  grossMarginActualPct: number | null | undefined,
+  marginWarningPct?: number | null,
+  marginCriticalPct?: number | null,
+): NivelMargen {
+  if (grossMarginActualPct == null) return "no-medible";
+  const { advertencia, critico } = umbralesEfectivos(marginWarningPct, marginCriticalPct);
+  if (grossMarginActualPct < critico) return "critical";
+  if (grossMarginActualPct < advertencia) return "warning";
+  return "ok";
+}
+
+/**
+ * Presentación completa del margen: etiqueta en palabras + tono. El color NO
+ * puede ser el único portador de la información (WCAG 1.4.1), así que quien
+ * pinte el margen debe mostrar también la etiqueta o, como mínimo, llevarla al
+ * `title` y al `aria-label`.
+ */
+export function presentacionMargen(
+  grossMarginActualPct: number | null | undefined,
+  marginWarningPct?: number | null,
+  marginCriticalPct?: number | null,
+) {
+  const nivel = nivelMargen(grossMarginActualPct, marginWarningPct, marginCriticalPct);
+  return { nivel, ...PRESENTACION_MARGEN[nivel] };
+}
+
+/**
+ * Clase de tono del texto del margen bruto, contrastada contra los umbrales
+ * **reales** del proyecto y no contra un literal. Devuelve el tono neutro
+ * cuando el margen no es medible (sin ingresos reconocidos).
  *
  * Antes se llamaba `colorMargen` y devolvía literales de Tailwind (#ef4444,
  * #f59e0b, #22c55e, #9ca3af) que se incrustaban en un `style` en línea: eso
@@ -112,17 +184,10 @@ export function textoCriteriosSalud(marginThreshold?: number | null): string {
  */
 export function claseMargen(
   grossMarginActualPct: number | null | undefined,
-  marginThreshold?: number | null,
+  marginWarningPct?: number | null,
+  marginCriticalPct?: number | null,
 ): "tone-success" | "tone-warning" | "tone-danger" | "tone-muted" {
-  if (grossMarginActualPct == null) return "tone-muted";
-  const umbral =
-    marginThreshold != null && Number.isFinite(marginThreshold)
-      ? marginThreshold
-      : UMBRAL_MARGEN_POR_DEFECTO;
-  // Mismos cortes que `computeHealthStatus`: rojo bajo medio umbral, ámbar bajo umbral.
-  if (grossMarginActualPct < umbral * 0.5) return "tone-danger";
-  if (grossMarginActualPct < umbral) return "tone-warning";
-  return "tone-success";
+  return presentacionMargen(grossMarginActualPct, marginWarningPct, marginCriticalPct).tono;
 }
 
 /**

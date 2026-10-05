@@ -3,8 +3,11 @@ import { computeHealthStatus, type HealthInput } from "../health.js";
 
 const baseInput: HealthInput = {
   alertLevel: "ok",
-  grossMarginActualPct: 25,
-  marginThreshold: 15,
+  // Margen holgado a proposito: 25 ya no es un proyecto sano bajo D-2 (el
+  // umbral de advertencia por defecto es 30).
+  grossMarginActualPct: 50,
+  marginWarningPct: 30,
+  marginCriticalPct: 15,
   openHighRisks: 0,
   delayedMilestones: 0,
   spi: 1.0,
@@ -37,10 +40,11 @@ describe("computeHealthStatus", () => {
     expect(computeHealthStatus({ ...baseInput, spi: 0.74 })).toBe("RED");
   });
 
-  it("retorna RED si margen es menor al 50% del umbral", () => {
-    // threshold = 15 → 50% = 7.5 → margin < 7.5 → RED
-    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 7, marginThreshold: 15 })).toBe("RED");
-    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: -5, marginThreshold: 15 })).toBe("RED");
+  it("retorna RED si el margen baja del umbral crítico (D-2)", () => {
+    // crítico = 15 → cualquier margen por debajo de 15 es RED
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 14.99 })).toBe("RED");
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 7 })).toBe("RED");
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: -5 })).toBe("RED");
   });
 
   // ── YELLOW triggers ───────────────────────────────────────────────────────
@@ -62,10 +66,17 @@ describe("computeHealthStatus", () => {
     expect(computeHealthStatus({ ...baseInput, spi: 0.85 })).toBe("YELLOW");
   });
 
-  it("retorna YELLOW si margen está entre el 50% y el 100% del umbral", () => {
-    // threshold = 15 → 50% = 7.5, entre 7.5 y 15 → YELLOW
-    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 10, marginThreshold: 15 })).toBe("YELLOW");
-    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 8, marginThreshold: 15 })).toBe("YELLOW");
+  it("retorna YELLOW si el margen está entre el crítico y el de advertencia (D-2)", () => {
+    // crítico = 15, advertencia = 30 → la banda [15, 30) es YELLOW
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 29.99 })).toBe("YELLOW");
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 20 })).toBe("YELLOW");
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 15 })).toBe("YELLOW");
+  });
+
+  it("los bordes exactos pertenecen a la banda buena", () => {
+    // 30,00 con advertencia 30 → GREEN; 15,00 con crítico 15 → YELLOW, no RED.
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 30 })).toBe("GREEN");
+    expect(computeHealthStatus({ ...baseInput, grossMarginActualPct: 15 })).not.toBe("RED");
   });
 
   // ── Edge cases ────────────────────────────────────────────────────────────
@@ -78,13 +89,13 @@ describe("computeHealthStatus", () => {
     expect(computeHealthStatus({ ...baseInput, cpi: 0.90 })).not.toBe("YELLOW");
   });
 
-  it("ignorar margen si marginThreshold es null", () => {
-    const lowMargin = { ...baseInput, grossMarginActualPct: 2, marginThreshold: null };
+  it("ignorar margen si los dos umbrales son null", () => {
+    const lowMargin = { ...baseInput, grossMarginActualPct: 2, marginWarningPct: null, marginCriticalPct: null };
     expect(computeHealthStatus(lowMargin)).toBe("GREEN");
   });
 
   it("ignorar margen si grossMarginActualPct es null", () => {
-    const noMargin = { ...baseInput, grossMarginActualPct: null, marginThreshold: 15 };
+    const noMargin = { ...baseInput, grossMarginActualPct: null };
     expect(computeHealthStatus(noMargin)).toBe("GREEN");
   });
 

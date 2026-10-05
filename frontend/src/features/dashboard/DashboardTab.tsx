@@ -1347,7 +1347,7 @@ export function DashboardTab({
                     <td className="sticky-0 cell-center" data-label="Salud">
                       <span
                         className={`health-dot health-dot--${salud.modificador}`}
-                        title={`${salud.etiqueta} — ${textoCriteriosSalud(row.marginThreshold)}`}
+                        title={`${salud.etiqueta} — ${textoCriteriosSalud(row.marginWarningPct, row.marginCriticalPct)}`}
                         aria-label={`Salud: ${salud.etiqueta}`}
                       >
                         <span aria-hidden="true">{salud.icono}</span>

@@ -116,11 +116,12 @@ export async function statsRoutes(app: FastifyInstance) {
         const openHighRisks = countOpenHighRisks(project.risks ?? []);
         const delayedMilestones = countDelayedMilestones(project.milestones ?? [], now);
 
-        // RAG health — el umbral sale SIEMPRE de project.marginThreshold
+        // RAG health — los dos umbrales salen SIEMPRE del proyecto (D-2)
         const healthStatus = computeHealthStatus({
           alertLevel,
           grossMarginActualPct: fin.grossMarginActualPct,
-          marginThreshold: fin.marginThreshold,
+          marginWarningPct: fin.marginWarningPct,
+          marginCriticalPct: fin.marginCriticalPct,
           openHighRisks,
           delayedMilestones,
           spi: evm?.spi ?? null,
@@ -156,7 +157,9 @@ export async function statsRoutes(app: FastifyInstance) {
           grossMarginActualPct: fin.grossMarginActualPct,
           grossMarginProjected: fin.grossMarginProjected,
           grossMarginProjectedPct: fin.grossMarginProjectedPct,
-          marginThreshold: fin.marginThreshold,
+          marginWarningPct: fin.marginWarningPct,
+          marginCriticalPct: fin.marginCriticalPct,
+          marginLevel: fin.marginLevel,
           // Horas
           totalHours,
           approvedHours: fin.approvedHours,
@@ -329,7 +332,8 @@ export async function statsRoutes(app: FastifyInstance) {
         const healthStatus = computeHealthStatus({
           alertLevel,
           grossMarginActualPct: fin.grossMarginActualPct,
-          marginThreshold: fin.marginThreshold,
+          marginWarningPct: fin.marginWarningPct,
+          marginCriticalPct: fin.marginCriticalPct,
           openHighRisks,
           delayedMilestones,
           spi: evm?.spi ?? null,
@@ -357,7 +361,9 @@ export async function statsRoutes(app: FastifyInstance) {
           revenueRecognized: fin.revenueRecognized,
           grossMarginActual: fin.grossMarginActual,
           grossMarginActualPct: fin.grossMarginActualPct,
-          marginThreshold: fin.marginThreshold,
+          marginWarningPct: fin.marginWarningPct,
+          marginCriticalPct: fin.marginCriticalPct,
+          marginLevel: fin.marginLevel,
           alertLevel,
           evm,
           // Counts for dashboard badges

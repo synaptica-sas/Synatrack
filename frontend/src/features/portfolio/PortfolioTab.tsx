@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { type HealthStatus } from "../../services/api";
 import { usePortfolio } from "../../hooks/usePortfolio";
-import { textoCriteriosSalud, claseMargen, PRESENTACION_SALUD } from "../../utils/projectHealth";
+import { textoCriteriosSalud, presentacionMargen, PRESENTACION_SALUD } from "../../utils/projectHealth";
 import { PROJECT_STATUS_LABELS, label } from "../../utils/statusLabels";
 import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
@@ -26,15 +26,57 @@ function fmt(n: number, currency = "USD") {
 /** Tono del texto de un dato según su estado; se traduce a clase, no a color. */
 type Tone = "success" | "warning" | "danger" | "muted" | undefined;
 
-function RagBadge({ status, marginThreshold }: { status: HealthStatus; marginThreshold?: number | null }) {
+function RagBadge({
+  status,
+  marginWarningPct,
+  marginCriticalPct,
+}: {
+  status: HealthStatus;
+  marginWarningPct?: number | null;
+  marginCriticalPct?: number | null;
+}) {
   const p = PRESENTACION_SALUD[status] ?? PRESENTACION_SALUD.GREEN;
   return (
     // La insignia NO lleva icono: la etiqueta ("Saludable", "Advertencia",
     // "Crítico") ya es la pista que no depende del color, que es lo que pide la
     // regla de accesibilidad. Un punto dentro de una píldora rellena no añade
     // información y se lee como una viñeta de lista.
-    <span className={`status-badge status-badge--${p.modificador}`} title={textoCriteriosSalud(marginThreshold)}>
+    <span
+      className={`status-badge status-badge--${p.modificador}`}
+      title={textoCriteriosSalud(marginWarningPct, marginCriticalPct)}
+    >
       {p.etiqueta}
+    </span>
+  );
+}
+
+/**
+ * Margen bruto con su nivel contra los DOS umbrales del proyecto (D-2).
+ *
+ * Antes la celda solo cambiaba de color, y con un nivel más el color deja de
+ * bastar: ahora lleva una etiqueta en palabras («Advertencia», «Crítico») con
+ * el vocabulario acordado del semáforo, visible además del tono.
+ */
+function CeldaMargen({
+  pct,
+  marginWarningPct,
+  marginCriticalPct,
+}: {
+  pct: number | null;
+  marginWarningPct?: number | null;
+  marginCriticalPct?: number | null;
+}) {
+  const p = presentacionMargen(pct, marginWarningPct, marginCriticalPct);
+  const titulo =
+    `Umbrales de margen del proyecto — advertencia: ${marginWarningPct ?? "—"}%, ` +
+    `crítico: ${marginCriticalPct ?? "—"}%.`;
+
+  return (
+    <span className="margen-celda" title={titulo}>
+      <span className={p.tono}>{pct != null ? `${pct.toFixed(1)}%` : "—"}</span>
+      {p.nivel !== "ok" && p.nivel !== "no-medible" && (
+        <span className={`state-chip state-chip--${p.modificador}`}>{p.etiqueta}</span>
+      )}
     </span>
   );
 }
@@ -417,7 +459,13 @@ export function PortfolioTab({
                 key={p.projectId}
                 className={p.healthStatus === "RED" ? "row-danger" : p.healthStatus === "YELLOW" ? "row-warning" : undefined}
               >
-                <td><RagBadge status={p.healthStatus} marginThreshold={p.marginThreshold} /></td>
+                <td>
+                  <RagBadge
+                    status={p.healthStatus}
+                    marginWarningPct={p.marginWarningPct}
+                    marginCriticalPct={p.marginCriticalPct}
+                  />
+                </td>
                 <td className="cell-strong">
                   {p.projectName}
                   <ConversionChip conversion={p.conversion} />
@@ -439,11 +487,12 @@ export function PortfolioTab({
                 <td className={`cell-num tone-${toneIndiceEvm(p.evm?.spi)}`}>
                   {p.evm?.spi != null ? p.evm.spi.toFixed(2) : "—"}
                 </td>
-                <td
-                  className={`cell-num ${claseMargen(p.grossMarginActualPct, p.marginThreshold)}`}
-                  title={`Umbral de margen del proyecto: ${p.marginThreshold}%`}
-                >
-                  {p.grossMarginActualPct != null ? `${p.grossMarginActualPct.toFixed(1)}%` : "—"}
+                <td className="cell-num">
+                  <CeldaMargen
+                    pct={p.grossMarginActualPct}
+                    marginWarningPct={p.marginWarningPct}
+                    marginCriticalPct={p.marginCriticalPct}
+                  />
                 </td>
                 <td className={`cell-num cell-center ${p.openHighRisks > 0 ? "tone-danger" : "tone-success"}`}>
                   {p.openHighRisks}

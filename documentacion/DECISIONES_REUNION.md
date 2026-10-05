@@ -289,7 +289,7 @@ alguien mire. Depende de cómo se facturen esas horas.
 | # | Acordado | Estado | Fecha |
 |---|---|---|---|
 | D-1 | Siempre `synaptica.co`. El `.cc` era un error. | Por hacer | 05/10/2026 |
-| D-2 | El umbral se configura por proyecto en su ficha. Referencia: 30 % normal, 15 % ya es crítico. | Formulario ya existe; falta fijar los valores por defecto | 05/10/2026 |
+| D-2 | El umbral se configura por proyecto en su ficha. Referencia: 30 % normal, 15 % ya es crítico. | **Hecho** — dos umbrales por proyecto (`marginWarningPct` 30 % y `marginCriticalPct` 15 % por defecto), semáforo, alertas y formulario al día | 05/10/2026 |
 | D-3 | En espera. | StandBy | 05/10/2026 |
 | D-4 | Sí. Dos categorías genéricas de ingreso, editables después. | Por hacer | 05/10/2026 |
 | D-5 | Por país **y** por consultor. Por defecto Colombia 8,5 h y Ecuador 8 h. | Por hacer (desbloquea DEP-41) | 05/10/2026 |

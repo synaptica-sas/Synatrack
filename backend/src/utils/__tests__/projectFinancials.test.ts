@@ -2,7 +2,7 @@
  * Pruebas del cálculo financiero unificado (R10).
  *
  * Cubre los casos borde obligatorios: presupuesto cero, sin horas aprobadas,
- * sin forecast, margen negativo, `marginThreshold` nulo y moneda sin tasa de
+ * sin forecast, margen negativo, umbrales de margen nulos y moneda sin tasa de
  * conversión disponible.
  */
 
@@ -10,10 +10,11 @@ import { describe, expect, it } from "vitest";
 import { buildRateMap, createConversionLedger, missingRatePairs } from "../currency.js";
 import {
   DEFAULT_BUDGET_ALERT_PCT,
-  DEFAULT_MARGIN_THRESHOLD_PCT,
+  DEFAULT_MARGIN_CRITICAL_PCT,
+  DEFAULT_MARGIN_WARNING_PCT,
   computeProjectFinancials,
   resolveBudgetAlertPct,
-  resolveMarginThreshold,
+  resolveMarginThresholds,
   toFinancialsInput,
   type ProjectFinancialsInput,
 } from "../financial.js";
@@ -27,7 +28,8 @@ const base: ProjectFinancialsInput = {
   budgetCurrency: "USD",
   sellPrice: 120_000,
   sellCurrency: "USD",
-  marginThreshold: null,
+  marginWarningPct: null,
+  marginCriticalPct: null,
   budgetAlertPct: null,
   revenueEntries: [{ amount: 50_000, currency: "USD" }],
   approvedTimeEntries: [
@@ -47,20 +49,30 @@ const base: ProjectFinancialsInput = {
 
 // ─── Resolución de umbrales ──────────────────────────────────────────────────
 
-describe("resolveMarginThreshold", () => {
-  it("respeta el umbral configurado por proyecto", () => {
-    expect(resolveMarginThreshold(25)).toBe(25);
-    expect(resolveMarginThreshold(0)).toBe(0);
+describe("resolveMarginThresholds", () => {
+  it("respeta los umbrales configurados por proyecto", () => {
+    expect(resolveMarginThresholds(40, 25)).toEqual({ warningPct: 40, criticalPct: 25 });
+    expect(resolveMarginThresholds(10, 0)).toEqual({ warningPct: 10, criticalPct: 0 });
   });
 
-  it("usa el default con nombre cuando el proyecto no lo define", () => {
-    expect(resolveMarginThreshold(null)).toBe(DEFAULT_MARGIN_THRESHOLD_PCT);
-    expect(resolveMarginThreshold(undefined)).toBe(DEFAULT_MARGIN_THRESHOLD_PCT);
-    expect(resolveMarginThreshold(Number.NaN)).toBe(DEFAULT_MARGIN_THRESHOLD_PCT);
+  it("usa los defaults con nombre cuando el proyecto no los define", () => {
+    expect(resolveMarginThresholds(null, null)).toEqual({
+      warningPct: DEFAULT_MARGIN_WARNING_PCT,
+      criticalPct: DEFAULT_MARGIN_CRITICAL_PCT,
+    });
+    expect(resolveMarginThresholds(undefined, undefined)).toEqual({ warningPct: 30, criticalPct: 15 });
+    expect(resolveMarginThresholds(Number.NaN, Number.NaN)).toEqual({ warningPct: 30, criticalPct: 15 });
   });
 
-  it("el default declarado es 15", () => {
-    expect(DEFAULT_MARGIN_THRESHOLD_PCT).toBe(15);
+  it("los defaults declarados son 30 de advertencia y 15 de crítico (D-2)", () => {
+    expect(DEFAULT_MARGIN_WARNING_PCT).toBe(30);
+    expect(DEFAULT_MARGIN_CRITICAL_PCT).toBe(15);
+  });
+
+  it("un crítico por encima de la advertencia sube la advertencia hasta él", () => {
+    // Proyecto heredado con suelo del 40 % y advertencia sin configurar: la
+    // banda de aviso queda vacía en vez de producir un semáforo imposible.
+    expect(resolveMarginThresholds(null, 40)).toEqual({ warningPct: 40, criticalPct: 40 });
   });
 });
 
@@ -135,40 +147,46 @@ describe("computeProjectFinancials — casos borde", () => {
     const f = computeProjectFinancials({ ...base, revenueEntries: [] });
     expect(f.grossMarginActualPct).toBeNull();
     expect(f.grossMarginActual).toBe(-30_000);
-    // Y por tanto NO puede estar por debajo del umbral: no hay nada que medir.
-    expect(f.belowMarginThreshold).toBe(false);
+    // Y por tanto NO hay veredicto de margen: no hay nada que medir.
+    expect(f.marginLevel).toBe("ok");
   });
 
-  it("margen negativo: porcentaje negativo y bandera de umbral activa", () => {
+  it("margen negativo: porcentaje negativo y veredicto crítico", () => {
     const f = computeProjectFinancials({
       ...base,
       revenueEntries: [{ amount: 10_000, currency: "USD" }],
     });
     expect(f.grossMarginActual).toBe(-20_000);
     expect(f.grossMarginActualPct).toBe(-200);
-    expect(f.belowMarginThreshold).toBe(true);
+    expect(f.marginLevel).toBe("critical");
   });
 
-  it("marginThreshold nulo: cae al default con nombre, no se ignora el margen", () => {
+  it("umbrales nulos: caen a los defaults con nombre, no se ignora el margen", () => {
     const f = computeProjectFinancials({
       ...base,
-      marginThreshold: null,
+      marginWarningPct: null,
+      marginCriticalPct: null,
       revenueEntries: [{ amount: 31_000, currency: "USD" }], // margen ~3,2 %
     });
-    expect(f.marginThreshold).toBe(DEFAULT_MARGIN_THRESHOLD_PCT);
-    expect(f.belowMarginThreshold).toBe(true);
+    expect(f.marginWarningPct).toBe(DEFAULT_MARGIN_WARNING_PCT);
+    expect(f.marginCriticalPct).toBe(DEFAULT_MARGIN_CRITICAL_PCT);
+    expect(f.marginLevel).toBe("critical");
   });
 
-  it("marginThreshold = 25 hace rojo lo que con 15 estaba verde", () => {
+  it("un crítico de 25 vuelve crítico lo que con 15 solo era advertencia", () => {
     const input = { ...base, revenueEntries: [{ amount: 150_000, currency: "USD" }] };
     // 150 000 - 30 000 = 120 000 → 80 %: por encima de cualquiera de los dos.
-    expect(computeProjectFinancials({ ...input, marginThreshold: 25 }).belowMarginThreshold).toBe(false);
+    expect(
+      computeProjectFinancials({ ...input, marginWarningPct: 40, marginCriticalPct: 25 }).marginLevel,
+    ).toBe("ok");
 
-    // Margen del 20 %: pasa con umbral 15 y falla con umbral 25.
+    // Margen del 20 %: advertencia con crítico 15, crítico con crítico 25.
     const veinte = { ...base, revenueEntries: [{ amount: 37_500, currency: "USD" }] };
-    expect(computeProjectFinancials({ ...veinte, marginThreshold: 15 }).grossMarginActualPct).toBe(20);
-    expect(computeProjectFinancials({ ...veinte, marginThreshold: 15 }).belowMarginThreshold).toBe(false);
-    expect(computeProjectFinancials({ ...veinte, marginThreshold: 25 }).belowMarginThreshold).toBe(true);
+    expect(computeProjectFinancials({ ...veinte, marginCriticalPct: 15 }).grossMarginActualPct).toBe(20);
+    expect(computeProjectFinancials({ ...veinte, marginCriticalPct: 15 }).marginLevel).toBe("warning");
+    expect(
+      computeProjectFinancials({ ...veinte, marginWarningPct: 40, marginCriticalPct: 25 }).marginLevel,
+    ).toBe("critical");
   });
 
   it("moneda sin tasa de conversión: usa el monto original como fallback", () => {
@@ -450,11 +468,12 @@ describe("computeProjectFinancials — alertLevel", () => {
 // ─── Consistencia entre pantallas: el objetivo de R10 ────────────────────────
 
 describe("consistencia tablero / portafolio / detalle", () => {
-  it("con marginThreshold = 25 los tres semáforos coinciden", () => {
+  it("con umbrales 40/25 los tres semáforos coinciden", () => {
     // Margen real del 20 %: por encima del viejo 15 hardcodeado, por debajo del 25 real.
     const input: ProjectFinancialsInput = {
       ...base,
-      marginThreshold: 25,
+      marginWarningPct: 40,
+      marginCriticalPct: 25,
       revenueEntries: [{ amount: 37_500, currency: "USD" }],
     };
     const f = computeProjectFinancials(input);
@@ -463,20 +482,23 @@ describe("consistencia tablero / portafolio / detalle", () => {
     const health = computeHealthStatus({
       alertLevel: f.alertLevel,
       grossMarginActualPct: f.grossMarginActualPct,
-      marginThreshold: f.marginThreshold,
+      marginWarningPct: f.marginWarningPct,
+      marginCriticalPct: f.marginCriticalPct,
       openHighRisks: 0,
       delayedMilestones: 0,
       spi: null,
       cpi: null,
       utilizationPct: 0,
     });
-    expect(health).toBe("YELLOW");
+    // 20 % está por debajo del crítico de 25 → RED.
+    expect(health).toBe("RED");
 
     // Con el 15 hardcodeado de antes habría salido GREEN en tablero y portafolio.
     const conUmbralViejo = computeHealthStatus({
       alertLevel: f.alertLevel,
       grossMarginActualPct: f.grossMarginActualPct,
-      marginThreshold: 15,
+      marginWarningPct: 15,
+      marginCriticalPct: 15,
       openHighRisks: 0,
       delayedMilestones: 0,
       spi: null,
@@ -497,7 +519,8 @@ describe("toFinancialsInput", () => {
         currency: "USD",
         sellPrice: null,
         sellCurrency: "USD",
-        marginThreshold: "25.00",
+        marginWarningPct: "40.00",
+        marginCriticalPct: "25.00",
         budgetAlertPct: "90.00",
         // Tras la fusión de tablas, gastos e ingresos llegan en una sola relación
         // con discriminador `type`; la partición la hace `splitFinancialEntries`.
@@ -521,21 +544,23 @@ describe("toFinancialsInput", () => {
 
     expect(input.budget).toBe(100_000);
     expect(input.sellPrice).toBeNull();
-    expect(input.marginThreshold).toBe(25);
+    expect(input.marginWarningPct).toBe(40);
+    expect(input.marginCriticalPct).toBe(25);
     expect(input.approvedTimeEntries[0]!.hours).toBe(8);
     expect(input.approvedTimeEntries[0]!.hourlyRate).toBeNull();
     expect(input.revenueEntries).toEqual([{ amount: 1000, currency: "USD" }]);
     expect(input.expenses).toEqual([{ amount: 50, currency: "USD" }]);
   });
 
-  it("marginThreshold = 0 en BD NO se convierte en el default (0 es un valor válido)", () => {
+  it("un umbral = 0 en BD NO se convierte en el default (0 es un valor válido)", () => {
     const input = toFinancialsInput(
       {
         budget: "1000.00",
         currency: "USD",
         sellPrice: null,
         sellCurrency: "USD",
-        marginThreshold: "0.00",
+        marginWarningPct: "0.00",
+        marginCriticalPct: "0.00",
         budgetAlertPct: null,
         financialEntries: [],
         forecasts: [],
@@ -544,8 +569,9 @@ describe("toFinancialsInput", () => {
       rateMap,
       "USD",
     );
-    expect(input.marginThreshold).toBe(0);
-    expect(computeProjectFinancials(input).marginThreshold).toBe(0);
+    expect(input.marginWarningPct).toBe(0);
+    expect(input.marginCriticalPct).toBe(0);
+    expect(computeProjectFinancials(input).marginCriticalPct).toBe(0);
   });
 });
 

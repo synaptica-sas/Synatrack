@@ -185,18 +185,34 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
     }
     const avisoFxFin = sufijoConversion(fin.conversion);
 
-    // Alerta de margen. El umbral sale SIEMPRE de `project.marginThreshold`;
-    // ANTES estaba hardcodeado a 15 aquí, ignorando el valor por proyecto.
+    // Alerta de margen. Los dos umbrales salen SIEMPRE del proyecto (D-2) y la
+    // severidad la decide el NIVEL, no una fracción del umbral: por debajo del
+    // crítico es CRITICAL, por debajo del de advertencia es WARNING.
+    // ANTES el umbral estaba hardcodeado a 15 aquí y el corte de CRITICAL era
+    // `umbral * 0,5`, un número que no eligió nadie.
     if (fin.grossMarginActualPct !== null) {
       const marginPct = fin.grossMarginActualPct;
-      const threshold = fin.marginThreshold;
-      if (fin.belowMarginThreshold) {
+      const warningPct = fin.marginWarningPct;
+      const criticalPct = fin.marginCriticalPct;
+      if (fin.marginLevel !== "ok") {
+        const esCritico = fin.marginLevel === "critical";
+        const umbralCruzado = esCritico ? criticalPct : warningPct;
+        const nivel = esCritico ? "crítico" : "de advertencia";
         await upsertAlert(prisma, {
           type: "MARGIN_BELOW_THRESHOLD",
-          severity: marginPct < threshold * 0.5 ? "CRITICAL" : "WARNING",
+          severity: esCritico ? "CRITICAL" : "WARNING",
           projectId: project.id,
-          message: `Proyecto "${project.name}" tiene margen bruto de ${marginPct.toFixed(1)}% (umbral ${threshold}%)${avisoFxFin}`,
-          metadata: { marginPct, revenueRecognized: fin.revenueRecognized, spent, threshold, currency: baseCurrency, conversion: fin.conversion },
+          message: `Proyecto "${project.name}" tiene margen bruto de ${marginPct.toFixed(1)}% (por debajo del umbral ${nivel}: ${umbralCruzado}%)${avisoFxFin}`,
+          metadata: {
+            marginPct,
+            revenueRecognized: fin.revenueRecognized,
+            spent,
+            marginLevel: fin.marginLevel,
+            warningPct,
+            criticalPct,
+            currency: baseCurrency,
+            conversion: fin.conversion,
+          },
         });
       } else {
         await resolveAlert(prisma, "MARGIN_BELOW_THRESHOLD", project.id);

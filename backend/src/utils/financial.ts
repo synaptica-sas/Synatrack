@@ -120,19 +120,23 @@ export function getAdjustedForecastRevenue(
 // ─── Umbrales por defecto (un solo sitio, con nombre) ────────────────────────
 
 /**
- * Umbral de margen bruto (%) que se aplica cuando el proyecto NO tiene
- * `marginThreshold` configurado.
+ * Umbrales de margen bruto (%) que se aplican cuando el proyecto NO tiene los
+ * suyos propios. Son DOS niveles, por decisión de negocio D-2:
  *
- * DECISIÓN EXPLÍCITA (R10): `marginThreshold = null` significa "no configurado",
- * NO "sin control de margen". Antes `/stats/overview`, `/stats/portfolio` y el
- * motor de alertas usaban `15` literal, mientras el detalle del proyecto
- * ignoraba el margen por completo cuando el campo era nulo. Unificar hacia
- * "ignorar" habría apagado en silencio el control de margen para casi todo el
- * portafolio (el campo está vacío en la mayoría de proyectos), así que se
- * conserva el 15 que ya era el comportamiento de facto en 3 de los 4 sitios,
- * pero declarado aquí una sola vez y sobreescribible por proyecto.
+ *  · advertencia (30 %) — el margen va bajando y conviene vigilarlo.
+ *  · crítico (15 %)     — el suelo que no se debe cruzar.
+ *
+ * DECISIÓN EXPLÍCITA (R10, vigente): un umbral nulo significa "no configurado",
+ * NO "sin control de margen". El campo está vacío en la mayoría de proyectos;
+ * interpretarlo como "sin control" apagaría el semáforo de casi todo el
+ * portafolio. Por eso siempre se resuelve a un número.
+ *
+ * ANTES de D-2 solo existía `DEFAULT_MARGIN_THRESHOLD_PCT = 15` y el segundo
+ * nivel se improvisaba multiplicando por 0,5 dentro de `health.ts`. Ese 7,5 no
+ * lo eligió nadie: era un artefacto del código.
  */
-export const DEFAULT_MARGIN_THRESHOLD_PCT = 15;
+export const DEFAULT_MARGIN_WARNING_PCT = 30;
+export const DEFAULT_MARGIN_CRITICAL_PCT = 15;
 
 /**
  * % de consumo de presupuesto a partir del cual se alerta cuando el proyecto no
@@ -140,11 +144,81 @@ export const DEFAULT_MARGIN_THRESHOLD_PCT = 15;
  */
 export const DEFAULT_BUDGET_ALERT_PCT = 90;
 
-/** Resuelve el umbral de margen efectivo de un proyecto. */
-export function resolveMarginThreshold(value: number | null | undefined): number {
-  return value === null || value === undefined || !Number.isFinite(value)
-    ? DEFAULT_MARGIN_THRESHOLD_PCT
-    : value;
+/** Nivel de margen de un proyecto frente a sus dos umbrales. */
+export type MarginLevel = "ok" | "warning" | "critical";
+
+/** Par de umbrales ya resueltos a número y garantizados coherentes. */
+export type ResolvedMarginThresholds = {
+  warningPct: number;
+  criticalPct: number;
+};
+
+/**
+ * Resuelve los dos umbrales efectivos de un proyecto (D-2).
+ *
+ * Cada uno cae a su valor por defecto de empresa si viene nulo o no finito; el
+ * cero es un valor válido y NO cae al default. Al final se fuerza el invariante
+ * `criticalPct <= warningPct`: si un proyecto declara un suelo por encima de su
+ * advertencia (o por encima del 30 % por defecto), la advertencia se sube hasta
+ * el suelo, con lo que la banda de aviso queda vacía y todo lo que baje del
+ * suelo es crítico. Es lo que su configuración ya estaba diciendo, y evita que
+ * un dato incoherente produzca un semáforo imposible.
+ */
+export function resolveMarginThresholds(
+  warningPct: number | null | undefined,
+  criticalPct: number | null | undefined,
+): ResolvedMarginThresholds {
+  const warning =
+    warningPct === null || warningPct === undefined || !Number.isFinite(warningPct)
+      ? DEFAULT_MARGIN_WARNING_PCT
+      : warningPct;
+  const critical =
+    criticalPct === null || criticalPct === undefined || !Number.isFinite(criticalPct)
+      ? DEFAULT_MARGIN_CRITICAL_PCT
+      : criticalPct;
+
+  return { warningPct: Math.max(warning, critical), criticalPct: critical };
+}
+
+/**
+ * Clasifica un margen bruto contra los dos umbrales ya resueltos.
+ *
+ * Los bordes son EXACTOS y no se solapan: el umbral pertenece a la banda buena.
+ * Un margen de 30,00 con advertencia 30 está "ok"; 29,99 está en advertencia.
+ * Un margen de 15,00 con crítico 15 está en advertencia; 14,99 es crítico.
+ *
+ * `null` = margen no medible (sin ingresos reconocidos): no se inventa un
+ * veredicto, devuelve "ok" para que el semáforo no pinte rojo por falta de datos.
+ */
+export function classifyMargin(
+  grossMarginActualPct: number | null,
+  thresholds: ResolvedMarginThresholds,
+): MarginLevel {
+  if (grossMarginActualPct === null) return "ok";
+  if (grossMarginActualPct < thresholds.criticalPct) return "critical";
+  if (grossMarginActualPct < thresholds.warningPct) return "warning";
+  return "ok";
+}
+
+/**
+ * ¿Es coherente el par de umbrales que llega de un formulario? Se evalúa sobre
+ * los valores YA resueltos, porque dejar uno vacío significa "usa el de la
+ * empresa" y ese también participa de la comparación: poner crítico 40 y dejar
+ * la advertencia vacía es incoherente aunque el campo esté en blanco.
+ */
+export function marginThresholdsAreCoherent(
+  warningPct: number | null | undefined,
+  criticalPct: number | null | undefined,
+): boolean {
+  const warning =
+    warningPct === null || warningPct === undefined || !Number.isFinite(warningPct)
+      ? DEFAULT_MARGIN_WARNING_PCT
+      : warningPct;
+  const critical =
+    criticalPct === null || criticalPct === undefined || !Number.isFinite(criticalPct)
+      ? DEFAULT_MARGIN_CRITICAL_PCT
+      : criticalPct;
+  return critical <= warning;
 }
 
 /** Resuelve el umbral de alerta de presupuesto efectivo de un proyecto. */
@@ -181,8 +255,10 @@ export type ProjectFinancialsInput = {
   budgetCurrency: string;
   sellPrice: number | null;
   sellCurrency: string;
-  /** `project.marginThreshold` tal cual viene de BD (puede ser null). */
-  marginThreshold: number | null;
+  /** `project.marginWarningPct` tal cual viene de BD (puede ser null). */
+  marginWarningPct: number | null;
+  /** `project.marginCriticalPct` tal cual viene de BD (puede ser null). */
+  marginCriticalPct: number | null;
   /** `project.budgetAlertPct` tal cual viene de BD (puede ser null). */
   budgetAlertPct: number | null;
   revenueEntries: RevenueEntryInput[];
@@ -233,9 +309,11 @@ export type ProjectFinancialsResult = {
   grossMarginProjectedPct: number | null;
 
   // Umbrales resueltos y veredictos
-  marginThreshold: number;
+  marginWarningPct: number;
+  marginCriticalPct: number;
+  /** Veredicto de margen de D-2: "ok" | "warning" | "critical". */
+  marginLevel: MarginLevel;
   budgetAlertPct: number;
-  belowMarginThreshold: boolean;
   alertLevel: "ok" | "warning" | "exceeded";
 
   /**
@@ -270,7 +348,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     baseCurrency,
   } = input;
 
-  const marginThreshold = resolveMarginThreshold(input.marginThreshold);
+  const marginThresholds = resolveMarginThresholds(input.marginWarningPct, input.marginCriticalPct);
   const budgetAlertPct = resolveBudgetAlertPct(input.budgetAlertPct);
 
   // Libro PROPIO (DEP-32): si se usara directamente el del llamador, el
@@ -386,9 +464,10 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     grossMarginActualPct,
     grossMarginProjected,
     grossMarginProjectedPct,
-    marginThreshold,
+    marginWarningPct: marginThresholds.warningPct,
+    marginCriticalPct: marginThresholds.criticalPct,
+    marginLevel: classifyMargin(grossMarginActualPct, marginThresholds),
     budgetAlertPct,
-    belowMarginThreshold: grossMarginActualPct !== null && grossMarginActualPct < marginThreshold,
     alertLevel,
     conversion: conversionStatus(ledger),
   };
@@ -437,7 +516,8 @@ type ProjectRowForFinancials = {
   currency: string;
   sellPrice: unknown;
   sellCurrency: string;
-  marginThreshold: unknown;
+  marginWarningPct: unknown;
+  marginCriticalPct: unknown;
   budgetAlertPct: unknown;
   financialEntries: FinancialEntryRow[];
   forecasts: Array<{
@@ -469,7 +549,8 @@ export function toFinancialsInput(
     budgetCurrency: project.currency,
     sellPrice: project.sellPrice != null ? Number(project.sellPrice) : null,
     sellCurrency: project.sellCurrency,
-    marginThreshold: project.marginThreshold != null ? Number(project.marginThreshold) : null,
+    marginWarningPct: project.marginWarningPct != null ? Number(project.marginWarningPct) : null,
+    marginCriticalPct: project.marginCriticalPct != null ? Number(project.marginCriticalPct) : null,
     budgetAlertPct: project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
     revenueEntries: split.revenueEntries,
     approvedTimeEntries: approvedEntries.map((e) => ({
@@ -527,9 +608,10 @@ export type ProfitabilityResult = {
   grossMarginProjected: number;
   grossMarginProjectedPct: number | null;
 
-  // Umbral de margen resuelto y veredictos (R10)
-  marginThreshold: number;
-  belowMarginThreshold: boolean;
+  // Umbrales de margen resueltos y veredicto (D-2)
+  marginWarningPct: number;
+  marginCriticalPct: number;
+  marginLevel: MarginLevel;
   alertLevel: "ok" | "warning" | "exceeded";
 
   /** Estado de la conversión a `baseCurrency` (DEP-32). */
@@ -541,8 +623,10 @@ export type ProfitabilityInput = {
   budgetCurrency: string;
   sellPrice: number | null;
   sellCurrency: string;
-  /** `project.marginThreshold` de BD; si se omite se usa DEFAULT_MARGIN_THRESHOLD_PCT. */
-  marginThreshold?: number | null;
+  /** `project.marginWarningPct` de BD; si se omite se usa DEFAULT_MARGIN_WARNING_PCT. */
+  marginWarningPct?: number | null;
+  /** `project.marginCriticalPct` de BD; si se omite se usa DEFAULT_MARGIN_CRITICAL_PCT. */
+  marginCriticalPct?: number | null;
   /** `project.budgetAlertPct` de BD; si se omite se usa DEFAULT_BUDGET_ALERT_PCT. */
   budgetAlertPct?: number | null;
   revenueEntries: RevenueEntryInput[];
@@ -563,7 +647,8 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     budgetCurrency: input.budgetCurrency,
     sellPrice: input.sellPrice,
     sellCurrency: input.sellCurrency,
-    marginThreshold: input.marginThreshold ?? null,
+    marginWarningPct: input.marginWarningPct ?? null,
+    marginCriticalPct: input.marginCriticalPct ?? null,
     budgetAlertPct: input.budgetAlertPct ?? null,
     revenueEntries: input.revenueEntries,
     approvedTimeEntries: input.approvedTimeEntries,
@@ -593,8 +678,9 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     grossMarginActualPct: f.grossMarginActualPct,
     grossMarginProjected: f.grossMarginProjected,
     grossMarginProjectedPct: f.grossMarginProjectedPct,
-    marginThreshold: f.marginThreshold,
-    belowMarginThreshold: f.belowMarginThreshold,
+    marginWarningPct: f.marginWarningPct,
+    marginCriticalPct: f.marginCriticalPct,
+    marginLevel: f.marginLevel,
     alertLevel: f.alertLevel,
     conversion: f.conversion,
   };

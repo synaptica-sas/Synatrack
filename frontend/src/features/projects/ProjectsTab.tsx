@@ -22,13 +22,21 @@ import { ValidationErrorBox } from "../../components/ValidationErrorBox";
 import { isValidationError } from "../../utils/validation";
 import { CurrencyInput } from "../../components/CurrencyInput";
 
-function RagBadge({ status, marginThreshold }: { status: HealthStatus | undefined; marginThreshold?: number | null }) {
+function RagBadge({
+  status,
+  marginWarningPct,
+  marginCriticalPct,
+}: {
+  status: HealthStatus | undefined;
+  marginWarningPct?: number | null;
+  marginCriticalPct?: number | null;
+}) {
   if (!status) return <span className="cell-dash">—</span>;
   const salud = PRESENTACION_SALUD[status];
   return (
     <span
       className={`status-badge status-badge--${salud.modificador}`}
-      title={textoCriteriosSalud(marginThreshold)}
+      title={textoCriteriosSalud(marginWarningPct, marginCriticalPct)}
     >
       {salud.etiqueta}
     </span>
@@ -78,7 +86,8 @@ type EditForm = {
   sellCurrency: string;
   allowExtraHours: boolean;
   projectManagerEmail: string;
-  marginThreshold: string;
+  marginWarningPct: string;
+  marginCriticalPct: string;
   budgetAlertPct: string;
 };
 
@@ -99,21 +108,27 @@ const emptyForm = {
   // Correo del PM (DEP-37). Vacío = sin PM asignado; el backend lo guarda como null.
   projectManagerEmail: "",
   /**
-   * Umbrales de R10. Los dos se envían como cadena y el backend los coacciona a
-   * número, pero la cadena vacía NO significa lo mismo en los dos:
-   *  - `marginThreshold` es nulable: vacío = sin umbral propio, se aplica el
-   *    valor por defecto del backend (15 %).
+   * Umbrales. Todos se envían como cadena y el backend los coacciona a número,
+   * pero la cadena vacía NO significa lo mismo en todos:
+   *  - los dos de margen son nulables: vacío = sin umbral propio, se aplican los
+   *    valores por defecto del backend (30 % advertencia, 15 % crítico).
    *  - `budgetAlertPct` no admite nulo: vacío = no tocar, conserva el valor
    *    que ya tenga la fila (90 % por defecto).
    */
-  marginThreshold: "",
+  marginWarningPct: "",
+  marginCriticalPct: "",
   budgetAlertPct: "",
 };
 
 /** Texto de ayuda de los umbrales, compartido por el alta y la edición. */
-const AYUDA_UMBRAL_MARGEN =
-  "Margen bruto mínimo en % (0–100) para que el proyecto siga en verde. " +
-  "Déjalo vacío para no fijar un umbral propio: se aplicará el valor por defecto del sistema (15 %).";
+const AYUDA_UMBRAL_ADVERTENCIA =
+  "Margen bruto en % (0–100) por debajo del cual el proyecto pasa a Advertencia: el margen baja y conviene vigilarlo. " +
+  "Déjalo vacío para no fijar uno propio: se aplicará el valor por defecto del sistema (30 %).";
+
+const AYUDA_UMBRAL_CRITICO =
+  "Margen bruto en % (0–100) por debajo del cual el proyecto pasa a Crítico: es el suelo que no se debe cruzar. " +
+  "Déjalo vacío para no fijar uno propio: se aplicará el valor por defecto del sistema (15 %). " +
+  "No puede ser mayor que el umbral de advertencia.";
 
 const AYUDA_UMBRAL_PRESUPUESTO =
   "% de consumo de presupuesto a partir del cual el proyecto pasa a aviso (0–100). " +
@@ -218,7 +233,8 @@ export function ProjectsTab({
         projectManagerEmail: editForm.projectManagerEmail,
         // Se envían tal cual (cadena incluida): la cadena vacía es significativa
         // y el backend le da a cada campo el tratamiento que le corresponde.
-        marginThreshold: editForm.marginThreshold,
+        marginWarningPct: editForm.marginWarningPct,
+        marginCriticalPct: editForm.marginCriticalPct,
         budgetAlertPct: editForm.budgetAlertPct,
       });
       setEditForm(null);
@@ -342,10 +358,20 @@ export function ProjectsTab({
               min={0}
               max={100}
               step="0.01"
-              placeholder="Umbral de margen % (opcional)"
-              title={AYUDA_UMBRAL_MARGEN}
-              value={form.marginThreshold}
-              onChange={(e) => setForm((p) => ({ ...p, marginThreshold: e.target.value }))}
+              placeholder="Margen — umbral de advertencia % (opcional)"
+              title={AYUDA_UMBRAL_ADVERTENCIA}
+              value={form.marginWarningPct}
+              onChange={(e) => setForm((p) => ({ ...p, marginWarningPct: e.target.value }))}
+            />
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              placeholder="Margen — umbral crítico % (opcional)"
+              title={AYUDA_UMBRAL_CRITICO}
+              value={form.marginCriticalPct}
+              onChange={(e) => setForm((p) => ({ ...p, marginCriticalPct: e.target.value }))}
             />
             <input
               type="number"
@@ -358,9 +384,12 @@ export function ProjectsTab({
               onChange={(e) => setForm((p) => ({ ...p, budgetAlertPct: e.target.value }))}
             />
             <p className="field-help span-full proy-note">
-              <strong>Umbral de margen</strong>: vacío significa «sin umbral propio» y se aplica el valor por defecto del
-              sistema (15 %). <strong>Aviso de presupuesto</strong>: vacío significa «no modificar»; este campo no admite
-              vacío y conserva su valor actual (90 % por defecto).
+              <strong>Umbrales de margen</strong>: son dos niveles. Por debajo del de <strong>advertencia</strong> el
+              proyecto pasa a Advertencia; por debajo del <strong>crítico</strong> pasa a Crítico, que es el suelo que no
+              se debe cruzar. Vacío significa «sin umbral propio» y se aplican los valores por defecto del sistema
+              (30 % y 15 %). El crítico no puede ser mayor que el de advertencia.{" "}
+              <strong>Aviso de presupuesto</strong>: vacío significa «no modificar»; este campo no admite vacío y
+              conserva su valor actual (90 % por defecto).
             </p>
             <input type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required />
             <input type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required />
@@ -442,7 +471,13 @@ export function ProjectsTab({
                       const stats = statsMap.get(project.id);
                       return (
                         <tr key={project.id}>
-                          <td><RagBadge status={stats?.healthStatus} marginThreshold={stats?.marginThreshold} /></td>
+                          <td>
+                            <RagBadge
+                              status={stats?.healthStatus}
+                              marginWarningPct={stats?.marginWarningPct}
+                              marginCriticalPct={stats?.marginCriticalPct}
+                            />
+                          </td>
                           <td>{project.name}</td>
                           <td>{project.company}</td>
                           <td className="cell-small" title={project.projectManagerEmail ?? "Sin PM asignado"}>
@@ -502,8 +537,14 @@ export function ProjectsTab({
                                         sellPrice: project.sellPrice ? String(numberish(project.sellPrice)) : "",
                                         sellCurrency: project.sellCurrency ?? "USD",
                                         projectManagerEmail: project.projectManagerEmail ?? "",
-                                        marginThreshold:
-                                          project.marginThreshold != null ? String(Number(project.marginThreshold)) : "",
+                                        marginWarningPct:
+                                          project.marginWarningPct != null
+                                            ? String(Number(project.marginWarningPct))
+                                            : "",
+                                        marginCriticalPct:
+                                          project.marginCriticalPct != null
+                                            ? String(Number(project.marginCriticalPct))
+                                            : "",
                                         budgetAlertPct:
                                           project.budgetAlertPct != null ? String(Number(project.budgetAlertPct)) : "",
                                         allowExtraHours: project.allowExtraHours !== false,
@@ -584,10 +625,20 @@ export function ProjectsTab({
                 min={0}
                 max={100}
                 step="0.01"
-                placeholder="Umbral de margen % (opcional)"
-                title={AYUDA_UMBRAL_MARGEN}
-                value={editForm.marginThreshold}
-                onChange={(e) => setEditForm((p) => p && { ...p, marginThreshold: e.target.value })}
+                placeholder="Margen — umbral de advertencia % (opcional)"
+                title={AYUDA_UMBRAL_ADVERTENCIA}
+                value={editForm.marginWarningPct}
+                onChange={(e) => setEditForm((p) => p && { ...p, marginWarningPct: e.target.value })}
+              />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                placeholder="Margen — umbral crítico % (opcional)"
+                title={AYUDA_UMBRAL_CRITICO}
+                value={editForm.marginCriticalPct}
+                onChange={(e) => setEditForm((p) => p && { ...p, marginCriticalPct: e.target.value })}
               />
               <input
                 type="number"
@@ -600,8 +651,9 @@ export function ProjectsTab({
                 onChange={(e) => setEditForm((p) => p && { ...p, budgetAlertPct: e.target.value })}
               />
               <p className="field-help span-2 proy-note">
-                <strong>Umbral de margen</strong>: vaciarlo lo desasigna y el proyecto vuelve al valor por defecto del
-                sistema (15 %). <strong>Aviso de presupuesto</strong>: vaciarlo <em>no</em> lo borra; el campo no admite
+                <strong>Umbrales de margen</strong>: vaciarlos los desasigna y el proyecto vuelve a los valores por
+                defecto del sistema (30 % de advertencia y 15 % crítico). El crítico no puede ser mayor que el de
+                advertencia. <strong>Aviso de presupuesto</strong>: vaciarlo <em>no</em> lo borra; el campo no admite
                 vacío y conserva el valor actual (90 % por defecto).
               </p>
               <input type="date" value={editForm.startDate} onChange={(e) => setEditForm((p) => p && { ...p, startDate: e.target.value })} required />
