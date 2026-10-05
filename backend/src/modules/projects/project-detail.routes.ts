@@ -4,10 +4,9 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import {
-  buildRateMap,
   conversionStatus,
   createConversionLedger,
-  convertAmountFallback,
+  convertAmountFallbackOnDate,
   describeMissingRates,
   hasMissingRates,
   missingRatePairs,
@@ -17,6 +16,7 @@ import { computeProjectFinancials, toFinancialsInput } from "../../utils/financi
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
 import { clasificarIndiceEvm } from "../../utils/healthThresholds.js";
 import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
+import { cargarLibroDeTasas } from "../fx/rate-book.service.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const idSchema = z.object({ id: z.string().min(1) });
@@ -51,9 +51,8 @@ export async function projectDetailRoutes(app: FastifyInstance) {
 
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
 
-      const fxConfigs = await prisma.fxConfig.findMany();
-      const rateMap = buildRateMap(fxConfigs);
-      const baseCurrency = fxConfigs[0]?.baseCode ?? "USD";
+      // R-008/R-012: libro de tasas CON fecha (ver `rate-book.service.ts`).
+      const { rateBook, baseCurrency } = await cargarLibroDeTasas(prisma);
 
       // Un solo "ahora" por petición; las utilidades no leen el reloj.
       const now = new Date();
@@ -66,7 +65,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       // calculaba `alertLevel` solo sobre el gasto real, por lo que un proyecto
       // con desvío proyectado salía "ok" aquí y "warning"/"exceeded" allá.
       const fin = computeProjectFinancials(
-        toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency, umbralesSalud),
+        toFinancialsInput(project, project.timeEntries, rateBook, baseCurrency, umbralesSalud, now),
       );
 
       // DEP-32: un total que no se pudo convertir del todo deja rastro en el log
@@ -280,15 +279,19 @@ export async function projectDetailRoutes(app: FastifyInstance) {
 
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
 
-      const fxConfigs = await prisma.fxConfig.findMany();
-      const rateMap = buildRateMap(fxConfigs);
-      const baseCurrency = fxConfigs[0]?.baseCode ?? "USD";
+      // R-008/R-012: cada punto de la curva se valora a SU fecha.
+      const { rateBook, baseCurrency } = await cargarLibroDeTasas(prisma);
+      const ahora = new Date();
 
       // Libro de faltantes de esta curva (DEP-32): presupuesto, horas y gastos
       // se suman en `baseCurrency` y cualquiera puede quedar sin convertir.
       const ledger = createConversionLedger();
 
-      const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap, ledger);
+      // El presupuesto se valora a la fecha de contratación (R-033), no a la de
+      // hoy: si no, la línea base de la curva EVM se movía sola cada mañana.
+      const budget = convertAmountFallbackOnDate(
+        Number(project.budget), project.currency, baseCurrency, project.startDate ?? ahora, rateBook, ledger,
+      );
       const bac = budget;
       const start = project.startDate;
       const end = project.endDate;
@@ -302,12 +305,16 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       for (const entry of project.timeEntries) {
         const dateKey = entry.workDate.toISOString().slice(0, 10);
         const rate = Number(entry.consultant.hourlyRate ?? 0);
-        const cost = convertAmountFallback(Number(entry.hours) * rate, entry.consultant.rateCurrency, baseCurrency, rateMap, ledger);
+        const cost = convertAmountFallbackOnDate(
+          Number(entry.hours) * rate, entry.consultant.rateCurrency, baseCurrency, entry.workDate, rateBook, ledger,
+        );
         costByDate.set(dateKey, (costByDate.get(dateKey) ?? 0) + cost);
       }
       for (const expense of project.financialEntries) {
         const dateKey = expense.entryDate.toISOString().slice(0, 10);
-        const cost = convertAmountFallback(Number(expense.amount), expense.currency, baseCurrency, rateMap, ledger);
+        const cost = convertAmountFallbackOnDate(
+          Number(expense.amount), expense.currency, baseCurrency, expense.entryDate, rateBook, ledger,
+        );
         costByDate.set(dateKey, (costByDate.get(dateKey) ?? 0) + cost);
       }
 

@@ -239,6 +239,8 @@ describe("conversionStatus / mergeConversionLedger / describeMissingRates", () =
     expect(conversionStatus(createConversionLedger())).toEqual({
       incomplete: false,
       missingPairs: [],
+      approximateDates: false,
+      undatedPairs: [],
     });
   });
 

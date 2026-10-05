@@ -4,10 +4,13 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import {
-  buildRateMap,
+  buildRateBook,
+  hasUndatedRates,
+  undatedRatePairs,
+  describeUndatedRates,
   conversionStatus,
   createConversionLedger,
-  convertAmountFallback,
+  convertAmountFallbackOnDate,
   describeMissingRates,
   hasMissingRates,
   missingRatePairs,
@@ -52,8 +55,12 @@ export async function snapshotsRoutes(app: FastifyInstance) {
       const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
       const endOfMonth = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
-      const [fxConfigs, timeEntries, expenses, revenueEntries] = await Promise.all([
+      const [fxConfigs, fxHistory, timeEntries, expenses, revenueEntries] = await Promise.all([
         prisma.fxConfig.findMany(),
+        prisma.fxRateHistory.findMany({
+          select: { baseCode: true, quoteCode: true, rate: true, effectiveDate: true },
+          orderBy: { effectiveDate: "asc" },
+        }),
         prisma.timeEntry.findMany({
           where: {
             projectId,
@@ -70,7 +77,10 @@ export async function snapshotsRoutes(app: FastifyInstance) {
         }),
       ]);
 
-      const rateMap = buildRateMap(fxConfigs);
+      // R-008/R-012: el cierre valora cada movimiento a SU fecha, que es
+      // justamente lo que un cierre contable necesita: congelar el mes con los
+      // tipos de cambio de ese mes, no con los del día en que se pulsa el botón.
+      const rateBook = buildRateBook(fxConfigs, fxHistory);
       // DEP-32. El cierre mensual es el único sitio donde el total NO se puede
       // "degradar con aviso": se congela en `MonthlySnapshot` y se consulta
       // después sin ningún canal que lleve la advertencia (la tabla no tiene
@@ -82,21 +92,38 @@ export async function snapshotsRoutes(app: FastifyInstance) {
 
       const laborCostActual = timeEntries.reduce((s, e) => {
         const rate = Number(e.consultant.hourlyRate ?? 0);
-        return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap, ledger);
+        return (
+          s +
+          convertAmountFallbackOnDate(
+            Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, e.workDate, rateBook, ledger,
+          )
+        );
       }, 0);
 
       const expensesActual = expenses.reduce(
-        (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap, ledger),
+        (s, e) =>
+          s + convertAmountFallbackOnDate(Number(e.amount), e.currency, baseCurrency, e.entryDate, rateBook, ledger),
         0,
       );
 
       const revenueRecognized = revenueEntries.reduce(
-        (s, r) => s + convertAmountFallback(Number(r.amount), r.currency, baseCurrency, rateMap, ledger),
+        (s, r) =>
+          s + convertAmountFallbackOnDate(Number(r.amount), r.currency, baseCurrency, r.entryDate, rateBook, ledger),
         0,
       );
 
+      // R-033: el valor del contrato se valora a la fecha de contratación, no
+      // a la del cierre. Si no, cada cierre mensual reexpresaba el mismo
+      // contrato con una tasa distinta y la serie de meses no era comparable.
       const contractValue = project.sellPrice
-        ? convertAmountFallback(Number(project.sellPrice), project.sellCurrency, baseCurrency, rateMap, ledger)
+        ? convertAmountFallbackOnDate(
+            Number(project.sellPrice),
+            project.sellCurrency,
+            baseCurrency,
+            project.startDate ?? endOfMonth,
+            rateBook,
+            ledger,
+          )
         : 0;
 
       if (hasMissingRates(ledger)) {
@@ -119,9 +146,23 @@ export async function snapshotsRoutes(app: FastifyInstance) {
       const hoursApproved = timeEntries.reduce((s, e) => s + Number(e.hours), 0);
 
       // Snapshot de tasas FX en el momento del cierre
-      const fxSnapshotJson: Record<string, number> = {};
+      const fxSnapshotJson: Record<string, number | string[]> = {};
       for (const fx of fxConfigs) {
         fxSnapshotJson[`${fx.baseCode}->${fx.quoteCode}`] = Number(fx.rate);
+      }
+
+      // R-008/R-012: si algún importe se valoró con la tasa de HOY por no haber
+      // histórico anterior a su fecha, el cierre NO se bloquea (sería imposible
+      // cerrar mientras el histórico está poco poblado) pero la aproximación se
+      // congela junto a las cifras. `fxSnapshotJson` es Json libre, así que
+      // cabe sin migración y el dato queda donde se consulta el cierre.
+      if (hasUndatedRates(ledger)) {
+        const undatedPairs = undatedRatePairs(ledger);
+        fxSnapshotJson.__aproximacionPorFecha = undatedPairs;
+        request.log.warn(
+          { endpoint: "POST /api/snapshots/close", projectId, year, month, baseCurrency, undatedPairs },
+          describeUndatedRates(undatedPairs),
+        );
       }
 
       const snapshot = await prisma.monthlySnapshot.create({

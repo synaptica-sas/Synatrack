@@ -4,7 +4,6 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import {
-  buildRateMap,
   conversionStatus,
   createConversionLedger,
   describeMissingRates,
@@ -12,6 +11,7 @@ import {
   hasMissingRates,
 } from "../../utils/currency.js";
 import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
+import { cargarLibroDeTasas } from "../fx/rate-book.service.js";
 import { computeEVM } from "../../utils/evm.js";
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
 import { clasificarIndiceEvm } from "../../utils/healthThresholds.js";
@@ -47,9 +47,11 @@ export async function statsRoutes(app: FastifyInstance) {
     async (request) => {
       const query = statsQuerySchema.parse(request.query);
 
-      const fxConfigs = await prisma.fxConfig.findMany();
-      const rateMap = buildRateMap(fxConfigs);
-      const baseCurrency = query.baseCurrency ?? fxConfigs[0]?.baseCode ?? "USD";
+      // R-008/R-012: libro de tasas CON fecha, cargado una sola vez por
+      // petición. Antes aquí se construía el mapa de las tasas de hoy y todo el
+      // portafolio se reexpresaba cada día con él.
+      const { rateBook, baseCurrency: basePorDefecto } = await cargarLibroDeTasas(prisma);
+      const baseCurrency = query.baseCurrency ?? basePorDefecto;
       // Libro de faltantes de TODA la petición (DEP-32): los totales agregan
       // proyectos, así que un solo par sin tasa ya ensucia el consolidado.
       const ledgerPeticion = createConversionLedger();
@@ -98,7 +100,7 @@ export async function statsRoutes(app: FastifyInstance) {
         // Cálculo financiero unificado (utils/financial.ts) — misma fórmula que
         // /portfolio, el detalle del proyecto y el motor de alertas.
         const fin = computeProjectFinancials({
-          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency, umbralesSalud),
+          ...toFinancialsInput(project, approvedEntries, rateBook, baseCurrency, umbralesSalud, now),
           ledger: ledgerPeticion,
         });
 
@@ -275,9 +277,11 @@ export async function statsRoutes(app: FastifyInstance) {
     async (request) => {
       const query = statsQuerySchema.parse(request.query);
 
-      const fxConfigs = await prisma.fxConfig.findMany();
-      const rateMap = buildRateMap(fxConfigs);
-      const baseCurrency = query.baseCurrency ?? fxConfigs[0]?.baseCode ?? "USD";
+      // R-008/R-012: libro de tasas CON fecha, cargado una sola vez por
+      // petición. Antes aquí se construía el mapa de las tasas de hoy y todo el
+      // portafolio se reexpresaba cada día con él.
+      const { rateBook, baseCurrency: basePorDefecto } = await cargarLibroDeTasas(prisma);
+      const baseCurrency = query.baseCurrency ?? basePorDefecto;
       // Libro de faltantes de TODA la petición (DEP-32): los totales agregan
       // proyectos, así que un solo par sin tasa ya ensucia el consolidado.
       const ledgerPeticion = createConversionLedger();
@@ -317,7 +321,7 @@ export async function statsRoutes(app: FastifyInstance) {
         // sin descontar lo ya aprobado, ignorando `forecast.hourlyRate` y
         // convirtiendo desde la moneda del consultor en vez de la del forecast.
         const fin = computeProjectFinancials({
-          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency, umbralesSalud),
+          ...toFinancialsInput(project, approvedEntries, rateBook, baseCurrency, umbralesSalud, now),
           ledger: ledgerPeticion,
         });
 

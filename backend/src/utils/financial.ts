@@ -5,14 +5,16 @@
  */
 
 import {
-  convertAmountFallback,
+  convertAmountFallbackOnDate,
   conversionStatus,
   createConversionLedger,
   mergeConversionLedger,
+  buildRateBook,
   type ConversionLedger,
   type ConversionStatus,
   type FxRateRecord,
-  buildRateMap,
+  type FxHistoryRecord,
+  type RateBook,
 } from "./currency.js";
 import {
   clasificarUsoPresupuesto,
@@ -20,7 +22,7 @@ import {
   type UmbralesSalud,
 } from "./healthThresholds.js";
 
-export type { FxRateRecord, ConversionLedger, ConversionStatus };
+export type { FxRateRecord, FxHistoryRecord, RateBook, ConversionLedger, ConversionStatus };
 
 // ─── Tipos de entrada ─────────────────────────────────────────────────────────
 
@@ -45,11 +47,22 @@ export type TimeEntryInput = {
 export type ExpenseInput = {
   amount: number;
   currency: string;
+  /**
+   * Fecha del gasto (`FinancialEntry.entryDate`). Es la fecha a la que se
+   * valora: el hecho económico ocurrió ese día y a la tasa de ese día (R-008).
+   */
+  entryDate: Date;
 };
 
 export type RevenueEntryInput = {
   amount: number;
   currency: string;
+  /**
+   * Fecha del ingreso (`FinancialEntry.entryDate`), entendida como fecha de
+   * reconocimiento/factura. Ver la nota de R-034 sobre factura vs. pago en
+   * `computeProjectFinancials`.
+   */
+  entryDate: Date;
 };
 
 // ─── Utilidad de período ──────────────────────────────────────────────────────
@@ -95,14 +108,23 @@ export function getAdjustedForecastCost(
   forecast: ForecastInput,
   consultant: ConsultantInput,
   approvedHoursInPeriod: number,
-  rateMap: Map<string, number>,
+  /** Fecha a la que se valora el forecast: el inicio de su periodo. */
+  valuationDate: Date,
+  rateBook: RateBook,
   baseCurrency: string,
   ledger?: ConversionLedger,
 ): number {
   const effectiveCostRate = forecast.hourlyRate ?? consultant.hourlyRate ?? 0;
   const remainingHours = Math.max(forecast.hoursProjected - approvedHoursInPeriod, 0);
   const costInForecastCurrency = remainingHours * effectiveCostRate;
-  return convertAmountFallback(costInForecastCurrency, forecast.currency, baseCurrency, rateMap, ledger);
+  return convertAmountFallbackOnDate(
+    costInForecastCurrency,
+    forecast.currency,
+    baseCurrency,
+    valuationDate,
+    rateBook,
+    ledger,
+  );
 }
 
 /**
@@ -112,14 +134,23 @@ export function getAdjustedForecastCost(
 export function getAdjustedForecastRevenue(
   forecast: ForecastInput,
   approvedHoursInPeriod: number,
-  rateMap: Map<string, number>,
+  /** Fecha a la que se valora el forecast: el inicio de su periodo. */
+  valuationDate: Date,
+  rateBook: RateBook,
   baseCurrency: string,
   ledger?: ConversionLedger,
 ): number {
   if (!forecast.sellRate) return 0;
   const remainingHours = Math.max(forecast.hoursProjected - approvedHoursInPeriod, 0);
   const revenueInForecastCurrency = remainingHours * forecast.sellRate;
-  return convertAmountFallback(revenueInForecastCurrency, forecast.currency, baseCurrency, rateMap, ledger);
+  return convertAmountFallbackOnDate(
+    revenueInForecastCurrency,
+    forecast.currency,
+    baseCurrency,
+    valuationDate,
+    rateBook,
+    ledger,
+  );
 }
 
 // ─── Umbrales por defecto (un solo sitio, con nombre) ────────────────────────
@@ -301,7 +332,21 @@ export type ProjectFinancialsInput = {
   approvedTimeEntries: ApprovedTimeEntryInput[];
   expenses: ExpenseInput[];
   forecasts: ProjectForecastInput[];
-  rateMap: Map<string, number>;
+  /**
+   * Libro de tasas con dimensión temporal (R-008/R-012). Sustituye al
+   * `rateMap` único de las tasas de hoy: cada importe se convierte con la tasa
+   * vigente en SU fecha. El llamador lo construye una sola vez por petición con
+   * `buildRateBook(fxConfigs, fxHistory)`.
+   */
+  rateBook: RateBook;
+  /**
+   * Fecha a la que se valoran las magnitudes **contractuales** del proyecto
+   * —presupuesto (`budget`) y precio de venta (`sellPrice`)—, que no son
+   * movimientos y por tanto no tienen fecha propia. Es la fecha de contratación
+   * del proyecto; en la práctica `Project.startDate` (ver R-033 en
+   * `computeProjectFinancials`).
+   */
+  valuationDate: Date;
   baseCurrency: string;
   /**
    * Libro de faltantes compartido (DEP-32). Opcional: el cálculo siempre lleva
@@ -393,7 +438,8 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     approvedTimeEntries,
     expenses,
     forecasts,
-    rateMap,
+    rateBook,
+    valuationDate,
     baseCurrency,
   } = input;
 
@@ -405,15 +451,43 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   // Al final se vuelca en el del llamador, si lo hay.
   const ledger = createConversionLedger();
 
-  // Presupuesto y valor contractual en moneda base
-  const budgetBase = convertAmountFallback(budget, budgetCurrency, baseCurrency, rateMap, ledger);
+  // ── QUÉ FECHA VALORA QUÉ (R-008 / R-012 / R-026 / R-033 / R-034) ─────────
+  //
+  // Hasta aquí todo se convertía con la tasa de HOY. El criterio que se aplica
+  // ahora, movimiento a movimiento, es el contable de "valorar al tipo de
+  // cambio de la fecha de la transacción":
+  //
+  //  · Presupuesto y precio de venta → `valuationDate` (fecha de contratación,
+  //    hoy `Project.startDate`). NO son movimientos: son el valor pactado en un
+  //    contrato que se firmó una vez. Reexpresarlos cada día con la tasa del
+  //    momento es justo lo que R-033 pide que deje de pasar. Con esto, un
+  //    presupuesto de 400 M COP firmado en marzo vale siempre lo que valía en
+  //    marzo, y el semáforo del proyecto deja de moverse solo.
+  //  · Gastos e ingresos → su propio `entryDate` (R-008, R-026).
+  //  · Costo de las horas → el `workDate` de cada registro: la hora se consumió
+  //    ese día y a la tarifa y la tasa de ese día. Se valora registro a
+  //    registro y no por periodo, porque el dato lo permite y promediar un mes
+  //    volvería a inventar una fecha que nadie eligió.
+  //  · Forecast → el inicio de su periodo. Para periodos futuros no existe tasa
+  //    posterior a hoy, así que la búsqueda cae en la última conocida, que es
+  //    lo mejor disponible para proyectar.
+  //
+  // Cuando no hay tasa histórica anterior a la fecha de un movimiento se usa la
+  // actual (mismo respaldo que `GET /api/fx/rate`) y queda anotado en el libro
+  // como `undated`: el importe está convertido, pero se revalúa cada día.
+
+  // Presupuesto y valor contractual en moneda base, a la fecha de contratación
+  const budgetBase = convertAmountFallbackOnDate(
+    budget, budgetCurrency, baseCurrency, valuationDate, rateBook, ledger,
+  );
   const contractValue = sellPrice
-    ? convertAmountFallback(sellPrice, sellCurrency, baseCurrency, rateMap, ledger)
+    ? convertAmountFallbackOnDate(sellPrice, sellCurrency, baseCurrency, valuationDate, rateBook, ledger)
     : 0;
 
-  // Ingresos reconocidos
+  // Ingresos reconocidos, cada uno a la tasa de su fecha de reconocimiento
   const revenueRecognized = revenueEntries.reduce(
-    (sum, r) => sum + convertAmountFallback(r.amount, r.currency, baseCurrency, rateMap, ledger),
+    (sum, r) =>
+      sum + convertAmountFallbackOnDate(r.amount, r.currency, baseCurrency, r.entryDate, rateBook, ledger),
     0,
   );
   const revenuePending = Math.max(contractValue - revenueRecognized, 0);
@@ -421,14 +495,20 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   // Costo laboral real: horas aprobadas * tarifa del consultor
   const laborCostActual = approvedTimeEntries.reduce((sum, entry) => {
     const rate = entry.hourlyRate ?? 0;
-    return sum + convertAmountFallback(entry.hours * rate, entry.rateCurrency, baseCurrency, rateMap, ledger);
+    return (
+      sum +
+      convertAmountFallbackOnDate(
+        entry.hours * rate, entry.rateCurrency, baseCurrency, entry.workDate, rateBook, ledger,
+      )
+    );
   }, 0);
 
   const approvedHours = approvedTimeEntries.reduce((sum, entry) => sum + entry.hours, 0);
 
   // Gastos reales
   const expensesActual = expenses.reduce(
-    (sum, e) => sum + convertAmountFallback(e.amount, e.currency, baseCurrency, rateMap, ledger),
+    (sum, e) =>
+      sum + convertAmountFallbackOnDate(e.amount, e.currency, baseCurrency, e.entryDate, rateBook, ledger),
     0,
   );
 
@@ -456,7 +536,8 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
       forecast,
       forecast.consultant,
       approvedInPeriod,
-      rateMap,
+      rangeStart,
+      rateBook,
       baseCurrency,
       ledger,
     );
@@ -464,7 +545,8 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     revenueProjected += getAdjustedForecastRevenue(
       forecast,
       approvedInPeriod,
-      rateMap,
+      rangeStart,
+      rateBook,
       baseCurrency,
       ledger,
     );
@@ -543,6 +625,8 @@ export type FinancialEntryRow = {
   type: "EXPENSE" | "REVENUE";
   amount: unknown;
   currency: string;
+  /** Fecha del movimiento: es la que decide con qué tasa se valora (R-008). */
+  entryDate: Date;
 };
 
 /**
@@ -560,7 +644,7 @@ export function splitFinancialEntries(entries: FinancialEntryRow[]): {
   const expenses: ExpenseInput[] = [];
   const revenueEntries: RevenueEntryInput[] = [];
   for (const entry of entries) {
-    const row = { amount: Number(entry.amount), currency: entry.currency };
+    const row = { amount: Number(entry.amount), currency: entry.currency, entryDate: entry.entryDate };
     if (entry.type === "EXPENSE") expenses.push(row);
     else revenueEntries.push(row);
   }
@@ -574,6 +658,11 @@ export function splitFinancialEntries(entries: FinancialEntryRow[]): {
 type ProjectRowForFinancials = {
   budget: unknown;
   currency: string;
+  /**
+   * Fecha de contratación con la que se valoran presupuesto y precio de venta.
+   * Hoy es `Project.startDate` (ver la nota de R-033 en `toFinancialsInput`).
+   */
+  startDate: Date | null;
   sellPrice: unknown;
   sellCurrency: string;
   marginWarningPct: unknown;
@@ -600,18 +689,32 @@ export function toFinancialsInput(
     workDate: Date;
     consultant: { hourlyRate: unknown; rateCurrency: string };
   }>,
-  rateMap: Map<string, number>,
+  rateBook: RateBook,
   baseCurrency: string,
   /**
    * Umbrales generales de D-7. Obligatorio: es el parámetro que obliga a cada
    * ruta a traer la configuración de la base en vez de heredar un literal.
    */
   healthThresholds: UmbralesSalud,
+  /**
+   * "Ahora" de la petición. Solo se usa como fecha de valoración de respaldo
+   * para un proyecto **sin `startDate`**, que es el único caso en el que no hay
+   * ninguna fecha de contrato de la que tirar. Entra por parámetro porque estas
+   * utilidades no leen el reloj.
+   */
+  now: Date,
 ): ProjectFinancialsInput {
   const split = splitFinancialEntries(project.financialEntries);
   return {
     budget: Number(project.budget),
     budgetCurrency: project.currency,
+    // R-033: el presupuesto contratado se valora a la fecha del contrato, no a
+    // la de hoy. `Project` no tiene un campo `contractDate` propio, así que se
+    // usa `startDate`, que es la fecha de contrato más cercana que existe en el
+    // modelo. Queda anotado como decisión de negocio pendiente en PENDIENTES.md
+    // (§6.2, R-034): si el negocio quiere separar firma de inicio, hace falta
+    // un campo nuevo. Sin `startDate` no hay nada mejor que el presente.
+    valuationDate: project.startDate ?? now,
     sellPrice: project.sellPrice != null ? Number(project.sellPrice) : null,
     sellCurrency: project.sellCurrency,
     marginWarningPct: project.marginWarningPct != null ? Number(project.marginWarningPct) : null,
@@ -640,7 +743,7 @@ export function toFinancialsInput(
         rateCurrency: f.consultant.rateCurrency,
       },
     })),
-    rateMap,
+    rateBook,
     baseCurrency,
   };
 }
@@ -702,6 +805,10 @@ export type ProfitabilityInput = {
   expenses: ExpenseInput[];
   forecasts: Array<ForecastInput & { consultantId: string; consultant: ConsultantInput; startDate: string; endDate: string }>;
   fxConfigs: FxRateRecord[];
+  /** Histórico de `FxRateHistory` para valorar cada importe a su fecha (R-008). */
+  fxHistory?: FxHistoryRecord[];
+  /** Fecha de contratación con la que se valoran presupuesto y precio de venta. */
+  valuationDate: Date;
   baseCurrency: string;
   /** Libro de faltantes compartido (DEP-32). Ver `ProjectFinancialsInput`. */
   ledger?: ConversionLedger;
@@ -723,7 +830,8 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     approvedTimeEntries: input.approvedTimeEntries,
     expenses: input.expenses,
     forecasts: input.forecasts,
-    rateMap: buildRateMap(input.fxConfigs),
+    rateBook: buildRateBook(input.fxConfigs, input.fxHistory ?? []),
+    valuationDate: input.valuationDate,
     baseCurrency: input.baseCurrency,
     ledger: input.ledger,
   });

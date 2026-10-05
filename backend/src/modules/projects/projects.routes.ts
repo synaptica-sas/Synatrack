@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
-import { buildRateMap, describeMissingRates } from "../../utils/currency.js";
+import { describeMissingRates } from "../../utils/currency.js";
 import {
   DEFAULT_MARGIN_CRITICAL_PCT,
   DEFAULT_MARGIN_WARNING_PCT,
@@ -339,9 +339,14 @@ export async function projectsRoutes(app: FastifyInstance) {
 
       if (!project) return reply.status(404).send({ message: "Project not found" });
 
-      const fxConfigs = await prisma.fxConfig.findMany();
+      const [fxConfigs, fxHistory] = await Promise.all([
+        prisma.fxConfig.findMany(),
+        prisma.fxRateHistory.findMany({
+          select: { baseCode: true, quoteCode: true, rate: true, effectiveDate: true },
+          orderBy: { effectiveDate: "asc" },
+        }),
+      ]);
       const baseCurrency = qBase ?? fxConfigs[0]?.baseCode ?? "USD";
-      const rateMap = buildRateMap(fxConfigs);
 
       // Partición por `type` con el mismo helper que usa el cálculo unificado.
       const { expenses, revenueEntries } = splitFinancialEntries(project.financialEntries);
@@ -382,6 +387,10 @@ export async function projectsRoutes(app: FastifyInstance) {
         // cuando buildRateMap usa "->", así que TODAS las conversiones caían al
         // fallback (monto sin convertir). Se pasan los FxConfig crudos.
         fxConfigs,
+        // R-008/R-012: con el histórico, cada importe se valora a su fecha.
+        fxHistory,
+        // R-033: presupuesto y precio de venta, a la fecha de contratación.
+        valuationDate: project.startDate ?? new Date(),
         baseCurrency,
       });
 

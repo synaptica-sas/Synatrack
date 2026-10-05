@@ -69,6 +69,8 @@ Nada de esto se puede resolver leyendo código.
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
 | D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con **0,85 / 1,00** y **90 % / 100 %**, pero `utils/health.ts` calcula la salud con **0,75** y **0,9**. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
 | D-8 | **¿Se va a usar el módulo de Actividades?** El cronómetro y el timesheet permiten enlazar cada registro a una `Activity` para poder comparar horas estimadas con reales, pero no hay ninguna creada: el desplegable solo ofrece "Sin tarea" y parece roto. O se empieza a usar, o se retira el selector de las dos pantallas. | Decisión de producto |
+| D-10 | **¿Qué fecha fija el tipo de cambio de un contrato, y cuál la de un ingreso?** La parte técnica ya está resuelta (R-008/R-012, 2026-10-05): presupuesto y precio de venta se valoran a `Project.startDate` y los ingresos a `FinancialEntry.entryDate`. Las dos son la **elección conservadora**, tomada porque el modelo no tiene nada mejor, y hacen falta dos confirmaciones: **(a)** ¿la fecha de contrato es la de inicio del proyecto, o hay una fecha de firma distinta que habría que guardar en un campo nuevo (`Project.contractDate`)? **(b)** ¿el ingreso se valora a la fecha de **factura** (lo implementado, `entryDate`) o a la de **cobro**? Hoy no existe campo de fecha de pago; si la respuesta es "cobro", hace falta añadirlo. | Es criterio contable, no técnico |
+| D-11 | **¿Hay que cargar el histórico de tasas hacia atrás?** `FxRateHistory` solo tiene las 5 filas del día en que se sembró la base. Para todo lo anterior el cálculo cae a la tasa de hoy —y ya lo dice en pantalla ("Valoración a la tasa de hoy")—, así que el presupuesto de un proyecto de mayo sigue moviéndose hasta que exista una tasa con esa fecha. O se carga la serie histórica (manualmente en Tasas FX, o desde el proveedor), o se asume que los contratos anteriores al histórico se revalúan. | Depende de si existe la fuente del dato |
 | ~~D-9~~ | ~~**¿Las horas de sábado y domingo cuentan en el informe semanal?**~~ **Resuelta el 2026-09-30: sí cuentan.** El informe vuelve a cubrir los siete días y esas horas entran en los totales como cualquier otra; las columnas de sábado y domingo se dibujan atenuadas para distinguirlas de la jornada habitual sin ocultar el dato. | — |
 
 ---
@@ -591,13 +593,50 @@ falta que alguien decida algo primero. Cuatro etiquetas:
 | **Abierto** | No hay código relacionado. Confirmado, no es una suposición. |
 | **Decisión** | No es un defecto: es ambiguo o depende de que el negocio resuelva algo primero. |
 
-**Hallazgo transversal, no estaba en el Excel original:** cinco ítems de monedas distintos
-(R-008, R-012, R-026, R-033, R-034) son **el mismo defecto de raíz**: todo el sistema financiero
-convierte con la tasa de cambio **de hoy** (`prisma.fxConfig.findMany()` en `stats.routes.ts`,
-`project-detail.routes.ts`, `projects.routes.ts`), nunca con la tasa vigente en la fecha del
-contrato o de la factura. Ya existe la pieza para resolverlo —`FxRateHistory` y
-`GET /api/fx/rate?date=` (`fx.routes.ts:140-172`)— pero no está conectada al cálculo. Arreglarlo
-una vez resuelve los cinco ítems a la vez; no son cinco tareas, es una.
+**Hallazgo transversal, no estaba en el Excel original — RESUELTO el 2026-10-05:** cinco ítems de
+monedas distintos (R-008, R-012, R-026, R-033, R-034) eran **el mismo defecto de raíz**: todo el
+sistema financiero convertía con la tasa de cambio **de hoy** (`prisma.fxConfig.findMany()` en
+`stats.routes.ts`, `project-detail.routes.ts`, `projects.routes.ts`), nunca con la tasa vigente en
+la fecha del contrato o de la factura. Ya existía la pieza —`FxRateHistory` y
+`GET /api/fx/rate?date=`— pero no estaba conectada al cálculo.
+
+Se conectó en un solo cambio, sin migración (`FxRateHistory` ya existía):
+
+- `backend/src/utils/currency.ts` — **libro de tasas fechado** (`RateBook`, `buildRateBook`,
+  `rateMapForDate`, `convertAmountOnDate`, `convertAmountFallbackOnDate`). Reutiliza el mismo
+  criterio de respaldo de `GET /api/fx/rate`: la tasa histórica más reciente con
+  `effectiveDate <= fecha` y, si no hay ninguna, la actual de `FxConfig`.
+- `backend/src/modules/fx/rate-book.service.ts` — carga `FxConfig` + `FxRateHistory` **una vez por
+  petición**. El histórico se resuelve en memoria con búsqueda binaria y se memoiza por día UTC,
+  así que `/stats/overview` no hace ni una consulta extra por movimiento.
+- `backend/src/utils/financial.ts` — `computeProjectFinancials` recibe `rateBook` + `valuationDate`
+  en vez del `rateMap` único; `ExpenseInput`/`RevenueEntryInput` llevan `entryDate`.
+- Conectado en `stats.routes.ts` (overview y portfolio), `project-detail.routes.ts` (detalle y
+  timeline), `projects.routes.ts` (profitability), `snapshots.routes.ts` (cierre mensual) y
+  `alerts.service.ts`.
+
+**Qué fecha valora qué** (razonamiento completo en el comentario de `computeProjectFinancials`):
+
+| Concepto | Fecha | Por qué |
+|---|---|---|
+| Presupuesto y precio de venta | `Project.startDate` | No son movimientos: son el valor pactado en un contrato firmado una vez. Reexpresarlos cada día era justo lo que pedía R-033. Falta confirmar si la fecha de contrato es la de inicio (**D-10a**). |
+| Gasto | `FinancialEntry.entryDate` | Fecha del hecho económico (R-008, R-026). |
+| Ingreso | `FinancialEntry.entryDate` | Fecha de reconocimiento/factura. Si el negocio quiere fecha de cobro, hace falta un campo nuevo (**D-10b**). |
+| Costo de las horas | `TimeEntry.workDate` de cada registro | La hora se consumió ese día. Registro a registro, no por periodo: promediar inventaría una fecha que nadie eligió. |
+| Forecast | Inicio de su periodo | Para periodos futuros no hay tasa posterior a hoy y la búsqueda cae en la última conocida, que es lo mejor para proyectar. |
+
+**Cuando falta la tasa histórica** se usa la actual y **queda anotado**: el libro de DEP-32 tiene
+ahora un segundo canal, `undated`, y las respuestas publican
+`conversion: { incomplete, missingPairs, approximateDates, undatedPairs }`. La interfaz distingue
+los dos niveles: "Cifras aproximadas" (falta la tasa, el importe se sumó **sin convertir**) y
+"Valoración a la tasa de hoy" (el importe sí se convirtió, pero se revalúa cada día).
+
+**Efecto medido** sobre la base local, sembrando la curva USD→COP que el cron diario habría
+dejado (4.400 en enero → 4.300 en mayo → 4.150 en julio → 4.000 en septiembre; tasa actual 3.950):
+el presupuesto de *Migración Cloudera a Azure* (480.000.000 COP, inicio 2026-05-24) pasa de
+**121.518,99 USD** (480 M / 3.950, la tasa de hoy) a **111.627,91 USD** (480 M / 4.300, la tasa de
+mayo): **−9.891,08 USD, −8,1 %**. Y, sobre todo, deja de moverse: antes ese número cambiaba cada
+día que cambiara la tasa.
 
 Dos pares más son el mismo síntoma reportado por separado: **R-005 y R-032** (el filtro de
 Portafolio no actualiza los totales de arriba) son un solo bug, ya confirmado en código.
@@ -615,11 +654,11 @@ Horas Extra respectivamente — ya existe para Horas Extra, falta para Horas reg
 | R-005 | Portafolio | Al filtrar por proyecto, los totales de arriba no cambian | **Abierto — mismo bug que R-032.** Los KPI de resumen leen `portfolio.summary` sin filtrar; los filtros solo afectan la tabla de abajo. |
 | R-006 | Portafolio | Filtros arriba + botón de limpiar filtros | **Parcial.** Los filtros ya están arriba. Falta el botón "Limpiar filtros" (sí existe en Dashboard, no en Portafolio). |
 | R-007 | Proyectos | País como lista desplegable | **Abierto.** Sigue siendo `<input>` de texto libre (`ProjectsTab.tsx:302,544`). Consultores ya migró esto mismo a `<select>`; a Proyectos no se le aplicó. |
-| R-008 | Proyectos | Vincular la tasa de cambio del proyecto a su propia fecha, no mostrar siempre en USD | **Abierto — mismo origen que R-012/R-026/R-033/R-034** (ver hallazgo transversal arriba). `useStats` hardcodea USD por defecto. |
+| R-008 | Proyectos | Vincular la tasa de cambio del proyecto a su propia fecha, no mostrar siempre en USD | **Resuelto el 2026-10-05** (ver hallazgo transversal arriba). Cada importe se convierte con la tasa de su fecha: `currency.ts:241-461` (`buildRateBook`/`rateMapForDate`/`convertAmountFallbackOnDate`), `financial.ts:454-513` (presupuesto, ingresos, gastos y horas, cada uno a su fecha), conectado en `stats.routes.ts:53` y `:283`, `project-detail.routes.ts:55`, `projects.routes.ts:342` y `alerts.service.ts:90`. Pruebas: `backend/src/utils/__tests__/tasasPorFecha.test.ts`. **Queda el matiz de presentación**: la moneda que se muestra sigue siendo la base (`useStats` con USD por defecto); eso es R-026 y es independiente del cálculo. |
 | R-009 | Proyectos | Riesgos con costo que afecte el presupuesto | **Abierto.** `Risk` no tiene campo de costo; ningún cálculo lo descuenta del presupuesto. |
 | R-010 | Proyectos | Categoría de proyecto como lista desplegable, con opción de personalizar | **Abierto.** No existe campo "categoría" a nivel de proyecto en absoluto (el único "category" es el de Riesgos, y es texto libre). |
 | R-011 | Proyectos | El semáforo sale distinto en el listado que en el detalle | **Resuelto.** `computeHealthStatus` es ya la única fuente para ambas vistas (`stats.routes.ts:120`, `project-detail.routes.ts:106`), con auto-corrección si diverge. (Distinto del matiz de colores de CPI/SPI que sigue abierto como D-7). |
-| R-012 | Proyectos | La tasa a dólares debe fijarse en la fecha de contratación, no recalcularse después | **Abierto — mismo origen que R-008/R-026/R-033/R-034.** |
+| R-012 | Proyectos | La tasa a dólares debe fijarse en la fecha de contratación, no recalcularse después | **Resuelto el 2026-10-05.** Presupuesto y precio de venta se valoran a `Project.startDate` (`financial.ts:480-486`, `toFinancialsInput` en `financial.ts:717`), no a la fecha de consulta. Medido en la base local: el presupuesto de *Migración Cloudera a Azure* pasa de 121.518,99 a 111.627,91 USD y deja de moverse con la tasa. **Depende de D-10a**: si la fecha de contrato no es la de inicio, hace falta un campo nuevo. |
 | R-013 | Capacidad | Al asignar un consultor, asignar también su proyección | **Abierto.** `AssignmentsPanel.handleCreate` solo crea la asignación; no toca `Forecast`. |
 | R-014 | Capacidad | Opción de editar una asignación | **Abierto.** Solo existen cancelar/completar/eliminar; no hay edición ni endpoint `PATCH` genérico. |
 | R-015 | Capacidad | Asignar riesgos por consultor | **Abierto.** `Risk` no tiene `consultantId`. |
@@ -633,7 +672,7 @@ Horas Extra respectivamente — ya existe para Horas Extra, falta para Horas reg
 | R-023 | Horas Extra | Calendario de solicitud solo desde hoy en adelante | **Resuelto**, con matiz: aplica a CONSULTANT; ADMIN/PM quedan exentos a propósito (para registrar en nombre de otros retroactivamente). |
 | R-024 | Horas Extra | Delegación falla, dice que el correo no existe | **Abierto, causa raíz identificada.** Exige que el correo exista en `User` (se crea solo al iniciar sesión), no en `Consultant`. Un consultor que nunca ha entrado falla al delegarle. |
 | R-025 | Gastos | Agregar categorías de capacitación y horas extra; aclarar qué cubre "Servicios" | **Resuelto en su parte técnica** por D-4 (`d6b807c`). Las categorías de gasto salieron del código a un catálogo editable desde Administración: "Capacitación" ya existe —la recogió el barrido de la migración, estaba en uso sin figurar en la lista del código— y "Horas extra" se añade desde la pantalla sin desplegar. `ExpensesTab.tsx:27` ya solo es respaldo si la API no responde. **Queda la parte de negocio**: qué cubre "Servicios" sigue sin definir. |
-| R-026 | Gastos | Siempre aparece en USD sin importar la moneda elegida, y la conversión no coincide | **Parcial — mismo origen que R-008/R-012/R-033/R-034.** La fila expandida sí respeta la moneda original; la vista agrupada hardcodea USD por defecto. |
+| R-026 | Gastos | Siempre aparece en USD sin importar la moneda elegida, y la conversión no coincide | **Parcial — la parte de "la conversión no coincide" queda resuelta el 2026-10-05.** El gasto se convierte ahora con la tasa de su `entryDate` (`financial.ts:509-513`), que es la causa de que el importe convertido no cuadrara con el original. **Sigue abierto** lo otro que pide el ítem: la vista agrupada de `ExpensesTab.tsx:61` sigue fijando USD por defecto en vez de la moneda del proyecto. Es un cambio de pantalla, independiente del cálculo. |
 | R-027 | Gastos | Buscar proyecto como lista desplegable | **Abierto.** Sigue siendo un `<input>` de texto libre; a diferencia de Portafolio/Proyectos, Gastos no migró a `SearchableSelect`. |
 
 ### 6.2 Cambios propuestos en reunión (Juan Espinosa)
@@ -645,8 +684,8 @@ Horas Extra respectivamente — ya existe para Horas Extra, falta para Horas reg
 | R-030 | Documentación técnica del desarrollo | Documentar arquitectura y decisiones de diseño (pedido de Francis Garrido) | **Resuelto.** `DOCUMENTACION_TECNICA.md`, `MAPA_PROYECTO.md`, `DISENO.md` y varios más. |
 | R-031 | Definir fecha/ventana de lanzamiento | Franja tentativa de lanzamiento (pedido de Juan Bedoya) | **Decisión.** Pura decisión de negocio; nada en el código la resuelve. Sigue sin nada en producción (§0 de este documento). |
 | R-032 | Corregir filtros del dashboard/portafolio | Los filtros no actualizan el presupuesto total mostrado | **Abierto — mismo bug que R-005**, confirmado en código. |
-| R-033 | Fijar el presupuesto en su moneda original | No recalcular el presupuesto contratado cada vez que cambia la tasa | **Abierto — mismo origen que R-008/R-012/R-026/R-034** (hallazgo transversal). |
-| R-034 | Definir lógica de fecha para la tasa de cambio | Elegir si la conversión usa fecha de factura, de pago o de balance | **Abierto/Decisión — mismo origen que R-008/R-012/R-026/R-033.** La pieza técnica (`FxRateHistory`) ya existe; falta decidir qué fecha usar y conectarla. |
+| R-033 | Fijar el presupuesto en su moneda original | No recalcular el presupuesto contratado cada vez que cambia la tasa | **Resuelto el 2026-10-05.** El presupuesto se guarda y se sigue guardando en su moneda original; lo que cambia es que su reexpresión a la moneda base se hace con la tasa de la fecha de contratación y no con la del día (`financial.ts:480-486`). También en la línea base de la curva EVM (`project-detail.routes.ts:292`), en el cierre mensual (`snapshots.routes.ts:119`) y en el motor de alertas (`alerts.service.ts:115`), donde antes una alerta podía dispararse solo porque la tasa de hoy había encogido el presupuesto. |
+| R-034 | Definir lógica de fecha para la tasa de cambio | Elegir si la conversión usa fecha de factura, de pago o de balance | **Técnicamente resuelto el 2026-10-05; la decisión de negocio pasa a D-10.** Se eligió, y se dejó escrito en el código, la opción conservadora: **fecha de factura/reconocimiento** (`FinancialEntry.entryDate`) para ingresos y gastos, **fecha de contratación** (`Project.startDate`) para presupuesto y precio de venta, **fecha del día trabajado** para el costo de las horas. La "fecha de balance" queda descartada a propósito: es la que producía el defecto. Falta que el negocio confirme factura vs. cobro (**D-10b**); si es cobro, hace falta un campo de fecha de pago que hoy no existe. |
 | R-035 | Seguimiento de presupuesto mensual con semáforo | Semáforo mensual con compensación entre meses | **Abierto.** `MonthlySnapshot` guarda actuales por mes pero no tiene estimado-por-mes, semáforo mensual ni lógica de compensación. |
 | R-036 | Separar gastos por categoría | Saber cuánto se consumió de cada rubro (capacitación, riesgo, ejecución) | **Parcial.** Costo laboral vs. gastos directos ya se separan (visible en un tooltip del Dashboard) y Gastos ya filtra por categoría. Falta una vista persistente de desglose, y "riesgo" como rubro no existe (ver R-009). |
 | R-037 | Fusionar módulos de Ingresos y Gastos | Una sola vista para facilitar edición y balance general | **Parcial.** El modelo de datos ya se fusionó (`FinancialEntry`) y el menú ya es una sola pestaña "Ingresos/Gastos". Pero sigue siendo un selector entre dos paneles separados, no una tabla combinada con balance general. |
@@ -745,7 +784,7 @@ orden antes de empezar, no a mitad de camino.
 | ~~R-025~~ | ~~Categorías de "Capacitación" y "Horas extra" en Gastos~~ — **ya resuelto por D-4**; solo queda preguntar a negocio qué cubre "Servicios" | — |
 | R-027 | Buscador de proyecto en Gastos a `SearchableSelect`, igual que Portafolio | S |
 | R-026 | Mostrar el gasto en la moneda del proyecto por defecto, no en USD fijo (`ExpensesTab.tsx:61`) — arreglo rápido, independiente del siguiente punto | S |
-| **R-008 + R-012** | **La pieza de mayor apalancamiento del plan**: conectar `FxRateHistory`/`GET /api/fx/rate?date=` (ya existen) al cálculo financiero, para que presupuesto, gastos e ingresos se conviertan con la tasa de la fecha del contrato, no con la de hoy. Resuelve R-008 y R-012 a la vez — es un solo cambio, no dos | L |
+| ~~**R-008 + R-012**~~ | ~~**La pieza de mayor apalancamiento del plan**: conectar `FxRateHistory`/`GET /api/fx/rate?date=` (ya existen) al cálculo financiero~~ **Hecho el 2026-10-05.** Resueltos R-008, R-012 y R-033; R-026 y R-034 quedan resueltos en su parte de cálculo. Sin migración. Detalle y evidencia en el hallazgo transversal de §6. Lo que quedó fuera a propósito: la moneda de presentación de la vista agrupada de Gastos (R-026) y las dos confirmaciones contables de D-10. | L |
 | R-022 | Cambiar la notificación de aprobación de horas extra de inmediata a un resumen semanal | M |
 | R-020 | Notificación semanal al PM con las horas pendientes de aprobar (hoy no existe para horas regulares) — comparte la infraestructura del job semanal con R-022, construirlos juntos | L |
 

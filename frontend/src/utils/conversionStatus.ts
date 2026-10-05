@@ -60,6 +60,33 @@ export function textoConversionIncompleta(pares: string[]): string {
   );
 }
 
+/**
+ * Frase del aviso **leve** de R-008/R-012: todo se convirtió, pero algunos
+ * importes se valoraron con la tasa de hoy en vez de con la de su fecha porque
+ * el histórico no llega tan atrás. No es un número incorrecto; es un número que
+ * se mueve solo, que es justo lo que estos dos ítems vinieron a eliminar.
+ */
+export function textoValoracionAproximada(pares: string[]): string {
+  const lista = formatearParesFaltantes(pares);
+  if (!lista) {
+    return (
+      "Algunos importes se valoraron con la tasa de cambio de hoy porque no hay " +
+      "tasa histórica para su fecha, así que su valor cambia cada día."
+    );
+  }
+  return (
+    `No hay tasa histórica anterior a la fecha de algunos movimientos ${lista}. ` +
+    "Esos importes se valoraron con la tasa de hoy, así que su valor cambia cada día."
+  );
+}
+
+/** Texto corto para el `title` de la marca de valoración aproximada. */
+export function tituloValoracionAproximada(pares: string[]): string {
+  const lista = formatearParesFaltantes(pares);
+  if (!lista) return "Valorado con la tasa de hoy: falta tasa histórica para esa fecha.";
+  return `Valorado con la tasa de hoy ${lista}: falta tasa histórica para esa fecha.`;
+}
+
 /** Texto corto para el `title` de la marca de fila o tarjeta. */
 export function tituloConversionIncompleta(pares: string[]): string {
   const lista = formatearParesFaltantes(pares);

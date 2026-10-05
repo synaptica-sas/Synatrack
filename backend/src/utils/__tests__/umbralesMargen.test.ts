@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildRateMap } from "../currency.js";
+import { buildRateBook } from "../currency.js";
 import {
   DEFAULT_MARGIN_CRITICAL_PCT,
   DEFAULT_MARGIN_WARNING_PCT,
@@ -132,7 +132,9 @@ describe("computeHealthStatus con los dos umbrales (D-2)", () => {
 
 // ─── Extremo a extremo del cálculo: de las cifras al veredicto ───────────────
 
-const rateMap = buildRateMap([{ baseCode: "USD", quoteCode: "COP", rate: 4000 }]);
+const rateBook = buildRateBook([{ baseCode: "USD", quoteCode: "COP", rate: 4000 }], []);
+const FECHA = new Date("2026-01-15T00:00:00Z");
+
 
 /**
  * Proyecto con un costo real fijo de 20 000 USD (400 h × 50 USD). El margen se
@@ -154,7 +156,7 @@ function proyectoConIngresos(
     marginCriticalPct: umbrales.marginCriticalPct,
     budgetAlertPct: null,
     healthThresholds: UMBRALES_SALUD_POR_DEFECTO,
-    revenueEntries: [{ amount: ingresos, currency: "USD" }],
+    revenueEntries: [{ amount: ingresos, currency: "USD", entryDate: FECHA }],
     approvedTimeEntries: [
       {
         consultantId: "c1",
@@ -166,7 +168,8 @@ function proyectoConIngresos(
     ],
     expenses: [],
     forecasts: [],
-    rateMap,
+    rateBook,
+    valuationDate: FECHA,
     baseCurrency: "USD",
   };
 }

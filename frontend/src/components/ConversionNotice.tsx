@@ -1,5 +1,10 @@
 import type { ConversionStatus } from "../services/api";
-import { textoConversionIncompleta, tituloConversionIncompleta } from "../utils/conversionStatus";
+import {
+  textoConversionIncompleta,
+  textoValoracionAproximada,
+  tituloConversionIncompleta,
+  tituloValoracionAproximada,
+} from "../utils/conversionStatus";
 
 /**
  * Aviso de conversión incompleta.
@@ -30,7 +35,37 @@ export function ConversionNotice({
   /** Si se pasa, se ofrece un atajo a la pantalla de Tasas FX. */
   onIrATasasFx?: () => void;
 }) {
-  if (!conversion?.incomplete) return null;
+  if (!conversion) return null;
+
+  // Aviso LEVE (R-008/R-012): no falta ninguna tasa, pero algunos importes se
+  // valoraron con la de hoy por no haber histórico para su fecha. Se muestra
+  // solo si no hay un problema peor que contar.
+  if (!conversion.incomplete) {
+    if (!conversion.approximateDates) return null;
+    return (
+      <div className="notice notice--warning conversion-notice" role="status">
+        <div className="notice__title">
+          <span aria-hidden="true">▲</span>
+          Valoración a la tasa de hoy
+        </div>
+        <p className="notice__text">
+          {contexto} no están fijadas a la fecha de cada movimiento.{" "}
+          {textoValoracionAproximada(conversion.undatedPairs ?? [])}
+        </p>
+        <div className="conversion-notice__foot">
+          {onIrATasasFx ? (
+            <button type="button" className="chip-button chip-button--warning" onClick={onIrATasasFx}>
+              Ver historial en Tasas FX
+            </button>
+          ) : (
+            <p className="notice__text">
+              Cargue las tasas con su fecha en la pantalla <strong>Tasas FX</strong> para fijar estos valores.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="notice notice--warning conversion-notice" role="status">
@@ -62,7 +97,22 @@ export function ConversionNotice({
  * varias columnas a la vez.
  */
 export function ConversionChip({ conversion }: { conversion: ConversionStatus | undefined }) {
-  if (!conversion?.incomplete) return null;
+  if (!conversion) return null;
+
+  // Mismo orden de gravedad que el aviso: primero lo que está mal, después lo
+  // que solo es inestable.
+  if (!conversion.incomplete) {
+    if (!conversion.approximateDates) return null;
+    return (
+      <span
+        className="state-chip state-chip--warning conversion-chip"
+        title={tituloValoracionAproximada(conversion.undatedPairs ?? [])}
+      >
+        <span aria-hidden="true">▲</span>
+        Tasa de hoy
+      </span>
+    );
+  }
 
   return (
     <span

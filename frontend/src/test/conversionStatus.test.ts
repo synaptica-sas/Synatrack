@@ -4,6 +4,8 @@ import {
   formatearParesFaltantes,
   textoConversionIncompleta,
   tituloConversionIncompleta,
+  textoValoracionAproximada,
+  tituloValoracionAproximada,
 } from "../utils/conversionStatus";
 
 describe("formatearPar", () => {
@@ -70,5 +72,33 @@ describe("textos del aviso", () => {
   it("el título corto también nombra los pares", () => {
     expect(tituloConversionIncompleta(["BRL->USD"])).toContain("de BRL a USD");
     expect(tituloConversionIncompleta([])).toContain("aproximada");
+  });
+});
+
+// ─── R-008 / R-012: valoración con la tasa de hoy ────────────────────────────
+
+describe("textoValoracionAproximada", () => {
+  it("nombra los pares y dice la consecuencia: el valor cambia cada día", () => {
+    const texto = textoValoracionAproximada(["COP->USD"]);
+    expect(texto).toContain("de COP a USD");
+    expect(texto).toContain("cambia cada día");
+    // No debe hablar de importes "sin convertir": ese es el aviso grave.
+    expect(texto).not.toContain("sin convertir");
+  });
+
+  it("sin pares sigue siendo una frase completa", () => {
+    expect(textoValoracionAproximada([])).toContain("tasa de cambio de hoy");
+  });
+});
+
+describe("tituloValoracionAproximada", () => {
+  it("es corto y menciona el par", () => {
+    expect(tituloValoracionAproximada(["COP->USD"])).toBe(
+      "Valorado con la tasa de hoy de COP a USD: falta tasa histórica para esa fecha.",
+    );
+  });
+
+  it("sin pares cae a un texto genérico", () => {
+    expect(tituloValoracionAproximada([])).toContain("falta tasa histórica");
   });
 });

@@ -374,6 +374,15 @@ export type ConversionStatus = {
   incomplete: boolean;
   /** Pares "FROM->TO" sin tasa. Se traducen a español en `utils/conversionStatus.ts`. */
   missingPairs: string[];
+  /**
+   * Aviso más leve que `incomplete` (R-008/R-012): el importe SÍ se convirtió,
+   * pero con la tasa de hoy porque no había ninguna tasa histórica anterior a
+   * su fecha. La cifra es utilizable; lo que no es estable es su valor, que se
+   * recalcula cada día. Opcional: un backend anterior no lo envía.
+   */
+  approximateDates?: boolean;
+  /** Pares "FROM->TO" valorados con la tasa de hoy por falta de histórico. */
+  undatedPairs?: string[];
 };
 
 export type StatsOverview = {

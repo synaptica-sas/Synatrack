@@ -6,7 +6,7 @@ import {
   getAdjustedForecastRevenue,
   calculateProfitability,
 } from "../financial.js";
-import { buildRateMap } from "../currency.js";
+import { buildRateBook } from "../currency.js";
 import { UMBRALES_SALUD_POR_DEFECTO } from "../healthThresholds.js";
 
 // ─── periodToDateRange ────────────────────────────────────────────────────────
@@ -55,7 +55,11 @@ describe("isInPeriod", () => {
 
 // ─── getAdjustedForecastCost ──────────────────────────────────────────────────
 
-const rateMap = buildRateMap([{ baseCode: "USD", quoteCode: "COP", rate: 4200 }]);
+// Sin histórico: el libro resuelve siempre a la tasa actual, que es
+// exactamente el comportamiento de antes. Los números no cambian.
+const rateBook = buildRateBook([{ baseCode: "USD", quoteCode: "COP", rate: 4200 }], []);
+const FECHA = new Date("2026-01-15T00:00:00Z");
+
 const baseCurrency = "USD";
 
 const consultant = { hourlyRate: 65, rateCurrency: "USD" };
@@ -63,42 +67,42 @@ const forecast = { hoursProjected: 120, hourlyRate: 65, sellRate: 100, currency:
 
 describe("getAdjustedForecastCost", () => {
   it("sin horas ejecutadas: costo = proyectado completo", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 0, rateMap, baseCurrency);
+    const result = getAdjustedForecastCost(forecast, consultant, 0, FECHA, rateBook, baseCurrency);
     expect(result).toBe(120 * 65); // 7800
   });
 
   it("con 40h aprobadas: costo = 80h restantes", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 40, rateMap, baseCurrency);
+    const result = getAdjustedForecastCost(forecast, consultant, 40, FECHA, rateBook, baseCurrency);
     expect(result).toBe(80 * 65); // 5200
   });
 
   it("si se ejecutaron más horas de las proyectadas: costo adicional es 0", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 150, rateMap, baseCurrency);
+    const result = getAdjustedForecastCost(forecast, consultant, 150, FECHA, rateBook, baseCurrency);
     expect(result).toBe(0);
   });
 
   it("exactamente las horas proyectadas ya ejecutadas: retorna 0", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 120, rateMap, baseCurrency);
+    const result = getAdjustedForecastCost(forecast, consultant, 120, FECHA, rateBook, baseCurrency);
     expect(result).toBe(0);
   });
 
   it("usa tarifa del consultor si forecast no tiene hourlyRate", () => {
     const forecastSinRate = { ...forecast, hourlyRate: null };
-    const result = getAdjustedForecastCost(forecastSinRate, consultant, 0, rateMap, baseCurrency);
+    const result = getAdjustedForecastCost(forecastSinRate, consultant, 0, FECHA, rateBook, baseCurrency);
     expect(result).toBe(120 * 65); // usa consultant.hourlyRate
   });
 
   it("retorna 0 si no hay tarifa ni en forecast ni en consultor", () => {
     const forecastSinRate = { ...forecast, hourlyRate: null };
     const consultantSinRate = { hourlyRate: null, rateCurrency: "USD" };
-    const result = getAdjustedForecastCost(forecastSinRate, consultantSinRate, 0, rateMap, baseCurrency);
+    const result = getAdjustedForecastCost(forecastSinRate, consultantSinRate, 0, FECHA, rateBook, baseCurrency);
     expect(result).toBe(0);
   });
 
   it("convierte desde moneda del forecast a baseCurrency", () => {
     const forecastCOP = { hoursProjected: 10, hourlyRate: 300000, sellRate: null, currency: "COP" };
     // 10h * 300000 COP/h = 3,000,000 COP = 3,000,000 / 4200 USD ≈ 714.28 USD
-    const result = getAdjustedForecastCost(forecastCOP, consultant, 0, rateMap, "USD");
+    const result = getAdjustedForecastCost(forecastCOP, consultant, 0, FECHA, rateBook, "USD");
     expect(result).toBeCloseTo(3_000_000 / 4200, 2);
   });
 });
@@ -107,18 +111,18 @@ describe("getAdjustedForecastCost", () => {
 
 describe("getAdjustedForecastRevenue", () => {
   it("sin horas ejecutadas: ingreso = proyectado completo", () => {
-    const result = getAdjustedForecastRevenue(forecast, 0, rateMap, baseCurrency);
+    const result = getAdjustedForecastRevenue(forecast, 0, FECHA, rateBook, baseCurrency);
     expect(result).toBe(120 * 100); // 12000
   });
 
   it("con 40h ejecutadas: ingreso = 80h restantes * sellRate", () => {
-    const result = getAdjustedForecastRevenue(forecast, 40, rateMap, baseCurrency);
+    const result = getAdjustedForecastRevenue(forecast, 40, FECHA, rateBook, baseCurrency);
     expect(result).toBe(80 * 100); // 8000
   });
 
   it("sin sellRate retorna 0", () => {
     const forecastSinSell = { ...forecast, sellRate: null };
-    const result = getAdjustedForecastRevenue(forecastSinSell, 0, rateMap, baseCurrency);
+    const result = getAdjustedForecastRevenue(forecastSinSell, 0, FECHA, rateBook, baseCurrency);
     expect(result).toBe(0);
   });
 });
@@ -131,11 +135,11 @@ describe("calculateProfitability", () => {
     budgetCurrency: "USD",
     sellPrice: 95000,
     sellCurrency: "USD",
-    revenueEntries: [{ amount: 40000, currency: "USD" }],
+    revenueEntries: [{ amount: 40000, currency: "USD", entryDate: FECHA }],
     approvedTimeEntries: [
       { hours: 6, workDate: new Date("2026-04-01"), status: "APPROVED" as const, hourlyRate: 65, rateCurrency: "USD", consultantId: "c1" },
     ],
-    expenses: [{ amount: 1200, currency: "USD" }],
+    expenses: [{ amount: 1200, currency: "USD", entryDate: FECHA }],
     forecasts: [
       {
         consultantId: "c1",
@@ -144,6 +148,7 @@ describe("calculateProfitability", () => {
       },
     ],
     fxConfigs: [],
+    valuationDate: FECHA,
     baseCurrency: "USD",
     healthThresholds: UMBRALES_SALUD_POR_DEFECTO,
   };
@@ -226,6 +231,7 @@ describe("calculateProfitability", () => {
       budget: 336_000_000, // 336M COP
       budgetCurrency: "COP",
       fxConfigs: [{ baseCode: "USD", quoteCode: "COP", rate: 4200 }],
+      valuationDate: FECHA,
     });
     // 336,000,000 / 4200 = 80,000 USD
     expect(result.budget).toBeCloseTo(80000, 0);
@@ -234,8 +240,9 @@ describe("calculateProfitability", () => {
   it("gasto en COP se convierte a USD en costo total", () => {
     const result = calculateProfitability({
       ...baseInput,
-      expenses: [{ amount: 4_200_000, currency: "COP" }],
+      expenses: [{ amount: 4_200_000, currency: "COP", entryDate: FECHA }],
       fxConfigs: [{ baseCode: "USD", quoteCode: "COP", rate: 4200 }],
+      valuationDate: FECHA,
     });
     // 4,200,000 COP / 4200 = 1000 USD
     expect(result.expensesActual).toBeCloseTo(1000, 0);

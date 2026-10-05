@@ -55,7 +55,14 @@ describe("DEP-32: las respuestas avisan cuando la conversión quedó incompleta"
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.conversion).toEqual({ incomplete: false, missingPairs: [] });
+    expect(res.json().data.conversion).toEqual({
+      incomplete: false,
+      missingPairs: [],
+      // R-008/R-012: el proyecto de esta prueba es íntegramente en la moneda
+      // base, así que no hay ninguna conversión que fechar.
+      approximateDates: false,
+      undatedPairs: [],
+    });
   });
 
   it("el detalle del proyecto marca `conversion.incomplete` si falta una tasa", async () => {

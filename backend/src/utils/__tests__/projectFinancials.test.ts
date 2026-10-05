@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildRateMap, createConversionLedger, missingRatePairs } from "../currency.js";
+import { buildRateBook, createConversionLedger, missingRatePairs } from "../currency.js";
 import {
   DEFAULT_BUDGET_ALERT_PCT,
   DEFAULT_MARGIN_CRITICAL_PCT,
@@ -21,7 +21,10 @@ import {
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../health.js";
 import { UMBRALES_SALUD_POR_DEFECTO } from "../healthThresholds.js";
 
-const rateMap = buildRateMap([{ baseCode: "USD", quoteCode: "COP", rate: 4000 }]);
+// Sin histórico: el libro resuelve siempre a la tasa actual, igual que antes.
+const rateBook = buildRateBook([{ baseCode: "USD", quoteCode: "COP", rate: 4000 }], []);
+const FECHA = new Date("2026-01-15T00:00:00Z");
+
 
 /** Proyecto de referencia: 100k de presupuesto, 50k facturados, 30k gastados. */
 const base: ProjectFinancialsInput = {
@@ -33,7 +36,7 @@ const base: ProjectFinancialsInput = {
   marginCriticalPct: null,
   budgetAlertPct: null,
   healthThresholds: UMBRALES_SALUD_POR_DEFECTO,
-  revenueEntries: [{ amount: 50_000, currency: "USD" }],
+  revenueEntries: [{ amount: 50_000, currency: "USD", entryDate: FECHA }],
   approvedTimeEntries: [
     {
       consultantId: "c1",
@@ -43,9 +46,10 @@ const base: ProjectFinancialsInput = {
       rateCurrency: "USD",
     },
   ],
-  expenses: [{ amount: 2_000, currency: "USD" }],
+  expenses: [{ amount: 2_000, currency: "USD", entryDate: FECHA }],
   forecasts: [],
-  rateMap,
+  rateBook,
+  valuationDate: FECHA,
   baseCurrency: "USD",
 };
 
@@ -156,7 +160,7 @@ describe("computeProjectFinancials — casos borde", () => {
   it("margen negativo: porcentaje negativo y veredicto crítico", () => {
     const f = computeProjectFinancials({
       ...base,
-      revenueEntries: [{ amount: 10_000, currency: "USD" }],
+      revenueEntries: [{ amount: 10_000, currency: "USD", entryDate: FECHA }],
     });
     expect(f.grossMarginActual).toBe(-20_000);
     expect(f.grossMarginActualPct).toBe(-200);
@@ -168,7 +172,7 @@ describe("computeProjectFinancials — casos borde", () => {
       ...base,
       marginWarningPct: null,
       marginCriticalPct: null,
-      revenueEntries: [{ amount: 31_000, currency: "USD" }], // margen ~3,2 %
+      revenueEntries: [{ amount: 31_000, currency: "USD", entryDate: FECHA }], // margen ~3,2 %
     });
     expect(f.marginWarningPct).toBe(DEFAULT_MARGIN_WARNING_PCT);
     expect(f.marginCriticalPct).toBe(DEFAULT_MARGIN_CRITICAL_PCT);
@@ -176,14 +180,14 @@ describe("computeProjectFinancials — casos borde", () => {
   });
 
   it("un crítico de 25 vuelve crítico lo que con 15 solo era advertencia", () => {
-    const input = { ...base, revenueEntries: [{ amount: 150_000, currency: "USD" }] };
+    const input = { ...base, revenueEntries: [{ amount: 150_000, currency: "USD", entryDate: FECHA }] };
     // 150 000 - 30 000 = 120 000 → 80 %: por encima de cualquiera de los dos.
     expect(
       computeProjectFinancials({ ...input, marginWarningPct: 40, marginCriticalPct: 25 }).marginLevel,
     ).toBe("ok");
 
     // Margen del 20 %: advertencia con crítico 15, crítico con crítico 25.
-    const veinte = { ...base, revenueEntries: [{ amount: 37_500, currency: "USD" }] };
+    const veinte = { ...base, revenueEntries: [{ amount: 37_500, currency: "USD", entryDate: FECHA }] };
     expect(computeProjectFinancials({ ...veinte, marginCriticalPct: 15 }).grossMarginActualPct).toBe(20);
     expect(computeProjectFinancials({ ...veinte, marginCriticalPct: 15 }).marginLevel).toBe("warning");
     expect(
@@ -194,21 +198,36 @@ describe("computeProjectFinancials — casos borde", () => {
   it("moneda sin tasa de conversión: usa el monto original como fallback", () => {
     const f = computeProjectFinancials({
       ...base,
-      expenses: [{ amount: 5_000, currency: "JPY" }], // no hay par JPY->USD
+      expenses: [{ amount: 5_000, currency: "JPY", entryDate: FECHA }], // no hay par JPY->USD
     });
     // Fallback documentado de convertAmountFallback: el monto queda sin convertir.
     expect(f.expensesActual).toBe(5_000);
     // DEP-32: y el resultado lo dice, en vez de parecer un total correcto.
-    expect(f.conversion).toEqual({ incomplete: true, missingPairs: ["JPY->USD"] });
+    expect(f.conversion).toEqual({
+      incomplete: true,
+      missingPairs: ["JPY->USD"],
+      // Sin par JPY->USD no hay ni tasa actual ni histórica: el fallo es duro,
+      // no una aproximación de fecha.
+      approximateDates: false,
+      undatedPairs: [],
+    });
   });
 
   it("moneda con tasa: convierte a la base", () => {
     const f = computeProjectFinancials({
       ...base,
-      expenses: [{ amount: 4_000_000, currency: "COP" }],
+      expenses: [{ amount: 4_000_000, currency: "COP", entryDate: FECHA }],
     });
     expect(f.expensesActual).toBeCloseTo(1_000, 6);
-    expect(f.conversion).toEqual({ incomplete: false, missingPairs: [] });
+    // R-008: este libro no tiene histórico, así que el gasto se valoró con la
+    // tasa ACTUAL. El importe es correcto, pero se revaluará cada día: por eso
+    // `approximateDates` lo denuncia aunque `incomplete` siga en false.
+    expect(f.conversion).toEqual({
+      incomplete: false,
+      missingPairs: [],
+      approximateDates: true,
+      undatedPairs: ["COP->USD"],
+    });
   });
 });
 
@@ -218,8 +237,8 @@ describe("computeProjectFinancials — marca de conversión incompleta", () => {
   it("todo convertible: conversion.incomplete es false", () => {
     const f = computeProjectFinancials({
       ...base,
-      expenses: [{ amount: 4_000_000, currency: "COP" }],
-      revenueEntries: [{ amount: 200_000_000, currency: "COP" }],
+      expenses: [{ amount: 4_000_000, currency: "COP", entryDate: FECHA }],
+      revenueEntries: [{ amount: 200_000_000, currency: "COP", entryDate: FECHA }],
     });
     expect(f.conversion.incomplete).toBe(false);
     expect(f.conversion.missingPairs).toEqual([]);
@@ -230,8 +249,8 @@ describe("computeProjectFinancials — marca de conversión incompleta", () => {
       ...base,
       // 2.000 USD (convertibles) + 5.000 JPY (sin par JPY->USD).
       expenses: [
-        { amount: 2_000, currency: "USD" },
-        { amount: 5_000, currency: "JPY" },
+        { amount: 2_000, currency: "USD", entryDate: FECHA },
+        { amount: 5_000, currency: "JPY", entryDate: FECHA },
       ],
     });
     // El número sigue saliendo (degradar, no caer)...
@@ -245,8 +264,8 @@ describe("computeProjectFinancials — marca de conversión incompleta", () => {
     const f = computeProjectFinancials({
       ...base,
       budgetCurrency: "BRL",
-      expenses: [{ amount: 5_000, currency: "JPY" }],
-      revenueEntries: [{ amount: 1_000, currency: "CLP" }],
+      expenses: [{ amount: 5_000, currency: "JPY", entryDate: FECHA }],
+      revenueEntries: [{ amount: 1_000, currency: "CLP", entryDate: FECHA }],
     });
     expect(f.conversion.missingPairs).toEqual(["BRL->USD", "CLP->USD", "JPY->USD"]);
   });
@@ -259,7 +278,7 @@ describe("computeProjectFinancials — marca de conversión incompleta", () => {
 
     const sucio = computeProjectFinancials({
       ...base,
-      expenses: [{ amount: 5_000, currency: "JPY" }],
+      expenses: [{ amount: 5_000, currency: "JPY", entryDate: FECHA }],
       ledger: consolidado,
     });
     expect(sucio.conversion.missingPairs).toEqual(["JPY->USD"]);
@@ -454,7 +473,7 @@ describe("computeProjectFinancials — alertLevel", () => {
   it("exceeded por encima del 100 % proyectado", () => {
     const f = computeProjectFinancials({
       ...sinIngreso,
-      expenses: [{ amount: 120_000, currency: "USD" }],
+      expenses: [{ amount: 120_000, currency: "USD", entryDate: FECHA }],
     });
     expect(f.alertLevel).toBe("exceeded");
   });
@@ -476,7 +495,7 @@ describe("consistencia tablero / portafolio / detalle", () => {
       ...base,
       marginWarningPct: 40,
       marginCriticalPct: 25,
-      revenueEntries: [{ amount: 37_500, currency: "USD" }],
+      revenueEntries: [{ amount: 37_500, currency: "USD", entryDate: FECHA }],
     };
     const f = computeProjectFinancials(input);
     expect(f.grossMarginActualPct).toBe(20);
@@ -521,6 +540,7 @@ describe("toFinancialsInput", () => {
       {
         budget: "100000.00",
         currency: "USD",
+        startDate: FECHA,
         sellPrice: null,
         sellCurrency: "USD",
         marginWarningPct: "40.00",
@@ -529,8 +549,8 @@ describe("toFinancialsInput", () => {
         // Tras la fusión de tablas, gastos e ingresos llegan en una sola relación
         // con discriminador `type`; la partición la hace `splitFinancialEntries`.
         financialEntries: [
-          { type: "REVENUE" as const, amount: "1000.00", currency: "USD" },
-          { type: "EXPENSE" as const, amount: "50.00", currency: "USD" },
+          { type: "REVENUE" as const, amount: "1000.00", currency: "USD", entryDate: FECHA },
+          { type: "EXPENSE" as const, amount: "50.00", currency: "USD", entryDate: FECHA },
         ],
         forecasts: [],
       },
@@ -542,9 +562,10 @@ describe("toFinancialsInput", () => {
           consultant: { hourlyRate: null, rateCurrency: "USD" },
         },
       ],
-      rateMap,
+      rateBook,
       "USD",
       UMBRALES_SALUD_POR_DEFECTO,
+      FECHA,
     );
 
     expect(input.budget).toBe(100_000);
@@ -553,8 +574,8 @@ describe("toFinancialsInput", () => {
     expect(input.marginCriticalPct).toBe(25);
     expect(input.approvedTimeEntries[0]!.hours).toBe(8);
     expect(input.approvedTimeEntries[0]!.hourlyRate).toBeNull();
-    expect(input.revenueEntries).toEqual([{ amount: 1000, currency: "USD" }]);
-    expect(input.expenses).toEqual([{ amount: 50, currency: "USD" }]);
+    expect(input.revenueEntries).toEqual([{ amount: 1000, currency: "USD", entryDate: FECHA }]);
+    expect(input.expenses).toEqual([{ amount: 50, currency: "USD", entryDate: FECHA }]);
   });
 
   it("un umbral = 0 en BD NO se convierte en el default (0 es un valor válido)", () => {
@@ -562,6 +583,7 @@ describe("toFinancialsInput", () => {
       {
         budget: "1000.00",
         currency: "USD",
+        startDate: FECHA,
         sellPrice: null,
         sellCurrency: "USD",
         marginWarningPct: "0.00",
@@ -571,9 +593,10 @@ describe("toFinancialsInput", () => {
         forecasts: [],
       },
       [],
-      rateMap,
+      rateBook,
       "USD",
       UMBRALES_SALUD_POR_DEFECTO,
+      FECHA,
     );
     expect(input.marginWarningPct).toBe(0);
     expect(input.marginCriticalPct).toBe(0);

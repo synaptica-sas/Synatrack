@@ -1,9 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 import {
-  buildRateMap,
+
   conversionStatus,
   createConversionLedger,
-  convertAmountFallback,
+  convertAmountFallbackOnDate,
   describeMissingRates,
   type ConversionStatus,
 } from "../../utils/currency.js";
@@ -13,6 +13,7 @@ import { computeProjectFinancials, resolveBudgetAlertPct, toFinancialsInput } fr
 import { clasificarIndiceEvm, clasificarUsoPresupuesto } from "../../utils/healthThresholds.js";
 import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 import { getLogger } from "../../infra/logger.js";
+import { cargarLibroDeTasas } from "../fx/rate-book.service.js";
 
 async function upsertAlert(
   prisma: PrismaClient,
@@ -85,9 +86,10 @@ function sufijoConversion(estado: ConversionStatus): string {
 }
 
 export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
-  const fxConfigs = await prisma.fxConfig.findMany();
-  const rateMap = buildRateMap(fxConfigs);
-  const baseCurrency = fxConfigs[0]?.baseCode ?? "USD";
+  // R-008/R-012: libro de tasas CON fecha, una sola carga para toda la pasada.
+  const { rateBook, baseCurrency } = await cargarLibroDeTasas(prisma);
+  // Un solo "ahora" para toda la pasada; las utilidades no leen el reloj.
+  const ahora = new Date();
   // Umbrales generales del semáforo (D-7). El motor de alertas los comparte con
   // el semáforo y con el Portafolio: una sola lectura para toda la pasada.
   const umbralesSalud = await cargarUmbralesSalud();
@@ -108,16 +110,26 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
     // Un libro por proyecto (DEP-32): la alerta habla de ESTE proyecto.
     const ledger = createConversionLedger();
 
-    const budget = convertAmountFallback(Number(project.budget), project.currency, baseCurrency, rateMap, ledger);
+    // Presupuesto a la fecha de contratación (R-033): una alerta no debe
+    // dispararse porque la tasa de hoy encogió el presupuesto de un contrato.
+    const budget = convertAmountFallbackOnDate(
+      Number(project.budget), project.currency, baseCurrency, project.startDate ?? ahora, rateBook, ledger,
+    );
     if (budget === 0) continue;
 
     const laborCost = project.timeEntries.reduce((s, e) => {
       const rate = Number(e.consultant.hourlyRate ?? 0);
-      return s + convertAmountFallback(Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, rateMap, ledger);
+      return (
+        s +
+        convertAmountFallbackOnDate(
+          Number(e.hours) * rate, e.consultant.rateCurrency, baseCurrency, e.workDate, rateBook, ledger,
+        )
+      );
     }, 0);
 
     const expensesCost = project.financialEntries.reduce(
-      (s, e) => s + convertAmountFallback(Number(e.amount), e.currency, baseCurrency, rateMap, ledger),
+      (s, e) =>
+        s + convertAmountFallbackOnDate(Number(e.amount), e.currency, baseCurrency, e.entryDate, rateBook, ledger),
       0,
     );
 
@@ -186,7 +198,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
   for (const project of projectsWithRevenue) {
     // Mismo cálculo unificado que /stats y el detalle del proyecto.
     const fin = computeProjectFinancials(
-      toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency, umbralesSalud),
+      toFinancialsInput(project, project.timeEntries, rateBook, baseCurrency, umbralesSalud, ahora),
     );
     const budget = fin.budget;
     const spent = fin.totalCostActual;
