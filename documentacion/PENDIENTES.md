@@ -756,7 +756,9 @@ Quedan **20 ítems reales, 34 puntos entre los tres** (≈11-12 cada uno).
 archivos que el trabajo de Persona 3 sobre tasas de cambio. Avisarse antes de tocarlos para no
 pisarse.
 
-### Persona 2 — Dashboard y Capacidad (11 puntos)
+### Juan Espinosa — Dashboard y Capacidad (11 puntos)
+
+> **Tomado por Juan Espinosa el 05/10/2026.**
 
 | ID | Qué hay que hacer | Tamaño |
 |---|---|---|
