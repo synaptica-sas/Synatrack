@@ -33,6 +33,7 @@ export type Permission =
   | "estimations:write"
   | "estimations:read"
   | "finance:categories"
+  | "health:thresholds"
   | "activities:manage";
 
 const allPermissions: Permission[] = [
@@ -78,6 +79,11 @@ const allPermissions: Permission[] = [
   // Solo ADMIN: el catálogo de categorías de gasto e ingreso (D-4) es
   // configuración general, del mismo tipo que la jornada o los recargos.
   "finance:categories",
+  // Solo ADMIN: los umbrales de CPI, SPI y uso de presupuesto (D-7). Mover uno
+  // repinta de golpe el semáforo de todo el portafolio, así que va con el mismo
+  // criterio que `capacity:config` y `finance:categories`. Leerlos no requiere
+  // permiso: las pantallas los necesitan para explicar el color que pintan.
+  "health:thresholds",
 ];
 
 export const rolePermissions: Record<AppRole, Permission[]> = {

@@ -12,6 +12,7 @@ import {
   marginThresholdsAreCoherent,
   splitFinancialEntries,
 } from "../../utils/financial.js";
+import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 
 /**
  * Correo del Project Manager del proyecto (DEP-37).
@@ -50,9 +51,13 @@ const projectManagerEmailSchema = z
  *
  * Los campos se tratan distinto a propósito, porque el esquema de datos los
  * declara distinto: los dos de margen son `Decimal?` (nulables), así que una
- * cadena vacía los desasigna y vuelven a null; `budgetAlertPct` es
- * `Decimal @default(90)` (no nulable), así que una cadena vacía significa
- * "no tocar" y se deja que mande el valor que ya tuviera la fila.
+ * cadena vacía los desasigna y vuelven a null.
+ *
+ * DESDE D-7 `budgetAlertPct` también es nulable y se comporta igual que los de
+ * margen: vaciar el campo significa "este proyecto no tiene umbral propio,
+ * hereda el general de `HealthThresholdConfig`". Antes era
+ * `Decimal @default(90)` NOT NULL, con lo que ninguna fila podía heredar nada
+ * y el valor general de la empresa no habría llegado a aplicarse nunca.
  */
 const umbralBase = z.coerce
   .number()
@@ -64,10 +69,6 @@ const umbralNulableSchema = z
   .nullish()
   .transform((valor) => (valor === "" ? null : valor));
 
-const umbralNoNulableSchema = z
-  .union([z.literal(""), umbralBase])
-  .nullish()
-  .transform((valor) => (valor === "" || valor === null ? undefined : valor));
 
 const projectPayloadBaseSchema = z.object({
   name: z.string().trim().min(1),
@@ -89,7 +90,7 @@ const projectPayloadBaseSchema = z.object({
   projectManagerEmail: projectManagerEmailSchema,
   marginWarningPct: umbralNulableSchema,
   marginCriticalPct: umbralNulableSchema,
-  budgetAlertPct: umbralNoNulableSchema,
+  budgetAlertPct: umbralNulableSchema,
 });
 
 /**
@@ -353,6 +354,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         marginWarningPct: project.marginWarningPct != null ? Number(project.marginWarningPct) : null,
         marginCriticalPct: project.marginCriticalPct != null ? Number(project.marginCriticalPct) : null,
         budgetAlertPct: project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
+        healthThresholds: await cargarUmbralesSalud(),
         revenueEntries,
         approvedTimeEntries: project.timeEntries.map((e) => ({
           consultantId: e.consultantId,

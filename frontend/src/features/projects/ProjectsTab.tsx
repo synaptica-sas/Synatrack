@@ -13,11 +13,17 @@ import {
   type ProjectType,
   type HealthStatus,
   type StatsProjectRowEnriched,
+  type NivelIndicador,
 } from "../../services/api";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SectionLayout } from "../../components/SectionLayout";
 import { downloadCsv } from "../../utils/csv";
-import { PRESENTACION_SALUD, textoCriteriosSalud } from "../../utils/projectHealth";
+import {
+  PRESENTACION_NIVEL,
+  PRESENTACION_SALUD,
+  textoCriteriosPresupuesto,
+  textoCriteriosSalud,
+} from "../../utils/projectHealth";
 import { ValidationErrorBox } from "../../components/ValidationErrorBox";
 import { isValidationError } from "../../utils/validation";
 import { CurrencyInput } from "../../components/CurrencyInput";
@@ -43,13 +49,35 @@ function RagBadge({
   );
 }
 
-function BudgetBar({ pct }: { pct: number }) {
-  const capped = Math.min(pct, 100);
-  const tono = pct > 100 ? "danger" : pct > 90 ? "warning" : "success";
+/**
+ * Barra compacta de uso de presupuesto.
+ *
+ * ANTES repetía los cortes `> 100` / `> 90` (cuarta copia del mismo criterio).
+ * Desde D-7 el nivel lo decide el servidor con la configuración vigente.
+ */
+const CLASE_MEDIDOR: Record<Exclude<NivelIndicador, "no-medible"> | "neutral", string> = {
+  ok: "success",
+  warning: "warning",
+  critical: "danger",
+  neutral: "neutral",
+};
+
+function BudgetBar({
+  pct,
+  nivel,
+}: {
+  pct: number;
+  /** "neutral" para un progreso que no se mide contra ningún umbral (el avance). */
+  nivel: Exclude<NivelIndicador, "no-medible"> | "neutral";
+}) {
+  const capped = Math.min(Math.max(pct, 0), 100);
   return (
     <div className="meter__track proy-bar">
       {/* Ancho calculado: el único uso legítimo de un estilo en línea. */}
-      <div className={`meter__fill meter__fill--${tono}`} style={{ width: `${capped}%` }} />
+      <div
+        className={`meter__fill meter__fill--${CLASE_MEDIDOR[nivel]}`}
+        style={{ width: `${capped}%` }}
+      />
     </div>
   );
 }
@@ -496,15 +524,33 @@ export function ProjectsTab({
                           <td>
                             {stats ? (
                               <div className="proy-bar-cell">
-                                <BudgetBar pct={stats.usedBudgetPercent} />
-                                <span className="proy-bar-pct">{stats.usedBudgetPercent.toFixed(1)}%</span>
+                                <BudgetBar
+                                  pct={stats.usedBudgetPercent}
+                                  nivel={stats.budgetUseLevel ?? "ok"}
+                                />
+                                <span className="proy-bar-pct">
+                                  {stats.usedBudgetPercent.toFixed(1)}%
+                                </span>
+                                {/* El color no viaja solo: el estado va en palabras. */}
+                                {stats.budgetUseLevel && stats.budgetUseLevel !== "ok" && (
+                                  <span
+                                    className={`state-chip state-chip--${PRESENTACION_NIVEL[stats.budgetUseLevel].modificador}`}
+                                    title={textoCriteriosPresupuesto(
+                                      stats.budgetAlertPct,
+                                      stats.budgetCriticalPct,
+                                    )}
+                                  >
+                                    {PRESENTACION_NIVEL[stats.budgetUseLevel].etiqueta}
+                                  </span>
+                                )}
                               </div>
                             ) : "—"}
                           </td>
                           <td>
                             {stats ? (
                               <div className="proy-bar-cell">
-                                <BudgetBar pct={stats.completionPct} />
+                                {/* El avance no se mide contra el umbral del presupuesto. */}
+                                <BudgetBar pct={stats.completionPct} nivel="neutral" />
                                 <span className="proy-bar-pct">{stats.completionPct.toFixed(0)}%</span>
                               </div>
                             ) : "—"}

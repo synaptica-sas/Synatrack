@@ -14,6 +14,11 @@ import {
   type FxRateRecord,
   buildRateMap,
 } from "./currency.js";
+import {
+  clasificarUsoPresupuesto,
+  type NivelIndicador,
+  type UmbralesSalud,
+} from "./healthThresholds.js";
 
 export type { FxRateRecord, ConversionLedger, ConversionStatus };
 
@@ -139,8 +144,15 @@ export const DEFAULT_MARGIN_WARNING_PCT = 30;
 export const DEFAULT_MARGIN_CRITICAL_PCT = 15;
 
 /**
- * % de consumo de presupuesto a partir del cual se alerta cuando el proyecto no
- * define `budgetAlertPct`. Coincide con el `@default(90)` del schema Prisma.
+ * % de consumo de presupuesto a partir del cual se alerta cuando NO hay ni
+ * umbral del proyecto ni fila general en `HealthThresholdConfig`.
+ *
+ * Desde D-7 es el **tercer** escalón, no el primero: la precedencia es
+ * `Project.budgetAlertPct` → `HealthThresholdConfig.budgetWarningPct` → esta
+ * constante. Si este valor se usa es porque la base está sin sembrar; se
+ * conserva con nombre para que ese caso sea visible y no un 90 escondido.
+ *
+ * Coincide a propósito con `UMBRALES_SALUD_POR_DEFECTO.budgetWarningPct`.
  */
 export const DEFAULT_BUDGET_ALERT_PCT = 90;
 
@@ -221,11 +233,24 @@ export function marginThresholdsAreCoherent(
   return critical <= warning;
 }
 
-/** Resuelve el umbral de alerta de presupuesto efectivo de un proyecto. */
-export function resolveBudgetAlertPct(value: number | null | undefined): number {
-  return value === null || value === undefined || !Number.isFinite(value)
-    ? DEFAULT_BUDGET_ALERT_PCT
-    : value;
+/**
+ * Resuelve el umbral de **aviso** de presupuesto efectivo de un proyecto, con
+ * la precedencia de D-7:
+ *
+ * 1. `Project.budgetAlertPct`, si el proyecto lo tiene puesto.
+ * 2. El `budgetWarningPct` general de `HealthThresholdConfig`.
+ * 3. `DEFAULT_BUDGET_ALERT_PCT`, solo si no se pasan umbrales generales.
+ *
+ * Es la misma forma de convivir que ya tienen los umbrales de margen (D-2): lo
+ * del proyecto manda sobre lo de la empresa. El nivel **crítico** no entra aquí
+ * porque no se configura por proyecto.
+ */
+export function resolveBudgetAlertPct(
+  value: number | null | undefined,
+  generales?: Pick<UmbralesSalud, "budgetWarningPct">,
+): number {
+  if (value !== null && value !== undefined && Number.isFinite(value)) return value;
+  return generales?.budgetWarningPct ?? DEFAULT_BUDGET_ALERT_PCT;
 }
 
 // ─── Cálculo financiero unificado por proyecto ───────────────────────────────
@@ -259,8 +284,18 @@ export type ProjectFinancialsInput = {
   marginWarningPct: number | null;
   /** `project.marginCriticalPct` tal cual viene de BD (puede ser null). */
   marginCriticalPct: number | null;
-  /** `project.budgetAlertPct` tal cual viene de BD (puede ser null). */
+  /**
+   * `project.budgetAlertPct` tal cual viene de BD. `null` = el proyecto no
+   * define umbral propio y hereda el general de `HealthThresholdConfig` (D-7).
+   */
   budgetAlertPct: number | null;
+  /**
+   * Umbrales generales ya resueltos por `resolverUmbralesSalud` (D-7).
+   * **Obligatorio a propósito**: el corte de "presupuesto excedido" estaba
+   * escrito como un `> 100` dentro de esta función. Exigirlo en la firma es lo
+   * que impide que un llamador nuevo vuelva a calcular sin la configuración.
+   */
+  healthThresholds: UmbralesSalud;
   revenueEntries: RevenueEntryInput[];
   /** SOLO entradas ya aprobadas. El filtrado por estado es del llamador. */
   approvedTimeEntries: ApprovedTimeEntryInput[];
@@ -313,7 +348,21 @@ export type ProjectFinancialsResult = {
   marginCriticalPct: number;
   /** Veredicto de margen de D-2: "ok" | "warning" | "critical". */
   marginLevel: MarginLevel;
+  /** Umbral de aviso de presupuesto efectivo: el del proyecto, o el general. */
   budgetAlertPct: number;
+  /** Umbral general a partir del cual se considera excedido (no es por proyecto). */
+  budgetCriticalPct: number;
+  /**
+   * Nivel del gasto **real** contra el presupuesto (`budgetConsumedPct`). Es lo
+   * que pinta la barra de "Uso presupuesto" del Portafolio, que antes se
+   * coloreaba con un 90/100 escrito en el `.tsx`.
+   */
+  budgetUseLevel: Exclude<NivelIndicador, "no-medible">;
+  /**
+   * Nivel del gasto **proyectado** (real + forecast) contra el presupuesto.
+   * Es el que alimenta el semáforo de salud. Mismo criterio y misma función que
+   * `budgetUseLevel`, pero sobre otra métrica: por eso se devuelven los dos.
+   */
   alertLevel: "ok" | "warning" | "exceeded";
 
   /**
@@ -349,7 +398,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   } = input;
 
   const marginThresholds = resolveMarginThresholds(input.marginWarningPct, input.marginCriticalPct);
-  const budgetAlertPct = resolveBudgetAlertPct(input.budgetAlertPct);
+  const budgetAlertPct = resolveBudgetAlertPct(input.budgetAlertPct, input.healthThresholds);
 
   // Libro PROPIO (DEP-32): si se usara directamente el del llamador, el
   // `conversion` de este proyecto arrastraría los faltantes de los anteriores.
@@ -437,8 +486,17 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     revenueProjected > 0 ? round2((grossMarginProjected / revenueProjected) * 100) : null;
 
   // Alerta de desvío presupuestal, sobre el TOTAL PROYECTADO (real + forecast).
+  // ANTES el corte de "excedido" era un `> 100` escrito aquí (D-7); ahora sale
+  // de la configuración general y se aplica con la misma función que clasifica
+  // el gasto real, para que las dos barras no puedan usar criterios distintos.
+  const umbralesPresupuesto = {
+    budgetWarningPct: budgetAlertPct,
+    budgetCriticalPct: input.healthThresholds.budgetCriticalPct,
+  };
+  const nivelProyectado = clasificarUsoPresupuesto(projectedPct, umbralesPresupuesto);
   const alertLevel: "ok" | "warning" | "exceeded" =
-    projectedPct > 100 ? "exceeded" : projectedPct >= budgetAlertPct ? "warning" : "ok";
+    nivelProyectado === "critical" ? "exceeded" : nivelProyectado;
+  const budgetUseLevel = clasificarUsoPresupuesto(budgetConsumedPct, umbralesPresupuesto);
 
   // Se propagan los faltantes al libro del llamador (totales agregados).
   if (input.ledger) mergeConversionLedger(input.ledger, ledger);
@@ -468,6 +526,8 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     marginCriticalPct: marginThresholds.criticalPct,
     marginLevel: classifyMargin(grossMarginActualPct, marginThresholds),
     budgetAlertPct,
+    budgetCriticalPct: input.healthThresholds.budgetCriticalPct,
+    budgetUseLevel,
     alertLevel,
     conversion: conversionStatus(ledger),
   };
@@ -542,6 +602,11 @@ export function toFinancialsInput(
   }>,
   rateMap: Map<string, number>,
   baseCurrency: string,
+  /**
+   * Umbrales generales de D-7. Obligatorio: es el parámetro que obliga a cada
+   * ruta a traer la configuración de la base en vez de heredar un literal.
+   */
+  healthThresholds: UmbralesSalud,
 ): ProjectFinancialsInput {
   const split = splitFinancialEntries(project.financialEntries);
   return {
@@ -552,6 +617,7 @@ export function toFinancialsInput(
     marginWarningPct: project.marginWarningPct != null ? Number(project.marginWarningPct) : null,
     marginCriticalPct: project.marginCriticalPct != null ? Number(project.marginCriticalPct) : null,
     budgetAlertPct: project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
+    healthThresholds,
     revenueEntries: split.revenueEntries,
     approvedTimeEntries: approvedEntries.map((e) => ({
       consultantId: e.consultantId,
@@ -627,8 +693,10 @@ export type ProfitabilityInput = {
   marginWarningPct?: number | null;
   /** `project.marginCriticalPct` de BD; si se omite se usa DEFAULT_MARGIN_CRITICAL_PCT. */
   marginCriticalPct?: number | null;
-  /** `project.budgetAlertPct` de BD; si se omite se usa DEFAULT_BUDGET_ALERT_PCT. */
+  /** `project.budgetAlertPct` de BD; si se omite se hereda el umbral general. */
   budgetAlertPct?: number | null;
+  /** Umbrales generales de D-7, obligatorios igual que en el cálculo unificado. */
+  healthThresholds: UmbralesSalud;
   revenueEntries: RevenueEntryInput[];
   approvedTimeEntries: Array<TimeEntryInput & { consultantId: string; hourlyRate: number | null; rateCurrency: string }>;
   expenses: ExpenseInput[];
@@ -650,6 +718,7 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     marginWarningPct: input.marginWarningPct ?? null,
     marginCriticalPct: input.marginCriticalPct ?? null,
     budgetAlertPct: input.budgetAlertPct ?? null,
+    healthThresholds: input.healthThresholds,
     revenueEntries: input.revenueEntries,
     approvedTimeEntries: input.approvedTimeEntries,
     expenses: input.expenses,

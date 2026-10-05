@@ -15,6 +15,8 @@ import {
 import { computeEVM } from "../../utils/evm.js";
 import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
+import { clasificarIndiceEvm } from "../../utils/healthThresholds.js";
+import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const idSchema = z.object({ id: z.string().min(1) });
@@ -55,6 +57,8 @@ export async function projectDetailRoutes(app: FastifyInstance) {
 
       // Un solo "ahora" por petición; las utilidades no leen el reloj.
       const now = new Date();
+      // Umbrales generales del semáforo (D-7).
+      const umbralesSalud = await cargarUmbralesSalud();
 
       // Cálculo financiero unificado (utils/financial.ts): exactamente la misma
       // fórmula que /api/stats/overview y /api/stats/portfolio.
@@ -62,7 +66,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       // calculaba `alertLevel` solo sobre el gasto real, por lo que un proyecto
       // con desvío proyectado salía "ok" aquí y "warning"/"exceeded" allá.
       const fin = computeProjectFinancials(
-        toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency),
+        toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency, umbralesSalud),
       );
 
       // DEP-32: un total que no se pudo convertir del todo deja rastro en el log
@@ -113,6 +117,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
         cpi: evm.cpi,
         spi: evm.spi,
         utilizationPct: 0,
+        thresholds: umbralesSalud,
       });
 
       // Auto-update healthStatus if it changed
@@ -152,6 +157,12 @@ export async function projectDetailRoutes(app: FastifyInstance) {
             usedBudgetPercent: usedBudgetPct,
             projectedPct: fin.projectedPct,
             projectedTotal: fin.totalCostProjected,
+            // Veredictos de D-7, con los mismos umbrales que el semáforo.
+            budgetUseLevel: fin.budgetUseLevel,
+            budgetAlertPct: fin.budgetAlertPct,
+            budgetCriticalPct: fin.budgetCriticalPct,
+            cpiLevel: clasificarIndiceEvm(evm.cpi, umbralesSalud.cpiWarning, umbralesSalud.cpiCritical),
+            spiLevel: clasificarIndiceEvm(evm.spi, umbralesSalud.spiWarning, umbralesSalud.spiCritical),
             alertLevel,
             contractValue: fin.contractValue,
             revenueRecognized,

@@ -14,6 +14,8 @@ import {
 import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
 import { computeEVM } from "../../utils/evm.js";
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
+import { clasificarIndiceEvm } from "../../utils/healthThresholds.js";
+import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 
 const statsQuerySchema = z
   .object({
@@ -53,6 +55,10 @@ export async function statsRoutes(app: FastifyInstance) {
       const ledgerPeticion = createConversionLedger();
       // Un solo "ahora" por petición; las utilidades no leen el reloj.
       const now = new Date();
+      // Umbrales generales del semáforo (D-7): se leen UNA vez por petición y
+      // los usan tanto `computeHealthStatus` como los veredictos por fila, que
+      // es lo que impide que la celda y el semáforo vuelvan a divergir.
+      const umbralesSalud = await cargarUmbralesSalud();
 
       const projects = await prisma.project.findMany({
         where: {
@@ -92,7 +98,7 @@ export async function statsRoutes(app: FastifyInstance) {
         // Cálculo financiero unificado (utils/financial.ts) — misma fórmula que
         // /portfolio, el detalle del proyecto y el motor de alertas.
         const fin = computeProjectFinancials({
-          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
+          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency, umbralesSalud),
           ledger: ledgerPeticion,
         });
 
@@ -127,6 +133,7 @@ export async function statsRoutes(app: FastifyInstance) {
           spi: evm?.spi ?? null,
           cpi: evm?.cpi ?? null,
           utilizationPct: 0,
+          thresholds: umbralesSalud,
         });
 
         return {
@@ -160,6 +167,14 @@ export async function statsRoutes(app: FastifyInstance) {
           marginWarningPct: fin.marginWarningPct,
           marginCriticalPct: fin.marginCriticalPct,
           marginLevel: fin.marginLevel,
+          // Veredictos de D-7, calculados en el servidor con los MISMOS
+          // umbrales que el semáforo de esta fila. El cliente los pinta, no los
+          // recalcula: por eso ya no puede contradecir al semáforo.
+          cpiLevel: clasificarIndiceEvm(evm?.cpi ?? null, umbralesSalud.cpiWarning, umbralesSalud.cpiCritical),
+          spiLevel: clasificarIndiceEvm(evm?.spi ?? null, umbralesSalud.spiWarning, umbralesSalud.spiCritical),
+          budgetUseLevel: fin.budgetUseLevel,
+          budgetAlertPct: fin.budgetAlertPct,
+          budgetCriticalPct: fin.budgetCriticalPct,
           // Horas
           totalHours,
           approvedHours: fin.approvedHours,
@@ -268,6 +283,10 @@ export async function statsRoutes(app: FastifyInstance) {
       const ledgerPeticion = createConversionLedger();
       // Un solo "ahora" por petición; las utilidades no leen el reloj.
       const now = new Date();
+      // Umbrales generales del semáforo (D-7): se leen UNA vez por petición y
+      // los usan tanto `computeHealthStatus` como los veredictos por fila, que
+      // es lo que impide que la celda y el semáforo vuelvan a divergir.
+      const umbralesSalud = await cargarUmbralesSalud();
 
       const projects = await prisma.project.findMany({
         where: {
@@ -298,7 +317,7 @@ export async function statsRoutes(app: FastifyInstance) {
         // sin descontar lo ya aprobado, ignorando `forecast.hourlyRate` y
         // convirtiendo desde la moneda del consultor en vez de la del forecast.
         const fin = computeProjectFinancials({
-          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency),
+          ...toFinancialsInput(project, approvedEntries, rateMap, baseCurrency, umbralesSalud),
           ledger: ledgerPeticion,
         });
 
@@ -339,6 +358,7 @@ export async function statsRoutes(app: FastifyInstance) {
           spi: evm?.spi ?? null,
           cpi: evm?.cpi ?? null,
           utilizationPct: 0,
+          thresholds: umbralesSalud,
         });
 
         return {
@@ -364,6 +384,12 @@ export async function statsRoutes(app: FastifyInstance) {
           marginWarningPct: fin.marginWarningPct,
           marginCriticalPct: fin.marginCriticalPct,
           marginLevel: fin.marginLevel,
+          // Veredictos de D-7 (ver el comentario equivalente en /overview).
+          cpiLevel: clasificarIndiceEvm(evm?.cpi ?? null, umbralesSalud.cpiWarning, umbralesSalud.cpiCritical),
+          spiLevel: clasificarIndiceEvm(evm?.spi ?? null, umbralesSalud.spiWarning, umbralesSalud.spiCritical),
+          budgetUseLevel: fin.budgetUseLevel,
+          budgetAlertPct: fin.budgetAlertPct,
+          budgetCriticalPct: fin.budgetCriticalPct,
           alertLevel,
           evm,
           // Counts for dashboard badges
@@ -410,6 +436,9 @@ export async function statsRoutes(app: FastifyInstance) {
       return {
         data: {
           baseCurrency,
+          // Umbrales con que se calculó TODO lo de arriba, para que la pantalla
+          // pueda explicarlos en el tooltip sin inventárselos (D-7).
+          thresholds: umbralesSalud,
           projects: portfolioProjects,
           summary,
           conversion: conversionStatus(ledgerPeticion),

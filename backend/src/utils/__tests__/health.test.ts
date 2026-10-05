@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeHealthStatus, type HealthInput } from "../health.js";
+import { UMBRALES_SALUD_POR_DEFECTO } from "../healthThresholds.js";
 
 const baseInput: HealthInput = {
   alertLevel: "ok",
@@ -13,6 +14,7 @@ const baseInput: HealthInput = {
   spi: 1.0,
   cpi: 1.0,
   utilizationPct: 75,
+  thresholds: UMBRALES_SALUD_POR_DEFECTO,
 };
 
 describe("computeHealthStatus", () => {

@@ -113,6 +113,25 @@ async function main() {
     });
   }
 
+  // Umbrales del semáforo de salud (D-7). Una sola fila general con los
+  // valores que confirmó dirección: CPI y SPI crítico 0,75 y advertencia 0,90,
+  // presupuesto 90 % de aviso y 100 % de excedido. La migración ya la siembra;
+  // esto es para que una base recién creada quede igual sin depender de ella.
+  // `update: {}` para no pisar lo que un administrador haya ajustado después.
+  await prisma.healthThresholdConfig.upsert({
+    where: { scope: "GENERAL" },
+    update: {},
+    create: {
+      scope: "GENERAL",
+      cpiWarning: 0.9,
+      cpiCritical: 0.75,
+      spiWarning: 0.9,
+      spiCritical: 0.75,
+      budgetWarningPct: 90,
+      budgetCriticalPct: 100,
+    },
+  });
+
   console.log("Database initialized successfully with roles and admin user.");
 }
 

@@ -1,7 +1,15 @@
 import { useState, useMemo } from "react";
-import { type HealthStatus } from "../../services/api";
+import { type HealthStatus, type NivelIndicador, type UmbralesSalud } from "../../services/api";
 import { usePortfolio } from "../../hooks/usePortfolio";
-import { textoCriteriosSalud, presentacionMargen, PRESENTACION_SALUD } from "../../utils/projectHealth";
+import {
+  textoCriteriosSalud,
+  textoCriteriosIndice,
+  textoCriteriosPresupuesto,
+  formatIndice,
+  presentacionMargen,
+  PRESENTACION_NIVEL,
+  PRESENTACION_SALUD,
+} from "../../utils/projectHealth";
 import { PROJECT_STATUS_LABELS, label } from "../../utils/statusLabels";
 import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
@@ -30,10 +38,13 @@ function RagBadge({
   status,
   marginWarningPct,
   marginCriticalPct,
+  umbrales,
 }: {
   status: HealthStatus;
   marginWarningPct?: number | null;
   marginCriticalPct?: number | null;
+  /** Umbrales de CPI/SPI con que el servidor decidió este semáforo (D-7). */
+  umbrales?: UmbralesSalud | null;
 }) {
   const p = PRESENTACION_SALUD[status] ?? PRESENTACION_SALUD.GREEN;
   return (
@@ -43,7 +54,7 @@ function RagBadge({
     // información y se lee como una viñeta de lista.
     <span
       className={`status-badge status-badge--${p.modificador}`}
-      title={textoCriteriosSalud(marginWarningPct, marginCriticalPct)}
+      title={textoCriteriosSalud(marginWarningPct, marginCriticalPct, umbrales)}
     >
       {p.etiqueta}
     </span>
@@ -117,18 +128,90 @@ function HealthSummaryBar({ green, yellow, red, total }: { green: number; yellow
   );
 }
 
-/** Medidor de porcentaje. El número siempre visible: el color solo refuerza. */
-function BudgetBar({ pct, etiqueta }: { pct: number; etiqueta: string }) {
-  const capped = Math.min(pct, 100);
-  const mod = pct > 100 ? "danger" : pct > 90 ? "warning" : "success";
+/**
+ * Medidor de porcentaje. El número siempre visible: el color solo refuerza.
+ *
+ * ANTES el tono salía de un `pct > 100 ? danger : pct > 90 ? warning` escrito
+ * aquí (D-7), que no era el criterio con que el servidor decidía el semáforo de
+ * la misma fila. Ahora el nivel **llega clasificado por el servidor** y esta
+ * función solo lo traduce a clase.
+ *
+ * `nivel="neutral"` es para los medidores que NO miden un umbral de negocio,
+ * como el avance del proyecto: estar al 95 % de avance es una buena noticia, y
+ * pintarlo de ámbar con el criterio del presupuesto era sencillamente erróneo.
+ */
+const CLASE_MEDIDOR: Record<Exclude<NivelIndicador, "no-medible"> | "neutral", string> = {
+  ok: "success",
+  warning: "warning",
+  critical: "danger",
+  neutral: "neutral",
+};
+
+function BudgetBar({
+  pct,
+  etiqueta,
+  nivel,
+  titulo,
+}: {
+  pct: number;
+  etiqueta: string;
+  nivel: Exclude<NivelIndicador, "no-medible"> | "neutral";
+  titulo?: string;
+}) {
+  const capped = Math.min(Math.max(pct, 0), 100);
+  // Un medidor "neutral" no tiene veredicto que anunciar: es solo un progreso.
+  const presentacion = nivel === "neutral" || nivel === "ok" ? null : PRESENTACION_NIVEL[nivel];
   return (
-    <div className="meter">
+    <div className="meter" title={titulo}>
       <div className="meter__track">
-        <div className={`meter__fill meter__fill--${mod}`} style={{ width: `${capped}%` }} />
+        <div
+          className={`meter__fill meter__fill--${CLASE_MEDIDOR[nivel]}`}
+          style={{ width: `${capped}%` }}
+        />
       </div>
       <span className="meter__value">{pct.toFixed(0)}%</span>
-      <span className="sr-only">{`${etiqueta}: ${pct.toFixed(0)}%`}</span>
+      {/* El color no puede ser el único portador: el estado va en palabras. */}
+      {presentacion && (
+        <span className={`state-chip state-chip--${presentacion.modificador}`}>
+          {presentacion.etiqueta}
+        </span>
+      )}
+      <span className="sr-only">
+        {`${etiqueta}: ${pct.toFixed(0)}%${presentacion ? `, ${presentacion.etiqueta}` : ""}`}
+      </span>
     </div>
+  );
+}
+
+/**
+ * Celda de un índice EVM. El veredicto NO se calcula aquí: llega del servidor.
+ *
+ * Aquí vivía `toneIndiceEvm`, con sus propios cortes (`< 0,85` rojo, `< 1,00`
+ * ámbar) que contradecían al semáforo de su propia fila (`< 0,75` / `< 0,90`).
+ * Se eliminó por completo: lo único que queda es traducir el nivel que envía el
+ * API a una clase y a una etiqueta en palabras.
+ */
+function CeldaIndiceEvm({
+  nombre,
+  valor,
+  nivel,
+  warning,
+  critical,
+}: {
+  nombre: "CPI" | "SPI";
+  valor: number | null | undefined;
+  nivel: NivelIndicador;
+  warning?: number | null;
+  critical?: number | null;
+}) {
+  const p = PRESENTACION_NIVEL[nivel];
+  return (
+    <span className="margen-celda" title={textoCriteriosIndice(nombre, nivel, warning, critical)}>
+      <span className={p.tono}>{valor != null ? formatIndice(valor) : "—"}</span>
+      {nivel !== "ok" && nivel !== "no-medible" && (
+        <span className={`state-chip state-chip--${p.modificador}`}>{p.etiqueta}</span>
+      )}
+    </span>
   );
 }
 
@@ -160,14 +243,6 @@ function PortfolioSortTh({
   );
 }
 
-/** Tono de CPI/SPI con los mismos cortes que tenía la pantalla. */
-function toneIndiceEvm(valor: number | null | undefined): Tone {
-  if (valor == null) return "muted";
-  if (valor < 0.85) return "danger";
-  if (valor < 1) return "warning";
-  return "success";
-}
-
 export function PortfolioTab({
   onOpenProject,
   onIrATasasFx,
@@ -186,6 +261,10 @@ export function PortfolioTab({
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const projects = useMemo(() => portfolio?.projects ?? [], [portfolio]);
+  // Umbrales con que el servidor clasifico TODO lo de esta respuesta (D-7).
+  // Solo se usan para EXPLICAR el color en los tooltips; el veredicto ya viene
+  // decidido en cada fila, asi que esta pantalla no vuelve a clasificar nada.
+  const umbrales = portfolio?.thresholds ?? null;
 
   const companies = useMemo(() => {
     const unique = new Set(projects.map((p) => p.company).filter(Boolean));
@@ -464,6 +543,7 @@ export function PortfolioTab({
                     status={p.healthStatus}
                     marginWarningPct={p.marginWarningPct}
                     marginCriticalPct={p.marginCriticalPct}
+                    umbrales={umbrales}
                   />
                 </td>
                 <td className="cell-strong">
@@ -479,13 +559,35 @@ export function PortfolioTab({
                     {label(PROJECT_STATUS_LABELS, p.status)}
                   </span>
                 </td>
-                <td><BudgetBar pct={p.usedBudgetPercent} etiqueta="Uso de presupuesto" /></td>
-                <td><BudgetBar pct={p.completionPct} etiqueta="Avance" /></td>
-                <td className={`cell-num tone-${toneIndiceEvm(p.evm?.cpi)}`}>
-                  {p.evm?.cpi != null ? p.evm.cpi.toFixed(2) : "—"}
+                <td>
+                  <BudgetBar
+                    pct={p.usedBudgetPercent}
+                    etiqueta="Uso de presupuesto"
+                    nivel={p.budgetUseLevel ?? "ok"}
+                    titulo={textoCriteriosPresupuesto(p.budgetAlertPct, p.budgetCriticalPct)}
+                  />
                 </td>
-                <td className={`cell-num tone-${toneIndiceEvm(p.evm?.spi)}`}>
-                  {p.evm?.spi != null ? p.evm.spi.toFixed(2) : "—"}
+                <td>
+                  {/* El avance no se mide contra el umbral del presupuesto. */}
+                  <BudgetBar pct={p.completionPct} etiqueta="Avance" nivel="neutral" />
+                </td>
+                <td className="cell-num">
+                  <CeldaIndiceEvm
+                    nombre="CPI"
+                    valor={p.evm?.cpi}
+                    nivel={p.cpiLevel ?? "no-medible"}
+                    warning={umbrales?.cpiWarning}
+                    critical={umbrales?.cpiCritical}
+                  />
+                </td>
+                <td className="cell-num">
+                  <CeldaIndiceEvm
+                    nombre="SPI"
+                    valor={p.evm?.spi}
+                    nivel={p.spiLevel ?? "no-medible"}
+                    warning={umbrales?.spiWarning}
+                    critical={umbrales?.spiCritical}
+                  />
                 </td>
                 <td className="cell-num">
                   <CeldaMargen

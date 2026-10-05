@@ -258,6 +258,53 @@ export type FxConfig = {
 /** Veredicto de margen del backend (D-2). */
 export type MarginLevel = "ok" | "warning" | "critical";
 
+/**
+ * Nivel de un indicador contra sus umbrales (D-7). Mismo vocabulario que el
+ * margen, más "no-medible" para cuando el índice no se puede calcular.
+ *
+ * Lo calcula SIEMPRE el servidor (`clasificarIndiceEvm` en
+ * `backend/src/utils/healthThresholds.ts`) y el cliente solo lo pinta. Es lo
+ * que impide que la celda de CPI vuelva a contradecir al semáforo de su fila,
+ * como pasaba cuando `PortfolioTab` tenía sus propios cortes.
+ */
+export type NivelIndicador = "ok" | "warning" | "critical" | "no-medible";
+
+/** Umbrales generales del semáforo de salud, tal y como los devuelve el API. */
+export type UmbralesSalud = {
+  cpiWarning: number;
+  cpiCritical: number;
+  spiWarning: number;
+  spiCritical: number;
+  budgetWarningPct: number;
+  budgetCriticalPct: number;
+};
+
+export type UmbralesSaludConfig = UmbralesSalud & {
+  /** "base" = hay fila guardada; "codigo" = la tabla está vacía. */
+  origen: "base" | "codigo";
+  /** Valores iniciales acordados, para poder ofrecer "restaurar". */
+  porDefecto: UmbralesSalud;
+  updatedAt: string | null;
+};
+
+export async function getHealthThresholds(): Promise<UmbralesSaludConfig> {
+  const response = await request<ApiEnvelope<UmbralesSaludConfig>>("/api/health-thresholds");
+  return response.data;
+}
+
+export async function updateHealthThresholds(payload: UmbralesSalud): Promise<UmbralesSaludConfig> {
+  const response = await request<ApiEnvelope<UmbralesSaludConfig>>(
+    "/api/health-thresholds",
+    "PUT",
+    payload,
+  );
+  return response.data;
+}
+
+export async function resetHealthThresholds(): Promise<void> {
+  await request<void>("/api/health-thresholds", "DELETE");
+}
+
 export type AlertLevel = "ok" | "warning" | "exceeded";
 
 export type StatsProjectRow = {
@@ -296,6 +343,14 @@ export type StatsProjectRow = {
   marginCriticalPct: number;
   /** Veredicto de margen del servidor. No se recalcula en el cliente. */
   marginLevel: MarginLevel;
+  /** Veredictos de CPI, SPI y uso de presupuesto del servidor (D-7). */
+  cpiLevel?: NivelIndicador;
+  spiLevel?: NivelIndicador;
+  budgetUseLevel?: Exclude<NivelIndicador, "no-medible">;
+  /** Umbral de aviso de presupuesto efectivo (el del proyecto, o el general). */
+  budgetAlertPct?: number;
+  /** Umbral general de presupuesto excedido. */
+  budgetCriticalPct?: number;
   // Hours
   totalHours: number;
   approvedHours: number;
@@ -1565,6 +1620,12 @@ export type ProjectDetailFinancials = {
   marginWarningPct: number;
   marginCriticalPct: number;
   marginLevel: MarginLevel;
+  /** Veredictos de D-7, con los mismos umbrales que el semáforo del proyecto. */
+  budgetUseLevel?: Exclude<NivelIndicador, "no-medible">;
+  budgetAlertPct?: number;
+  budgetCriticalPct?: number;
+  cpiLevel?: NivelIndicador;
+  spiLevel?: NivelIndicador;
   projectedPct: number;
   projectedTotal: number;
   approvedHours: number;
@@ -1619,6 +1680,15 @@ export type PortfolioProject = {
   marginWarningPct: number;
   marginCriticalPct: number;
   marginLevel: MarginLevel;
+  /**
+   * Veredictos de D-7 calculados por el servidor con los MISMOS umbrales que
+   * `healthStatus`. El cliente los pinta tal cual; no vuelve a clasificar.
+   */
+  cpiLevel: NivelIndicador;
+  spiLevel: NivelIndicador;
+  budgetUseLevel: Exclude<NivelIndicador, "no-medible">;
+  budgetAlertPct: number;
+  budgetCriticalPct: number;
   alertLevel: "ok" | "warning" | "exceeded";
   evm: EVMResult | null;
   totalMilestones: number;
@@ -1644,6 +1714,8 @@ export type PortfolioSummary = {
 
 export type Portfolio = {
   baseCurrency: string;
+  /** Umbrales con que el servidor clasificó TODAS las filas (D-7). */
+  thresholds: UmbralesSalud;
   /** Aviso de conversión del consolidado del portafolio. */
   conversion?: ConversionStatus;
   projects: PortfolioProject[];

@@ -41,6 +41,7 @@ export const AUDIT_ENTITIES = {
   consultantBlock: "consultantBlock",
   capacityConfig: "capacityConfig",
   financialCategory: "financialCategory",
+  healthThresholdConfig: "healthThresholdConfig",
 } as const;
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[keyof typeof AUDIT_ENTITIES];

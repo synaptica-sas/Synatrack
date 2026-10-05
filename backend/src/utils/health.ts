@@ -1,4 +1,5 @@
 import type { HealthStatus } from "@prisma/client";
+import { clasificarIndiceEvm, type UmbralesSalud } from "./healthThresholds.js";
 
 export type HealthInput = {
   alertLevel: "ok" | "warning" | "exceeded";
@@ -15,6 +16,14 @@ export type HealthInput = {
   spi: number | null;
   cpi: number | null;
   utilizationPct: number;
+  /**
+   * Umbrales generales de CPI, SPI y presupuesto ya resueltos por
+   * `resolverUmbralesSalud` (D-7). **Obligatorio a propósito**: antes los
+   * cortes estaban escritos dentro de los `if` de esta función y por eso nadie
+   * podía configurarlos. Que sea un campo requerido es lo que impide que un
+   * llamador nuevo vuelva a calcular la salud ignorando la configuración.
+   */
+  thresholds: UmbralesSalud;
 };
 
 /**
@@ -25,7 +34,12 @@ export type HealthInput = {
  *  · por debajo del crítico (15 % por defecto) → RED
  *  · por debajo del de advertencia (30 % por defecto) → YELLOW
  * ANTES el RED se calculaba como `umbral * 0,5`, un 7,5 % que no eligió nadie.
- * Los cortes de CPI y SPI no se tocan: son la decisión D-7, aparte.
+ *
+ * CPI y SPI (D-7): los cortes ya no están aquí. Salen de `input.thresholds`,
+ * que viene de `HealthThresholdConfig`, y se aplican con la MISMA función
+ * (`clasificarIndiceEvm`) que usa el API para decirle al Portafolio de qué
+ * color va la celda. Por eso la celda y el semáforo de la fila ya no pueden
+ * contradecirse: leen el mismo número y lo comparan con el mismo código.
  */
 export function computeHealthStatus(input: HealthInput): HealthStatus {
   const {
@@ -37,13 +51,17 @@ export function computeHealthStatus(input: HealthInput): HealthStatus {
     delayedMilestones,
     spi,
     cpi,
+    thresholds,
   } = input;
+
+  const nivelCpi = clasificarIndiceEvm(cpi, thresholds.cpiWarning, thresholds.cpiCritical);
+  const nivelSpi = clasificarIndiceEvm(spi, thresholds.spiWarning, thresholds.spiCritical);
 
   // ── RED ────────────────────────────────────────────────────────────────────
   if (alertLevel === "exceeded") return "RED";
   if (openHighRisks > 0) return "RED";
-  if (cpi !== null && cpi < 0.75) return "RED";
-  if (spi !== null && spi < 0.75) return "RED";
+  if (nivelCpi === "critical") return "RED";
+  if (nivelSpi === "critical") return "RED";
   if (
     grossMarginActualPct !== null &&
     marginCriticalPct !== null &&
@@ -54,8 +72,8 @@ export function computeHealthStatus(input: HealthInput): HealthStatus {
   // ── YELLOW ─────────────────────────────────────────────────────────────────
   if (alertLevel === "warning") return "YELLOW";
   if (delayedMilestones > 0) return "YELLOW";
-  if (cpi !== null && cpi < 0.9) return "YELLOW";
-  if (spi !== null && spi < 0.9) return "YELLOW";
+  if (nivelCpi === "warning") return "YELLOW";
+  if (nivelSpi === "warning") return "YELLOW";
   if (
     grossMarginActualPct !== null &&
     marginWarningPct !== null &&

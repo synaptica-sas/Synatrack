@@ -2,7 +2,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { ConversionNotice, ConversionChip } from "../../components/ConversionNotice";
 import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_TYPE_LABELS, RISK_STATUS_LABELS, ASSIGNMENT_STATUS_LABELS, ISSUE_SEVERITY_LABELS, ISSUE_STATUS_LABELS, label } from "../../utils/statusLabels";
-import { PRESENTACION_SALUD, presentacionMargen, textoCriteriosSalud } from "../../utils/projectHealth";
+import {
+  PRESENTACION_NIVEL,
+  PRESENTACION_SALUD,
+  presentacionMargen,
+  textoCriteriosPresupuesto,
+  textoCriteriosSalud,
+} from "../../utils/projectHealth";
 import { CountryFlag } from "../../components/CountryFlag";
 import {
   getProjectDetail,
@@ -39,6 +45,7 @@ import {
   type HealthStatus,
   getAuditLogs,
   type AuditLog,
+  type NivelIndicador,
 } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
 
@@ -133,16 +140,50 @@ function MargenConNivel({
 }
 
 /** Medidor de porcentaje con el número siempre visible; el color solo refuerza. */
-function BudgetBar({ pct: p, etiqueta }: { pct: number; etiqueta: string }) {
-  const capped = Math.min(p, 100);
-  const mod = p > 100 ? "danger" : p > 90 ? "warning" : "success";
+/**
+ * Medidor de uso de presupuesto.
+ *
+ * ANTES tenía sus propios cortes (`> 100` rojo, `> 90` ámbar) — la tercera copia
+ * del mismo criterio en el frontend. Desde D-7 el veredicto lo calcula el
+ * servidor con los umbrales configurados y aquí solo se traduce a clase, con la
+ * etiqueta en palabras para que el color no sea el único portador.
+ */
+const CLASE_MEDIDOR: Record<Exclude<NivelIndicador, "no-medible">, string> = {
+  ok: "success",
+  warning: "warning",
+  critical: "danger",
+};
+
+function BudgetBar({
+  pct: p,
+  etiqueta,
+  nivel,
+  titulo,
+}: {
+  pct: number;
+  etiqueta: string;
+  nivel: Exclude<NivelIndicador, "no-medible">;
+  titulo?: string;
+}) {
+  const capped = Math.min(Math.max(p, 0), 100);
+  const presentacion = nivel === "ok" ? null : PRESENTACION_NIVEL[nivel];
   return (
-    <div className="meter">
+    <div className="meter" title={titulo}>
       <div className="meter__track">
-        <div className={`meter__fill meter__fill--${mod}`} style={{ width: `${capped}%` }} />
+        <div
+          className={`meter__fill meter__fill--${CLASE_MEDIDOR[nivel]}`}
+          style={{ width: `${capped}%` }}
+        />
       </div>
       <span className="meter__value">{p.toFixed(1)}%</span>
-      <span className="sr-only">{`${etiqueta}: ${p.toFixed(1)}%`}</span>
+      {presentacion && (
+        <span className={`state-chip state-chip--${presentacion.modificador}`}>
+          {presentacion.etiqueta}
+        </span>
+      )}
+      <span className="sr-only">
+        {`${etiqueta}: ${p.toFixed(1)}%${presentacion ? `, ${presentacion.etiqueta}` : ""}`}
+      </span>
     </div>
   );
 }
@@ -363,7 +404,12 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
       {/* Budget bar */}
       <div className="panel">
         <div className="section-title">Uso de presupuesto</div>
-        <BudgetBar pct={financials.usedBudgetPercent} etiqueta="Uso de presupuesto" />
+        <BudgetBar
+          pct={financials.usedBudgetPercent}
+          etiqueta="Uso de presupuesto"
+          nivel={financials.budgetUseLevel ?? "ok"}
+          titulo={textoCriteriosPresupuesto(financials.budgetAlertPct, financials.budgetCriticalPct)}
+        />
       </div>
 
       {/* Phase & baseline */}

@@ -7,6 +7,7 @@ import {
   calculateProfitability,
 } from "../financial.js";
 import { buildRateMap } from "../currency.js";
+import { UMBRALES_SALUD_POR_DEFECTO } from "../healthThresholds.js";
 
 // ─── periodToDateRange ────────────────────────────────────────────────────────
 
@@ -144,6 +145,7 @@ describe("calculateProfitability", () => {
     ],
     fxConfigs: [],
     baseCurrency: "USD",
+    healthThresholds: UMBRALES_SALUD_POR_DEFECTO,
   };
 
   it("calcula valor contractual correctamente", () => {

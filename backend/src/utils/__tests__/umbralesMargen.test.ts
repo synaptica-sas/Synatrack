@@ -22,6 +22,7 @@ import {
   type ProjectFinancialsInput,
 } from "../financial.js";
 import { computeHealthStatus, type HealthInput } from "../health.js";
+import { UMBRALES_SALUD_POR_DEFECTO } from "../healthThresholds.js";
 
 const DEFECTO = resolveMarginThresholds(null, null);
 
@@ -103,6 +104,7 @@ const saludBase: HealthInput = {
   spi: 1,
   cpi: 1,
   utilizationPct: 0,
+  thresholds: UMBRALES_SALUD_POR_DEFECTO,
 };
 
 describe("computeHealthStatus con los dos umbrales (D-2)", () => {
@@ -151,6 +153,7 @@ function proyectoConIngresos(
     marginWarningPct: umbrales.marginWarningPct,
     marginCriticalPct: umbrales.marginCriticalPct,
     budgetAlertPct: null,
+    healthThresholds: UMBRALES_SALUD_POR_DEFECTO,
     revenueEntries: [{ amount: ingresos, currency: "USD" }],
     approvedTimeEntries: [
       {

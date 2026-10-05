@@ -19,6 +19,7 @@ import {
   type ProjectFinancialsInput,
 } from "../financial.js";
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../health.js";
+import { UMBRALES_SALUD_POR_DEFECTO } from "../healthThresholds.js";
 
 const rateMap = buildRateMap([{ baseCode: "USD", quoteCode: "COP", rate: 4000 }]);
 
@@ -31,6 +32,7 @@ const base: ProjectFinancialsInput = {
   marginWarningPct: null,
   marginCriticalPct: null,
   budgetAlertPct: null,
+  healthThresholds: UMBRALES_SALUD_POR_DEFECTO,
   revenueEntries: [{ amount: 50_000, currency: "USD" }],
   approvedTimeEntries: [
     {
@@ -489,6 +491,7 @@ describe("consistencia tablero / portafolio / detalle", () => {
       spi: null,
       cpi: null,
       utilizationPct: 0,
+      thresholds: UMBRALES_SALUD_POR_DEFECTO,
     });
     // 20 % está por debajo del crítico de 25 → RED.
     expect(health).toBe("RED");
@@ -504,6 +507,7 @@ describe("consistencia tablero / portafolio / detalle", () => {
       spi: null,
       cpi: null,
       utilizationPct: 0,
+      thresholds: UMBRALES_SALUD_POR_DEFECTO,
     });
     expect(conUmbralViejo).toBe("GREEN");
   });
@@ -540,6 +544,7 @@ describe("toFinancialsInput", () => {
       ],
       rateMap,
       "USD",
+      UMBRALES_SALUD_POR_DEFECTO,
     );
 
     expect(input.budget).toBe(100_000);
@@ -568,6 +573,7 @@ describe("toFinancialsInput", () => {
       [],
       rateMap,
       "USD",
+      UMBRALES_SALUD_POR_DEFECTO,
     );
     expect(input.marginWarningPct).toBe(0);
     expect(input.marginCriticalPct).toBe(0);

@@ -79,6 +79,13 @@ export const UMBRAL_CRITICO_POR_DEFECTO = 15;
 /** Vocabulario acordado del semáforo. No se cambia. */
 export type NivelMargen = "ok" | "warning" | "critical" | "no-medible";
 
+/**
+ * El veredicto de CPI, SPI y uso de presupuesto (D-7) usa EXACTAMENTE el mismo
+ * vocabulario que el margen: Saludable / Advertencia / Crítico. Es un alias a
+ * propósito, para que no puedan separarse con el tiempo.
+ */
+export type NivelIndicador = NivelMargen;
+
 const PRESENTACION_MARGEN: Record<
   NivelMargen,
   { etiqueta: string; tono: "tone-success" | "tone-warning" | "tone-danger" | "tone-muted"; modificador: "success" | "warning" | "danger" | "neutral" }
@@ -117,6 +124,12 @@ function umbralesEfectivos(
 export function textoCriteriosSalud(
   marginWarningPct?: number | null,
   marginCriticalPct?: number | null,
+  umbrales?: {
+    cpiWarning: number;
+    cpiCritical: number;
+    spiWarning: number;
+    spiCritical: number;
+  } | null,
 ): string {
   const advertencia =
     marginWarningPct != null && Number.isFinite(marginWarningPct)
@@ -127,12 +140,23 @@ export function textoCriteriosSalud(
       ? `${marginCriticalPct}%`
       : "no informado por el API";
 
+  // Los cortes de CPI y SPI ya NO se escriben aquí (D-7): vienen del API, que
+  // es el mismo sitio del que salen los que se aplicaron de verdad. Antes este
+  // texto decía "0,75" y "0,9" fijos y habría mentido en cuanto alguien
+  // cambiara la configuración.
+  const cortes = umbrales
+    ? {
+        criticos: `CPI < ${formatIndice(umbrales.cpiCritical)} o SPI < ${formatIndice(umbrales.spiCritical)}`,
+        avisos: `CPI < ${formatIndice(umbrales.cpiWarning)} o SPI < ${formatIndice(umbrales.spiWarning)}`,
+      }
+    : { criticos: "CPI o SPI bajo su umbral crítico", avisos: "CPI o SPI bajo su umbral de advertencia" };
+
   return (
     "Semáforo calculado por el servidor. " +
     `Umbrales de margen de este proyecto — advertencia: ${advertencia}, crítico: ${critico}. ` +
-    "Crítico: presupuesto proyectado excedido, riesgos altos abiertos, CPI o SPI < 0,75, " +
+    `Crítico: presupuesto proyectado excedido, riesgos altos abiertos, ${cortes.criticos}, ` +
     "o margen por debajo del umbral crítico. " +
-    "Advertencia: aviso de presupuesto, hitos atrasados, CPI o SPI < 0,9, " +
+    `Advertencia: aviso de presupuesto, hitos atrasados, ${cortes.avisos}, ` +
     "o margen por debajo del umbral de advertencia. " +
     "Saludable: ninguna de las anteriores."
   );
@@ -196,6 +220,68 @@ export function claseMargen(
  * las mismas palabras que usa el filtro de Salud de la pantalla de portafolio.
  * El color por sí solo no es información suficiente (WCAG 1.4.1).
  */
+export const PRESENTACION_NIVEL: Record<
+  NivelIndicador,
+  {
+    etiqueta: string;
+    tono: "tone-success" | "tone-warning" | "tone-danger" | "tone-muted";
+    modificador: "success" | "warning" | "danger" | "neutral";
+  }
+> = PRESENTACION_MARGEN;
+
+/**
+ * Texto del tooltip de una celda de CPI o SPI, con los umbrales **reales** con
+ * que el servidor la clasificó (D-7).
+ *
+ * Recibe los umbrales que vienen en la propia respuesta. Si no llegan, lo dice
+ * en vez de suponerlos: esta pantalla ya tuvo una vez sus propios números y fue
+ * justo lo que produjo la contradicción con el semáforo.
+ */
+export function textoCriteriosIndice(
+  nombre: "CPI" | "SPI",
+  nivel: NivelIndicador,
+  warning?: number | null,
+  critical?: number | null,
+): string {
+  if (nivel === "no-medible") {
+    return `${nombre} no calculable: falta el avance del proyecto o el costo real.`;
+  }
+  const umbrales =
+    warning != null && critical != null
+      ? `Umbrales vigentes — advertencia por debajo de ${formatIndice(warning)}, ` +
+        `crítico por debajo de ${formatIndice(critical)}.`
+      : "Umbrales no informados por el API.";
+  return (
+    `${nombre}: ${PRESENTACION_NIVEL[nivel].etiqueta}. ${umbrales} ` +
+    "Son los MISMOS con que se calculó el semáforo de esta fila. " +
+    "Se ajustan en Administración › Umbrales de Salud."
+  );
+}
+
+/** 0.75 → "0,75". El producto usa coma decimal. */
+export function formatIndice(valor: number): string {
+  return valor.toLocaleString("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+}
+
+/**
+ * Texto del tooltip de la barra de uso de presupuesto, con los umbrales reales
+ * (D-7). Dice de donde sale cada uno: el de aviso puede ser del proyecto, el de
+ * excedido es siempre el general de la empresa.
+ */
+export function textoCriteriosPresupuesto(
+  avisoPct?: number | null,
+  excedidoPct?: number | null,
+): string {
+  const aviso = avisoPct != null ? String(avisoPct) : "no informado";
+  const excedido = excedidoPct != null ? String(excedidoPct) : "no informado";
+  return (
+    `Uso real del presupuesto. Advertencia al alcanzar el ${aviso} % ` +
+    "(umbral del proyecto, o el general si no tiene propio); " +
+    `Crítico al superar el ${excedido} % (umbral general). ` +
+    "Se ajustan en Administración › Umbrales de Salud."
+  );
+}
+
 export const PRESENTACION_SALUD: Record<
   "GREEN" | "YELLOW" | "RED",
   { etiqueta: string; icono: string; modificador: "success" | "warning" | "danger" }

@@ -173,7 +173,12 @@ model Project {
   // todas las filas. Invariante: crítico <= advertencia (validado en la ruta).
   marginWarningPct     Decimal?      @db.Decimal(5, 2)
   marginCriticalPct    Decimal?      @db.Decimal(5, 2)
-  budgetAlertPct       Decimal       @default(90)    @db.Decimal(5, 2)
+  // Umbral de AVISO de presupuesto del proyecto (%). Nulo = "sin umbral
+  // propio": se aplica `HealthThresholdConfig.budgetWarningPct`, el valor
+  // general de la empresa (D-7). Antes era `@default(90)` NOT NULL, con lo que
+  // ninguna fila podía heredar nada y el valor general nunca llegaba a usarse.
+  // El nivel CRÍTICO ("presupuesto excedido") no es por proyecto: es general.
+  budgetAlertPct       Decimal?      @db.Decimal(5, 2)
   // Gestión de proyecto
   healthStatus         HealthStatus  @default(GREEN)
   completionPct        Decimal?      @db.Decimal(5, 2)
@@ -686,6 +691,34 @@ model ExtraHoursConfig {
   monthlyDivisor             Decimal  @default(220) @db.Decimal(5, 2)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
+}
+
+/// Umbrales del semáforo de salud (decisión de negocio D-7).
+///
+/// UNA sola fila, con `scope = "GENERAL"`. Son configuración de empresa, no de
+/// proyecto: CPI y SPI son índices adimensionales donde 1,00 significa "según
+/// plan" por definición, así que la banda que se tolera es apetito de riesgo de
+/// la PMO, no una cláusula del contrato. El margen sí es por proyecto (D-2)
+/// porque el objetivo de margen sale del tipo de contrato.
+///
+/// Si esta tabla está vacía se aplica `UMBRALES_SALUD_POR_DEFECTO`
+/// (`utils/healthThresholds.ts`) y el API lo dice con `origen: "codigo"`.
+model HealthThresholdConfig {
+  id                String   @id @default(cuid())
+  scope             String   @unique @default("GENERAL")
+  /// CPI por debajo de este valor → Advertencia.
+  cpiWarning        Decimal  @default(0.900) @db.Decimal(5, 3)
+  /// CPI por debajo de este valor → Crítico.
+  cpiCritical       Decimal  @default(0.750) @db.Decimal(5, 3)
+  spiWarning        Decimal  @default(0.900) @db.Decimal(5, 3)
+  spiCritical       Decimal  @default(0.750) @db.Decimal(5, 3)
+  /// % de presupuesto alcanzado que ya es Advertencia, para los proyectos que
+  /// no definen su propio `Project.budgetAlertPct`.
+  budgetWarningPct  Decimal  @default(90) @db.Decimal(5, 2)
+  /// % de presupuesto SUPERADO que es Crítico. General siempre.
+  budgetCriticalPct Decimal  @default(100) @db.Decimal(5, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model ExtraHourEntry {

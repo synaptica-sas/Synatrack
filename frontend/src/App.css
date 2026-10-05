@@ -3052,6 +3052,10 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
 .meter__fill--success { background: var(--state-success-solid); }
 .meter__fill--warning { background: var(--state-warning-solid); }
 .meter__fill--danger  { background: var(--state-danger-solid); }
+/* Progreso sin veredicto (el avance del proyecto, D-7): no es ni bueno ni malo,
+   así que no toma un color de estado. Antes se pintaba con los umbrales del
+   presupuesto y un 95 % de avance salía en ámbar, que decía lo contrario. */
+.meter__fill--neutral { background: var(--state-info-solid, var(--color-accent)); }
 
 .meter__value {
   font-size: 0.7rem;

@@ -9,7 +9,9 @@ import {
 } from "../../utils/currency.js";
 import { addDays } from "../../utils/capacity.js";
 import { computeEVM } from "../../utils/evm.js";
-import { computeProjectFinancials, toFinancialsInput } from "../../utils/financial.js";
+import { computeProjectFinancials, resolveBudgetAlertPct, toFinancialsInput } from "../../utils/financial.js";
+import { clasificarIndiceEvm, clasificarUsoPresupuesto } from "../../utils/healthThresholds.js";
+import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 import { getLogger } from "../../infra/logger.js";
 
 async function upsertAlert(
@@ -86,6 +88,9 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
   const fxConfigs = await prisma.fxConfig.findMany();
   const rateMap = buildRateMap(fxConfigs);
   const baseCurrency = fxConfigs[0]?.baseCode ?? "USD";
+  // Umbrales generales del semáforo (D-7). El motor de alertas los comparte con
+  // el semáforo y con el Portafolio: una sola lectura para toda la pasada.
+  const umbralesSalud = await cargarUmbralesSalud();
 
   // ── 1. Alertas de presupuesto por proyecto ──────────────────────────
   const projects = await prisma.project.findMany({
@@ -118,7 +123,16 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
 
     const spent = laborCost + expensesCost;
     const usedPct = (spent / budget) * 100;
-    const alertThreshold = Number(project.budgetAlertPct ?? 90);
+    // ANTES el `?? 90` repetía aquí el valor por defecto. Ahora la precedencia
+    // la resuelve la utilidad: umbral del proyecto → general → constante (D-7).
+    const alertThreshold = resolveBudgetAlertPct(
+      project.budgetAlertPct != null ? Number(project.budgetAlertPct) : null,
+      umbralesSalud,
+    );
+    const nivelPresupuesto = clasificarUsoPresupuesto(usedPct, {
+      budgetWarningPct: alertThreshold,
+      budgetCriticalPct: umbralesSalud.budgetCriticalPct,
+    });
 
     const conversion = conversionStatus(ledger);
     if (conversion.incomplete) {
@@ -129,7 +143,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
     }
     const avisoFx = sufijoConversion(conversion);
 
-    if (usedPct > 100) {
+    if (nivelPresupuesto === "critical") {
       await upsertAlert(prisma, {
         type: "BUDGET_EXCEEDED",
         severity: "CRITICAL",
@@ -138,7 +152,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         metadata: { usedPct, spent, budget, currency: baseCurrency, conversion },
       });
       await resolveAlert(prisma, "BUDGET_WARNING", project.id);
-    } else if (usedPct >= alertThreshold) {
+    } else if (nivelPresupuesto === "warning") {
       await upsertAlert(prisma, {
         type: "BUDGET_WARNING",
         severity: "WARNING",
@@ -172,7 +186,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
   for (const project of projectsWithRevenue) {
     // Mismo cálculo unificado que /stats y el detalle del proyecto.
     const fin = computeProjectFinancials(
-      toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency),
+      toFinancialsInput(project, project.timeEntries, rateMap, baseCurrency, umbralesSalud),
     );
     const budget = fin.budget;
     const spent = fin.totalCostActual;
@@ -229,13 +243,25 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         totalCostActual: spent,
       });
 
-      if (evm.cpi !== null && evm.cpi < 0.85) {
+      // ANTES este era el TERCER juego de umbrales de CPI del sistema: avisaba
+      // con 0,85 y escalaba a crítico con 0,75, distinto de lo que pintaba el
+      // Portafolio y de lo que decidía el semáforo. Ahora usa la misma función
+      // y la misma configuración general (D-7), así que un proyecto no puede
+      // tener una alerta de CPI que contradiga a su propio semáforo.
+      const nivelCpi = clasificarIndiceEvm(
+        evm.cpi,
+        umbralesSalud.cpiWarning,
+        umbralesSalud.cpiCritical,
+      );
+      if (nivelCpi !== "ok" && nivelCpi !== "no-medible") {
+        const esCritico = nivelCpi === "critical";
+        const umbralCruzado = esCritico ? umbralesSalud.cpiCritical : umbralesSalud.cpiWarning;
         await upsertAlert(prisma, {
           type: "FORECAST_DEVIATION",
-          severity: evm.cpi < 0.75 ? "CRITICAL" : "WARNING",
+          severity: esCritico ? "CRITICAL" : "WARNING",
           projectId: project.id,
-          message: `Proyecto "${project.name}" tiene CPI de ${evm.cpi.toFixed(2)} — rendimiento de costo bajo umbral (0.85)${avisoFxFin}`,
-          metadata: { cpi: evm.cpi, spi: evm.spi, eac: evm.eac, currency: baseCurrency, conversion: fin.conversion },
+          message: `Proyecto "${project.name}" tiene CPI de ${evm.cpi!.toFixed(2)} — rendimiento de costo por debajo del umbral ${esCritico ? "crítico" : "de advertencia"} (${umbralCruzado})${avisoFxFin}`,
+          metadata: { cpi: evm.cpi, spi: evm.spi, eac: evm.eac, cpiLevel: nivelCpi, currency: baseCurrency, conversion: fin.conversion },
         });
       } else {
         await resolveAlert(prisma, "FORECAST_DEVIATION", project.id);
