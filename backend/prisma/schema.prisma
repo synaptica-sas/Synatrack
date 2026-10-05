@@ -309,7 +309,13 @@ model FinancialEntry {
   projectId   String
   type        FinancialEntryType
   entryDate   DateTime
-  category    String?            // solo aplica a EXPENSE; null en REVENUE
+  // Nombre de la categoría, tomado del catálogo editable `FinancialCategory`
+  // (decisión de negocio D-4). Se guarda el nombre, no una clave foránea: la
+  // columna ya existía con texto libre en los gastos y cambiarla a FK obligaba a
+  // migrar datos históricos. El renombrado de una categoría propaga el nuevo
+  // nombre a las entradas que la usaban, en la misma transacción.
+  // Puede ser nulo: los ingresos registrados antes de D-4 no tienen categoría.
+  category    String?
   amount      Decimal            @db.Decimal(14, 2)
   currency    String
   description String?
@@ -321,6 +327,32 @@ model FinancialEntry {
   @@index([projectId])
   @@index([entryDate])
   @@index([type])
+}
+
+/// Catálogo editable de categorías financieras (decisión de negocio D-4).
+///
+/// Antes esto no existía: las categorías de gasto eran una constante escrita en
+/// el frontend (`ExpensesTab.tsx`) y los ingresos simplemente no se
+/// categorizaban. Era la misma trampa de siempre —un dato que el código usa y
+/// nadie puede editar— que ya se corrigió con la jornada laboral (D-5).
+///
+/// El catálogo es único para los dos tipos de movimiento: `type` discrimina
+/// igual que en `FinancialEntry`, así que añadir categorías de ingreso y poder
+/// editar las de gasto es la misma pantalla y el mismo endpoint.
+model FinancialCategory {
+  id        String             @id @default(cuid())
+  type      FinancialEntryType
+  name      String
+  /// Desactivar en vez de borrar conserva la categoría en los movimientos ya
+  /// registrados y solo la retira de los formularios.
+  active    Boolean            @default(true)
+  /// Orden de aparición en los desplegables; a igualdad, alfabético.
+  sortOrder Int                @default(0)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([type, name])
+  @@index([type, active])
 }
 
 model Forecast {

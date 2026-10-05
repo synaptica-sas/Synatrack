@@ -234,6 +234,12 @@ export type RevenueEntry = {
   entryDate: string;
   amount: string;
   currency: string;
+  /**
+   * Categoría del ingreso (decisión de negocio D-4). Es nula en los ingresos
+   * registrados antes de D-4, que no se rellenaron hacia atrás: en pantalla se
+   * muestran como "Sin categoría".
+   */
+  category: string | null;
   description: string | null;
   createdAt: string;
   updatedAt: string;
@@ -974,6 +980,7 @@ export async function createRevenueEntry(payload: {
   entryDate: string;
   amount: number;
   currency: string;
+  category?: string | null;
   description?: string;
 }): Promise<RevenueEntry> {
   const response = await request<ApiEnvelope<RevenueEntry>>("/api/revenue", "POST", payload);
@@ -987,6 +994,7 @@ export async function updateRevenueEntry(
     entryDate: string;
     amount: number;
     currency: string;
+    category?: string | null;
     description?: string;
   },
 ): Promise<RevenueEntry> {
@@ -996,6 +1004,64 @@ export async function updateRevenueEntry(
 
 export async function deleteRevenueEntry(id: string): Promise<void> {
   await request<void>(`/api/revenue/${id}`, "DELETE");
+}
+
+// ─── Catálogo de categorías financieras (D-4) ─────────────────────────────────
+
+export type FinancialCategoryType = "EXPENSE" | "REVENUE";
+
+export type FinancialCategory = {
+  id: string;
+  type: FinancialCategoryType;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listFinancialCategories(
+  type?: FinancialCategoryType,
+  includeInactive = false,
+): Promise<FinancialCategory[]> {
+  const params = new URLSearchParams();
+  if (type) params.set("type", type);
+  if (includeInactive) params.set("includeInactive", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const response = await request<ApiEnvelope<FinancialCategory[]>>(
+    `/api/financial-categories${query}`,
+  );
+  return response.data;
+}
+
+export async function createFinancialCategory(payload: {
+  type: FinancialCategoryType;
+  name: string;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<FinancialCategory> {
+  const response = await request<ApiEnvelope<FinancialCategory>>(
+    "/api/financial-categories",
+    "POST",
+    payload,
+  );
+  return response.data;
+}
+
+export async function updateFinancialCategory(
+  id: string,
+  payload: { name?: string; active?: boolean; sortOrder?: number },
+): Promise<FinancialCategory & { movimientosRenombrados?: number }> {
+  const response = await request<ApiEnvelope<FinancialCategory & { movimientosRenombrados?: number }>>(
+    `/api/financial-categories/${id}`,
+    "PUT",
+    payload,
+  );
+  return response.data;
+}
+
+export async function deleteFinancialCategory(id: string): Promise<void> {
+  await request<void>(`/api/financial-categories/${id}`, "DELETE");
 }
 
 // ─── Capacity ──────────────────────────────────────────────────────────────────

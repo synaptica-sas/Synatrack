@@ -22,9 +22,19 @@ import { GastosSummaryTable } from "./GastosSummaryTable";
 import { ValidationErrorBox } from "../../components/ValidationErrorBox";
 import { isValidationError } from "../../utils/validation";
 import { CurrencyInput } from "../../components/CurrencyInput";
+import { useFinancialCategories } from "../../hooks/useFinancialCategories";
 
 const currencyOptions = ["COP", "USD", "EUR", "MXN", "PEN", "CLP"];
-const categoryOptions = ["Viajes", "Alojamiento", "Alimentacion", "Transporte", "Software", "Servicios", "Otros"];
+/**
+ * Respaldo de las categorías de gasto (decisión de negocio D-4).
+ *
+ * Hasta D-4 esta constante **era** el catálogo: no había forma de cambiarla sin
+ * tocar código y volver a desplegar. Ahora las categorías viven en la base
+ * (`/api/financial-categories`) y esta lista solo se usa si la petición falla,
+ * para que el formulario no se quede sin opciones. Son exactamente los siete
+ * nombres que la migración sembró, así que el respaldo no inventa nada nuevo.
+ */
+const categoriasDeRespaldo = ["Viajes", "Alojamiento", "Alimentacion", "Transporte", "Software", "Servicios", "Otros"];
 
 function toDateInput(value: string) {
   return value.slice(0, 10);
@@ -43,7 +53,7 @@ type EditForm = {
 const emptyForm = {
   projectId: "",
   expenseDate: "",
-  category: categoryOptions[0],
+  category: "",
   amount: "",
   currency: "COP",
   description: "",
@@ -70,6 +80,20 @@ export function ExpensesTab({
   fxConfigs?: FxConfig[];
   baseCurrency?: string;
 }) {
+  // Catálogo editable de categorías de gasto (D-4). Si la carga falla se usa el
+  // respaldo, que son los mismos nombres de siempre.
+  const { categories: categoriasCatalogo, error: categoriesError } = useFinancialCategories(
+    true,
+    "EXPENSE",
+  );
+  const categoryOptions = useMemo(
+    () =>
+      categoriasCatalogo.length > 0
+        ? categoriasCatalogo.map((c) => c.name)
+        : categoriasDeRespaldo,
+    [categoriasCatalogo],
+  );
+
   // ── Form / modal state ────────────────────────────────────────────────────
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -254,6 +278,16 @@ export function ExpensesTab({
         description="Registra, reembolsa y controla los gastos operacionales asociados a los proyectos."
       />
 
+      {categoriesError && (
+        <div className="notice notice--warning" role="alert">
+          <div className="notice__title">No se pudo cargar el catálogo de categorías</div>
+          <p className="notice__text">
+            {categoriesError}. El formulario usa de momento las categorías de siempre; los cambios
+            hechos desde Administración no se verán hasta que se recargue.
+          </p>
+        </div>
+      )}
+
       {loading ? (
         <p className="loading">Cargando gastos…</p>
       ) : (
@@ -373,7 +407,13 @@ export function ExpensesTab({
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
               <input type="date" value={form.expenseDate} onChange={(e) => setForm((p) => ({ ...p, expenseDate: e.target.value }))} required />
-              <select value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))} required>
+              <select
+                aria-label="Categoría del gasto"
+                value={form.category}
+                onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
+                required
+              >
+                <option value="" disabled hidden>Selecciona categoría...</option>
                 {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
               <CurrencyInput
@@ -412,8 +452,18 @@ export function ExpensesTab({
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
               <input type="date" value={editForm.expenseDate} onChange={(e) => setEditForm((p) => p && { ...p, expenseDate: e.target.value })} required />
-              <select value={editForm.category} onChange={(e) => setEditForm((p) => p && { ...p, category: e.target.value })} required>
+              <select
+                aria-label="Categoría del gasto"
+                value={editForm.category}
+                onChange={(e) => setEditForm((p) => p && { ...p, category: e.target.value })}
+                required
+              >
                 {categoryOptions.map((c) => <option key={`edit-cat-${c}`} value={c}>{c}</option>)}
+                {/* Un gasto antiguo puede usar una categoría que ya no está
+                    activa en el catálogo: hay que poder verla y conservarla. */}
+                {editForm.category && !categoryOptions.includes(editForm.category) && (
+                  <option value={editForm.category}>{editForm.category} (fuera del catálogo)</option>
+                )}
               </select>
               <CurrencyInput
                 currency={editForm.currency}

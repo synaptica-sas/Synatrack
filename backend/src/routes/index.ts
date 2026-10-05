@@ -31,6 +31,7 @@ import { delegationsRoutes } from "../modules/delegations/delegations.routes.js"
 import { feedbackRoutes } from "../modules/feedback/feedback.routes.js";
 import { jobsRoutes } from "../modules/jobs/jobs.routes.js";
 import { financialEntriesRoutes } from "../modules/financial-entries/financial-entries.routes.js";
+import { financialCategoriesRoutes } from "../modules/financial-categories/financial-categories.routes.js";
 import { timerRoutes } from "../modules/timer/timer.routes.js";
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -66,5 +67,6 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(feedbackRoutes, { prefix: "/api/feedback" });
   await app.register(jobsRoutes, { prefix: "/api/jobs" });
   await app.register(financialEntriesRoutes, { prefix: "/api/financial-entries" });
+  await app.register(financialCategoriesRoutes, { prefix: "/api/financial-categories" });
   await app.register(timerRoutes, { prefix: "/api/timer" });
 }

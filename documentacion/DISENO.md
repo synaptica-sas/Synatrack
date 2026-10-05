@@ -220,6 +220,21 @@ estilos en línea.
 | `.inline-list` | Lista de nombres separados en línea dentro de un aviso |
 | `.kpi-sub`, `.kpi-sub--danger`, `.kpi-hint`, `.kpi-loading`, `.table-search`, `.card-title-tight`, `.field-grid--compact`, `.col-health/.col-company/.col-project`, `.cell-empty--roomy`, `.table-foot--tight`, `.chart-block`, `.fx-note--spaced` | Detalles sueltos que antes eran estilos en línea repetidos |
 
+### Clases añadidas al montar Categorías Financieras
+
+**Ninguna.** La pantalla `features/financial/FinancialCategoriesTab.tsx` (decisión D-4) se
+armó entera con vocabulario existente: `.section-stack`, `.card`, `.card-head`,
+`.card-title-tight`, `.field-help`, `.table-wrap`, `.notice--info` con `.notice__title` y
+`.notice__text`, `.state-chip--success` / `--neutral` para activa y desactivada,
+`.inline-actions`, `.btn-sm`, `.cell-right`, `.cell-strong` y `.empty-note`. Cero colores
+literales y cero estilos en línea. Es la segunda pantalla seguida (tras Jornada Laboral) que
+no necesita CSS propio: señal de que el vocabulario de tablas de configuración ya está
+completo.
+
+En Ingresos y Gastos, la columna y el desplegable de categoría tampoco añadieron nada: el
+selector es un `<select>` del formulario y la celda sin categoría usa `.cell-empty`, que ya
+existía.
+
 ### Clases añadidas al migrar Planificación de Capacidad
 
 `features/capacity/CapacityTab.tsx` pasó de 123 estilos en línea y 28 colores literales a

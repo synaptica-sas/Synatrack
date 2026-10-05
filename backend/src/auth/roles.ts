@@ -32,6 +32,7 @@ export type Permission =
   | "extrahours:config"
   | "estimations:write"
   | "estimations:read"
+  | "finance:categories"
   | "activities:manage";
 
 const allPermissions: Permission[] = [
@@ -74,6 +75,9 @@ const allPermissions: Permission[] = [
   "extrahours:config",
   "estimations:write",
   "estimations:read",
+  // Solo ADMIN: el catálogo de categorías de gasto e ingreso (D-4) es
+  // configuración general, del mismo tipo que la jornada o los recargos.
+  "finance:categories",
 ];
 
 export const rolePermissions: Record<AppRole, Permission[]> = {

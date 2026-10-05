@@ -89,6 +89,30 @@ async function main() {
     });
   }
 
+  // Catálogo de categorías financieras (D-4). Las dos de ingreso son las
+  // genéricas que pidió dirección; las de gasto son las siete que hasta ahora
+  // estaban escritas en el frontend. La migración ya las siembra: esto es para
+  // que una base recién creada por `migrate deploy` + seed quede igual.
+  const categoriasFinancieras = [
+    { type: "REVENUE", name: "Servicios de consultoría", sortOrder: 1 },
+    { type: "REVENUE", name: "Otros ingresos", sortOrder: 99 },
+    { type: "EXPENSE", name: "Viajes", sortOrder: 1 },
+    { type: "EXPENSE", name: "Alojamiento", sortOrder: 2 },
+    { type: "EXPENSE", name: "Alimentacion", sortOrder: 3 },
+    { type: "EXPENSE", name: "Transporte", sortOrder: 4 },
+    { type: "EXPENSE", name: "Software", sortOrder: 5 },
+    { type: "EXPENSE", name: "Servicios", sortOrder: 6 },
+    { type: "EXPENSE", name: "Otros", sortOrder: 99 },
+  ];
+
+  for (const categoria of categoriasFinancieras) {
+    await prisma.financialCategory.upsert({
+      where: { type_name: { type: categoria.type, name: categoria.name } },
+      update: {},
+      create: categoria,
+    });
+  }
+
   console.log("Database initialized successfully with roles and admin user.");
 }
 

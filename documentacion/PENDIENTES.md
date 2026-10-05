@@ -64,7 +64,7 @@ Nada de esto se puede resolver leyendo código.
 | D-1 | **¿El dominio `synaptica.cc` es nuestro?** `SMTP_FROM` usa `noreply@synaptica.cc` mientras el resto del proyecto usa `synaptica.co`. Si no es un dominio propio, **todo correo saliente lleva un remitente ajeno** y acaba en spam. (DEP-22) | Nadie puede confirmarlo desde el código |
 | ~~D-2~~ | ~~**¿El umbral de margen por defecto debe ser 15 %?**~~ **Resuelta el 2026-10-05: son dos umbrales, no uno.** Cada proyecto configura `marginWarningPct` (advertencia, 30 % por defecto) y `marginCriticalPct` (crítico, 15 % por defecto); el crítico es el suelo que no se debe cruzar y no puede quedar por encima del de advertencia. El `marginThreshold` único se renombró a `marginCriticalPct` (migración `20261005143000_dos_umbrales_margen`), porque el valor que ya tenían los proyectos era un suelo. El semáforo RAG, el motor de alertas y las pantallas distinguen los dos niveles. | — |
 | D-3 | **¿Un VIEWER debe ver los movimientos de todos los proyectos?** `GET /api/financial-entries` no aplica alcance por rol, a diferencia de otros módulos. | Política de visibilidad |
-| D-4 | **¿Los ingresos se categorizan?** `FinancialEntry.category` solo se usa en gastos y queda nulo en ingresos, sin que el esquema lo impida. | Cambio de modelo si la respuesta es sí |
+| ~~D-4~~ | ~~**¿Los ingresos se categorizan?**~~ **Resuelta el 2026-10-05: sí, y el catálogo es editable.** Dirección pidió «dos categorías genéricas de ingreso con posibilidad de luego editarlas». Se montó un catálogo en la base (`FinancialCategory`) con pantalla propia en Administración, en vez de una segunda lista fija en el frontend. Arranca con **Servicios de consultoría** y **Otros ingresos**; las siete categorías de gasto que vivían en `ExpensesTab.tsx` se trasladaron al mismo catálogo. | — |
 | ~~D-5~~ | ~~**¿La jornada laboral se configura por país, por consultor o ambos?**~~ **Resuelta el 2026-10-05: las dos, con precedencia.** Manda la jornada del consultor; si no tiene, la de su país; si su país no está configurado, la fila general `Default`. Colombia queda en 8,5 h y Ecuador en 8 h. Implementado: cierra DEP-41. | — |
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
 | D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con **0,85 / 1,00** y **90 % / 100 %**, pero `utils/health.ts` calcula la salud con **0,75** y **0,9**. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
@@ -484,6 +484,35 @@ revisar.
 
 ---
 
+### Deuda que queda abierta tras D-4
+
+**El backend de gastos sigue aceptando cualquier texto como categoría.**
+`POST /api/expenses` valida `category: z.string().trim().min(1)` y no comprueba el catálogo,
+mientras que `POST /api/revenue` sí lo hace (`normalizarCategoria`). Se dejó así **a
+propósito**, para no cambiar el contrato de una ruta que ya está en uso y arriesgarse a
+rechazar categorías históricas que no estén sembradas. El efecto práctico es menor —el
+formulario solo ofrece las del catálogo y la migración recogió todas las categorías de gasto
+ya en uso— pero significa que un cliente de la API puede meter una categoría de gasto fuera
+del catálogo, y que la pantalla de administración no gobierna del todo los gastos.
+
+Cerrarlo es un cambio pequeño: reutilizar `resolverCategoriaActiva("EXPENSE", ...)` en
+`expenses.routes.ts`. Antes de hacerlo conviene comprobar contra Supabase que no hay
+categorías de gasto en uso que la migración no haya recogido.
+
+**Las categorías se guardan por nombre, no por clave foránea.** `FinancialEntry.category`
+sigue siendo texto. Renombrar una categoría propaga el nombre nuevo a los movimientos en la
+misma transacción (`PUT /api/financial-categories/:id`), así que no quedan huérfanos, pero
+es un apaño: si algún día se tocan esos nombres por SQL directo, la coherencia se rompe sin
+que nada avise. Convertirlo en FK obliga a migrar los datos de gasto históricos y no pareció
+rentable hoy.
+
+**Los ingresos anteriores a D-4 siguen sin categoría.** No se rellenaron hacia atrás: elegir
+por ellos habría sido inventar datos contables. Aparecen como «Sin categoría» y se les puede
+asignar una editándolos uno a uno. Si el negocio quiere el histórico categorizado, hay que
+pedirle a Finanzas el criterio; no se puede deducir del dato.
+
+---
+
 ## 4. Una trampa que ya apareció cinco veces
 
 **Campos que el backend lee y que nadie puede escribir.** El modelo declara la columna, el
@@ -504,8 +533,16 @@ ninguna columna nula que delate el problema. Hoy el informe pide la jornada real
 `GET /api/capacity/workday/effective`; lo único que queda con nombre de constante es
 `JORNADA_POR_DEFECTO`, el marcador de posición mientras la petición está en vuelo.
 
+**Séptima vez, otra variante del mismo error (corregida el 2026-10-05 con D-4):** la lista de
+categorías de gasto era una constante en `frontend/src/features/expenses/ExpensesTab.tsx:27`.
+No había columna nula ni campo inescribible —el dato se guardaba bien— pero el **conjunto de
+valores posibles** vivía en el código, así que cambiarlo exigía desplegar. Al pedir dirección
+categorías de ingreso «editables después», la salida fácil habría sido copiar esa lista y
+tener dos. Están las dos en la base, en `FinancialCategory`, con pantalla propia.
+
 **Si agregas un campo al modelo, agrégalo también al esquema Zod y al formulario en el mismo
-cambio.** Y si encuentras código que lee un campo, comprueba que exista forma de escribirlo.
+cambio.** Y si vas a escribir una lista de opciones en el código, pregunta primero si alguien
+va a querer cambiarla sin ti. Y si encuentras código que lee un campo, comprueba que exista forma de escribirlo.
 
 ---
 
