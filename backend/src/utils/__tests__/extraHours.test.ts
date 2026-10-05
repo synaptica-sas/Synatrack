@@ -71,7 +71,7 @@ describe("calculateExtraHours", () => {
     vi.mocked(prisma.consultant.findUnique).mockResolvedValue({
       id: "c-us",
       fullName: "US Consultant",
-      email: "us@synaptica.cc",
+      email: "us@synaptica.co",
       role: "Developer",
       country: "USA",
       hourlyRate: 10 as any,
@@ -117,7 +117,7 @@ describe("calculateExtraHours", () => {
     vi.mocked(prisma.consultant.findUnique).mockResolvedValue({
       id: "c-cl",
       fullName: "Chile Consultant",
-      email: "cl@synaptica.cc",
+      email: "cl@synaptica.co",
       role: "Developer",
       country: "Chile",
       hourlyRate: 20 as any,
@@ -160,7 +160,7 @@ describe("calculateExtraHours", () => {
     vi.mocked(prisma.consultant.findUnique).mockResolvedValue({
       id: "c-co",
       fullName: "Colombia Consultant",
-      email: "co@synaptica.cc",
+      email: "co@synaptica.co",
       role: "Developer",
       country: "Colombia",
       hourlyRate: 100 as any,
@@ -205,7 +205,7 @@ describe("calculateExtraHours", () => {
     const mockConsultant = {
       id: "c-co-salary",
       fullName: "Salary Consultant",
-      email: "salary@synaptica.cc",
+      email: "salary@synaptica.co",
       role: "Developer",
       country: "Colombia",
       hourlyRate: null,
@@ -258,7 +258,7 @@ describe("calculateExtraHours", () => {
     vi.mocked(prisma.consultant.findUnique).mockResolvedValue({
       id: "c-pe",
       fullName: "Peru Consultant",
-      email: "pe@synaptica.cc",
+      email: "pe@synaptica.co",
       role: "Developer",
       country: "Peru",
       hourlyRate: 10 as any,
@@ -298,7 +298,7 @@ describe("calculateExtraHours", () => {
     vi.mocked(prisma.consultant.findUnique).mockResolvedValue({
       id: "c-mx",
       fullName: "Mexico Consultant",
-      email: "mx@synaptica.cc",
+      email: "mx@synaptica.co",
       role: "Developer",
       country: "Mexico",
       hourlyRate: 10 as any,
@@ -392,7 +392,7 @@ describe("calculateExtraHours", () => {
     vi.mocked(prisma.consultant.findUnique).mockResolvedValue({
       id: "c-ec",
       fullName: "Ecuador Consultant",
-      email: "ec@synaptica.cc",
+      email: "ec@synaptica.co",
       role: "Developer",
       country: "Ecuador",
       hourlyRate: 10 as any,
@@ -467,7 +467,7 @@ describe("calculateExtraHours", () => {
     vi.mocked(prisma.consultant.findUnique).mockResolvedValue({
       id: "c-co-custom-holiday",
       fullName: "Colombia Consultant Custom",
-      email: "col-holiday@synaptica.cc",
+      email: "col-holiday@synaptica.co",
       role: "Developer",
       country: "Colombia",
       hourlyRate: 10 as any,

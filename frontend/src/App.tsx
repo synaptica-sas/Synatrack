@@ -71,7 +71,7 @@ const SIDEBAR_GROUPS: {
       { id: "tracker",      label: "Rastreador",     icon: "⏱", permission: "time:read" },
       { id: "timeEntries",  label: "Horas",          icon: "▥", permission: "time:read" },
       { id: "reports",      label: "Informes",       icon: "▧", permission: "stats:read" },
-      { id: "activities",   label: "Actividades",   icon: "▤", permission: "time:read" },
+      { id: "activities",   label: "Actividades",   icon: "▤", permission: "activities:manage" },
       { id: "extraHours",   label: "Horas Extra",    icon: "⧗", permission: "extrahours:read" },
     ],
   },

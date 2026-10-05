@@ -30,9 +30,16 @@ export type Permission =
   | "extrahours:review"
   | "extrahours:config"
   | "estimations:write"
-  | "estimations:read";
+  | "estimations:read"
+  | "activities:manage";
 
 const allPermissions: Permission[] = [
+  // `activities:manage` gobierna SOLO la visibilidad de la pantalla de
+  // Actividades, que por decisión de negocio (D-8) queda oculta salvo para
+  // ADMIN mientras se decide el futuro del módulo. NO se usa para leer
+  // actividades: el cronómetro necesita listarlas para su selector de tarea y
+  // se apoya en `time:read`, que conservan todos los roles operativos.
+  "activities:manage",
   "projects:read",
   "projects:write",
   "consultants:read",
