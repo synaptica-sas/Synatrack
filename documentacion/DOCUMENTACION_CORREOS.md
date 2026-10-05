@@ -14,6 +14,12 @@ El backend de la aplicación utiliza **Nodemailer** para enviar correos electró
 
 ---
 
+> ⚠ **Aviso de seguridad.** Este documento contuvo durante meses la contraseña real
+> del buzón `atoro@synaptica.co` en texto plano, desde el 29/07/2026 hasta el
+> 05/10/2026. Se ha retirado, **pero sigue en el historial de git**, así que la
+> contraseña debe considerarse comprometida y **hay que cambiarla**. Las credenciales
+> van en variables de entorno del servicio (Render, Vercel), nunca en el repositorio.
+
 ## 2. Diagnóstico del Error de SMTP (Microsoft 365 / Office 365)
 
 Durante las pruebas del flujo de correo con los parámetros actuales del archivo `.env`:
@@ -21,7 +27,7 @@ Durante las pruebas del flujo de correo con los parámetros actuales del archivo
 SMTP_HOST=smtp.office365.com
 SMTP_PORT=587
 SMTP_USER=atoro@synaptica.co
-SMTP_PASS=Poderoso#1913*
+SMTP_PASS=<la contraseña del buzón — NUNCA se escribe aquí>
 SMTP_FROM="App Gestion <atoro@synaptica.co>"
 ```
 Se obtuvo el siguiente error crítico en la consola del backend:
@@ -39,6 +45,80 @@ Un administrador de TI de la organización debe:
 5. Marcar la casilla **SMTP autenticado** (Authenticated SMTP).
 6. Guardar los cambios.
 *(Nota: Microsoft puede tardar desde unos minutos hasta 24 horas en propagar este cambio).*
+
+---
+
+## 2.bis Qué hay que pedirle a TI para `noreply@synaptica.co` (decisión D-6)
+
+*Para el administrador de Microsoft 365 / Entra ID de Synaptica.*
+
+Dirección decidió que el remitente sea **`noreply@synaptica.co`** y que se habilite desde el
+Entra ID propio. Esto es lo que la aplicación necesita y las dos formas de dárselo.
+
+### Lo que la aplicación consume
+
+Cinco variables de entorno, configuradas en el servicio (Render), **nunca en el repositorio**:
+
+| Variable | Qué es |
+|---|---|
+| `SMTP_HOST` | `smtp.office365.com` para Microsoft 365 |
+| `SMTP_PORT` | `587` |
+| `SMTP_USER` | el buzón que autentica |
+| `SMTP_PASS` | su contraseña o clave de aplicación |
+| `SMTP_FROM` | `App Gestión <noreply@synaptica.co>` |
+
+### Camino A — Buzón con SMTP autenticado
+
+El clásico: se crea el buzón `noreply@synaptica.co` y se le habilita **SMTP autenticado**
+(§2, Solución A).
+
+**Dos advertencias que conviene comprobar antes de ir por aquí:**
+
+1. **Microsoft lleva años retirando la autenticación básica.** SMTP AUTH es lo último que
+   quedaba en pie y está anunciado su fin. Puede que en el tenant ya no se pueda habilitar, o
+   que se pueda hoy y deje de funcionar sin aviso. **Confírmalo en el centro de administración
+   antes de prometer esta vía.**
+2. **El buzón necesita licencia** para autenticar por SMTP. Un buzón compartido sin licencia no
+   sirve para esto.
+
+### Camino B — Registro de aplicación en Entra ID (recomendado)
+
+En vez de un usuario con contraseña, se registra **la aplicación** y se le concede permiso para
+enviar correo. Es lo que encaja con *"activarlo desde nuestro Entra ID"*.
+
+Lo que haría TI:
+
+1. **Entra ID → Registros de aplicaciones → Nuevo registro**. Nombre, por ejemplo, `Synatrack —
+   correo saliente`.
+2. Anotar **Id. de aplicación (cliente)** e **Id. de directorio (inquilino)**.
+3. **Certificados y secretos → Nuevo secreto de cliente**. Guardar el valor; solo se ve una vez.
+4. **Permisos de API → Microsoft Graph → Permisos de aplicación → `Mail.Send`**, y
+   **conceder consentimiento del administrador**.
+5. **Restringir el alcance**, que es el paso que suele saltarse: `Mail.Send` como permiso de
+   aplicación habilita el envío **como cualquier buzón del tenant**. Se acota con una
+   *directiva de acceso a aplicaciones* de Exchange (`New-ApplicationAccessPolicy`) para que
+   esa aplicación solo pueda enviar como `noreply@synaptica.co`.
+
+**Por qué es mejor:** no hay contraseña que rote ni que se filtre —como ya pasó con este mismo
+documento—, sobrevive al fin de la autenticación básica, y el permiso se revoca desde Entra ID
+sin tocar el código.
+
+**Lo que cuesta:** la aplicación hoy envía por SMTP con `nodemailer`. Este camino exige cambiar
+esa parte a la API de Graph con OAuth2. **No es trabajo de TI, es de desarrollo**, y hay que
+presupuestarlo.
+
+### El efecto secundario que resuelve un pendiente
+
+Hoy el envío lleva `ciphers: "SSLv3"` y `rejectUnauthorized: false` —TLS debilitado y
+validación de certificado desactivada— puestos en su día para que Office 365 no diera error.
+**Con el camino B ese apaño desaparece entero**, porque ya no se habla SMTP. Es la razón de más
+peso para preferirlo: D-6 y el pendiente del TLS débil son el mismo problema.
+
+### Para poder verificarlo
+
+Sea cual sea el camino, desarrollo necesita **un buzón de pruebas que no sea el de producción**.
+Sin él, corregir el TLS significa cambiar a ciegas algo que, si se rompe, deja de enviar todos
+los avisos sin que nadie se entere.
 
 ---
 
