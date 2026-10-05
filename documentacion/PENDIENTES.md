@@ -2,11 +2,14 @@
 
 Lista viva de lo que falta. Si vas a tomar algo, empieza por aquí.
 
-**Actualizado:** 2026-09-30 · **Rama con todo lo hecho:** `dev`
+**Actualizado:** 2026-10-05 · **Rama con todo lo hecho:** `dev`
 
 Para el detalle de cada arreglo ya hecho, ver `documentacion/cambios/`.
 Para el histórico completo de la depuración, `documentacion/BACKLOG_DEPURACION.md`
-(42 ítems, 29 resueltos). Este documento es el que hay que mirar para saber qué queda.
+(42 ítems, 29 resueltos). Para las decisiones de negocio ya tomadas, con su justificación
+completa, `documentacion/DECISIONES_REUNION.md`. Para el backlog de usuario recibido a
+principios de septiembre (53 ítems, verificados contra el código actual), §6 de este mismo
+documento. Este documento es el que hay que mirar para saber qué queda.
 
 ---
 
@@ -514,3 +517,107 @@ Para probar comportamiento por rol hay un **simulador**: variables `AUTH_DEV_EMA
 falla de autorización se manifiesta en local**.
 
 Entorno local completo: `.\scripts\dev.ps1`. Detalle en `documentacion/DESARROLLO_LOCAL.md`.
+
+---
+
+## 6. Backlog recibido a principios de septiembre (`documentacion/Backlog.xlsx`)
+
+Son **53 ítems** levantados contra la versión que estaba desplegada a principios de septiembre
+de 2026, **antes** de toda la fusión de Ingresos/Gastos, la unificación de rentabilidad y
+semáforo (R10), el rediseño del timesheet, la paginación y las correcciones de seguridad de
+permisos. El Excel los junta en una sola hoja; aquí se separan por quién los pidió, porque son
+dos conversaciones distintas: §6.1 es retroalimentación de uso de **Greysi - Yamilet** sobre
+pantallas concretas; §6.2 es la lista de **Juan Espinosa** de la reunión de requerimientos
+(incluye pedidos de terceros — Francis Garrido, Juan Bedoya — que él trasladó).
+
+**Verificado ítem por ítem contra el código de `dev` el 2026-10-05** (no es una copia del
+Excel): cada fila dice si ya se resolvió, a medias, sigue abierta, o no es un bug sino que hace
+falta que alguien decida algo primero. Cuatro etiquetas:
+
+| Etiqueta | Qué significa |
+|---|---|
+| **Resuelto** | Ya funciona así hoy en `dev`. Se cita el archivo/línea que lo confirma. |
+| **Parcial** | Se construyó una parte; se explica qué falta exactamente. |
+| **Abierto** | No hay código relacionado. Confirmado, no es una suposición. |
+| **Decisión** | No es un defecto: es ambiguo o depende de que el negocio resuelva algo primero. |
+
+**Hallazgo transversal, no estaba en el Excel original:** cinco ítems de monedas distintos
+(R-008, R-012, R-026, R-033, R-034) son **el mismo defecto de raíz**: todo el sistema financiero
+convierte con la tasa de cambio **de hoy** (`prisma.fxConfig.findMany()` en `stats.routes.ts`,
+`project-detail.routes.ts`, `projects.routes.ts`), nunca con la tasa vigente en la fecha del
+contrato o de la factura. Ya existe la pieza para resolverlo —`FxRateHistory` y
+`GET /api/fx/rate?date=` (`fx.routes.ts:140-172`)— pero no está conectada al cálculo. Arreglarlo
+una vez resuelve los cinco ítems a la vez; no son cinco tareas, es una.
+
+Dos pares más son el mismo síntoma reportado por separado: **R-005 y R-032** (el filtro de
+Portafolio no actualiza los totales de arriba) son un solo bug, ya confirmado en código.
+**R-020 y R-022** piden lo mismo (PM como aprobador de horas, con notificación) para Horas y
+Horas Extra respectivamente — ya existe para Horas Extra, falta para Horas regulares.
+
+### 6.1 Backlog Greysi (R-001 a R-027)
+
+| ID | Pantalla | Qué pidió | Estado y evidencia |
+|---|---|---|---|
+| R-001 | Dashboard | Resumen mes a mes por proyecto; clic en un proyecto lleva a su ficha en Gestión de Proyectos | **Abierto.** `DashboardTab.tsx` no tiene resumen mensual por proyecto, y las filas de su tabla no tienen navegación a detalle. |
+| R-002 | Dashboard | Ver evolución de horas aprobadas/proyectadas/extra; clic lleva a Horas con el detalle por consultor; quitar horas extra de aquí | **Parcial.** El KPI "Horas aprobadas" sí navega a Horas y hay tablas por consultor (`DashboardTab.tsx:1419-1473`). Las horas extra **no se retiraron**: siguen sus propios gráficos (líneas 1500-1517). |
+| R-003 | Portafolio | Precio de venta, presupuesto, ejecutado, comisiones/impuestos/descuento, margen | **Parcial.** Presupuesto/ejecutado/margen ya están. Precio de venta no se muestra en la tabla de Portafolio (solo en el formulario de Proyectos). Comisiones/impuestos/descuento **no existen en ningún lado del código** — es concepto nuevo. |
+| R-004 | Portafolio | Filtro de proyecto desplegable | **Resuelto.** `SearchableSelect` desplegable con búsqueda (`PortfolioTab.tsx:347-355`). |
+| R-005 | Portafolio | Al filtrar por proyecto, los totales de arriba no cambian | **Abierto — mismo bug que R-032.** Los KPI de resumen leen `portfolio.summary` sin filtrar; los filtros solo afectan la tabla de abajo. |
+| R-006 | Portafolio | Filtros arriba + botón de limpiar filtros | **Parcial.** Los filtros ya están arriba. Falta el botón "Limpiar filtros" (sí existe en Dashboard, no en Portafolio). |
+| R-007 | Proyectos | País como lista desplegable | **Abierto.** Sigue siendo `<input>` de texto libre (`ProjectsTab.tsx:302,544`). Consultores ya migró esto mismo a `<select>`; a Proyectos no se le aplicó. |
+| R-008 | Proyectos | Vincular la tasa de cambio del proyecto a su propia fecha, no mostrar siempre en USD | **Abierto — mismo origen que R-012/R-026/R-033/R-034** (ver hallazgo transversal arriba). `useStats` hardcodea USD por defecto. |
+| R-009 | Proyectos | Riesgos con costo que afecte el presupuesto | **Abierto.** `Risk` no tiene campo de costo; ningún cálculo lo descuenta del presupuesto. |
+| R-010 | Proyectos | Categoría de proyecto como lista desplegable, con opción de personalizar | **Abierto.** No existe campo "categoría" a nivel de proyecto en absoluto (el único "category" es el de Riesgos, y es texto libre). |
+| R-011 | Proyectos | El semáforo sale distinto en el listado que en el detalle | **Resuelto.** `computeHealthStatus` es ya la única fuente para ambas vistas (`stats.routes.ts:120`, `project-detail.routes.ts:106`), con auto-corrección si diverge. (Distinto del matiz de colores de CPI/SPI que sigue abierto como D-7). |
+| R-012 | Proyectos | La tasa a dólares debe fijarse en la fecha de contratación, no recalcularse después | **Abierto — mismo origen que R-008/R-026/R-033/R-034.** |
+| R-013 | Capacidad | Al asignar un consultor, asignar también su proyección | **Abierto.** `AssignmentsPanel.handleCreate` solo crea la asignación; no toca `Forecast`. |
+| R-014 | Capacidad | Opción de editar una asignación | **Abierto.** Solo existen cancelar/completar/eliminar; no hay edición ni endpoint `PATCH` genérico. |
+| R-015 | Capacidad | Asignar riesgos por consultor | **Abierto.** `Risk` no tiene `consultantId`. |
+| R-016 | Capacidad | Costo total por consultor | **Parcial.** El costo por consultor existe dentro de cada proyecto; falta el total consolidado entre todos sus proyectos en la vista general. |
+| R-017 | Actividades | Al completar una actividad, que se actualicen las horas automáticamente | **Abierto, y en sentido contrario al pedido.** Hoy las horas de la actividad se calculan *leyendo* el timesheet (`activities.routes.ts:41`); no hay nada que cree horas al completar una actividad. |
+| R-018 | Actividades | Ver el proyecto asignado y el estado de cada actividad | **Resuelto.** Ambos se muestran en la tabla y en el Kanban. |
+| R-019 | Actividades | La sincronización con Teams debe traer las actividades del consultor conectado, no de otro | **Resuelto.** El selector se bloquea con sesión activa y siempre sincroniza el calendario de quien está conectado. |
+| R-020 | Horas | PM recibe horas y horas extra para aprobar, con notificación semanal por correo | **Parcial — ver también R-022.** El PM ya filtra el alcance de aprobación de Horas regulares, pero no hay notificación por correo para Horas (solo existe para Horas Extra) ni ningún job semanal de recordatorio. |
+| R-021 | Horas Extra | Solo Admin puede solicitar, no el Consultor | **Resuelto** (el síntoma ya no existe). `POST /api/extra-hours` y el botón del frontend ya autorizan a CONSULTANT. |
+| R-022 | Horas Extra | PM aprueba y notifica a Financiero | **Parcial.** Ya aprueba el PM en solitario y notifica a Nómina al aprobar. Falta que sea un resumen **semanal** en vez de notificación inmediata por solicitud. |
+| R-023 | Horas Extra | Calendario de solicitud solo desde hoy en adelante | **Resuelto**, con matiz: aplica a CONSULTANT; ADMIN/PM quedan exentos a propósito (para registrar en nombre de otros retroactivamente). |
+| R-024 | Horas Extra | Delegación falla, dice que el correo no existe | **Abierto, causa raíz identificada.** Exige que el correo exista en `User` (se crea solo al iniciar sesión), no en `Consultant`. Un consultor que nunca ha entrado falla al delegarle. |
+| R-025 | Gastos | Agregar categorías de capacitación y horas extra; aclarar qué cubre "Servicios" | **Abierto / Decisión.** No existen esas categorías en `categoryOptions` (`ExpensesTab.tsx:27`). Qué cubre "Servicios" no está documentado — hace falta que negocio lo defina. |
+| R-026 | Gastos | Siempre aparece en USD sin importar la moneda elegida, y la conversión no coincide | **Parcial — mismo origen que R-008/R-012/R-033/R-034.** La fila expandida sí respeta la moneda original; la vista agrupada hardcodea USD por defecto. |
+| R-027 | Gastos | Buscar proyecto como lista desplegable | **Abierto.** Sigue siendo un `<input>` de texto libre; a diferencia de Portafolio/Proyectos, Gastos no migró a `SearchableSelect`. |
+
+### 6.2 Cambios propuestos en reunión (Juan Espinosa)
+
+| ID | Título | Qué pidió | Estado y evidencia |
+|---|---|---|---|
+| R-028 | Corregir visibilidad del panel de administrador | Restringir el panel de Admin solo al rol Admin | **Resuelto.** Permiso `users:manage` lo tiene únicamente ADMIN, reforzado también en el backend (`users.routes.ts`). Defensa en profundidad correcta. |
+| R-029 | Mostrar parte del presupuesto como porcentaje | Formatear una parte del presupuesto como % en vez de valor absoluto | **Resuelto** (con ambigüedad). El uso de presupuesto y el avance ya se muestran como % en Portafolio/Proyectos/Dashboard. No está claro a qué parte puntual se refería el pedido original. |
+| R-030 | Documentación técnica del desarrollo | Documentar arquitectura y decisiones de diseño (pedido de Francis Garrido) | **Resuelto.** `DOCUMENTACION_TECNICA.md`, `MAPA_PROYECTO.md`, `DISENO.md` y varios más. |
+| R-031 | Definir fecha/ventana de lanzamiento | Franja tentativa de lanzamiento (pedido de Juan Bedoya) | **Decisión.** Pura decisión de negocio; nada en el código la resuelve. Sigue sin nada en producción (§0 de este documento). |
+| R-032 | Corregir filtros del dashboard/portafolio | Los filtros no actualizan el presupuesto total mostrado | **Abierto — mismo bug que R-005**, confirmado en código. |
+| R-033 | Fijar el presupuesto en su moneda original | No recalcular el presupuesto contratado cada vez que cambia la tasa | **Abierto — mismo origen que R-008/R-012/R-026/R-034** (hallazgo transversal). |
+| R-034 | Definir lógica de fecha para la tasa de cambio | Elegir si la conversión usa fecha de factura, de pago o de balance | **Abierto/Decisión — mismo origen que R-008/R-012/R-026/R-033.** La pieza técnica (`FxRateHistory`) ya existe; falta decidir qué fecha usar y conectarla. |
+| R-035 | Seguimiento de presupuesto mensual con semáforo | Semáforo mensual con compensación entre meses | **Abierto.** `MonthlySnapshot` guarda actuales por mes pero no tiene estimado-por-mes, semáforo mensual ni lógica de compensación. |
+| R-036 | Separar gastos por categoría | Saber cuánto se consumió de cada rubro (capacitación, riesgo, ejecución) | **Parcial.** Costo laboral vs. gastos directos ya se separan (visible en un tooltip del Dashboard) y Gastos ya filtra por categoría. Falta una vista persistente de desglose, y "riesgo" como rubro no existe (ver R-009). |
+| R-037 | Fusionar módulos de Ingresos y Gastos | Una sola vista para facilitar edición y balance general | **Parcial.** El modelo de datos ya se fusionó (`FinancialEntry`) y el menú ya es una sola pestaña "Ingresos/Gastos". Pero sigue siendo un selector entre dos paneles separados, no una tabla combinada con balance general. |
+| R-038 | Vista separada de tarifa cliente vs. tarifa proyecto | Módulo distinto (no una columna) para costo interno vs. tarifa al cliente, con acceso restringido | **Parcial.** `hourlyRate` (costo) y `sellRate` (venta) ya existen con restricción de acceso por rol, pero como columnas del mismo formulario de Proyecciones, no como vista separada. |
+| R-039 | Campo "tipo de hora" al registrar horas | Normal / capacitación / hora extra / ausencia | **Abierto.** `TimeEntry` no tiene ese campo; `source` es un detalle técnico interno (`MANUAL`/`TIMESHEET`/`TIMER`), no elegible por el usuario. |
+| R-040 | Aprobación del PM para habilitar horas extra | El PM debe aprobar antes de que el consultor pueda solicitar | **Abierto.** Existe `allowExtraHours` por proyecto, editable en cualquier momento por PM/ADMIN, pero no es una aprobación explícita ni es por consultor. |
+| R-041 | Definir quién puede pedir horas extra por mes | El PM activa mes a mes, por consultor | **Abierto.** No existe ninguna dimensión temporal ni por persona; solo el interruptor de proyecto de R-040. |
+| R-042 | Fusionar horas extra en el reporte general de horas | Integrarlas al informe de Horas en vez de mantenerlas aparte | **Abierto.** El informe semanal de Horas marca como "extra" lo que excede 8h/día o cae en fin de semana, pero eso es una regla visual sobre horas regulares — no integra el módulo real de Horas Extra (aprobación, recargos, nómina). |
+| R-043 | Alerta de utilización al 100% de un consultor | Alerta visual al llegar al límite de horas asignadas | **Parcial.** Al superar el 100% sí cambia a estado "Sobrecargado" visualmente; exactamente al 100% queda como "Completo" (neutral). No hay alerta push — `AlertType.CONSULTANT_OVERLOADED` nunca se genera (mismo hallazgo que DEP-06). |
+| R-044 | Alerta de límite legal de horas extra por país | Avisar según los topes legales vigentes por país | **Resuelto.** El motor de cálculo ya emite avisos de límite diario y semanal configurados por país, visibles en el formulario de solicitud. |
+| R-045 | Gestión formal de proveedores/terceros (v2.0) | Registrar horas de terceros subcontratados, no solo como gasto fijo | **Abierto**, consistente con que el propio ítem lo marca para v2.0. Solo existe `Consultant.isInternal` como booleano simple. |
+| R-046 | Evaluar registro automático de tiempo tipo Clockify | Se había descartado para el MVP; quedó en backlog para evaluar | **Abierto, intencional.** El Tracker que sí se construyó es un cronómetro manual (inicio/pausa), no captura automática en segundo plano. Sigue siendo una evaluación futura, no un pendiente técnico. |
+| R-047 | Reporte consolidado de horas trabajadas | Más que exportar a CSV sin resumen | **Parcial.** `ReportsTab` ya tiene totales, tabla por consultor y gráfica — la premisa original de "solo CSV" ya no aplica. Limitación real: la ventana es de una semana a la vez, no un rango flexible multi-mes. |
+| R-048 | Vista/reporte para el cliente final | Reporte pensado para compartir con el cliente | **Abierto.** Sin evidencia de ninguna vista o reporte etiquetado para cliente final en todo el repo. |
+| R-049 | Asociar factura/orden de compra a cada recurso facturado | Para modelos de staffing facturados por recurso | **Abierto.** Ningún campo de factura u orden de compra en `FinancialEntry`, `Assignment` ni `Forecast`. |
+| R-050 | Afinar el cálculo del semáforo de salud | Hoy se basa solo en presupuesto | **Parcial.** `computeHealthStatus` ya no se basa solo en presupuesto (usa alertas, CPI, SPI, riesgos, hitos y margen) — el reclamo original ya está resuelto. Queda abierto el matiz de D-7: los cortes de color de Portafolio no coinciden con los del semáforo; la decisión ya se tomó (pantalla de configuración) pero **aún no está construida**. |
+| R-051 | Acceso de comercial a disponibilidad y tarifas | Dar a Fernando (comercial) acceso a consultores disponibles y sus tarifas | **Abierto + Decisión nueva.** No existe un rol "Comercial". VIEWER ve disponibilidad pero no tarifas (excluido a propósito de `puedeVerTarifas`). Hace falta definir el rol/permiso exacto antes de construir nada — **candidato a una décima decisión (D-10)** junto a las de `DECISIONES_REUNION.md`. |
+| R-052 | Modelo de centros de costo y sincronización contable | Definir el modelo y cómo se sincroniza con contabilidad | **Decisión.** Cero menciones de "centro de costo" en todo el repo. El propio ítem pide "definir el modelo" — es un pendiente de producto, no un bug. |
+| R-053 | Mantener en backlog: sincronización con calendario de Teams | Medir % de tiempo en reuniones vs. trabajo efectivo | **Resuelto, mejor de lo pedido.** `ActivitiesTab` ya calcula "Sobrecarga de Reuniones (Teams)" con aviso si supera 30%. El módulo de Actividades ya quedó oculto salvo para ADMIN (D-8, permiso `activities:manage`, commit `c360afe`). |
+
+**Fuente:** `documentacion/Backlog.xlsx` (53 filas, columnas ID/Prioridad/Título/Detalle/
+Solicitante/Fecha). Verificación de estado contra `dev` hecha el 2026-10-05; si el código
+avanza, estas etiquetas quedan desactualizadas y hay que repetir la verificación antes de
+confiar en ellas para planear trabajo nuevo.
