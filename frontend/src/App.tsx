@@ -39,6 +39,7 @@ import { ProfileTab } from "./features/profile/ProfileTab";
 import { ExtraHoursTab } from "./features/extraHours/ExtraHoursTab";
 import { EstimationCalculatorTab } from "./features/estimations/EstimationCalculatorTab";
 import { ActivitiesTab } from "./features/activities/ActivitiesTab";
+import { WorkdayConfigTab } from "./features/workday/WorkdayConfigTab";
 import type { TabId, FinancialPanel } from "./types";
 import { FinancialTab } from "./features/financial/FinancialTab";
 import { RagChat } from "./components/RagChat";
@@ -89,6 +90,7 @@ const SIDEBAR_GROUPS: {
     tabs: [
       { id: "admin", label: "Usuarios",  icon: "⧉", permission: "users:manage" },
       { id: "extraHoursConfig", label: "Config. Horas Extra", icon: "⚙", permission: "extrahours:config" },
+      { id: "workdayConfig", label: "Jornada Laboral", icon: "⏱", permission: "capacity:config" },
       { id: "audit", label: "Auditoría", icon: "⊛", permission: "users:manage" },
     ],
   },
@@ -247,6 +249,7 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   fx: "/fx",
   admin: "/admin",
   extraHoursConfig: "/extra-hours-config",
+  workdayConfig: "/workday-config",
   audit: "/audit",
   profile: "/profile",
   alerts: "/alerts",
@@ -1978,6 +1981,14 @@ function App() {
                   can={can}
                   onError={handleError}
                   configModeOnly={true}
+                />
+              )}
+
+              {activeTab === "workdayConfig" && (
+                <WorkdayConfigTab
+                  canWrite={can("capacity:config")}
+                  onError={handleError}
+                  onSuccess={(msg) => showToast(msg, "success")}
                 />
               )}
 

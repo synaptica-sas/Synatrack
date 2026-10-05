@@ -10,8 +10,10 @@ import {
   calculateCapacityHours,
   addDays,
   getAvailabilityStatus,
+  resolverJornada,
   type AvailabilityStatus,
 } from "../../utils/capacity.js";
+import { cargarJornadasPorPais } from "./workday.routes.js";
 
 const periodQuerySchema = z.object({
   from: z.coerce.date().optional(),
@@ -63,6 +65,10 @@ async function buildCapacityRows(
     },
   });
 
+  // Jornada configurada por país (D-5). Se carga una sola vez por consulta y
+  // `resolverJornada` decide, consultor a consultor, cuál se le aplica.
+  const jornadasPorPais = await cargarJornadasPorPais();
+
   const consultants = await prisma.consultant.findMany({
     where: {
       active: true,
@@ -109,7 +115,13 @@ async function buildCapacityRows(
     );
 
     const { consultantId: _cid, ...availability } = computeAvailability(
-      c.id, c.assignments, c.blocks, c.capacityConfig, period, c.country, customHolidaySet
+      c.id,
+      c.assignments,
+      c.blocks,
+      resolverJornada(c.capacityConfig, c.country, jornadasPorPais),
+      period,
+      c.country,
+      customHolidaySet,
     );
 
     // ── Forecast contribution ──────────────────────────────────────────────
@@ -377,6 +389,12 @@ export async function capacityRoutes(app: FastifyInstance) {
 
       if (!consultant) return reply.status(404).send({ message: "Consultor no encontrado" });
 
+      const jornada = resolverJornada(
+        consultant.capacityConfig,
+        consultant.country,
+        await cargarJornadasPorPais(),
+      );
+
       const from = query.from ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1);
       const to = query.to ?? new Date(from.getFullYear(), from.getMonth() + 6, 0);
 
@@ -394,7 +412,7 @@ export async function capacityRoutes(app: FastifyInstance) {
           consultantId,
           consultant.assignments,
           consultant.blocks,
-          consultant.capacityConfig,
+          jornada,
           { from: mFrom, to: mTo },
           consultant.country,
         );
@@ -441,6 +459,8 @@ export async function capacityRoutes(app: FastifyInstance) {
       // tarifa ni siquiera se lee de la base y el costo sale `null`.
       const verTarifas = puedeVerTarifas(request.authUser!.roles);
 
+      const jornadasPorPais = await cargarJornadasPorPais();
+
       const assignments = await prisma.assignment.findMany({
         where: { projectId, status: { in: ["ACTIVE", "PARTIAL", "PLANNED", "COMPLETED"] } },
         include: {
@@ -469,8 +489,9 @@ export async function capacityRoutes(app: FastifyInstance) {
           if (overlapTo < overlapFrom) return null;
 
           const overlapPeriod = { from: overlapFrom, to: overlapTo };
-          const capacityHours = calculateCapacityHours(overlapPeriod, c.capacityConfig, c.blocks, c.country);
-          const committedHours = calculateCommittedHours([a], overlapPeriod, c.capacityConfig, c.country);
+          const jornada = resolverJornada(c.capacityConfig, c.country, jornadasPorPais);
+          const capacityHours = calculateCapacityHours(overlapPeriod, jornada, c.blocks, c.country);
+          const committedHours = calculateCommittedHours([a], overlapPeriod, jornada, c.country);
           const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
           const estimatedCost = verTarifas ? Math.round(committedHours * hourlyRate * 100) / 100 : null;
 
@@ -528,6 +549,8 @@ export async function capacityRoutes(app: FastifyInstance) {
       // Mismo criterio que en `/capacity/project/:projectId` (DEP-38).
       const verTarifas = puedeVerTarifas(request.authUser!.roles);
 
+      const jornadasPorPais = await cargarJornadasPorPais();
+
       const projects = await prisma.project.findMany({
         where: { status: { not: "CLOSED" } },
         include: {
@@ -563,7 +586,8 @@ export async function capacityRoutes(app: FastifyInstance) {
             const overlapTo = a.endDate < period.to ? a.endDate : period.to;
             if (overlapTo < overlapFrom) return null;
             const overlapPeriod = { from: overlapFrom, to: overlapTo };
-            const committedHours = calculateCommittedHours([a], overlapPeriod, c.capacityConfig, c.country);
+            const jornada = resolverJornada(c.capacityConfig, c.country, jornadasPorPais);
+            const committedHours = calculateCommittedHours([a], overlapPeriod, jornada, c.country);
             const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
             return {
               consultantId: c.id,

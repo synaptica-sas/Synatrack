@@ -65,7 +65,7 @@ Nada de esto se puede resolver leyendo código.
 | ~~D-2~~ | ~~**¿El umbral de margen por defecto debe ser 15 %?**~~ **Resuelta el 2026-10-05: son dos umbrales, no uno.** Cada proyecto configura `marginWarningPct` (advertencia, 30 % por defecto) y `marginCriticalPct` (crítico, 15 % por defecto); el crítico es el suelo que no se debe cruzar y no puede quedar por encima del de advertencia. El `marginThreshold` único se renombró a `marginCriticalPct` (migración `20261005143000_dos_umbrales_margen`), porque el valor que ya tenían los proyectos era un suelo. El semáforo RAG, el motor de alertas y las pantallas distinguen los dos niveles. | — |
 | D-3 | **¿Un VIEWER debe ver los movimientos de todos los proyectos?** `GET /api/financial-entries` no aplica alcance por rol, a diferencia de otros módulos. | Política de visibilidad |
 | D-4 | **¿Los ingresos se categorizan?** `FinancialEntry.category` solo se usa en gastos y queda nulo en ingresos, sin que el esquema lo impida. | Cambio de modelo si la respuesta es sí |
-| D-5 | **¿La jornada laboral se configura por país, por consultor o ambos?** Necesario para poder arreglar DEP-41. | Define el diseño |
+| ~~D-5~~ | ~~**¿La jornada laboral se configura por país, por consultor o ambos?**~~ **Resuelta el 2026-10-05: las dos, con precedencia.** Manda la jornada del consultor; si no tiene, la de su país; si su país no está configurado, la fila general `Default`. Colombia queda en 8,5 h y Ecuador en 8 h. Implementado: cierra DEP-41. | — |
 | D-6 | **Credenciales SMTP de prueba** para poder corregir el TLS del correo sin romper el envío. | Sin un buzón de prueba no se puede verificar |
 | D-7 | **¿Cuáles son los umbrales buenos de CPI, SPI y uso de presupuesto?** La pantalla de Portafolio pinta con **0,85 / 1,00** y **90 % / 100 %**, pero `utils/health.ts` calcula la salud con **0,75** y **0,9**. Son criterios distintos para lo mismo, así que el color de una celda puede contradecir al semáforo de su propia fila. | Es una regla de negocio, no una decisión técnica |
 | D-8 | **¿Se va a usar el módulo de Actividades?** El cronómetro y el timesheet permiten enlazar cada registro a una `Activity` para poder comparar horas estimadas con reales, pero no hay ninguna creada: el desplegable solo ofrece "Sin tarea" y parece roto. O se empieza a usar, o se retira el selector de las dos pantallas. | Decisión de producto |
@@ -90,17 +90,28 @@ Efecto colateral pendiente de decidir: `calculateExtraHours.ts` sigue incluyendo
 inofensivo (no hay filas con ese estado) y se dejó intacto a propósito para no tocar la
 lógica de cálculo de recargos, pero es código que ya no puede hacer nada.
 
-**DEP-41 — La jornada laboral no se puede configurar.**
-`CapacityConfig` tiene `hoursPerDay` (8 por defecto) y `workDaysPerWeek` (5), por consultor
-o por país, y `capacity.routes.ts` los lee en cinco sitios. Pero **no existe endpoint ni
-formulario que los escriba**, así que la fila siempre es nula y toda la capacidad se calcula
-con 8 h y 5 días para todo el mundo, sin importar el país ni la jornada real.
-Bloqueado por D-5.
+**~~DEP-41~~ — La jornada laboral no se puede configurar. RESUELTO el 2026-10-05.**
+`CapacityConfig` ya se escribe desde la aplicación: pantalla **Jornada Laboral**
+(Administración, permiso `capacity:config`, solo ADMIN) sobre
+`backend/src/modules/capacity/workday.routes.ts`. La precedencia la resuelve
+`resolverJornada()` en `utils/capacity.ts` —**consultor → su país → la fila general
+`Default`**— y los cinco puntos de `capacity.routes.ts` la reciben ya resuelta, en vez de
+leer solo la fila del consultor como antes.
 
-Desde el 2026-09-24 hay **un consumidor más**: `frontend/src/features/reports/reportUtils.ts`
-declara `DAILY_LIMIT = 8` para decidir qué parte de cada barra del informe sale en rojo. Es
-la misma jornada fija, ahora también en una pantalla que la gente mira. Cuando D-5 se
-decida, hay que conectar los dos sitios, no solo `capacity.routes.ts`.
+Un país sin configurar **no** cae en un 8 escondido: hereda la fila `Default` de forma
+explícita, y la API devuelve el `origen` ("consultor" / "pais" / "general") para poder
+decirlo en pantalla. Si ni siquiera existe esa fila se usa `JORNADA_GENERAL`, una constante
+con nombre que solo se alcanza con la base sin sembrar.
+
+La migración `20261005190000_jornada_configurable` vuelve único el país en `CapacityConfig`
+y siembra Colombia 8,5 h, Ecuador 8 h y `Default` 8 h × 5 días; el seed hace lo mismo para
+la base de producción que se va a rehacer.
+
+**El segundo consumidor también quedó conectado**: `reportUtils.ts` ya no declara
+`DAILY_LIMIT = 8`. `barsByDay`/`barsByConsultant` reciben un resolver de jornada por
+consultor y el informe semanal pide `GET /api/capacity/workday/effective`. **Cambio visible**:
+un colombiano que registre 8,5 h en un día ya no aparece con 0,5 h en rojo, porque esa es
+su jornada completa.
 
 **Paginación: hecha la mitad urgente, falta el resto.** El 2026-09-30 se paginaron los
 tres listados **cuyo volumen crece con el tiempo**, con el mismo contrato de `/api/audit`
@@ -481,15 +492,17 @@ queda siempre nula y la funcionalidad que depende de ella **no funciona, sin dar
 
 Ya pasó con `projectManagerEmail` (la aprobación de horas extra por el PM era imposible),
 `marginThreshold` y `budgetAlertPct` (el umbral configurado se ignoraba), `identification`
-(el documento salía siempre "No asignado" en la nómina) y `CapacityConfig` (DEP-41, todavía
+(el documento salía siempre "No asignado" en la nómina) y `CapacityConfig` (DEP-41, resuelto el 2026-10-05; antes
 abierto).
 
-**Y una variante nueva (sexta vez), esta al revés:** en lugar de leer un campo que nadie
-escribe, se escribió un valor fijo en el código donde ya existía la columna para
-configurarlo. El informe de horas usa `DAILY_LIMIT = 8` en el frontend teniendo
-`CapacityConfig.hoursPerDay` en el modelo. El efecto es el mismo -- la configuración no
-manda -- y cuesta más de encontrar, porque no hay ninguna columna nula que delate el
-problema.
+**Y una variante nueva (sexta vez), esta al revés** (corregida el 2026-10-05 junto con
+DEP-41)**:** en lugar de leer un campo que nadie escribe, se escribió un valor fijo en el
+código donde ya existía la columna para configurarlo. El informe de horas usaba
+`DAILY_LIMIT = 8` en el frontend teniendo `CapacityConfig.hoursPerDay` en el modelo. El
+efecto es el mismo -- la configuración no manda -- y cuesta más de encontrar, porque no hay
+ninguna columna nula que delate el problema. Hoy el informe pide la jornada real a
+`GET /api/capacity/workday/effective`; lo único que queda con nombre de constante es
+`JORNADA_POR_DEFECTO`, el marcador de posición mientras la petición está en vuelo.
 
 **Si agregas un campo al modelo, agrégalo también al esquema Zod y al formulario en el mismo
 cambio.** Y si encuentras código que lee un campo, comprueba que exista forma de escribirlo.

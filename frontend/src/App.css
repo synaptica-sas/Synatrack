@@ -3069,6 +3069,7 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
 
 .notice--danger  { background: var(--state-danger-bg);  border-color: var(--state-danger-border); }
 .notice--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
+.notice--info    { background: var(--state-info-bg);    border-color: var(--state-info-border); }
 
 .notice__title {
   display: flex;
@@ -3081,6 +3082,7 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
 
 .notice--danger .notice__title  { color: var(--state-danger-strong); }
 .notice--warning .notice__title { color: var(--state-warning-strong); }
+.notice--info .notice__title    { color: var(--state-info-strong); }
 
 /* Acento de borde izquierdo (caja de errores de validación) */
 .notice--accent { border-left-width: 4px; border-left-style: solid; border-left-color: var(--state-danger-strong); }
@@ -4167,6 +4169,7 @@ tr.row-warning > td { background: var(--state-warning-bg); }
 .notice__text { margin: 0; font-size: 0.8rem; line-height: 1.45; }
 .notice--danger  .notice__text { color: var(--state-danger-strong); }
 .notice--warning .notice__text { color: var(--state-warning-strong); }
+.notice--info    .notice__text { color: var(--state-info-strong); }
 
 /* Una `.card` que además es aviso: el tinte del estado tiene que ganarle al
    fondo de tarjeta, también en modo oscuro (`body.dark .card` pesa 0,2,0). */

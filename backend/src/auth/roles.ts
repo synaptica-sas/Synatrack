@@ -20,6 +20,7 @@ export type Permission =
   | "assignments:read"
   | "assignments:write"
   | "capacity:read"
+  | "capacity:config"
   | "snapshots:close"
   | "alerts:read"
   | "alerts:resolve"
@@ -59,6 +60,9 @@ const allPermissions: Permission[] = [
   "assignments:read",
   "assignments:write",
   "capacity:read",
+  // Solo ADMIN: la jornada laboral (D-5) mueve las ocupaciones de todo el
+  // portafolio a la vez, igual que `extrahours:config` mueve los recargos.
+  "capacity:config",
   "snapshots:close",
   "alerts:read",
   "alerts:resolve",

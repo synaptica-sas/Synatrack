@@ -13,6 +13,7 @@ import { fxRoutes } from "../modules/fx/fx.routes.js";
 import { revenueRoutes } from "../modules/revenue/revenue.routes.js";
 import { assignmentsRoutes } from "../modules/assignments/assignments.routes.js";
 import { capacityRoutes } from "../modules/capacity/capacity.routes.js";
+import { workdayRoutes } from "../modules/capacity/workday.routes.js";
 import { snapshotsRoutes } from "../modules/snapshots/snapshots.routes.js";
 import { alertsRoutes } from "../modules/alerts/alerts.routes.js";
 import { auditRoutes } from "../modules/audit/audit.routes.js";
@@ -52,6 +53,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(revenueRoutes, { prefix: "/api/revenue" });
   await app.register(assignmentsRoutes, { prefix: "/api/assignments" });
   await app.register(capacityRoutes, { prefix: "/api/capacity" });
+  await app.register(workdayRoutes, { prefix: "/api/capacity" });
   await app.register(snapshotsRoutes, { prefix: "/api/snapshots" });
   await app.register(alertsRoutes, { prefix: "/api/alerts" });
   await app.register(auditRoutes, { prefix: "/api/audit" });

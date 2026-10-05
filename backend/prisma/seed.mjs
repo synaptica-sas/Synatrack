@@ -71,6 +71,24 @@ async function main() {
     });
   }
 
+  // Jornada laboral por país (decisión de negocio D-5).
+  // La fila `Default` es el valor general que hereda cualquier país sin
+  // configuración propia; Colombia y Ecuador llevan los valores acordados.
+  // `update: {}` para no pisar lo que un administrador haya ajustado después.
+  const jornadasPorPais = [
+    { country: "Default", hoursPerDay: 8, workDaysPerWeek: 5 },
+    { country: "Colombia", hoursPerDay: 8.5, workDaysPerWeek: 5 },
+    { country: "Ecuador", hoursPerDay: 8, workDaysPerWeek: 5 },
+  ];
+
+  for (const jornada of jornadasPorPais) {
+    await prisma.capacityConfig.upsert({
+      where: { country: jornada.country },
+      update: {},
+      create: jornada,
+    });
+  }
+
   console.log("Database initialized successfully with roles and admin user.");
 }
 

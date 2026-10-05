@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  DAILY_LIMIT,
+  JORNADA_POR_DEFECTO,
   barsByConsultant,
   barsByDay,
   formatHms,
+  jornadaFija,
   totals,
 } from "../features/reports/reportUtils";
 import type { TimeEntry } from "../services/api";
@@ -33,6 +34,13 @@ function entry(consultantId: string, fullName: string, day: string, hours: numbe
   };
 }
 
+/**
+ * Jornada de 8 h para todo el mundo. Es lo que el informe hacía *siempre* antes
+ * de la decisión D-5; ahora hay que pedirlo explícitamente, porque la jornada
+ * real la trae el backend y puede ser distinta por país y por consultor.
+ */
+const OCHO = jornadaFija(8);
+
 const LUNES = "2026-09-21";
 const MARTES = "2026-09-22";
 const SABADO = "2026-09-26";
@@ -43,7 +51,7 @@ describe("El exceso se mide por día, nunca sobre el total de la semana", () => 
     const [ana] = barsByConsultant([
       entry("a", "Ana", LUNES, 10),
       entry("a", "Ana", MARTES, 2),
-    ]);
+    ], OCHO);
 
     expect(ana.total).toBe(12);
     expect(ana.excess).toBe(2);
@@ -54,17 +62,17 @@ describe("El exceso se mide por día, nunca sobre el total de la semana", () => 
     // Solo días laborables (de lunes 21 a lunes 28, saltando el fin de semana):
     // el sábado y el domingo serían horas extra por sí mismos.
     const dias = ["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-28"];
-    const [ana] = barsByConsultant(dias.map((d) => entry("a", "Ana", d, 8)));
+    const [ana] = barsByConsultant(dias.map((d) => entry("a", "Ana", d, 8)), OCHO);
 
     expect(ana.total).toBe(48);
     expect(ana.excess).toBe(0);
   });
 
   it("justo 8 h no es exceso; 8.25 sí lo es", () => {
-    const [justo] = barsByConsultant([entry("a", "Ana", LUNES, DAILY_LIMIT)]);
+    const [justo] = barsByConsultant([entry("a", "Ana", LUNES, JORNADA_POR_DEFECTO)], OCHO);
     expect(justo.excess).toBe(0);
 
-    const [pasado] = barsByConsultant([entry("b", "Beto", LUNES, DAILY_LIMIT + 0.25)]);
+    const [pasado] = barsByConsultant([entry("b", "Beto", LUNES, JORNADA_POR_DEFECTO + 0.25)], OCHO);
     expect(pasado.excess).toBe(0.25);
     expect(pasado.regular).toBe(8);
   });
@@ -75,7 +83,7 @@ describe("El exceso se mide por día, nunca sobre el total de la semana", () => 
       entry("a", "Ana", LUNES, 3),
       entry("a", "Ana", LUNES, 3),
       entry("a", "Ana", LUNES, 3),
-    ]);
+    ], OCHO);
 
     expect(ana.total).toBe(9);
     expect(ana.excess).toBe(1);
@@ -87,7 +95,7 @@ describe("Barras por consultor", () => {
     const [ana] = barsByConsultant([
       entry("a", "Ana", LUNES, 9),
       entry("a", "Ana", SABADO, 3),
-    ]);
+    ], OCHO);
 
     expect(ana).toMatchObject({ regular: 8, excess: 4, total: 12 });
   });
@@ -97,7 +105,7 @@ describe("Barras por consultor", () => {
       entry("a", "Ana", LUNES, 4),
       entry("b", "Beto", LUNES, 9),
       entry("a", "Ana", MARTES, 3),
-    ]);
+    ], OCHO);
 
     expect(bars.map((b) => b.label)).toEqual(["Beto", "Ana"]);
     expect(bars[0].total).toBe(9);
@@ -107,13 +115,13 @@ describe("Barras por consultor", () => {
   });
 
   it("sin entradas no hay barras", () => {
-    expect(barsByConsultant([])).toEqual([]);
+    expect(barsByConsultant([], OCHO)).toEqual([]);
   });
 });
 
 describe("Barras por día", () => {
   it("devuelve los siete días de la semana aunque estén vacíos", () => {
-    const bars = barsByDay([entry("a", "Ana", LUNES, 5)], LUNES);
+    const bars = barsByDay([entry("a", "Ana", LUNES, 5)], LUNES, OCHO);
 
     expect(bars).toHaveLength(7);
     expect(bars[0].label).toBe("lun., sep 21");
@@ -130,6 +138,7 @@ describe("Barras por día", () => {
         entry("a", "Ana", DOMINGO, 3),
       ],
       LUNES,
+      OCHO,
     );
 
     expect(bars).toHaveLength(7);
@@ -149,6 +158,7 @@ describe("Barras por día", () => {
         entry("a", "Ana", SABADO, 4),
       ],
       LUNES,
+      OCHO,
     );
 
     expect(totals(bars).total).toBe(9);
@@ -158,6 +168,7 @@ describe("Barras por día", () => {
     const bars = barsByDay(
       [entry("a", "Ana", SABADO, 3), entry("a", "Ana", DOMINGO, 10)],
       LUNES,
+      OCHO,
     );
 
     expect(bars[5]).toMatchObject({ regular: 0, excess: 3, total: 3 });
@@ -168,6 +179,7 @@ describe("Barras por día", () => {
     const bars = barsByDay(
       [entry("a", "Ana", SABADO, 2), entry("b", "Beto", SABADO, 4)],
       LUNES,
+      OCHO,
     );
 
     expect(bars[5]).toMatchObject({ regular: 0, excess: 6 });
@@ -181,6 +193,7 @@ describe("Barras por día", () => {
         entry("c", "Carla", LUNES, 8),
       ],
       LUNES,
+      OCHO,
     );
 
     // 24 h en el día, pero nadie se pasó de su jornada.
@@ -195,6 +208,7 @@ describe("Barras por día", () => {
         entry("b", "Beto", LUNES, 6),  // sin exceso
       ],
       LUNES,
+      OCHO,
     );
 
     expect(bars[0].total).toBe(16);
@@ -203,14 +217,14 @@ describe("Barras por día", () => {
   });
 
   it("parte el día en jornada y exceso", () => {
-    const bars = barsByDay([entry("a", "Ana", LUNES, 11.5)], LUNES);
+    const bars = barsByDay([entry("a", "Ana", LUNES, 11.5)], LUNES, OCHO);
 
     expect(bars[0].regular).toBe(8);
     expect(bars[0].excess).toBe(3.5);
   });
 
   it("ignora entradas fuera de la semana pedida", () => {
-    const bars = barsByDay([entry("a", "Ana", "2026-09-14", 6)], LUNES);
+    const bars = barsByDay([entry("a", "Ana", "2026-09-14", 6)], LUNES, OCHO);
     expect(bars.every((b) => b.total === 0)).toBe(true);
   });
 });
@@ -234,12 +248,65 @@ describe("Totales", () => {
     const bars = barsByConsultant([
       entry("a", "Ana", LUNES, 10),
       entry("b", "Beto", LUNES, 4),
-    ]);
+    ], OCHO);
 
     expect(totals(bars)).toEqual({ regular: 12, excess: 2, total: 14 });
   });
 
   it("todo a cero cuando no hay nada", () => {
     expect(totals([])).toEqual({ regular: 0, excess: 0, total: 0 });
+  });
+});
+
+describe("Cada consultor se mide contra su propia jornada (D-5)", () => {
+  /** Ana es colombiana (8,5 h); Beto es ecuatoriano (8 h). */
+  const porPais = (consultantId: string) => (consultantId === "a" ? 8.5 : 8);
+
+  it("8,5 h no son horas extra para quien tiene jornada de 8,5", () => {
+    const [ana] = barsByConsultant([entry("a", "Ana", LUNES, 8.5)], porPais);
+    expect(ana.excess).toBe(0);
+    expect(ana.regular).toBe(8.5);
+  });
+
+  it("las mismas 8,5 h sí son extra para quien tiene jornada de 8", () => {
+    const [beto] = barsByConsultant([entry("b", "Beto", LUNES, 8.5)], porPais);
+    expect(beto.excess).toBe(0.5);
+    expect(beto.regular).toBe(8);
+  });
+
+  it("en la barra del equipo cada uno aporta su propio exceso", () => {
+    const bars = barsByDay(
+      [
+        entry("a", "Ana", LUNES, 8.5),  // colombiana: sin exceso
+        entry("b", "Beto", LUNES, 8.5), // ecuatoriano: 0,5 h de exceso
+      ],
+      LUNES,
+      porPais,
+    );
+
+    expect(bars[0].total).toBe(17);
+    expect(bars[0].excess).toBe(0.5);
+    expect(bars[0].regular).toBe(16.5);
+  });
+
+  it("el cambio es visible: lo mismo con la jornada vieja de 8 h daba el doble de exceso", () => {
+    const entradas = [entry("a", "Ana", LUNES, 8.5), entry("b", "Beto", LUNES, 8.5)];
+
+    const conJornadaReal = totals(barsByDay(entradas, LUNES, porPais));
+    const conJornadaFijaDeOcho = totals(barsByDay(entradas, LUNES, OCHO));
+
+    expect(conJornadaReal.excess).toBe(0.5);
+    expect(conJornadaFijaDeOcho.excess).toBe(1);
+  });
+
+  it("una jornada propia más corta hace extra lo que antes no lo era", () => {
+    const mediaJornada = jornadaFija(4);
+    const [ana] = barsByConsultant([entry("a", "Ana", LUNES, 6)], mediaJornada);
+    expect(ana).toMatchObject({ regular: 4, excess: 2, total: 6 });
+  });
+
+  it("el fin de semana sigue siendo todo extra, sea cual sea la jornada", () => {
+    const [ana] = barsByConsultant([entry("a", "Ana", SABADO, 8.5)], porPais);
+    expect(ana).toMatchObject({ regular: 0, excess: 8.5 });
   });
 });

@@ -1,5 +1,5 @@
 import { useId, useState } from "react";
-import { DAILY_LIMIT, formatHms, type ReportBar } from "./reportUtils";
+import { formatHms, type ReportBar } from "./reportUtils";
 
 /**
  * Columnas verticales, una por día de la semana.
@@ -14,6 +14,11 @@ import { DAILY_LIMIT, formatHms, type ReportBar } from "./reportUtils";
  * indicio: cada columna lleva su cifra encima, hay leyenda y la misma
  * información aparece en tabla debajo.
  */
+
+/** 8.5 → "8,5"; 8 → "8". La coma decimal es la del producto. */
+function formatHoras(horas: number): string {
+  return horas.toLocaleString("es-CO", { maximumFractionDigits: 2 });
+}
 
 // Unidades del viewBox; el SVG escala al ancho disponible.
 const W = 1120;
@@ -30,8 +35,8 @@ const ZERO_H = 3;
 const SEG_GAP = 2;
 
 /** Escoge un tope redondo y sus marcas, de forma que el eje no quede raro. */
-function niceScale(maxValue: number) {
-  const target = Math.max(maxValue, DAILY_LIMIT);
+function niceScale(maxValue: number, jornada: number) {
+  const target = Math.max(maxValue, jornada);
   const steps = [1, 2, 4, 5, 8, 10, 12, 16, 20, 24, 30, 40, 50, 60, 80, 100, 120];
   const step = steps.find((s) => target / s <= 5) ?? Math.ceil(target / 5);
   const max = Math.ceil(target / step) * step;
@@ -42,12 +47,18 @@ function niceScale(maxValue: number) {
 
 export function HoursBarChart({
   bars,
-  /** Dibuja la línea de las 8 h. Solo tiene sentido con un consultor filtrado. */
+  /** Dibuja la línea de la jornada. Solo tiene sentido con un consultor filtrado. */
   showDailyLimit,
+  /**
+   * Horas de jornada contra las que se dibuja la línea de referencia. Es la del
+   * consultor filtrado, o la general si se está mirando al equipo entero (D-5).
+   */
+  jornada,
   emptyMessage,
 }: {
   bars: ReportBar[];
   showDailyLimit: boolean;
+  jornada: number;
   emptyMessage: string;
 }) {
   const titleId = useId();
@@ -57,7 +68,7 @@ export function HoursBarChart({
     return <p className="ts-empty-note">{emptyMessage}</p>;
   }
 
-  const { max, ticks } = niceScale(Math.max(...bars.map((b) => b.total)));
+  const { max, ticks } = niceScale(Math.max(...bars.map((b) => b.total)), jornada);
   const toY = (hours: number) => BASELINE - (hours / max) * PLOT_H;
 
   const slot = (W - PAD_L - PAD_R) / bars.length;
@@ -72,7 +83,7 @@ export function HoursBarChart({
     <div className="report-chart">
       <div className="report-legend" aria-hidden="true">
         <span><i className="swatch regular" /> Dentro de jornada</span>
-        <span><i className="swatch excess" /> Horas extra (más de {DAILY_LIMIT} h/día o fin de semana)</span>
+        <span><i className="swatch excess" /> Horas extra (fuera de la jornada o en fin de semana)</span>
       </div>
 
       <svg
@@ -84,7 +95,7 @@ export function HoursBarChart({
         preserveAspectRatio="xMidYMid meet"
       >
         <title id={titleId}>
-          Horas por día de la semana, separando las que exceden {DAILY_LIMIT} horas diarias
+          Horas por día de la semana, separando las que exceden la jornada de cada consultor
         </title>
 
         {/* Rejilla y eje vertical */}
@@ -97,17 +108,17 @@ export function HoursBarChart({
           </g>
         ))}
 
-        {showDailyLimit && max > DAILY_LIMIT && (
+        {showDailyLimit && max > jornada && (
           <g>
             <line
               x1={PAD_L}
               x2={W - PAD_R}
-              y1={toY(DAILY_LIMIT)}
-              y2={toY(DAILY_LIMIT)}
+              y1={toY(jornada)}
+              y2={toY(jornada)}
               className="report-limit-line"
             />
-            <text x={W - PAD_R} y={toY(DAILY_LIMIT) - 5} textAnchor="end" className="report-limit-label">
-              jornada {DAILY_LIMIT} h
+            <text x={W - PAD_R} y={toY(jornada) - 5} textAnchor="end" className="report-limit-label">
+              jornada {formatHoras(jornada)} h
             </text>
           </g>
         )}

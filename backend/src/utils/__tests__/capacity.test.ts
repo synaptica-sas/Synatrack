@@ -10,6 +10,9 @@ import {
   getNextAvailableDate,
   computeAvailability,
   addDays,
+  resolverJornada,
+  JORNADA_GENERAL,
+  PAIS_GENERAL,
 } from "../capacity.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -18,7 +21,19 @@ function d(iso: string): Date {
   return new Date(`${iso}T00:00:00.000Z`);
 }
 
-const defaultConfig = { hoursPerDay: new Decimal(8), workDaysPerWeek: 5 };
+/**
+ * Jornada de referencia de estas pruebas: la general, 8 h × 5 días. Desde D-5
+ * las funciones de capacidad reciben una jornada ya resuelta, no la fila cruda
+ * de `CapacityConfig`.
+ */
+const defaultConfig = JORNADA_GENERAL;
+
+/** Jornadas por país tal y como llegan de la base (`hoursPerDay` es Decimal). */
+const JORNADAS_PAIS = [
+  { country: "Default", hoursPerDay: new Decimal(8), workDaysPerWeek: 5 },
+  { country: "Colombia", hoursPerDay: new Decimal(8.5), workDaysPerWeek: 5 },
+  { country: "Ecuador", hoursPerDay: new Decimal(8), workDaysPerWeek: 5 },
+];
 
 function makeAssignment(
   start: string,
@@ -107,8 +122,8 @@ describe("calculateCapacityHours", () => {
     expect(hours).toBe(21 * 8); // 168
   });
 
-  it("uses default 8h/day and 5 days/week when config is null", () => {
-    const hours = calculateCapacityHours({ from: d("2026-05-04"), to: d("2026-05-08") }, null, []);
+  it("con la jornada general (8 h × 5 d) una semana son 40 h", () => {
+    const hours = calculateCapacityHours({ from: d("2026-05-04"), to: d("2026-05-08") }, JORNADA_GENERAL, []);
     expect(hours).toBe(5 * 8); // 40
   });
 
@@ -292,8 +307,8 @@ describe("computeAvailability", () => {
     expect(result.nextAvailableDate?.toISOString().slice(0, 10)).toBe("2026-06-01");
   });
 
-  it("uses null config → defaults 8h/5d", () => {
-    const result = computeAvailability("c1", [], [], null, period);
+  it("con la jornada general la capacidad semanal es 40 h", () => {
+    const result = computeAvailability("c1", [], [], JORNADA_GENERAL, period);
     expect(result.capacityHours).toBe(40);
   });
 
@@ -390,5 +405,109 @@ describe("addDays", () => {
   it("cruza fin de mes", () => {
     const result = addDays(new Date("2026-01-31T00:00:00.000Z"), 1);
     expect(result.toISOString().slice(0, 10)).toBe("2026-02-01");
+  });
+});
+
+// ─── Jornada laboral configurable (decisión de negocio D-5) ──────────────────
+
+describe("resolverJornada — precedencia consultor → país → general", () => {
+  it("sin fila propia, un colombiano hereda las 8,5 h de Colombia", () => {
+    const jornada = resolverJornada(null, "Colombia", JORNADAS_PAIS);
+    expect(jornada.hoursPerDay).toBe(8.5);
+    expect(jornada.workDaysPerWeek).toBe(5);
+    expect(jornada.origen).toBe("pais");
+    expect(jornada.paisAplicado).toBe("Colombia");
+  });
+
+  it("sin fila propia, un ecuatoriano hereda las 8 h de Ecuador", () => {
+    const jornada = resolverJornada(null, "Ecuador", JORNADAS_PAIS);
+    expect(jornada.hoursPerDay).toBe(8);
+    expect(jornada.origen).toBe("pais");
+    expect(jornada.paisAplicado).toBe("Ecuador");
+  });
+
+  it("la fila del consultor manda sobre la de su país", () => {
+    const propia = { hoursPerDay: new Decimal(6), workDaysPerWeek: 4 };
+    const jornada = resolverJornada(propia, "Colombia", JORNADAS_PAIS);
+    expect(jornada.hoursPerDay).toBe(6);
+    expect(jornada.workDaysPerWeek).toBe(4);
+    expect(jornada.origen).toBe("consultor");
+    // La excepción no "pertenece" a un país: se aplica tal cual.
+    expect(jornada.paisAplicado).toBeNull();
+  });
+
+  it("un país sin configurar cae en la fila general, no en un 8 escondido", () => {
+    const jornada = resolverJornada(null, "Chile", JORNADAS_PAIS);
+    expect(jornada.hoursPerDay).toBe(8);
+    expect(jornada.origen).toBe("general");
+    expect(jornada.paisAplicado).toBe(PAIS_GENERAL);
+  });
+
+  it("un consultor sin país cae también en la fila general", () => {
+    expect(resolverJornada(null, null, JORNADAS_PAIS).origen).toBe("general");
+    expect(resolverJornada(null, undefined, JORNADAS_PAIS).origen).toBe("general");
+  });
+
+  it("sin ninguna fila en la base se usa JORNADA_GENERAL (8 × 5)", () => {
+    const jornada = resolverJornada(null, "Colombia", []);
+    expect(jornada).toEqual({ ...JORNADA_GENERAL, origen: "general", paisAplicado: null });
+  });
+
+  it("el país se compara sin distinguir mayúsculas ni espacios", () => {
+    expect(resolverJornada(null, "  colombia ", JORNADAS_PAIS).hoursPerDay).toBe(8.5);
+    expect(resolverJornada(null, "COLOMBIA", JORNADAS_PAIS).hoursPerDay).toBe(8.5);
+  });
+
+  it("la fila general sigue valiendo aunque Colombia cambie de valor", () => {
+    const otras = [
+      { country: "Default", hoursPerDay: new Decimal(7), workDaysPerWeek: 5 },
+      { country: "Colombia", hoursPerDay: new Decimal(9), workDaysPerWeek: 6 },
+    ];
+    expect(resolverJornada(null, "Colombia", otras).hoursPerDay).toBe(9);
+    expect(resolverJornada(null, "Peru", otras).hoursPerDay).toBe(7);
+  });
+});
+
+describe("capacidad con la jornada real de cada país (D-5)", () => {
+  // Semana completa de lunes a viernes, sin feriados en ninguno de los dos países.
+  const semana = { from: d("2026-05-04"), to: d("2026-05-08") };
+
+  it("un consultor colombiano tiene 42,5 h de capacidad semanal, no 40", () => {
+    const jornada = resolverJornada(null, "Colombia", JORNADAS_PAIS);
+    expect(calculateCapacityHours(semana, jornada, [], "Colombia")).toBe(42.5);
+  });
+
+  it("un consultor ecuatoriano tiene 40 h de capacidad semanal", () => {
+    const jornada = resolverJornada(null, "Ecuador", JORNADAS_PAIS);
+    expect(calculateCapacityHours(semana, jornada, [], "Ecuador")).toBe(40);
+  });
+
+  it("la misma asignación al 100 % compromete más horas en Colombia que en Ecuador", () => {
+    const asignacion = makeAssignment("2026-05-04", "2026-05-08", "PERCENTAGE", 100);
+    const colombia = calculateCommittedHours(
+      [asignacion], semana, resolverJornada(null, "Colombia", JORNADAS_PAIS), "Colombia",
+    );
+    const ecuador = calculateCommittedHours(
+      [asignacion], semana, resolverJornada(null, "Ecuador", JORNADAS_PAIS), "Ecuador",
+    );
+    expect(colombia).toBeCloseTo(42.5, 5);
+    expect(ecuador).toBeCloseTo(40, 5);
+  });
+
+  it("una asignación de 40 h/semana ocupa al colombiano al 94,1 %, no al 100 %", () => {
+    // Es el efecto medible del arreglo: antes, con 8 h fijas, salía 100 %.
+    const asignacion = makeAssignment("2026-05-04", "2026-05-08", "HOURS", 0, 40);
+    const jornada = resolverJornada(null, "Colombia", JORNADAS_PAIS);
+    const resultado = computeAvailability("c-col", [asignacion], [], jornada, semana, "Colombia");
+    expect(resultado.capacityHours).toBe(42.5);
+    expect(resultado.committedHours).toBeCloseTo(40, 1);
+    expect(resultado.utilizationPct).toBeCloseTo(94.1, 1);
+    expect(resultado.availabilityStatus).toBe("PARTIAL");
+  });
+
+  it("la excepción por consultor se impone sobre su país también en la capacidad", () => {
+    const mediaJornada = { hoursPerDay: new Decimal(4), workDaysPerWeek: 5 };
+    const jornada = resolverJornada(mediaJornada, "Colombia", JORNADAS_PAIS);
+    expect(calculateCapacityHours(semana, jornada, [], "Colombia")).toBe(20);
   });
 });

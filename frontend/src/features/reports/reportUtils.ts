@@ -2,10 +2,26 @@ import type { TimeEntry } from "../../services/api";
 import { numberish, roundHours, weekDays } from "../timesheet/timesheetUtils";
 
 /**
- * Jornada estándar de lunes a viernes. Por encima de esto, las horas cuentan
- * como horas extra. El sábado y el domingo no tienen jornada: todo es extra.
+ * Jornada que se usa **solo mientras el backend no ha respondido todavía** con
+ * la jornada real de cada consultor (`GET /api/capacity/workday/effective`).
+ *
+ * Hasta la decisión D-5 este 8 era *la* jornada de todo el mundo, fija en el
+ * código. Ahora la jornada se configura por país y por consultor, y este valor
+ * no es más que el marcador de posición de la primera pintada.
  */
-export const DAILY_LIMIT = 8;
+export const JORNADA_POR_DEFECTO = 8;
+
+/**
+ * Horas de jornada de un consultor. La aporta el llamador —normalmente el hook
+ * `useEffectiveWorkdays`—, porque depende de la configuración por país y por
+ * consultor, y estas funciones tienen que seguir siendo puras.
+ */
+export type JornadaDe = (consultantId: string) => number;
+
+/** Resolver que devuelve la misma jornada para todo el mundo. */
+export function jornadaFija(horas: number): JornadaDe {
+  return () => horas;
+}
 
 /**
  * Una barra del informe, partida en dos tramos: lo que cabe dentro de la
@@ -19,9 +35,9 @@ export const DAILY_LIMIT = 8;
 export type ReportBar = {
   key: string;
   label: string;
-  /** Horas dentro de la jornada de 8 h. */
+  /** Horas dentro de la jornada del consultor. */
   regular: number;
-  /** Horas extra: lo que excede las 8 h de un día laborable, más todo el fin de semana. */
+  /** Horas extra: lo que excede la jornada de un día laborable, más todo el fin de semana. */
   excess: number;
   /** regular + excess. */
   total: number;
@@ -39,11 +55,11 @@ export function isWeekendDay(day: string): boolean {
  * Reparte las horas de un día entre jornada y horas extra. El sábado y el
  * domingo no tienen jornada: todo lo que se trabaja esos días es hora extra.
  */
-function splitDay(hours: number, weekend = false) {
+function splitDay(hours: number, jornada: number, weekend = false) {
   if (weekend) return { regular: 0, excess: hours };
   return {
-    regular: Math.min(hours, DAILY_LIMIT),
-    excess: Math.max(hours - DAILY_LIMIT, 0),
+    regular: Math.min(hours, jornada),
+    excess: Math.max(hours - jornada, 0),
   };
 }
 
@@ -85,7 +101,7 @@ function hoursByDayAndConsultant(entries: TimeEntry[]): Map<string, Map<string, 
  * Una barra por consultor, con el total de la semana. El exceso se acumula
  * desde cada día por separado.
  */
-export function barsByConsultant(entries: TimeEntry[]): ReportBar[] {
+export function barsByConsultant(entries: TimeEntry[], jornadaDe: JornadaDe): ReportBar[] {
   const porConsultor = new Map<string, { label: string; entries: TimeEntry[] }>();
 
   for (const entry of entries) {
@@ -102,8 +118,9 @@ export function barsByConsultant(entries: TimeEntry[]): ReportBar[] {
   for (const [id, { label, entries: suyas }] of porConsultor) {
     let regular = 0;
     let excess = 0;
+    const jornada = jornadaDe(id);
     for (const [day, hours] of hoursByDay(suyas)) {
-      const parte = splitDay(hours, isWeekendDay(day));
+      const parte = splitDay(hours, jornada, isWeekendDay(day));
       regular += parte.regular;
       excess += parte.excess;
     }
@@ -134,9 +151,11 @@ const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "o
  *
  * El exceso se calcula por consultor dentro de cada día y luego se suma, de
  * modo que la barra de un día con varias personas solo se pone roja en la
- * parte que alguien trabajó de más.
+ * parte que alguien trabajó de más. Cada uno se compara contra **su propia**
+ * jornada (D-5): un colombiano con 8,5 h no excede nada a las 8 h, un
+ * ecuatoriano sí.
  */
-export function barsByDay(entries: TimeEntry[], weekStart: string): ReportBar[] {
+export function barsByDay(entries: TimeEntry[], weekStart: string, jornadaDe: JornadaDe): ReportBar[] {
   const byDay = hoursByDayAndConsultant(entries);
 
   return weekDays(weekStart).map((day, index) => {
@@ -147,8 +166,8 @@ export function barsByDay(entries: TimeEntry[], weekStart: string): ReportBar[] 
     let excess = 0;
 
     if (porConsultor) {
-      for (const hours of porConsultor.values()) {
-        const parte = splitDay(hours, weekend);
+      for (const [consultantId, hours] of porConsultor) {
+        const parte = splitDay(hours, jornadaDe(consultantId), weekend);
         regular += parte.regular;
         excess += parte.excess;
       }

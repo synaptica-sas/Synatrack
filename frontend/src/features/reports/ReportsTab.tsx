@@ -4,7 +4,8 @@ import { downloadCsv } from "../../utils/csv";
 import { listAllTimeEntries, type Consultant, type TimeEntry } from "../../services/api";
 import { addDays, formatWeekRange, startOfWeek, todayIso } from "../timesheet/timesheetUtils";
 import { HoursBarChart } from "./HoursBarChart";
-import { DAILY_LIMIT, barsByConsultant, barsByDay, formatHms, totals } from "./reportUtils";
+import { barsByConsultant, barsByDay, formatHms, totals } from "./reportUtils";
+import { useEffectiveWorkdays } from "../../hooks/useEffectiveWorkdays";
 
 export function ReportsTab({
   consultants,
@@ -18,6 +19,10 @@ export function ReportsTab({
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [onlyApproved, setOnlyApproved] = useState(false);
+
+  // La jornada ya no es fija: cada consultor se compara contra la suya, según
+  // la configuración por país y por consultor (decisión de negocio D-5).
+  const { jornadaDe, horasGenerales, error: errorJornada } = useEffectiveWorkdays(true);
 
   const today = todayIso();
   const weekEnd = addDays(weekStart, 6);
@@ -51,11 +56,15 @@ export function ReportsTab({
   // consultor cambia de quién son esas horas, no lo que representa cada
   // columna. El sábado y el domingo entran en los totales, y todas sus horas
   // cuentan como horas extra.
-  const bars = useMemo(() => barsByDay(entries, weekStart), [entries, weekStart]);
-  const porConsultor = useMemo(() => barsByConsultant(entries), [entries]);
+  const bars = useMemo(() => barsByDay(entries, weekStart, jornadaDe), [entries, weekStart, jornadaDe]);
+  const porConsultor = useMemo(() => barsByConsultant(entries, jornadaDe), [entries, jornadaDe]);
   const resumen = useMemo(() => totals(bars), [bars]);
 
   const nombreConsultor = consultants.find((c) => c.id === consultantId)?.fullName;
+
+  /** Jornada de referencia de la gráfica: la del consultor filtrado, o la general. */
+  const jornadaReferencia = unaPersona ? jornadaDe(consultantId) : horasGenerales;
+  const jornadaTexto = jornadaReferencia.toLocaleString("es-CO", { maximumFractionDigits: 2 });
 
   function handleExport() {
     downloadCsv(
@@ -70,7 +79,7 @@ export function ReportsTab({
         { key: "dia", label: "Fecha" },
         { key: "etiqueta", label: "Día" },
         { key: "dentroJornada", label: "Dentro de jornada" },
-        { key: "exceso", label: `Horas extra (más de ${DAILY_LIMIT}h/día o fin de semana)` },
+        { key: "exceso", label: "Horas extra (fuera de la jornada o en fin de semana)" },
         { key: "total", label: "Total" },
       ],
       "informe-horas",
@@ -82,8 +91,19 @@ export function ReportsTab({
       <PageHeader
         icon="▧"
         title="Informes"
-        description="Horas trabajadas por día, destacando las horas extra: lo que excede la jornada de 8 horas entre semana y todo lo del sábado y el domingo."
+        description="Horas trabajadas por día, destacando las horas extra: lo que cada consultor excede de su propia jornada entre semana y todo lo del sábado y el domingo."
       />
+
+      {errorJornada && (
+        <div className="notice notice--warning" role="status">
+          <div className="notice__title">Jornada sin cargar</div>
+          <p className="notice__text">
+            No se pudo leer la jornada configurada ({errorJornada}). Mientras tanto el informe
+            compara contra la jornada general de {jornadaTexto} h, así que las horas extra de
+            quien tenga otra jornada pueden salir mal.
+          </p>
+        </div>
+      )}
 
       <article className="card">
         <div className="ts-toolbar">
@@ -135,6 +155,7 @@ export function ReportsTab({
           <HoursBarChart
             bars={bars}
             showDailyLimit={unaPersona}
+            jornada={jornadaReferencia}
             emptyMessage={
               unaPersona
                 ? `${nombreConsultor ?? "Ese consultor"} no registró horas en esta semana.`
@@ -145,8 +166,8 @@ export function ReportsTab({
 
         <p className="ts-hint">
           {unaPersona
-            ? `Cada columna es un día de ${nombreConsultor ?? "el consultor"}, de lunes a domingo. En rojo, las horas extra: lo que pasa de ${DAILY_LIMIT} h entre semana y todo lo del sábado y el domingo.`
-            : `Cada columna suma el día de todo el equipo, de lunes a domingo. En rojo, las horas extra: lo que alguien excedió de su jornada de ${DAILY_LIMIT} h entre semana (no lo que el equipo pasa de ${DAILY_LIMIT} h entre todos) y todo lo del sábado y el domingo.`}
+            ? `Cada columna es un día de ${nombreConsultor ?? "el consultor"}, de lunes a domingo. En rojo, las horas extra: lo que pasa de su jornada de ${jornadaTexto} h entre semana y todo lo del sábado y el domingo.`
+            : `Cada columna suma el día de todo el equipo, de lunes a domingo. En rojo, las horas extra: lo que alguien excedió de su propia jornada entre semana (no lo que el equipo pasa de ${jornadaTexto} h entre todos) y todo lo del sábado y el domingo.`}
         </p>
       </article>
 

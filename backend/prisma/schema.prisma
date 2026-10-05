@@ -452,18 +452,22 @@ model ConsultantBlock {
   @@index([consultantId, startDate, endDate])
 }
 
+/// Jornada laboral (decision de negocio D-5). Una fila es o bien la jornada de
+/// un consultor (`consultantId`, `country` NULL) o bien la de un pais
+/// (`country`, `consultantId` NULL). La fila `country = "Default"` es el valor
+/// general que hereda cualquier pais sin configuracion propia.
+/// `country` es unico: en PostgreSQL los NULL no chocan entre si, asi que las
+/// filas por consultor conviven con las de pais bajo el mismo indice.
 model CapacityConfig {
   id              String   @id @default(cuid())
   consultantId    String?  @unique
-  country         String?
+  country         String?  @unique
   hoursPerDay     Decimal  @default(8) @db.Decimal(4, 2)
   workDaysPerWeek Int      @default(5)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   consultant Consultant? @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-
-  @@index([country])
 }
 
 // ─── Cierre Mensual ───────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
-import type { Assignment, ConsultantBlock, CapacityConfig, AssignmentStatus } from "@prisma/client";
+import type { Assignment, ConsultantBlock, AssignmentStatus } from "@prisma/client";
+import type { Decimal } from "@prisma/client/runtime/library";
 import { isPublicHoliday } from "./holidays.js";
 
 export type AvailabilityStatus = "FREE" | "PARTIAL" | "FULL" | "OVERLOADED";
@@ -14,6 +15,96 @@ export type ConsultantAvailability = {
 };
 
 const ACTIVE_STATUSES: AssignmentStatus[] = ["ACTIVE", "PARTIAL", "PLANNED"];
+
+// ─── Jornada laboral (decisión de negocio D-5) ────────────────────────────────
+
+/** Horas al día y días a la semana que se usan para calcular capacidad. */
+export type Jornada = {
+  hoursPerDay: number;
+  workDaysPerWeek: number;
+};
+
+/** De dónde salió la jornada que se aplicó. Se devuelve para poder explicarla en pantalla. */
+export type OrigenJornada = "consultor" | "pais" | "general";
+
+export type JornadaEfectiva = Jornada & {
+  origen: OrigenJornada;
+  /** País cuya fila se aplicó, o `null` si la jornada no vino de un país. */
+  paisAplicado: string | null;
+};
+
+/**
+ * País de la fila que hace de valor general. Misma convención que
+ * `ExtraHoursConfig`: la fila `Default` es "el resto del mundo".
+ */
+export const PAIS_GENERAL = "Default";
+
+/**
+ * Último escalón de la precedencia: lo que se aplica cuando no hay fila del
+ * consultor, ni de su país, ni siquiera la fila general `Default`.
+ *
+ * Existe como constante con nombre a propósito. Antes este 8 estaba escondido
+ * dentro de `calculateCapacityHours` (`config ? ... : 8`), que es justo lo que
+ * hacía que toda la capacidad del sistema se calculara con 8 h sin que nadie lo
+ * viera (DEP-41). Si este valor se usa, es porque la base está sin sembrar.
+ */
+export const JORNADA_GENERAL: Jornada = { hoursPerDay: 8, workDaysPerWeek: 5 };
+
+type FilaJornada = {
+  hoursPerDay: Decimal | number | string;
+  workDaysPerWeek: number;
+};
+
+type FilaJornadaPais = FilaJornada & { country: string | null };
+
+function aJornada(fila: FilaJornada): Jornada {
+  return {
+    hoursPerDay: Number(fila.hoursPerDay),
+    workDaysPerWeek: fila.workDaysPerWeek,
+  };
+}
+
+function mismoPais(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/**
+ * Resuelve la jornada que se le aplica a un consultor, con la precedencia que
+ * decidió dirección (D-5): **lo del consultor manda sobre lo de su país, y lo
+ * del país sobre el valor general**.
+ *
+ * 1. Fila de `CapacityConfig` con su `consultantId` → `origen: "consultor"`.
+ * 2. Fila del país del consultor → `origen: "pais"`.
+ * 3. Fila general (`country = "Default"`) → `origen: "general"`.
+ * 4. Nada en la base → `JORNADA_GENERAL` (8 h × 5 días), `origen: "general"`.
+ *
+ * Un país sin configurar **no** es un error ni un 8 implícito: hereda la fila
+ * general de forma explícita, y el `origen` que se devuelve lo dice.
+ *
+ * Función pura: el llamador trae las filas, aquí no se consulta nada.
+ */
+export function resolverJornada(
+  configConsultor: FilaJornada | null | undefined,
+  pais: string | null | undefined,
+  configsPorPais: readonly FilaJornadaPais[],
+): JornadaEfectiva {
+  if (configConsultor) {
+    return { ...aJornada(configConsultor), origen: "consultor", paisAplicado: null };
+  }
+
+  const delPais = configsPorPais.find((fila) => mismoPais(fila.country, pais));
+  if (delPais) {
+    return { ...aJornada(delPais), origen: "pais", paisAplicado: delPais.country };
+  }
+
+  const general = configsPorPais.find((fila) => mismoPais(fila.country, PAIS_GENERAL));
+  if (general) {
+    return { ...aJornada(general), origen: "general", paisAplicado: PAIS_GENERAL };
+  }
+
+  return { ...JORNADA_GENERAL, origen: "general", paisAplicado: null };
+}
 
 /** Días hábiles entre dos fechas (lunes a viernes, sin feriados) */
 export function countWorkdays(from: Date, to: Date, workDaysPerWeek = 5, country?: string | null, customHolidays?: Set<string>): number {
@@ -65,13 +156,12 @@ export function overlapDays(
 /** Horas de capacidad de un consultor en un período */
 export function calculateCapacityHours(
   period: { from: Date; to: Date },
-  config: Pick<CapacityConfig, "hoursPerDay" | "workDaysPerWeek"> | null,
+  jornada: Jornada,
   blocks: Pick<ConsultantBlock, "startDate" | "endDate">[],
   country?: string | null,
   customHolidays?: Set<string>,
 ): number {
-  const hoursPerDay = config ? Number(config.hoursPerDay) : 8;
-  const workDaysPerWeek = config ? config.workDaysPerWeek : 5;
+  const { hoursPerDay, workDaysPerWeek } = jornada;
 
   const totalWorkdays = countWorkdays(period.from, period.to, workDaysPerWeek, country, customHolidays);
 
@@ -86,12 +176,11 @@ export function calculateCapacityHours(
 export function calculateCommittedHours(
   assignments: Pick<Assignment, "startDate" | "endDate" | "allocationMode" | "allocationPct" | "hoursPerPeriod" | "periodUnit" | "status">[],
   period: { from: Date; to: Date },
-  config: Pick<CapacityConfig, "hoursPerDay" | "workDaysPerWeek"> | null,
+  jornada: Jornada,
   country?: string | null,
   customHolidays?: Set<string>,
 ): number {
-  const hoursPerDay = config ? Number(config.hoursPerDay) : 8;
-  const workDaysPerWeek = config ? config.workDaysPerWeek : 5;
+  const { hoursPerDay, workDaysPerWeek } = jornada;
 
   return assignments
     .filter((a) => ACTIVE_STATUSES.includes(a.status) && a.endDate >= period.from && a.startDate <= period.to)
@@ -177,13 +266,13 @@ export function computeAvailability(
   consultantId: string,
   assignments: Pick<Assignment, "startDate" | "endDate" | "allocationMode" | "allocationPct" | "hoursPerPeriod" | "periodUnit" | "status">[],
   blocks: Pick<ConsultantBlock, "startDate" | "endDate">[],
-  config: Pick<CapacityConfig, "hoursPerDay" | "workDaysPerWeek"> | null,
+  jornada: Jornada,
   period: { from: Date; to: Date },
   country?: string | null,
   customHolidays?: Set<string>,
 ): ConsultantAvailability {
-  const capacityHours = calculateCapacityHours(period, config, blocks, country, customHolidays);
-  const committedHours = calculateCommittedHours(assignments, period, config, country, customHolidays);
+  const capacityHours = calculateCapacityHours(period, jornada, blocks, country, customHolidays);
+  const committedHours = calculateCommittedHours(assignments, period, jornada, country, customHolidays);
   const availableHours = Math.max(capacityHours - committedHours, 0);
   const utilizationPct = capacityHours > 0 ? Math.round((committedHours / capacityHours) * 100 * 10) / 10 : 0;
   const availabilityStatus = getAvailabilityStatus(utilizationPct);

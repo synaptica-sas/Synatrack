@@ -292,7 +292,7 @@ alguien mire. Depende de cómo se facturen esas horas.
 | D-2 | El umbral se configura por proyecto en su ficha. Referencia: 30 % normal, 15 % ya es crítico. | **Hecho** — dos umbrales por proyecto (`marginWarningPct` 30 % y `marginCriticalPct` 15 % por defecto), semáforo, alertas y formulario al día | 05/10/2026 |
 | D-3 | En espera. | StandBy | 05/10/2026 |
 | D-4 | Sí. Dos categorías genéricas de ingreso, editables después. | Por hacer | 05/10/2026 |
-| D-5 | Por país **y** por consultor. Por defecto Colombia 8,5 h y Ecuador 8 h. | Por hacer (desbloquea DEP-41) | 05/10/2026 |
+| D-5 | Por país **y** por consultor. Por defecto Colombia 8,5 h y Ecuador 8 h. | **Hecho** — pantalla "Jornada Laboral" (Administración, `capacity:config`), precedencia consultor → país → general, migración `20261005190000_jornada_configurable`; cierra DEP-41 | 05/10/2026 |
 | D-6 | Usar `noreply@synaptica.co`, activado desde el Entra ID propio. Falta que desarrollo explique cómo obtenerlo. | Por hacer | 05/10/2026 |
 | D-7 | Son configuración general: hace falta una pantalla para editarlos en vez de tenerlos en el código. | Por hacer | 05/10/2026 |
 | D-8 | En espera. Mientras tanto, ocultar la pantalla de Actividades salvo para ADMIN. | StandBy + ocultar | 05/10/2026 |

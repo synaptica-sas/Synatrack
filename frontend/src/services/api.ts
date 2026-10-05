@@ -2262,3 +2262,87 @@ export async function sendFeedback(payload: { category: "BUG" | "SUGGESTION" | "
   return request<{ message: string }>("/api/feedback", "POST", payload);
 }
 
+
+// ─── Jornada laboral (decisión de negocio D-5) ────────────────────────────────
+
+/** De dónde salió la jornada que se le aplica a un consultor. */
+export type OrigenJornada = "consultor" | "pais" | "general";
+
+export type JornadaEfectiva = {
+  hoursPerDay: number;
+  workDaysPerWeek: number;
+  origen: OrigenJornada;
+  /** País cuya fila se aplicó, o `null` si no vino de un país. */
+  paisAplicado: string | null;
+};
+
+/** Una fila guardada de `CapacityConfig`, de país o de consultor. */
+export type JornadaFila = {
+  id: string;
+  consultantId: string | null;
+  country: string | null;
+  hoursPerDay: number;
+  workDaysPerWeek: number;
+  updatedAt: string;
+};
+
+export type JornadaDeConsultor = {
+  consultantId: string;
+  fullName: string;
+  country: string | null;
+  /** Fila propia del consultor, o `null` si hereda la de su país. */
+  propia: JornadaFila | null;
+  efectiva: JornadaEfectiva;
+};
+
+export type JornadaConfig = {
+  /** Último escalón de la precedencia, el del código. */
+  general: { hoursPerDay: number; workDaysPerWeek: number };
+  /** Nombre de la fila que hace de valor general ("Default"). */
+  paisGeneral: string;
+  countries: JornadaFila[];
+  consultants: JornadaDeConsultor[];
+};
+
+export type JornadasEfectivas = {
+  general: JornadaEfectiva;
+  consultants: ({ consultantId: string } & JornadaEfectiva)[];
+};
+
+export type JornadaPayload = { hoursPerDay: number; workDaysPerWeek: number };
+
+export async function getWorkdayConfig(): Promise<JornadaConfig> {
+  const response = await request<ApiEnvelope<JornadaConfig>>("/api/capacity/workday");
+  return response.data;
+}
+
+export async function getEffectiveWorkdays(): Promise<JornadasEfectivas> {
+  const response = await request<ApiEnvelope<JornadasEfectivas>>("/api/capacity/workday/effective");
+  return response.data;
+}
+
+export async function updateCountryWorkday(country: string, payload: JornadaPayload): Promise<JornadaFila> {
+  const response = await request<ApiEnvelope<JornadaFila>>(
+    `/api/capacity/workday/country/${encodeURIComponent(country)}`,
+    "PUT",
+    payload,
+  );
+  return response.data;
+}
+
+export async function deleteCountryWorkday(country: string): Promise<void> {
+  await request<void>(`/api/capacity/workday/country/${encodeURIComponent(country)}`, "DELETE");
+}
+
+export async function updateConsultantWorkday(consultantId: string, payload: JornadaPayload): Promise<JornadaFila> {
+  const response = await request<ApiEnvelope<JornadaFila>>(
+    `/api/capacity/workday/consultant/${encodeURIComponent(consultantId)}`,
+    "PUT",
+    payload,
+  );
+  return response.data;
+}
+
+export async function deleteConsultantWorkday(consultantId: string): Promise<void> {
+  await request<void>(`/api/capacity/workday/consultant/${encodeURIComponent(consultantId)}`, "DELETE");
+}

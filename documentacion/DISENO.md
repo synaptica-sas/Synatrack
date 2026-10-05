@@ -205,6 +205,18 @@ Todas construidas solo con tokens. Están al final de `App.css`.
 | `.chart-scroll`, `.chart-svg` (+ `--fixed`), `.chart-legend-row`, `.chart-legend`, `__item`, `__name`, `__value`, `__more`, `.chart-swatch--1..7`, `.chart-empty`, `.chart-caption` | Envoltorio, leyenda y estados de un gráfico |
 | `.status-badge--info` | Faltaba el modificador de información en la insignia de estado |
 | `.notice__text` | Cuerpo de un aviso, debajo de su título |
+
+### Clase añadida al montar la pantalla de Jornada Laboral
+
+| Clase | Para qué |
+|---|---|
+| `.notice--info` | Tercer tono de `.notice`, junto a `--danger` y `--warning`, con los tokens `--state-info-*` que ya existían. Es para una explicación que no es ni error ni advertencia: en Jornada Laboral, el recuadro que dice cómo se decide la jornada de cada persona. Lleva sus tres reglas (caja, `.notice__title` y `.notice__text`) como los otros dos tonos, así que no necesita nada propio en modo oscuro |
+
+La pantalla **Jornada Laboral** (`features/workday/WorkdayConfigTab.tsx`) no añadió nada más:
+es encabezado, avisos y dos tablas con campos, todo con `.section-stack`, `.card`,
+`.card-head`, `.table-wrap`, `.state-chip--*`, `.inline-actions`, `.btn-sm`, `.cell-right`,
+`.cell-strong`, `.field-help` y `.empty-note`, que ya existían. Cero colores literales y cero
+estilos en línea.
 | `.inline-list` | Lista de nombres separados en línea dentro de un aviso |
 | `.kpi-sub`, `.kpi-sub--danger`, `.kpi-hint`, `.kpi-loading`, `.table-search`, `.card-title-tight`, `.field-grid--compact`, `.col-health/.col-company/.col-project`, `.cell-empty--roomy`, `.table-foot--tight`, `.chart-block`, `.fx-note--spaced` | Detalles sueltos que antes eran estilos en línea repetidos |
 
@@ -791,6 +803,13 @@ En `documentacion/capturas/`, generadas con Playwright sobre el entorno local:
   las dos capturas es solo el aviso.
 - `encabezado-antes-*` / `encabezado-despues-*`: el `PageHeader` en contexto (Portafolio),
   claro y oscuro, a 400px.
+- `jornada-*`: la jornada laboral configurable (decisión D-5). `jornada-config-*` es la
+  pantalla nueva, claro y oscuro, a 1440px y a 400px; `jornada-config-guardado-*` es la misma
+  justo después de guardar un país desde la interfaz; `jornada-capacidad-*` y
+  `jornada-informe-*` son las dos pantallas que consumen la jornada. Para que el informe
+  enseñara el efecto —8,5 h de un colombiano ya **no** son media hora en rojo— se creó una
+  entrada de horas de 8,5 h sobre un proyecto demo y **se borró después**; la configuración
+  quedó como estaba (Colombia 8,5 h, Ecuador 8 h, `Default` 8 h).
 - `alertas-antes-*` / `alertas-despues-*`: el Centro de Alertas, claro y oscuro, a 400px.
 - `tablero-antes-*` / `tablero-despues-*`: el Tablero de Control, claro y oscuro, a 400px.
 - `estimaciones-*` (`-antes-` / `-despues-`): la Calculadora de Estimaciones, claro y oscuro.
