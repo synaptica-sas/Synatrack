@@ -19,5 +19,8 @@ graphify-out/
 __pycache__/
 *.pyc
 
+# Datos locales de `supabase link` (por máquina)
+supabase/.temp/
+
 # Capturas y trazas del servidor MCP de Playwright (se regeneran)
 .playwright-mcp/
