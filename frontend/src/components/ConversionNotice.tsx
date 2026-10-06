@@ -49,7 +49,11 @@ export function ConversionNotice({
           Valoración a la tasa de hoy
         </div>
         <p className="notice__text">
-          {contexto} no están fijadas a la fecha de cada movimiento.{" "}
+          {/* "no se fijaron" y no "no están fijadas": `contexto` puede venir en
+              masculino ("Los totales del tablero") o en femenino ("Las cifras
+              financieras de este proyecto"), y la forma anterior solo concordaba
+              con el segundo. */}
+          {contexto} no se fijaron a la fecha de cada movimiento.{" "}
           {textoValoracionAproximada(conversion.undatedPairs ?? [])}
         </p>
         <div className="conversion-notice__foot">

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildRateBook,
   conversionStatus,
+  convertAmountDatedDetailed,
   convertAmountFallbackOnDate,
   convertAmountOnDate,
   createConversionLedger,
   rateMapForDate,
+  recordDatedQuality,
   type FxHistoryRecord,
 } from "../currency.js";
 import { computeProjectFinancials } from "../financial.js";
@@ -232,5 +234,116 @@ describe("computeProjectFinancials — cada movimiento con la tasa de SU fecha",
     });
     expect(f.conversion.approximateDates).toBe(false);
     expect(f.conversion.incomplete).toBe(false);
+  });
+});
+
+/**
+ * R-026 — la conversión POR GASTO que consume la pantalla de Gastos.
+ *
+ * `convertAmountDatedDetailed` es ahora la única implementación de la aritmética
+ * fechada (`convertAmountFallbackOnDate` delega en ella). Estas pruebas fijan
+ * dos cosas: que clasifica bien de dónde salió la tasa, y que el total que se
+ * obtiene sumando importe a importe es EXACTAMENTE el mismo que el que calcula
+ * el backend para el Tablero. Si dejaran de coincidir, volveríamos al problema
+ * que R-026 vino a cerrar: dos pantallas con números distintos del mismo dato.
+ */
+describe("convertAmountDatedDetailed — conversión por gasto (R-026)", () => {
+  const libro = buildRateBook(ACTUAL, HISTORIA);
+
+  it("usa la tasa de la fecha del gasto y la marca como fechada", () => {
+    // 4.500.000 COP en marzo, cuando el dólar estaba a 4.000 → 1.125 USD.
+    const marzo = convertAmountDatedDetailed(4_500_000, "COP", "USD", MARZO, libro);
+    expect(marzo.amount).toBeCloseTo(1125, 6);
+    expect(marzo.quality).toBe("dated");
+
+    // El MISMO importe en julio, con el dólar a 4.500 → 1.000 USD.
+    const julio = convertAmountDatedDetailed(4_500_000, "COP", "USD", JULIO, libro);
+    expect(julio.amount).toBeCloseTo(1000, 6);
+    expect(julio.quality).toBe("dated");
+
+    // Y con la tasa de HOY (lo que hacía el cliente) habrían sido 900 USD: ni
+    // uno ni otro. Esa es exactamente la diferencia que producía el desajuste.
+    expect(4_500_000 / 5000).toBe(900);
+  });
+
+  it("marca `undated` cuando el gasto es anterior a todo el histórico", () => {
+    const antiguo = convertAmountDatedDetailed(
+      4_500_000, "COP", "USD", new Date("2025-03-15T00:00:00Z"), libro,
+    );
+    // Se convierte con la tasa de hoy (5.000), que es el único respaldo.
+    expect(antiguo.amount).toBeCloseTo(900, 6);
+    expect(antiguo.quality).toBe("undated");
+  });
+
+  it("marca `missing` y NO convierte cuando no hay tasa por ningún camino", () => {
+    const sinTasa = convertAmountDatedDetailed(1234, "JPY", "USD", MARZO, libro);
+    expect(sinTasa.amount).toBe(1234);
+    expect(sinTasa.quality).toBe("missing");
+  });
+
+  it("la misma moneda no se toca y cuenta como fechada", () => {
+    const igual = convertAmountDatedDetailed(999, "USD", "USD", MARZO, libro);
+    expect(igual).toEqual({ amount: 999, quality: "dated" });
+  });
+
+  it("da el MISMO número, bit a bit, que convertAmountFallbackOnDate", () => {
+    const casos: Array<[number, string, Date]> = [
+      [4_500_000, "COP", MARZO],
+      [4_500_000, "COP", JULIO],
+      [800_000, "COP", new Date("2025-01-01T00:00:00Z")],
+      [1234, "JPY", MARZO],
+      [0, "COP", MARZO],
+    ];
+    for (const [monto, moneda, fecha] of casos) {
+      expect(convertAmountDatedDetailed(monto, moneda, "USD", fecha, libro).amount).toBe(
+        convertAmountFallbackOnDate(monto, moneda, "USD", fecha, libro),
+      );
+    }
+  });
+
+  it("el total sumado gasto a gasto coincide con el total del Tablero", () => {
+    // Los mismos gastos que vería la pantalla, en fechas con tasas distintas.
+    const gastos = [
+      { amount: 4_650_000, currency: "COP", entryDate: MARZO },
+      { amount: 3_600_000, currency: "COP", entryDate: JULIO },
+      { amount: 1_500_000, currency: "COP", entryDate: HOY },
+    ];
+
+    // Lo que hace la pantalla de Gastos: suma los importes ya convertidos.
+    const totalGastos = gastos.reduce(
+      (s, g) => s + convertAmountDatedDetailed(g.amount, g.currency, "USD", g.entryDate, libro).amount,
+      0,
+    );
+
+    // Lo que hace el backend para el Tablero (utils/financial.ts).
+    const totalTablero = gastos.reduce(
+      (s, g) => s + convertAmountFallbackOnDate(g.amount, g.currency, "USD", g.entryDate, libro),
+      0,
+    );
+
+    expect(totalGastos).toBe(totalTablero);
+    // Y no es el número que daba la conversión a la tasa de hoy.
+    const totalTasaDeHoy = gastos.reduce((s, g) => s + g.amount / 5000, 0);
+    expect(totalGastos).not.toBe(totalTasaDeHoy);
+    expect(totalGastos).toBeCloseTo(1162.5 + 800 + 300, 6);
+  });
+
+  it("el libro de faltantes recoge las dos calidades por separado", () => {
+    const ledger = createConversionLedger();
+    const casos: Array<[number, string, Date]> = [
+      [4_650_000, "COP", MARZO],                            // dated   → no anota
+      [800_000, "COP", new Date("2025-01-01T00:00:00Z")],    // undated → anota
+      [1234, "JPY", MARZO],                                  // missing → anota
+    ];
+    for (const [monto, moneda, fecha] of casos) {
+      const { quality } = convertAmountDatedDetailed(monto, moneda, "USD", fecha, libro);
+      recordDatedQuality(ledger, quality, moneda, "USD");
+    }
+    expect(conversionStatus(ledger)).toEqual({
+      incomplete: true,
+      missingPairs: ["JPY->USD"],
+      approximateDates: true,
+      undatedPairs: ["COP->USD"],
+    });
   });
 });

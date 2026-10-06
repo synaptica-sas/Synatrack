@@ -419,6 +419,38 @@ poder aprobar, en vez de dejar que lo descubra fallando.
 
 ---
 
+## D-14 · ¿Con qué fecha se valora el presupuesto al compararlo con el gasto?
+
+*Decisión nueva, surgida el 06/10/2026 al unificar la conversión de Gastos.*
+
+**Qué pasa.** El «% de ejecución presupuestal» divide dos cifras que se convierten con criterios
+distintos, y cada uno es correcto por separado: los **gastos** a la tasa del día en que
+ocurrieron, y el **presupuesto** a la tasa de cuando se contrató el proyecto. El problema es que
+**su cociente no es ninguno de los dos**, así que el porcentaje que se muestra no corresponde a
+ninguna fecha concreta.
+
+**Y hay algo peor, que apareció al mirarlo.** El indicador «Presupuesto (proyectos filtrados)»
+suma los presupuestos de varios proyectos **sin convertir de moneda**. Hoy, en la base de
+ejemplo, rotula *«US$ 660.090.000»*: es una suma de pesos etiquetada como dólares. No es una
+aproximación, es un número sin significado.
+
+**Las opciones para el porcentaje.**
+
+1. **Comparar todo a la fecha del contrato.** El presupuesto es el ancla; los gastos se
+   reexpresan a esa fecha. Responde «¿cuánto llevo gastado, medido como se pactó?».
+2. **Comparar todo a la tasa de hoy.** Responde «¿cuánto vale hoy lo gastado frente a lo
+   presupuestado?», pero vuelve a hacer que el número se mueva solo.
+3. **Dejarlo como está** y advertir que el porcentaje mezcla criterios.
+
+**Recomendación del equipo.** La 1: si el presupuesto se pactó en una fecha, medir contra él
+tiene sentido en esa misma fecha. Lo del indicador que suma monedas distintas **hay que
+arreglarlo igualmente**, decida lo que se decida: eso no es una elección, es un defecto, y solo
+hace falta saber con qué fecha convertir.
+
+**Decisión:** _______________________________________________
+
+---
+
 ## Resumen para acta
 
 | # | Acordado | Estado | Fecha |
@@ -436,6 +468,7 @@ poder aprobar, en vez de dejar que lo descubra fallando.
 | D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | Por decidir | — |
 | D-12 | *Pendiente.* Hora y zona horaria del resumen semanal. | Implementado con hora única, a confirmar | — |
 | D-13 | *Pendiente.* Si un consultor con delegación vigente puede aprobar. | Bug corregido; falta la decisión de permisos | — |
+| D-14 | *Pendiente.* Fecha de valoración del presupuesto frente al gasto. | Por decidir; el KPI que suma monedas es defecto aparte | — |
 
 ---
 

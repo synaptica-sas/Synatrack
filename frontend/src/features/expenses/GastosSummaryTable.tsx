@@ -1,5 +1,5 @@
 import { useState, Fragment } from "react";
-import type { Expense, FxConfig } from "../../services/api";
+import type { Expense } from "../../services/api";
 import type { GroupBy, GroupedGasto, GastoTotals } from "./useGastosGrouped";
 import { GastosDetailRow } from "./GastosDetailRow";
 import { fmtMoney, fmtDate } from "./gastosUtils";
@@ -41,7 +41,6 @@ export function GastosSummaryTable({
   totals,
   groupBy,
   baseCurrency,
-  fxConfigs,
   canWrite,
   onEdit,
   onDelete,
@@ -50,7 +49,6 @@ export function GastosSummaryTable({
   totals: GastoTotals;
   groupBy: GroupBy;
   baseCurrency: string;
-  fxConfigs: FxConfig[];
   canWrite: boolean;
   onEdit: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;
@@ -137,7 +135,6 @@ export function GastosSummaryTable({
                     key={`det-${group.key}`}
                     items={group.items}
                     baseCurrency={baseCurrency}
-                    fxConfigs={fxConfigs}
                     canWrite={canWrite}
                     colSpan={groupBy === "project" ? SUMMARY_COLS : SUMMARY_COLS - 1}
                     onEdit={onEdit}

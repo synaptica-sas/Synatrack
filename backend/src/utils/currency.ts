@@ -407,6 +407,56 @@ export function convertAmountOnDate(
 }
 
 /**
+ * Con qué calidad se pudo valorar UN importe a la fecha que le corresponde.
+ *
+ *  · `dated`   — se usó la tasa histórica vigente en esa fecha. Es el caso bueno.
+ *  · `undated` — no había histórico anterior a esa fecha y se usó la tasa de
+ *                HOY. El importe está convertido, pero se revalúa cada día.
+ *  · `missing` — no hay tasa por ningún camino: el importe va SIN convertir.
+ */
+export type DatedRateQuality = "dated" | "undated" | "missing";
+
+/** Un importe convertido a fecha, con la trazabilidad de cómo se obtuvo. */
+export type DatedAmount = { amount: number; quality: DatedRateQuality };
+
+/**
+ * Conversión fechada de UN importe, devolviendo además con qué calidad se hizo.
+ *
+ * POR QUÉ EXISTE (R-026): `convertAmountFallbackOnDate` ya distinguía estos tres
+ * desenlaces, pero solo sabía comunicarlos escribiéndolos en un `ConversionLedger`
+ * compartido, que es un acumulador de toda una petición. Eso sirve para rotular un
+ * total agregado, pero no para responder "¿cómo se valoró **este** gasto?", que es
+ * lo que necesita la pantalla de Gastos para poder filtrar y agrupar en el cliente
+ * y seguir sabiendo qué subconjunto es aproximado.
+ *
+ * Esta es la ÚNICA implementación de la aritmética fechada:
+ * `convertAmountFallbackOnDate` delega aquí, así que los totales del Tablero, el
+ * Portafolio, el detalle de proyecto y los gastos salen del mismo código y no
+ * pueden divergir. No se cambió ni el recorrido ni el orden de multiplicación.
+ */
+export function convertAmountDatedDetailed(
+  amount: number,
+  from: string,
+  to: string,
+  date: Date,
+  book: RateBook,
+): DatedAmount {
+  if (from === to) return { amount, quality: "dated" };
+
+  const { rates, dated } = rateMapForDate(book, date);
+  const path = findConversionPath(from, to, rates);
+
+  if (path === null) return { amount, quality: "missing" };
+
+  // Basta con que UNA pata del camino venga de la tasa actual para que el
+  // resultado dependa de la tasa de hoy: la conversión vía pivote no es mejor
+  // que su eslabón más débil.
+  const quality: DatedRateQuality = path.some((k) => !dated.has(k)) ? "undated" : "dated";
+
+  return { amount: applyConversionPath(amount, path, rates), quality };
+}
+
+/**
  * Conversión fechada con respaldo, la que usan todos los totales.
  *
  * Tres desenlaces, y los tres quedan registrados:
@@ -427,22 +477,23 @@ export function convertAmountFallbackOnDate(
   book: RateBook,
   ledger?: ConversionLedger,
 ): number {
-  if (from === to) return amount;
+  const { amount: converted, quality } = convertAmountDatedDetailed(amount, from, to, date, book);
 
-  const { rates, dated } = rateMapForDate(book, date);
-  const path = findConversionPath(from, to, rates);
-
-  if (path === null) {
-    if (ledger && amount !== 0) recordMissingRate(ledger, from, to);
-    return amount;
+  if (ledger && amount !== 0) {
+    if (quality === "missing") recordMissingRate(ledger, from, to);
+    else if (quality === "undated") recordUndatedRate(ledger, from, to);
   }
 
-  // Basta con que UNA pata del camino venga de la tasa actual para que el
-  // resultado dependa de la tasa de hoy: la conversión vía pivote no es mejor
-  // que su eslabón más débil.
-  if (ledger && amount !== 0 && path.some((k) => !dated.has(k))) {
-    recordUndatedRate(ledger, from, to);
-  }
+  return converted;
+}
 
-  return applyConversionPath(amount, path, rates);
+/** Anota en el libro la calidad con la que se valoró un importe. */
+export function recordDatedQuality(
+  ledger: ConversionLedger,
+  quality: DatedRateQuality,
+  from: string,
+  to: string,
+): void {
+  if (quality === "missing") recordMissingRate(ledger, from, to);
+  else if (quality === "undated") recordUndatedRate(ledger, from, to);
 }

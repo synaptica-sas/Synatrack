@@ -197,6 +197,13 @@ export type RunningTimer = {
   consultant?: { id: string; fullName: string };
 };
 
+/**
+ * Con qué calidad valoró el backend un importe a la fecha que le corresponde
+ * (R-026). Es la misma clasificación que alimenta `ConversionStatus`, pero por
+ * movimiento, para poder rotular un subconjunto filtrado en el cliente.
+ */
+export type ConversionQuality = "dated" | "undated" | "missing";
+
 export type Expense = {
   id: string;
   projectId: string;
@@ -208,6 +215,18 @@ export type Expense = {
   createdAt: string;
   updatedAt: string;
   project: Project;
+  /**
+   * R-026: el importe YA CONVERTIDO a `baseCurrency`, con la tasa vigente en
+   * `expenseDate`. Lo calcula el backend con la misma función que usan el
+   * Tablero y el Portafolio, para que los totales no puedan divergir. Llega
+   * como `number` (no como `string`): no es un `Decimal` de Prisma sino el
+   * resultado de un cálculo.
+   */
+  baseAmount: number;
+  /** Moneda a la que corresponde `baseAmount`. */
+  baseCurrency: string;
+  /** De dónde salió la tasa usada para `baseAmount`. */
+  conversionQuality: ConversionQuality;
 };
 
 export type Forecast = {
@@ -1013,9 +1032,25 @@ export async function listAllFinancialEntries(
   return fetchAllPages((page, pageSize) => listFinancialEntries({ ...params, page, pageSize }));
 }
 
-export async function listExpenses(): Promise<Expense[]> {
-  const response = await request<ApiEnvelope<Expense[]>>("/api/expenses");
-  return response.data;
+/**
+ * Listado de gastos ya convertidos a `base` (R-026).
+ *
+ * La conversión la hace el servidor, a la tasa de la fecha de cada gasto. Si no
+ * se pide moneda, el backend usa la base de la aplicación y la devuelve en
+ * `baseCurrency`, así que el llamador siempre sabe en qué moneda está leyendo.
+ */
+export async function listExpenses(
+  base?: string,
+): Promise<{ expenses: Expense[]; conversion: ConversionStatus; baseCurrency: string }> {
+  const query = base ? `?base=${encodeURIComponent(base)}` : "";
+  const response = await request<
+    ApiEnvelope<Expense[]> & { conversion: ConversionStatus; baseCurrency: string }
+  >(`/api/expenses${query}`);
+  return {
+    expenses: response.data,
+    conversion: response.conversion,
+    baseCurrency: response.baseCurrency,
+  };
 }
 
 export async function createExpense(payload: {

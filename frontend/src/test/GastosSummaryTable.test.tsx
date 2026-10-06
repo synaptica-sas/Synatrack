@@ -14,6 +14,9 @@ const expense: Expense = {
   description: null,
   createdAt: "",
   updatedAt: "",
+  baseAmount: 500,
+  baseCurrency: "USD",
+  conversionQuality: "dated",
   project: { id: "p1", name: "Proyecto Alpha", company: "ACME", country: "", currency: "USD", projectType: "TIME_AND_MATERIAL", status: "ACTIVE", budget: "10000", startDate: "", endDate: "", description: null, sellPrice: null, sellCurrency: "", createdAt: "", updatedAt: "" },
 };
 
@@ -47,7 +50,6 @@ const defaultProps = {
   totals,
   groupBy: "project" as const,
   baseCurrency: "USD",
-  fxConfigs: [],
   canWrite: true,
   onEdit: vi.fn(),
   onDelete: vi.fn(),

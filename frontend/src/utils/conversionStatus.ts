@@ -1,3 +1,5 @@
+import type { ConversionQuality, ConversionStatus } from "../services/api";
+
 /**
  * Presentación del estado de conversión de moneda que publica el backend.
  *
@@ -92,4 +94,48 @@ export function tituloConversionIncompleta(pares: string[]): string {
   const lista = formatearParesFaltantes(pares);
   if (!lista) return "Cifra aproximada: faltan tasas de cambio.";
   return `Cifra aproximada: faltan tasas de cambio para convertir ${lista}.`;
+}
+
+// ─── Estado de conversión de un subconjunto (R-026) ──────────────────────────
+
+/** Lo mínimo que hace falta de un movimiento para saber cómo se valoró. */
+export type MovimientoConvertido = {
+  currency: string;
+  baseCurrency: string;
+  conversionQuality: ConversionQuality;
+  /** El importe ORIGINAL. Un 0 no ensucia el aviso, igual que en el backend. */
+  amount: string | number;
+};
+
+/**
+ * Arma el `ConversionStatus` de una lista de movimientos a partir de la marca
+ * que el backend puso en cada uno.
+ *
+ * POR QUÉ EXISTE (R-026): la pantalla de Gastos filtra y agrupa en el cliente,
+ * así que el `conversion` global que acompaña a la respuesta —el del listado
+ * completo— puede avisar de un problema que no afecta a lo que el usuario tiene
+ * delante, o callarse uno que sí. Esto recompone el aviso para el subconjunto
+ * exacto que se está mostrando.
+ *
+ * NO convierte nada ni toca una tasa: solo agrega banderas que ya vienen
+ * calculadas. La aritmética sigue viviendo en un único sitio, el backend.
+ */
+export function estadoConversionDe(movimientos: MovimientoConvertido[]): ConversionStatus {
+  const faltantes = new Set<string>();
+  const sinFechar = new Set<string>();
+
+  for (const m of movimientos) {
+    if (Number(m.amount) === 0) continue;
+    if (m.conversionQuality === "dated") continue;
+    const par = `${m.currency}->${m.baseCurrency}`;
+    if (m.conversionQuality === "missing") faltantes.add(par);
+    else sinFechar.add(par);
+  }
+
+  return {
+    incomplete: faltantes.size > 0,
+    missingPairs: [...faltantes].sort(),
+    approximateDates: sinFechar.size > 0,
+    undatedPairs: [...sinFechar].sort(),
+  };
 }

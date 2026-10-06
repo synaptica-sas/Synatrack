@@ -1,4 +1,4 @@
-import type { FxConfig } from "../../services/api";
+import type { ConversionQuality } from "../../services/api";
 
 // ── Formateo ──────────────────────────────────────────────────────────────────
 
@@ -16,78 +16,52 @@ export function numberish(v: string | number | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// ── Conversión FX ─────────────────────────────────────────────────────────────
-// FxConfig.rate = quoteCode per 1 baseCode  (ej. base=USD, quote=COP, rate=4000)
+// ── Explicación de la conversión (R-026) ─────────────────────────────────────
+//
+// Aquí vivía `convertToBase`, que reconvertía cada importe en el navegador con
+// las tasas de HOY (`FxConfig`). Era una SEGUNDA implementación de la conversión
+// de moneda, y daba otro número que la del backend, que valora cada movimiento a
+// la tasa de su propia fecha (R-008/R-012): los mismos gastos sumaban distinto en
+// Gastos que en el Tablero. Se eliminó. Ahora el importe convertido llega en
+// `expense.baseAmount` y aquí solo se EXPLICA, sin recalcular nada.
 
-export type ConversionResult = {
-  value: number;
-  rate: number | null;
-  tooltip: string;
-};
+/**
+ * Texto del tooltip del importe convertido: de cuánto se partió, con qué tasa
+ * implícita se llegó y de qué fecha salió esa tasa.
+ *
+ * La "tasa implícita" se deduce dividiendo el resultado entre el origen; no es
+ * una conversión, es leer al revés la que ya hizo el servidor.
+ */
+export function tooltipConversion(expense: {
+  amount: string | number;
+  currency: string;
+  baseAmount: number;
+  baseCurrency: string;
+  conversionQuality: ConversionQuality;
+  expenseDate: string;
+}): string {
+  const original = numberish(expense.amount);
 
-export function convertToBase(
-  amount: number,
-  fromCurrency: string,
-  baseCurrency: string,
-  fxConfigs: FxConfig[],
-): ConversionResult {
-  if (fromCurrency === baseCurrency) {
-    return {
-      value: amount,
-      rate: 1,
-      tooltip: `${fmtMoney(amount, fromCurrency)} (misma moneda)`,
-    };
+  if (expense.currency === expense.baseCurrency) {
+    return `${fmtMoney(original, expense.currency)} (misma moneda)`;
   }
 
-  // Directo: base=baseCurrency, quote=fromCurrency → amount / rate
-  const direct = fxConfigs.find(
-    (f) => f.baseCode === baseCurrency && f.quoteCode === fromCurrency,
-  );
-  if (direct) {
-    const rate = numberish(direct.rate);
-    if (rate === 0) return { value: 0, rate: null, tooltip: "Tasa FX = 0" };
-    const converted = amount / rate;
-    return {
-      value: converted,
-      rate: 1 / rate,
-      tooltip: `${fmtMoney(amount, fromCurrency)} ÷ ${rate.toLocaleString("es-CO")} = ${fmtMoney(converted, baseCurrency)}`,
-    };
+  if (expense.conversionQuality === "missing") {
+    return (
+      `Sin tasa de ${expense.currency} a ${expense.baseCurrency}: ` +
+      `el importe se muestra SIN convertir (${fmtMoney(original, expense.currency)}).`
+    );
   }
 
-  // Inverso: base=fromCurrency, quote=baseCurrency → amount * rate
-  const inverse = fxConfigs.find(
-    (f) => f.baseCode === fromCurrency && f.quoteCode === baseCurrency,
-  );
-  if (inverse) {
-    const rate = numberish(inverse.rate);
-    if (rate === 0) return { value: 0, rate: null, tooltip: "Tasa FX = 0" };
-    const converted = amount * rate;
-    return {
-      value: converted,
-      rate,
-      tooltip: `${fmtMoney(amount, fromCurrency)} × ${rate.toLocaleString("es-CO")} = ${fmtMoney(converted, baseCurrency)}`,
-    };
-  }
+  const tasa = original !== 0 ? expense.baseAmount / original : 0;
+  const detalle =
+    `${fmtMoney(original, expense.currency)} × ${tasa.toLocaleString("es-CO", {
+      maximumFractionDigits: 8,
+    })} = ${fmtMoney(expense.baseAmount, expense.baseCurrency)}`;
 
-  // Tasa cruzada vía USD
-  if (fromCurrency !== "USD" && baseCurrency !== "USD") {
-    const toUSD = convertToBase(amount, fromCurrency, "USD", fxConfigs);
-    const toBase = convertToBase(toUSD.value, "USD", baseCurrency, fxConfigs);
-    if (toUSD.rate != null && toBase.rate != null) {
-      return {
-        value: toBase.value,
-        rate: null,
-        tooltip: `${fmtMoney(amount, fromCurrency)} → USD → ${baseCurrency} (tasa cruzada)`,
-      };
-    }
-  }
-
-  // Sin tasa disponible: devolver el monto sin convertir
-  return {
-    value: amount,
-    rate: null,
-    tooltip: `Sin tasa FX para ${fromCurrency} → ${baseCurrency}`,
-  };
+  return expense.conversionQuality === "dated"
+    ? `${detalle} (tasa vigente el ${fmtDate(expense.expenseDate)})`
+    : `${detalle} — valorado con la tasa de HOY: no hay tasa anterior al ${fmtDate(expense.expenseDate)}.`;
 }
 
 // ── Moneda de presentación por defecto (R-026) ───────────────────────────────
@@ -148,9 +122,24 @@ export function formatMonthKey(key: string): string {
 
 // ── Fecha formateada ──────────────────────────────────────────────────────────
 
+/**
+ * Fecha de un gasto, formateada.
+ *
+ * Se lee y se formatea en **UTC**, que es como el backend las guarda y las
+ * compara. `new Date("2026-08-14")` se interpreta como medianoche UTC, pero
+ * `toLocaleDateString` sin zona la imprimía en la hora local: en Colombia
+ * (UTC-5) un gasto del 14 se mostraba como "13/08/2026". El desfase afectaba a
+ * la columna "Última fecha" y al detalle, y con R-026 habría llegado a decir
+ * que se usó la tasa de un día que no es.
+ */
 export function fmtDate(dateStr: string): string {
   const d = new Date(dateStr);
-  return d.toLocaleDateString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return d.toLocaleDateString("es-CO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 // ── Período anterior (para delta KPI) ────────────────────────────────────────

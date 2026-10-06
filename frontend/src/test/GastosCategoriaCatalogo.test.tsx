@@ -37,6 +37,9 @@ const gasto = {
   description: null,
   createdAt: '',
   updatedAt: '',
+  baseAmount: 500,
+  baseCurrency: 'USD',
+  conversionQuality: 'dated',
 } as unknown as Expense;
 
 function pintar() {

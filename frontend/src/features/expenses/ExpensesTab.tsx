@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { FormEvent } from "react";
 import { PageHeader } from "../../components/PageHeader";
@@ -7,7 +7,6 @@ import {
   deleteExpense,
   updateExpense,
   type Expense,
-  type FxConfig,
   type Forecast,
   type Project,
 } from "../../services/api";
@@ -15,6 +14,8 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { downloadCsv } from "../../utils/csv";
 import type { DateRange } from "../../components/dateRangeUtils";
 import { monedaBasePorDefecto, numberish } from "./gastosUtils";
+import { ConversionNotice } from "../../components/ConversionNotice";
+import { estadoConversionDe } from "../../utils/conversionStatus";
 import { useGastosGrouped, type GroupBy } from "./useGastosGrouped";
 import { GastosKPIStrip } from "./GastosKPIStrip";
 import { GastosFilters } from "./GastosFilters";
@@ -67,8 +68,9 @@ export function ExpensesTab({
   canWrite,
   onReload,
   onError,
-  fxConfigs = [],
   baseCurrency: initialBaseCurrency = "USD",
+  onBaseCurrencyChange,
+  onIrATasasFx,
 }: {
   expenses: Expense[];
   projects: Project[];
@@ -77,8 +79,16 @@ export function ExpensesTab({
   canWrite: boolean;
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
-  fxConfigs?: FxConfig[];
   baseCurrency?: string;
+  /**
+   * R-026: avisa de en qué moneda quiere leerse la pantalla. La conversión la
+   * hace el servidor (a la tasa de la fecha de cada gasto), así que cambiar de
+   * moneda implica volver a pedir los datos; quien posee el hook es quien puede
+   * hacerlo.
+   */
+  onBaseCurrencyChange?: (moneda: string) => void;
+  /** Atajo a la pantalla de Tasas FX desde el aviso de conversión. */
+  onIrATasasFx?: () => void;
 }) {
   // Catálogo editable de categorías de gasto (D-4). Si la carga falla se usa el
   // respaldo, que son los mismos nombres de siempre.
@@ -161,13 +171,23 @@ export function ExpensesTab({
   );
   const baseCurrency = baseCurrencyElegida ?? monedaSugerida;
 
+  // La moneda de presentación viaja al servidor, que es quien convierte (R-026).
+  useEffect(() => {
+    onBaseCurrencyChange?.(baseCurrency);
+  }, [baseCurrency, onBaseCurrencyChange]);
+
   // ── Grouped data ──────────────────────────────────────────────────────────
-  const { groups, totals } = useGastosGrouped(
-    filteredExpenses,
-    groupBy,
-    baseCurrency,
-    fxConfigs,
-    projects,
+  const { groups, totals } = useGastosGrouped(filteredExpenses, groupBy, baseCurrency, projects);
+
+  /**
+   * Aviso de conversión del subconjunto que se está viendo (R-026 / DEP-32).
+   * Se recompone a partir de la marca que el backend puso en cada gasto, porque
+   * los filtros son del cliente: el consolidado del listado completo avisaría de
+   * problemas que quizá no están a la vista.
+   */
+  const conversionVisible = useMemo(
+    () => estadoConversionDe(filteredExpenses),
+    [filteredExpenses],
   );
 
   // ── Projected costs from forecasts (por proyecto) ────────────────────────
@@ -319,12 +339,17 @@ export function ExpensesTab({
       ) : (
         <article className="card card--roomy">
           {/* KPI strip */}
+          <ConversionNotice
+            conversion={conversionVisible}
+            contexto="Los totales de gastos"
+            onIrATasasFx={onIrATasasFx}
+          />
+
           <GastosKPIStrip
             filteredExpenses={filteredExpenses}
             allExpenses={expenses}
             dateRange={dateRange}
             baseCurrency={baseCurrency}
-            fxConfigs={fxConfigs}
             projects={projects}
           />
 
@@ -355,7 +380,6 @@ export function ExpensesTab({
             totals={totals}
             groupBy={groupBy}
             baseCurrency={baseCurrency}
-            fxConfigs={fxConfigs}
             canWrite={canWrite}
             onEdit={openEditForm}
             onDelete={setDeleteTarget}

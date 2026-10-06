@@ -1202,7 +1202,13 @@ function App() {
   const projectsHook    = useProjects(!!authUser && (can("projects:read") || can("estimations:read")));
   const consultantsHook = useConsultants(!!authUser && can("consultants:read"));
   const timeEntriesHook = useTimeEntries(!!authUser && can("time:read"));
-  const expensesHook    = useExpenses(!!authUser && can("expenses:read"));
+  /**
+   * R-026: la moneda en la que se presenta la pantalla de Gastos. Viaja al
+   * backend porque es él quien convierte, a la tasa de la fecha de cada gasto.
+   * `undefined` = aún no se ha elegido ninguna y manda la base del servidor.
+   */
+  const [gastosBaseCurrency, setGastosBaseCurrency] = useState<string | undefined>(undefined);
+  const expensesHook    = useExpenses(!!authUser && can("expenses:read"), gastosBaseCurrency);
   const forecastsHook   = useForecasts(!!authUser && can("forecasts:read"));
   const revenueHook     = useRevenue(!!authUser && can("revenue:read"));
   const fxHook          = useFxConfigs(!!authUser && can("fx:read"));
@@ -1962,8 +1968,9 @@ function App() {
                   revenueEntries={revenueHook.revenueEntries}
                   projects={projectsHook.projects}
                   forecasts={forecastsHook.forecasts}
-                  fxConfigs={fxHook.fxConfigs}
                   baseCurrency="USD"
+                  onExpensesBaseCurrencyChange={setGastosBaseCurrency}
+                  onIrATasasFx={irATasasFx}
                   expensesLoading={expensesHook.loading}
                   revenueLoading={revenueHook.loading}
                   canWriteExpenses={can("expenses:write")}

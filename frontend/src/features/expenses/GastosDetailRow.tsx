@@ -1,10 +1,9 @@
-import type { Expense, FxConfig } from "../../services/api";
-import { convertToBase, numberish, fmtMoney, fmtDate } from "./gastosUtils";
+import type { Expense } from "../../services/api";
+import { numberish, fmtMoney, fmtDate, tooltipConversion } from "./gastosUtils";
 
 export function GastosDetailRow({
   items,
   baseCurrency,
-  fxConfigs,
   canWrite,
   colSpan,
   onEdit,
@@ -12,16 +11,13 @@ export function GastosDetailRow({
 }: {
   items: Expense[];
   baseCurrency: string;
-  fxConfigs: FxConfig[];
   canWrite: boolean;
   colSpan: number;
   onEdit: (expense: Expense) => void;
   onDelete: (expense: Expense) => void;
 }) {
-  const subtotal = items.reduce(
-    (s, e) => s + convertToBase(numberish(e.amount), e.currency, baseCurrency, fxConfigs).value,
-    0,
-  );
+  // R-026: importes ya convertidos por el backend a la tasa de su fecha.
+  const subtotal = items.reduce((s, e) => s + e.baseAmount, 0);
 
   return (
     <tr>
@@ -39,7 +35,8 @@ export function GastosDetailRow({
             </thead>
             <tbody>
               {items.map((e) => {
-                const { value, tooltip } = convertToBase(numberish(e.amount), e.currency, baseCurrency, fxConfigs);
+                const value = e.baseAmount;
+                const tooltip = tooltipConversion(e);
                 return (
                   <tr key={e.id}>
                     <td>{e.category}</td>

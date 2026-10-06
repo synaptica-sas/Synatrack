@@ -1,5 +1,5 @@
-import type { Expense, FxConfig, Project } from "../../services/api";
-import { convertToBase, numberish, fmtMoney, prevPeriod } from "./gastosUtils";
+import type { Expense, Project } from "../../services/api";
+import { numberish, fmtMoney, prevPeriod } from "./gastosUtils";
 
 /** Tono de estado de un dato. `undefined` = sin estado, color de texto normal. */
 type Tone = "success" | "warning" | "danger";
@@ -47,21 +47,18 @@ export function GastosKPIStrip({
   allExpenses,
   dateRange,
   baseCurrency,
-  fxConfigs,
   projects,
 }: {
   filteredExpenses: Expense[];
   allExpenses: Expense[];
   dateRange: { from: string; to: string };
   baseCurrency: string;
-  fxConfigs: FxConfig[];
   projects: Project[];
 }) {
+  // R-026: los importes ya vienen convertidos a la tasa de la fecha de cada
+  // gasto. Aquí solo se suman.
   function sumExpenses(list: Expense[]): number {
-    return list.reduce(
-      (s, e) => s + convertToBase(numberish(e.amount), e.currency, baseCurrency, fxConfigs).value,
-      0,
-    );
+    return list.reduce((s, e) => s + e.baseAmount, 0);
   }
 
   const currentTotal = sumExpenses(filteredExpenses);

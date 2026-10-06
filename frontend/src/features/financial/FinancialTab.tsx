@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { ExpensesTab } from "../expenses/ExpensesTab";
 import { RevenueTab } from "../revenue/RevenueTab";
-import type { Expense, Forecast, FxConfig, Project, RevenueEntry } from "../../services/api";
+import type { Expense, Forecast, Project, RevenueEntry } from "../../services/api";
 import type { FinancialPanel } from "../../types";
 
 /**
@@ -18,8 +18,9 @@ export function FinancialTab({
   revenueEntries,
   projects,
   forecasts = [],
-  fxConfigs = [],
   baseCurrency = "USD",
+  onExpensesBaseCurrencyChange,
+  onIrATasasFx,
   expensesLoading,
   revenueLoading,
   canWriteExpenses,
@@ -36,8 +37,10 @@ export function FinancialTab({
   revenueEntries: RevenueEntry[];
   projects: Project[];
   forecasts?: Forecast[];
-  fxConfigs?: FxConfig[];
   baseCurrency?: string;
+  /** R-026: la pantalla de Gastos avisa en qué moneda quiere leerse. */
+  onExpensesBaseCurrencyChange?: (moneda: string) => void;
+  onIrATasasFx?: () => void;
   expensesLoading: boolean;
   revenueLoading: boolean;
   canWriteExpenses: boolean;
@@ -89,8 +92,9 @@ export function FinancialTab({
           canWrite={canWriteExpenses}
           onReload={onReloadExpenses}
           onError={onError}
-          fxConfigs={fxConfigs}
           baseCurrency={baseCurrency}
+          onBaseCurrencyChange={onExpensesBaseCurrencyChange}
+          onIrATasasFx={onIrATasasFx}
         />
       )}
 

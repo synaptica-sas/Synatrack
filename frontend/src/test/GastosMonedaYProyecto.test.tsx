@@ -40,6 +40,11 @@ function gasto(id: string, proyecto: Project, amount: string): Expense {
     createdAt: '',
     updatedAt: '',
     project: { id: proyecto.id, name: proyecto.name, currency: proyecto.currency },
+    // R-026: el gasto ya llega convertido por el backend. Aquí el gasto está en
+    // la moneda de su propio proyecto, así que el importe base es el mismo.
+    baseAmount: Number(amount),
+    baseCurrency: proyecto.currency,
+    conversionQuality: 'dated',
   } as unknown as Expense;
 }
 

@@ -60,6 +60,10 @@ formal, este es el sitio donde documentarlo.
 >
 > El orden correcto es: **1)** rehacer la base (§2.3), **2)** cargar las tasas (§2.4),
 > **3)** desplegar el backend en Render, **4)** comprobar (§4). El frontend ya va solo.
+>
+> **Desde el 06/10 hay un motivo más para ese orden**: `GET /api/expenses` cambió de contrato
+> —ahora devuelve cada gasto ya convertido por el servidor—, así que el frontend nuevo **no
+> funciona contra el backend viejo**. La pantalla de Gastos saldría sin importes convertidos.
 
 ### 2.1 Por qué hay que rehacer la base de Supabase
 
