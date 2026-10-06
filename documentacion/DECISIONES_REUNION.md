@@ -373,7 +373,8 @@ hasta que alguien se ocupe de registrar el país de cada persona.
 **Mientras tanto**, la pantalla muestra la hora en UTC **y su equivalente en Colombia**, para
 que nadie la configure a ciegas.
 
-**Decisión:** _______________________________________________
+**Decisión (06/10/2026): una sola hora, en horario universal.** No se configura por país. Es lo
+que ya estaba implementado, así que no hace falta cambiar nada.
 
 ---
 
@@ -415,7 +416,9 @@ esperaba al pedir la funcionalidad. La delegación ya tiene ventana temporal y d
 **Mientras tanto**, la pantalla avisa de que el delegado necesita rol PM o Administrador para
 poder aprobar, en vez de dejar que lo descubra fallando.
 
-**Decisión:** _______________________________________________
+**Decisión (06/10/2026): opción 2.** No se amplían permisos: únicamente aprueba **el PM
+relacionado con el proyecto**. La delegación se restringe a quien ya es PM, y deja de ofrecer
+consultores que no podrían aprobar. Queda pendiente aplicarlo en la pantalla.
 
 ---
 
@@ -470,11 +473,11 @@ sino una gestión pendiente: conseguir el buzón de correo.
 | D-7 | Son configuración general: hace falta una pantalla para editarlos en vez de tenerlos en el código. | **Hecho** — pantalla "Umbrales de Salud" (`5f62bd4`); de paso se eliminó la contradicción entre Portafolio y el semáforo | 05/10/2026
 | D-8 | En espera. Mientras tanto, ocultar la pantalla de Actividades salvo para ADMIN. | StandBy + ocultar | 05/10/2026 |
 | D-9 | Sí, sábado y domingo cuentan. | **Hecho** por Wilson (`5953b7f`) | 05/10/2026 |
-| D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | Implementado lo conservador, a confirmar | — |
-| D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | Por decidir | — |
-| D-12 | *Pendiente.* Hora y zona horaria del resumen semanal. | Implementado con hora única, a confirmar | — |
-| D-13 | *Pendiente.* Si un consultor con delegación vigente puede aprobar. | Bug corregido; falta la decisión de permisos | — |
-| D-14 | *Pendiente.* Fecha de valoración del presupuesto frente al gasto. | Por decidir; el KPI que suma monedas es defecto aparte | — |
+| D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | **Para hablar con Greisy** | — |
+| D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | **Para hablar con Greisy** | — |
+| D-12 | **Una sola hora, en horario universal.** No se configura por país. | **Resuelto** — ya era lo implementado | 06/10/2026 |
+| D-13 | **No se amplían permisos.** Solo puede aprobar el PM relacionado con el proyecto; la delegación se restringe a quien ya es PM. | **Resuelto** — falta aplicarlo en la pantalla | 06/10/2026 |
+| D-14 | *Pendiente.* Fecha de valoración del presupuesto frente al gasto. | **Para hablar con Greisy** | — |
 
 ---
 
