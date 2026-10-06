@@ -34,6 +34,7 @@ import { financialEntriesRoutes } from "../modules/financial-entries/financial-e
 import { financialCategoriesRoutes } from "../modules/financial-categories/financial-categories.routes.js";
 import { timerRoutes } from "../modules/timer/timer.routes.js";
 import { healthThresholdsRoutes } from "../modules/admin/health-thresholds.routes.js";
+import { approvalDigestRoutes } from "../modules/admin/approval-digest.routes.js";
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(healthRoutes);
@@ -71,4 +72,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(financialCategoriesRoutes, { prefix: "/api/financial-categories" });
   await app.register(timerRoutes, { prefix: "/api/timer" });
   await app.register(healthThresholdsRoutes, { prefix: "/api/health-thresholds" });
+  await app.register(approvalDigestRoutes, { prefix: "/api/approval-digest" });
 }

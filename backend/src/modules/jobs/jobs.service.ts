@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { getLogger } from "../../infra/logger.js";
 import { runAlertEngine } from "../alerts/alerts.service.js";
+import { runWeeklyApprovalDigest } from "../approvals/weekly-digest.job.js";
 import { runAssignmentMaintenance } from "../assignments/assignments.job.js";
 import { registrarEjecucion } from "./job-runs.service.js";
 
@@ -33,10 +34,26 @@ interface Trabajo {
  * Los trabajos periódicos, en orden. Primero se sincronizan los estados de
  * asignación y después corre el motor de alertas, para que las alertas de
  * "asignación que termina" vean los estados ya actualizados.
+ *
+ * `approval-digest` va al final porque solo observa: lee lo que está pendiente
+ * de aprobar y, como mucho una vez por semana, manda un correo. No modifica
+ * nada que los otros dos necesiten, y ponerlo el último evita que un fallo suyo
+ * retrase el mantenimiento, que sí tiene efectos en los datos.
+ *
+ * El ciclo corre cada hora; que `approval-digest` sea SEMANAL lo resuelve él
+ * mismo con una marca persistente, no este calendario.
  */
 const TRABAJOS: Trabajo[] = [
   { nombre: "assignment-maintenance", ejecutar: runAssignmentMaintenance },
   { nombre: "alert-engine", ejecutar: runAlertEngine },
+  {
+    nombre: "approval-digest",
+    // Se envuelve porque devuelve un resumen de lo que hizo (útil en las
+    // pruebas y en el log) y el ciclo solo espera `Promise<void>`.
+    ejecutar: async (prisma) => {
+      await runWeeklyApprovalDigest(prisma);
+    },
+  },
 ];
 
 /**

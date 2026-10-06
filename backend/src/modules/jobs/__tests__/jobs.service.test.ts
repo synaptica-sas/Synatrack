@@ -9,6 +9,7 @@ vi.mock("../../../config/env.js", () => ({
 
 const mantenimientoAsignaciones = vi.fn<() => Promise<void>>();
 const motorDeAlertas = vi.fn<() => Promise<void>>();
+const resumenSemanal = vi.fn<() => Promise<void>>();
 
 vi.mock("../../assignments/assignments.job.js", () => ({
   runAssignmentMaintenance: () => mantenimientoAsignaciones(),
@@ -16,6 +17,10 @@ vi.mock("../../assignments/assignments.job.js", () => ({
 
 vi.mock("../../alerts/alerts.service.js", () => ({
   runAlertEngine: () => motorDeAlertas(),
+}));
+
+vi.mock("../../approvals/weekly-digest.job.js", () => ({
+  runWeeklyApprovalDigest: () => resumenSemanal(),
 }));
 
 // El registro persistente se simula: aquí solo interesa QUÉ se manda a guardar.
@@ -49,11 +54,12 @@ describe("runMaintenanceCycle", () => {
   beforeEach(() => {
     mantenimientoAsignaciones.mockReset().mockResolvedValue(undefined);
     motorDeAlertas.mockReset().mockResolvedValue(undefined);
+    resumenSemanal.mockReset().mockResolvedValue(undefined);
     registrarEjecucion.mockReset().mockResolvedValue(true);
     stopJobsScheduler();
   });
 
-  it("ejecuta los dos trabajos y reporta duración y resultado", async () => {
+  it("ejecuta los tres trabajos y reporta duración y resultado", async () => {
     const resultado = await runMaintenanceCycle(prismaFalso, "http");
 
     expect(resultado.omitido).toBe(false);
@@ -61,11 +67,15 @@ describe("runMaintenanceCycle", () => {
     expect(resultado.trabajos.map((t) => t.nombre)).toEqual([
       "assignment-maintenance",
       "alert-engine",
+      // El resumen semanal de aprobaciones (R-020 + R-022) corre el último: solo
+      // observa, así que un fallo suyo no debe retrasar el mantenimiento.
+      "approval-digest",
     ]);
     expect(resultado.trabajos.every((t) => t.ok)).toBe(true);
     expect(resultado.duracionMs).toBeGreaterThanOrEqual(0);
     expect(mantenimientoAsignaciones).toHaveBeenCalledTimes(1);
     expect(motorDeAlertas).toHaveBeenCalledTimes(1);
+    expect(resumenSemanal).toHaveBeenCalledTimes(1);
   });
 
   it("NO solapa ejecuciones: el segundo ciclo se omite mientras el primero corre", async () => {
@@ -112,7 +122,7 @@ describe("runMaintenanceCycle", () => {
 
     await runMaintenanceCycle(prismaFalso, "intervalo");
 
-    expect(registrarEjecucion).toHaveBeenCalledTimes(2);
+    expect(registrarEjecucion).toHaveBeenCalledTimes(3);
 
     const [, fallido] = registrarEjecucion.mock.calls[0] as [unknown, Record<string, unknown>];
     expect(fallido).toMatchObject({
@@ -127,6 +137,9 @@ describe("runMaintenanceCycle", () => {
     const [, correcto] = registrarEjecucion.mock.calls[1] as [unknown, Record<string, unknown>];
     expect(correcto).toMatchObject({ jobName: "alert-engine", origin: "intervalo", ok: true });
     expect(correcto.error).toBeUndefined();
+
+    const [, resumen] = registrarEjecucion.mock.calls[2] as [unknown, Record<string, unknown>];
+    expect(resumen).toMatchObject({ jobName: "approval-digest", origin: "intervalo", ok: true });
   });
 
   it("si no se puede guardar el rastro, el ciclo termina igual (observar no rompe lo observado)", async () => {
@@ -137,7 +150,7 @@ describe("runMaintenanceCycle", () => {
     // El fallo al registrar se contabiliza contra el trabajo, pero ni tumba el
     // ciclo ni impide que el siguiente trabajo corra, y el cerrojo se libera.
     expect(resultado.omitido).toBe(false);
-    expect(resultado.trabajos).toHaveLength(2);
+    expect(resultado.trabajos).toHaveLength(3);
     expect(motorDeAlertas).toHaveBeenCalledTimes(1);
     expect(hayCicloEnCurso()).toBe(false);
   });
@@ -147,6 +160,7 @@ describe("startJobsScheduler", () => {
   beforeEach(() => {
     mantenimientoAsignaciones.mockReset().mockResolvedValue(undefined);
     motorDeAlertas.mockReset().mockResolvedValue(undefined);
+    resumenSemanal.mockReset().mockResolvedValue(undefined);
     stopJobsScheduler();
   });
 

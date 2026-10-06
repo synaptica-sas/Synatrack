@@ -42,6 +42,7 @@ import { EstimationCalculatorTab } from "./features/estimations/EstimationCalcul
 import { ActivitiesTab } from "./features/activities/ActivitiesTab";
 import { WorkdayConfigTab } from "./features/workday/WorkdayConfigTab";
 import { HealthThresholdsTab } from "./features/admin/HealthThresholdsTab";
+import { ApprovalDigestTab } from "./features/admin/ApprovalDigestTab";
 import { FinancialCategoriesTab } from "./features/financial/FinancialCategoriesTab";
 import type { TabId, FinancialPanel } from "./types";
 import { FinancialTab } from "./features/financial/FinancialTab";
@@ -95,6 +96,7 @@ const SIDEBAR_GROUPS: {
       { id: "extraHoursConfig", label: "Config. Horas Extra", icon: "⚙", permission: "extrahours:config" },
       { id: "workdayConfig", label: "Jornada Laboral", icon: "⏱", permission: "capacity:config" },
       { id: "healthThresholds", label: "Umbrales de Salud", icon: "◉", permission: "health:thresholds" },
+      { id: "approvalDigest", label: "Resumen de Aprobaciones", icon: "✉", permission: "notifications:digest" },
       { id: "financialCategories", label: "Categorías Financieras", icon: "⊞", permission: "finance:categories" },
       { id: "audit", label: "Auditoría", icon: "⊛", permission: "users:manage" },
     ],
@@ -256,6 +258,7 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   extraHoursConfig: "/extra-hours-config",
   workdayConfig: "/workday-config",
   healthThresholds: "/health-thresholds",
+  approvalDigest: "/approval-digest",
   financialCategories: "/financial-categories",
   audit: "/audit",
   profile: "/profile",
@@ -2035,6 +2038,13 @@ function App() {
 
               {activeTab === "healthThresholds" && (
                 <HealthThresholdsTab
+                  onError={handleError}
+                  onSuccess={(msg) => showToast(msg, "success")}
+                />
+              )}
+
+              {activeTab === "approvalDigest" && (
+                <ApprovalDigestTab
                   onError={handleError}
                   onSuccess={(msg) => showToast(msg, "success")}
                 />

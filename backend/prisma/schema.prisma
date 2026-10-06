@@ -849,7 +849,8 @@ model ApprovalDelegation {
 /// techo es de unos pocos cientos de filas.
 model JobRun {
   id         String   @id @default(cuid())
-  /// Nombre del trabajo: "assignment-maintenance", "alert-engine", "fx-sync".
+  /// Nombre del trabajo: "assignment-maintenance", "alert-engine", "fx-sync",
+  /// "approval-digest".
   jobName    String
   /// De dónde salió la ejecución: "arranque" | "intervalo" | "http".
   origin     String
@@ -866,4 +867,37 @@ model JobRun {
   // Sirve a la consulta "último ÉXITO de cada trabajo", que es la que decide
   // la frescura.
   @@index([jobName, ok, startedAt(sort: Desc)])
+}
+
+/// Configuración del resumen semanal de aprobaciones pendientes (R-020 + R-022).
+///
+/// Fila única (`scope = "GENERAL"`), igual que `HealthThresholdConfig`. Guarda
+/// tres cosas distintas:
+///  1. **Cuándo** sale el resumen (`enabled`, `sendWeekday`, `sendHourUtc`).
+///  2. Si se conserva el **aviso inmediato** por cada solicitud de horas extra
+///     (`immediateExtraHour`), que R-022 pedía reemplazar por el resumen.
+///  3. `lastSentAt`, la marca que impide mandarlo dos veces en la misma semana.
+///
+/// `lastSentAt` NO es configuración: lo escribe el trabajo `approval-digest`
+/// con un `updateMany` condicional, que es lo que hace de cerrojo entre varias
+/// instancias del servidor. Por eso este módulo, a diferencia de los umbrales de
+/// salud, **no tiene endpoint de borrado**: borrar la fila borraría también la
+/// marca y abriría la puerta a un segundo envío en la misma semana.
+model ApprovalDigestConfig {
+  id                 String    @id @default(cuid())
+  scope              String    @unique @default("GENERAL")
+  /// `false` apaga el resumen por completo, sin tocar el código.
+  enabled            Boolean   @default(true)
+  /// Día ISO de envío: 1 = lunes … 7 = domingo.
+  sendWeekday        Int       @default(1)
+  /// Hora UTC de envío (0-23). 13 UTC = 08:00 en Colombia (UTC-5, sin horario
+  /// de verano). Misma convención que el cron de tasas de cambio.
+  sendHourUtc        Int       @default(13)
+  /// Conservar el correo inmediato al PM por cada solicitud de horas extra.
+  /// Por defecto `false`: R-022 pide el resumen "en vez de" ese aviso.
+  immediateExtraHour Boolean   @default(false)
+  /// Cuándo salió el último resumen. `null` = nunca.
+  lastSentAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }

@@ -27,7 +27,8 @@ const HORA = 60 * MINUTO;
  *
  * Las cadencias salen de `render.yaml`:
  *  - `app-gestion-jobs` dispara `POST /api/jobs/run` cada hora en punto, y ese
- *    ciclo ejecuta `assignment-maintenance` y `alert-engine`.
+ *    ciclo ejecuta `assignment-maintenance`, `alert-engine` y
+ *    `approval-digest`.
  *  - `app-gestion-fx-sync` dispara `POST /api/fx/sync` una vez al día a las
  *    13:00 UTC.
  *
@@ -54,11 +55,22 @@ export const TRABAJOS_VIGILADOS: TrabajoVigilado[] = [
     intervaloEsperadoMs: 24 * HORA,
     toleranciaMs: 72 * HORA,
   },
+  {
+    // El resumen semanal de aprobaciones (R-020 + R-022). Ojo con la cadencia:
+    // lo que se vigila NO es cada cuánto sale el correo (semanal), sino cada
+    // cuánto se EVALÚA si toca mandarlo, que es cada ciclo, o sea cada hora.
+    // Vigilar la semana sería inútil: si el trabajo dejara de ejecutarse un
+    // martes, nadie se enteraría hasta pasado el lunes siguiente, que es
+    // exactamente el agujero que este sistema vino a cerrar.
+    nombre: "approval-digest",
+    intervaloEsperadoMs: 1 * HORA,
+    toleranciaMs: 3 * HORA,
+  },
 ];
 
 /**
  * Cuántas ejecuciones se conservan POR TRABAJO. Es lo que acota la tabla: con
- * los tres trabajos de hoy el techo son 150 filas. La purga corre después de
+ * los cuatro trabajos de hoy el techo son 200 filas. La purga corre después de
  * cada inserción, así que no hace falta ningún proceso de limpieza aparte
  * (que, sin scheduler fiable, sería justamente el problema que se intenta
  * resolver).

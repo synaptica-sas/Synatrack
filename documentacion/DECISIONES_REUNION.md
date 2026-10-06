@@ -346,6 +346,37 @@ molesta —el presupuesto que no para quieto— y no obliga a conseguir una seri
 
 ---
 
+## D-12 · ¿A qué hora sale el resumen semanal, y la misma para todos los países?
+
+*Decisión nueva, surgida el 06/10/2026 al implementar el resumen semanal de aprobaciones.*
+
+**Qué pasa.** Cada PM recibirá ahora un correo semanal con las horas y horas extra que tiene
+esperando su aprobación, en vez de un aviso por cada solicitud. El día y la hora se configuran
+desde una pantalla, con un valor inicial de **lunes a las 08:00 de Colombia**.
+
+**El problema.** Esa hora se guarda en horario universal (UTC). Para Colombia, Perú y Ecuador
+es exacta todo el año. Pero **un PM en Chile, Argentina, México o España lo recibiría a otra
+hora**, y en Chile además se movería sola con el horario de verano.
+
+**Las dos preguntas.**
+
+1. ¿Basta con **una sola hora para todos**, o el día y la hora deben configurarse **por país**,
+   como ya se hace con los recargos de horas extra y con la jornada laboral?
+2. Si es por país: **¿de dónde sale el país del PM?** El campo existe en el modelo de usuario,
+   pero es opcional y hoy está prácticamente vacío. La opción por país obliga a poblar un dato
+   que nadie llena.
+
+**Recomendación del equipo.** Una sola hora mientras el equipo esté concentrado en Colombia y
+Ecuador, que es el caso hoy. Pasar a por país cuesta poco técnicamente, pero no sirve de nada
+hasta que alguien se ocupe de registrar el país de cada persona.
+
+**Mientras tanto**, la pantalla muestra la hora en UTC **y su equivalente en Colombia**, para
+que nadie la configure a ciegas.
+
+**Decisión:** _______________________________________________
+
+---
+
 ## Resumen para acta
 
 | # | Acordado | Estado | Fecha |
@@ -361,6 +392,7 @@ molesta —el presupuesto que no para quieto— y no obliga a conseguir una seri
 | D-9 | Sí, sábado y domingo cuentan. | **Hecho** por Wilson (`5953b7f`) | 05/10/2026 |
 | D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | Implementado lo conservador, a confirmar | — |
 | D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | Por decidir | — |
+| D-12 | *Pendiente.* Hora y zona horaria del resumen semanal. | Implementado con hora única, a confirmar | — |
 
 ---
 

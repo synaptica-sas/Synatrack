@@ -327,6 +327,51 @@ export async function resetHealthThresholds(): Promise<void> {
   await request<void>("/api/health-thresholds", "DELETE");
 }
 
+/**
+ * Configuración del resumen semanal de aprobaciones (R-020 + R-022).
+ *
+ * `sendHourUtc` va en UTC a propósito: el backend calcula todo en UTC y
+ * guardarlo así evita que la hora se desplace según desde dónde se configure.
+ * La pantalla muestra al lado su equivalente en Colombia.
+ */
+export type ConfigResumenAprobaciones = {
+  /** `false` apaga el resumen por completo. */
+  enabled: boolean;
+  /** Día ISO de envío: 1 = lunes … 7 = domingo. */
+  sendWeekday: number;
+  /** Hora UTC de envío (0-23). */
+  sendHourUtc: number;
+  /** Conservar el aviso inmediato al PM por cada solicitud de horas extra. */
+  immediateExtraHour: boolean;
+};
+
+export type ConfigResumenAprobacionesCompleta = ConfigResumenAprobaciones & {
+  /** "base" = hay fila guardada; "codigo" = la tabla está vacía. */
+  origen: "base" | "codigo";
+  porDefecto: ConfigResumenAprobaciones;
+  /** Cuándo salió el último resumen. `null` = todavía ninguno. */
+  lastSentAt: string | null;
+  updatedAt: string | null;
+};
+
+export async function getApprovalDigestConfig(): Promise<ConfigResumenAprobacionesCompleta> {
+  const response = await request<ApiEnvelope<ConfigResumenAprobacionesCompleta>>(
+    "/api/approval-digest",
+  );
+  return response.data;
+}
+
+export async function updateApprovalDigestConfig(
+  payload: ConfigResumenAprobaciones,
+): Promise<ConfigResumenAprobacionesCompleta> {
+  const response = await request<ApiEnvelope<ConfigResumenAprobacionesCompleta>>(
+    "/api/approval-digest",
+    "PUT",
+    payload,
+  );
+  return response.data;
+}
+
 export type AlertLevel = "ok" | "warning" | "exceeded";
 
 export type StatsProjectRow = {

@@ -42,6 +42,7 @@ export const AUDIT_ENTITIES = {
   capacityConfig: "capacityConfig",
   financialCategory: "financialCategory",
   healthThresholdConfig: "healthThresholdConfig",
+  approvalDigestConfig: "approvalDigestConfig",
 } as const;
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[keyof typeof AUDIT_ENTITIES];

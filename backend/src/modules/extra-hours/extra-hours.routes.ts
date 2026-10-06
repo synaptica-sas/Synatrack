@@ -8,6 +8,7 @@ import { normalizeCountry, SUPPORTED_COUNTRIES } from "../../utils/country.js";
 import { getHolidaysForYear } from "../../utils/holidays.js";
 import { calculateExtraHours } from "../../utils/calculateExtraHours.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { avisoInmediatoActivo } from "../admin/approval-digest.routes.js";
 import { notifyNewExtraHourRequest, notifyExtraHourApprovedForPayroll, notifyExtraHourFullyApproved, notifyExtraHourRejected } from "../../utils/notifications.js";
 
 const extraHourPayloadSchema = z.object({
@@ -549,16 +550,30 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         },
       });
 
-      // Notificar al PM de la nueva solicitud de horas extras
-      notifyNewExtraHourRequest({
-        consultantName: entry.consultant.fullName,
-        date: entry.date.toISOString().split("T")[0],
-        hours: Number(entry.totalHours),
-        pmEmail: entry.project?.projectManagerEmail || "",
-        projectName: entry.project?.name || "Proyecto",
-      }).catch((err) => {
-        console.error("Error al enviar notificación de nueva hora extra:", err);
-      });
+      // Aviso INMEDIATO al PM: apagado por defecto desde R-022.
+      //
+      // Antes salía un correo por cada solicitud, y esa era justamente la queja:
+      // el PM recibía tantos avisos que dejaba de leerlos. Ahora lo que le llega
+      // es el resumen semanal (`modules/approvals/weekly-digest.job.ts`), que
+      // cubre horas regulares y horas extra en un solo mensaje.
+      //
+      // No se borra el aviso inmediato, se deja tras un interruptor
+      // (`ApprovalDigestConfig.immediateExtraHour`, editable en
+      // Administración → Resumen de Aprobaciones). Razón: si el negocio
+      // descubre que para horas extra urgentes esperar al lunes no sirve,
+      // recuperarlo tiene que ser un clic, no un despliegue. Borrarlo del todo
+      // habría convertido una decisión reversible en una irreversible.
+      if (await avisoInmediatoActivo()) {
+        notifyNewExtraHourRequest({
+          consultantName: entry.consultant.fullName,
+          date: entry.date.toISOString().split("T")[0],
+          hours: Number(entry.totalHours),
+          pmEmail: entry.project?.projectManagerEmail || "",
+          projectName: entry.project?.name || "Proyecto",
+        }).catch((err) => {
+          request.log.error({ err }, "Error al enviar notificación de nueva hora extra");
+        });
+      }
 
       // Nómina: dejar rastro de quién registró la solicitud y con qué montos.
       await writeAudit(prisma, {

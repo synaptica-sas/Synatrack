@@ -68,7 +68,15 @@ describe("Registro persistente de ejecuciones (JobRun)", () => {
 
     const filas = await prisma.jobRun.findMany({ orderBy: { startedAt: "asc" } });
 
-    expect(filas.map((f) => f.jobName)).toEqual(["assignment-maintenance", "alert-engine"]);
+    expect(filas.map((f) => f.jobName)).toEqual([
+      "assignment-maintenance",
+      "alert-engine",
+      // R-020 + R-022: el resumen semanal también deja su rastro en cada ciclo,
+      // aunque la inmensa mayoría de las veces decida que todavía no toca
+      // enviar. Ese rastro es justamente lo que permite detectar que dejó de
+      // evaluarse, sin esperar a que falte un correo.
+      "approval-digest",
+    ]);
     for (const fila of filas) {
       expect(fila.ok).toBe(true);
       expect(fila.origin).toBe("http");
@@ -259,6 +267,7 @@ describe("/health informa de los trabajos pero NUNCA se cae por ellos", () => {
     const trabajos: { nombre: string; estado: string }[] = res.json().jobs.trabajos;
     expect(trabajos.find((t) => t.nombre === "assignment-maintenance")?.estado).toBe("ok");
     expect(trabajos.find((t) => t.nombre === "alert-engine")?.estado).toBe("ok");
+    expect(trabajos.find((t) => t.nombre === "approval-digest")?.estado).toBe("ok");
     // fx-sync no entra en el ciclo: lo dispara su propio cron.
     expect(trabajos.find((t) => t.nombre === "fx-sync")?.estado).toBe("nunca");
   });

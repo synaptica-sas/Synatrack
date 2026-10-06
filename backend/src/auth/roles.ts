@@ -34,6 +34,7 @@ export type Permission =
   | "estimations:read"
   | "finance:categories"
   | "health:thresholds"
+  | "notifications:digest"
   | "activities:manage";
 
 const allPermissions: Permission[] = [
@@ -84,6 +85,13 @@ const allPermissions: Permission[] = [
   // criterio que `capacity:config` y `finance:categories`. Leerlos no requiere
   // permiso: las pantallas los necesitan para explicar el color que pintan.
   "health:thresholds",
+  // Solo ADMIN: el día y la hora del resumen semanal de aprobaciones
+  // (R-020 + R-022) y el interruptor del aviso inmediato de horas extra.
+  // Cambiarlo afecta al correo que reciben TODOS los PM a la vez, así que va
+  // con el mismo criterio que `capacity:config` y `health:thresholds`.
+  // Leer la configuración no requiere permiso: cualquiera puede querer saber
+  // qué día le llega su resumen.
+  "notifications:digest",
 ];
 
 export const rolePermissions: Record<AppRole, Permission[]> = {

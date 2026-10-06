@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
 import { getLogger } from "../infra/logger.js";
+import type { LineaResumen, ResumenPm } from "./approval-digest.js";
 
 // Leer variables directamente de process.env para notificaciones
 const SMTP_HOST = process.env.SMTP_HOST || "";
@@ -405,4 +406,124 @@ export async function notifyExtraHourRejected(params: {
   `;
 
   await sendEmail({ to: consultantEmail, subject, text, html });
+}
+
+/**
+ * Resumen semanal de aprobaciones pendientes para un Project Manager
+ * (R-020 + R-022).
+ *
+ * Construcción PURA del correo: no envía nada, para poder probar el texto y el
+ * HTML sin SMTP (que en local ni siquiera existe: `sendEmail` cae al
+ * `[SMTP MOCK]`). Quien envía es `notifyWeeklyApprovalDigest`.
+ *
+ * Todo valor que venga de la base —nombres de consultor, nombres de proyecto—
+ * lo escribió una persona, así que pasa por `escaparHtml` dentro del `html`.
+ */
+export function construirResumenAprobaciones(resumen: ResumenPm): {
+  subject: string;
+  text: string;
+  html: string;
+} {
+  const totalSolicitudes = resumen.totalHoras + resumen.totalHorasExtra;
+  const plural = totalSolicitudes === 1 ? "solicitud pendiente" : "solicitudes pendientes";
+  const subject = `[Aprobaciones] Resumen semanal: ${totalSolicitudes} ${plural}`;
+
+  const lineaTexto = (l: LineaResumen) =>
+    `  - ${l.fecha} · ${l.consultantName} · ${l.projectName} · ${l.horas} h`;
+
+  const seccionTexto = (
+    titulo: string,
+    lineas: LineaResumen[],
+    total: number,
+    suma: number,
+    omitidas: number,
+  ) => {
+    if (total === 0) return `${titulo}: nada pendiente.`;
+    const cuerpo = lineas.map(lineaTexto).join("\n");
+    const cola = omitidas > 0 ? `\n  … y ${omitidas} solicitud(es) más.` : "";
+    return `${titulo}: ${total} solicitud(es), ${suma} horas en total.\n${cuerpo}${cola}`;
+  };
+
+  const text =
+    `Hola ${resumen.pmNombre},\n\n` +
+    `Este es tu resumen semanal de lo que está esperando tu aprobación en los proyectos que gestionas.\n\n` +
+    seccionTexto(
+      "HORAS REGULARES",
+      resumen.horas,
+      resumen.totalHoras,
+      resumen.sumaHoras,
+      resumen.horasOmitidas,
+    ) +
+    "\n\n" +
+    seccionTexto(
+      "HORAS EXTRA",
+      resumen.horasExtra,
+      resumen.totalHorasExtra,
+      resumen.sumaHorasExtra,
+      resumen.horasExtraOmitidas,
+    ) +
+    `\n\nIngresa a la plataforma para revisarlas: Horas -> Aprobaciones y Horas Extra -> Aprobaciones PM.\n\n` +
+    `Atentamente,\nApp Gestión Synaptica`;
+
+  const filaHtml = (l: LineaResumen) => `
+        <tr>
+          <td style="padding: 6px 8px; border: 1px solid #f4d4b6;">${escaparHtml(l.fecha)}</td>
+          <td style="padding: 6px 8px; border: 1px solid #f4d4b6;">${escaparHtml(l.consultantName)}</td>
+          <td style="padding: 6px 8px; border: 1px solid #f4d4b6;">${escaparHtml(l.projectName)}</td>
+          <td style="padding: 6px 8px; border: 1px solid #f4d4b6; text-align: right;">${escaparHtml(l.horas)}</td>
+        </tr>`;
+
+  const seccionHtml = (
+    titulo: string,
+    lineas: LineaResumen[],
+    total: number,
+    suma: number,
+    omitidas: number,
+  ) => {
+    if (total === 0) {
+      return `
+      <h3 style="color: #9a4f0f; margin-bottom: 4px;">${escaparHtml(titulo)}</h3>
+      <p style="color: #666; margin-top: 0;">Nada pendiente.</p>`;
+    }
+    const cola =
+      omitidas > 0
+        ? `<p style="font-size: 0.85rem; color: #666;">… y ${escaparHtml(omitidas)} solicitud(es) más. Revísalas en la plataforma.</p>`
+        : "";
+    return `
+      <h3 style="color: #9a4f0f; margin-bottom: 4px;">${escaparHtml(titulo)}</h3>
+      <p style="margin-top: 0;"><strong>${escaparHtml(total)}</strong> solicitud(es), <strong>${escaparHtml(suma)}</strong> horas en total.</p>
+      <table style="border-collapse: collapse; width: 100%; max-width: 640px; margin: 10px 0; font-size: 0.9rem;">
+        <tr>
+          <th style="padding: 6px 8px; border: 1px solid #f4d4b6; background: #fff8f0; text-align: left;">Fecha</th>
+          <th style="padding: 6px 8px; border: 1px solid #f4d4b6; background: #fff8f0; text-align: left;">Consultor</th>
+          <th style="padding: 6px 8px; border: 1px solid #f4d4b6; background: #fff8f0; text-align: left;">Proyecto</th>
+          <th style="padding: 6px 8px; border: 1px solid #f4d4b6; background: #fff8f0; text-align: right;">Horas</th>
+        </tr>${lineas.map(filaHtml).join("")}
+      </table>${cola}`;
+  };
+
+  const html = `
+    <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
+      <h2 style="color: #9a4f0f;">Resumen semanal de aprobaciones</h2>
+      <p>Hola <strong>${escaparHtml(resumen.pmNombre)}</strong>,</p>
+      <p>Esto es lo que está esperando tu aprobación en los proyectos que gestionas.</p>
+      ${seccionHtml("Horas regulares", resumen.horas, resumen.totalHoras, resumen.sumaHoras, resumen.horasOmitidas)}
+      ${seccionHtml("Horas extra", resumen.horasExtra, resumen.totalHorasExtra, resumen.sumaHorasExtra, resumen.horasExtraOmitidas)}
+      <p>Ingresa a la plataforma para revisarlas: <strong>Horas → Aprobaciones</strong> y <strong>Horas Extra → Aprobaciones PM</strong>.</p>
+      <br/>
+      <hr style="border: none; border-top: 1px solid #f4d4b6;" />
+      <p style="font-size: 0.8rem; color: #888;">Mensaje automático de la Plataforma de Gestión de Proyectos Synaptica. Se envía una vez por semana y solo cuando hay algo pendiente.</p>
+    </div>
+  `;
+
+  return { subject, text, html };
+}
+
+/**
+ * Envía a un PM su resumen semanal. Un correo por PM, con lo suyo y nada más.
+ */
+export async function notifyWeeklyApprovalDigest(resumen: ResumenPm): Promise<void> {
+  if (!resumen.pmEmail) return;
+  const { subject, text, html } = construirResumenAprobaciones(resumen);
+  await sendEmail({ to: resumen.pmEmail, subject, text, html });
 }

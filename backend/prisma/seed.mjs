@@ -132,6 +132,24 @@ async function main() {
     },
   });
 
+  // Configuración del resumen semanal de aprobaciones (R-020 + R-022): activo,
+  // lunes a las 13:00 UTC (08:00 en Colombia) y SIN el aviso inmediato de horas
+  // extra, que es justo lo que el resumen viene a reemplazar. La migración ya la
+  // siembra; esto es para que una base recién creada quede igual sin depender de
+  // ella. `update: {}` para no pisar lo ajustado desde la pantalla, y en especial
+  // para no borrar `lastSentAt`, la marca que evita un segundo envío semanal.
+  await prisma.approvalDigestConfig.upsert({
+    where: { scope: "GENERAL" },
+    update: {},
+    create: {
+      scope: "GENERAL",
+      enabled: true,
+      sendWeekday: 1,
+      sendHourUtc: 13,
+      immediateExtraHour: false,
+    },
+  });
+
   console.log("Database initialized successfully with roles and admin user.");
 }
 
