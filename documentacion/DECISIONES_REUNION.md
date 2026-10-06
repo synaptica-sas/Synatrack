@@ -453,15 +453,21 @@ hace falta saber con qué fecha convertir.
 
 ## Resumen para acta
 
+**De las catorce, solo cinco necesitan respuesta mañana**: D-10, D-11, D-12, D-13 y D-14. Las
+nueve primeras se resolvieron el 05/10 y están implementadas, salvo D-3 y D-8, que quedaron en
+espera **por decisión propia** y solo hace falta confirmar si siguen así. D-6 no es una decisión
+sino una gestión pendiente: conseguir el buzón de correo.
+
+
 | # | Acordado | Estado | Fecha |
 |---|---|---|---|
-| D-1 | Siempre `synaptica.co`. El `.cc` era un error. | Por hacer | 05/10/2026 |
+| D-1 | Siempre `synaptica.co`. El `.cc` era un error. | **Hecho** (`c360afe`) | 05/10/2026 |
 | D-2 | El umbral se configura por proyecto en su ficha. Referencia: 30 % normal, 15 % ya es crítico. | **Hecho** — dos umbrales por proyecto (`marginWarningPct` 30 % y `marginCriticalPct` 15 % por defecto), semáforo, alertas y formulario al día | 05/10/2026 |
 | D-3 | En espera. | StandBy | 05/10/2026 |
 | D-4 | Sí. Dos categorías genéricas de ingreso, editables después. | **Hecho** — catálogo `FinancialCategory` en la base con pantalla "Categorías Financieras" (Administración, `finance:categories`), migración `20261005210000_categorias_financieras`; arranca con "Servicios de consultoría" y "Otros ingresos", y las de gasto se trasladaron al mismo catálogo | 05/10/2026 |
 | D-5 | Por país **y** por consultor. Por defecto Colombia 8,5 h y Ecuador 8 h. | **Hecho** — pantalla "Jornada Laboral" (Administración, `capacity:config`), precedencia consultor → país → general, migración `20261005190000_jornada_configurable`; cierra DEP-41 | 05/10/2026 |
 | D-6 | Usar `noreply@synaptica.co`, activado desde el Entra ID propio. Falta que desarrollo explique cómo obtenerlo. | Por hacer | 05/10/2026 |
-| D-7 | Son configuración general: hace falta una pantalla para editarlos en vez de tenerlos en el código. | Por hacer | 05/10/2026 |
+| D-7 | Son configuración general: hace falta una pantalla para editarlos en vez de tenerlos en el código. | **Hecho** — pantalla "Umbrales de Salud" (`5f62bd4`); de paso se eliminó la contradicción entre Portafolio y el semáforo | 05/10/2026
 | D-8 | En espera. Mientras tanto, ocultar la pantalla de Actividades salvo para ADMIN. | StandBy + ocultar | 05/10/2026 |
 | D-9 | Sí, sábado y domingo cuentan. | **Hecho** por Wilson (`5953b7f`) | 05/10/2026 |
 | D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | Implementado lo conservador, a confirmar | — |
