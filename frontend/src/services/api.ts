@@ -2507,6 +2507,28 @@ export type ApprovalDelegation = {
   project?: Project;
 };
 
+/**
+ * Candidato a delegado tal como lo resuelve el backend (D-13).
+ *
+ * El desplegable se rellena con esto y no con la lista de consultores: aprobar
+ * horas extra está reservado al PM del proyecto y al Administrador, así que
+ * ofrecer consultores era ofrecer exactamente lo que el backend rechaza — el
+ * desajuste que causó R-024.
+ */
+export type DelegationCandidate = {
+  email: string;
+  nombre: string;
+  /** `PROYECTO`: dirige proyectos. `ROL`: su cuenta tiene rol PM o Administrador. */
+  motivo: "PROYECTO" | "ROL";
+  /** Nombres de los proyectos que dirige. Vacío cuando el motivo es `ROL`. */
+  proyectos: string[];
+};
+
+export async function listDelegationCandidates(): Promise<DelegationCandidate[]> {
+  const response = await request<ApiEnvelope<DelegationCandidate[]>>("/api/delegations/candidates");
+  return response.data;
+}
+
 export async function listDelegations(): Promise<ApprovalDelegation[]> {
   const response = await request<ApiEnvelope<ApprovalDelegation[]>>("/api/delegations");
   return response.data;

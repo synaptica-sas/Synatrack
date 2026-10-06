@@ -418,7 +418,29 @@ poder aprobar, en vez de dejar que lo descubra fallando.
 
 **Decisión (06/10/2026): opción 2.** No se amplían permisos: únicamente aprueba **el PM
 relacionado con el proyecto**. La delegación se restringe a quien ya es PM, y deja de ofrecer
-consultores que no podrían aprobar. Queda pendiente aplicarlo en la pantalla.
+consultores que no podrían aprobar.
+
+**Aplicada el 06/10/2026.** Cómo quedó, con el matiz que el dueño del producto confirmó
+expresamente:
+
+- **«Ser PM» = figurar como responsable de algún proyecto** (`Project.projectManagerEmail`), no
+  tener el rol asignado en la cuenta. Es lo que evita repetir el bug: el rol vive en `User` y esa
+  fila solo nace al iniciar sesión, así que un PM que todavía no ha entrado no podría recibir una
+  delegación. Además hoy solo hay un usuario con rol en todo el sistema, y esa regla habría dejado
+  la funcionalidad inservible.
+- **Vale ser responsable de cualquier proyecto**, no solo de uno del delegante: un proyecto tiene
+  un único `projectManagerEmail`, así que exigir «PM de este proyecto» dejaría como único candidato
+  al propio delegante. Lo normal es justo lo contrario — cubrir a un compañero que dirige otros
+  proyectos.
+- **También se acepta una cuenta con rol ADMIN o PM** aunque no dirija proyectos. Es un camino
+  añadido, nunca el único: el Administrador ya puede aprobar cualquier hora extra sin delegación,
+  así que rechazarlo sería negar una delegación que funcionaría.
+- **Las delegaciones ya registradas no se tocan.** No se migran ni se revalidan al usarse: la regla
+  es una condición de alta, y revalidar en caliente dejaría sin efecto una delegación vigente a
+  mitad de su ventana si el delegado deja de llevar proyectos. Siguen a la vista en la lista y se
+  pueden borrar.
+- **Ningún `authorize([...])` cambió.** Quien puede aprobar horas extra es exactamente el mismo
+  conjunto de antes, y hay pruebas que lo fijan.
 
 ---
 
@@ -476,7 +498,7 @@ sino una gestión pendiente: conseguir el buzón de correo.
 | D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | **Para hablar con Greisy** | — |
 | D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | **Para hablar con Greisy** | — |
 | D-12 | **Una sola hora, en horario universal.** No se configura por país. | **Resuelto** — ya era lo implementado | 06/10/2026 |
-| D-13 | **No se amplían permisos.** Solo puede aprobar el PM relacionado con el proyecto; la delegación se restringe a quien ya es PM. | **Resuelto** — falta aplicarlo en la pantalla | 06/10/2026 |
+| D-13 | **No se amplían permisos.** Solo puede aprobar el PM relacionado con el proyecto; la delegación se restringe a quien ya es PM. | **Aplicada** el 06/10/2026 | 06/10/2026 |
 | D-14 | *Pendiente.* Fecha de valoración del presupuesto frente al gasto. | **Para hablar con Greisy** | — |
 
 ---

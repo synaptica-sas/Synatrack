@@ -29,8 +29,10 @@ import {
   type ExtraHoursCalculationResult,
   type PayrollConsolidationRow,
   type ApprovalDelegation,
+  type DelegationCandidate,
   listSupportedCountries,
   listDelegations,
+  listDelegationCandidates,
   createDelegation,
   deleteDelegation
 } from "../../services/api";
@@ -258,6 +260,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
   // --- 6. Delegations state ---
   const [delegations, setDelegations] = useState<ApprovalDelegation[]>([]);
+  const [delegationCandidates, setDelegationCandidates] = useState<DelegationCandidate[]>([]);
   const [loadingDelegations, setLoadingDelegations] = useState(false);
   const [delegateProjectId, setDelegateProjectId] = useState("");
   const [delegateToEmail, setDelegateToEmail] = useState("");
@@ -277,8 +280,14 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     if (!can("extrahours:review") && !authUser?.roles.includes("ADMIN")) return;
     setLoadingDelegations(true);
     try {
-      const data = await listDelegations();
-      setDelegations(data);
+      // Las dos cosas en paralelo: la lista registrada y los candidatos que el
+      // backend acepta. El desplegable sale de `candidates` y no de la lista de
+      // consultores, porque aprobar está reservado al PM del proyecto y al
+      // Administrador (D-13): ofrecer consultores era ofrecer justo lo que el
+      // backend rechaza, que es el desajuste que causó R-024.
+      const [registradas, posibles] = await Promise.all([listDelegations(), listDelegationCandidates()]);
+      setDelegations(registradas);
+      setDelegationCandidates(posibles);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Error al cargar delegaciones");
     } finally {
@@ -791,6 +800,14 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
   // Filter projects with allowExtraHours = true
   const availableProjects = projects.filter((p) => p.allowExtraHours !== false);
+
+  // A quién puede delegar *esta* persona: los candidatos que acepta el backend
+  // (D-13) menos ella misma, porque delegarse a uno mismo no cubre nada. Si la
+  // resta deja la lista vacía, el formulario muestra el estado vacío en vez de
+  // un desplegable sin opciones.
+  const delegableCandidates = delegationCandidates.filter(
+    (c) => c.email !== authUser?.email?.toLowerCase(),
+  );
 
 
   return (
@@ -1854,22 +1871,23 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               🤝 Delegación de Aprobaciones
             </h3>
             <p className="section-intro__text">
-              Permite a los Directores de Proyecto (PM) delegar temporalmente la aprobación de horas extra a un consultor normal para un proyecto y rango de fechas específico.
+              Permite a un Director de Proyecto (PM) delegar temporalmente la aprobación de horas extra
+              en otro PM, para un proyecto y un rango de fechas concretos.
             </p>
-            {/* El delegado se puede **nombrar** aunque nunca haya entrado a la
-                aplicación (R-024), pero poder aprobar es otra cosa: la ruta de
-                aprobación sigue exigiendo rol PM o Administrador. Decirlo aquí
-                evita que alguien registre una delegación y descubra tarde que no
-                sirve. Ampliar ese permiso es una decisión de negocio pendiente. */}
-            <div className="notice notice--warning" role="note">
-              <div className="notice__title">Antes de delegar, comprueba el rol del delegado</div>
+            {/* El aviso anterior decía que el delegado necesita rol PM o
+                Administrador «para aprobar», y avisaba de que podía nombrarse a
+                cualquiera. Con D-13 eso dejó de ser cierto: ya no se puede
+                nombrar a quien no es PM, así que el aviso pasa de advertencia a
+                explicación — qué significa «ser PM» aquí y por qué el desplegable
+                ofrece lo que ofrece. */}
+            <div className="notice notice--info" role="note">
+              <div className="notice__title">Solo se puede delegar en quien ya es PM</div>
               <p className="notice__text">
-                La delegación queda registrada para cualquier persona dada de alta, aunque todavía no
-                haya iniciado sesión nunca. Pero para <strong>aprobar</strong> horas extra la
-                aplicación sigue exigiendo el rol <strong>PM</strong> o <strong>Administrador</strong>:
-                un consultor sin ese rol aparecerá como delegado y aun así recibirá un «no tienes
-                permiso» al intentar aprobar. Ampliar ese permiso está pendiente de una decisión de
-                negocio.
+                Aprobar horas extra está reservado al <strong>PM responsable del proyecto</strong> y al
+                <strong> Administrador</strong>, y la delegación no amplía ese permiso. Por eso el
+                desplegable solo ofrece a quien <strong>figura como responsable de algún proyecto</strong>,
+                o tiene rol de PM o Administrador en su cuenta. No hace falta que haya iniciado sesión
+                nunca: basta con estar asignado como responsable en la ficha del proyecto.
               </p>
             </div>
           </div>
@@ -1898,19 +1916,43 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 </div>
 
                 <div>
-                  <label className="form-label form-label--sm">Delegar a (Consultor) *</label>
-                  <select
-                    value={delegateToEmail || ""}
-                    onChange={(e) => setDelegateToEmail(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Selecciona --</option>
-                    {consultants
-                      .filter(c => c.email && c.email.toLowerCase() !== authUser?.email?.toLowerCase())
-                      .map((c) => (
-                        <option key={c.id} value={c.email || ""}>{c.fullName} ({c.email})</option>
-                      ))}
-                  </select>
+                  <label className="form-label form-label--sm">Delegar a (PM) *</label>
+                  {loadingDelegations ? (
+                    <p className="field-help">Buscando a quién se puede delegar…</p>
+                  ) : delegableCandidates.length === 0 ? (
+                    /* Estado vacío con salida: decir «no hay nadie» a secas deja
+                       al usuario sin saber qué hacer. */
+                    <div className="notice notice--warning" role="note">
+                      <div className="notice__title">No hay nadie a quien delegar</div>
+                      <p className="notice__text">
+                        Aparte de ti, nadie figura como responsable de un proyecto ni tiene rol de PM o
+                        Administrador en su cuenta. Asigna un responsable en la ficha de algún proyecto y
+                        vuelve a entrar aquí.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <select
+                        value={delegateToEmail || ""}
+                        onChange={(e) => setDelegateToEmail(e.target.value)}
+                        required
+                      >
+                        <option value="">-- Selecciona --</option>
+                        {delegableCandidates
+                          .map((c) => (
+                            <option key={c.email} value={c.email}>
+                              {c.nombre} ({c.email})
+                              {c.motivo === "PROYECTO"
+                                ? ` — dirige ${c.proyectos.length === 1 ? c.proyectos[0] : `${c.proyectos.length} proyectos`}`
+                                : " — rol en su cuenta"}
+                            </option>
+                          ))}
+                      </select>
+                      <p className="field-help">
+                        Responsables de proyecto y cuentas con rol de PM o Administrador.
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div>
@@ -1937,7 +1979,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               <button
                 type="submit"
                 className="btn-block"
-                disabled={savingDelegation}
+                disabled={savingDelegation || delegableCandidates.length === 0}
               >
                 {savingDelegation ? "Guardando..." : "Delegar Aprobación"}
               </button>

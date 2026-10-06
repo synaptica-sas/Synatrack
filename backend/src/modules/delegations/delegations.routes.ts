@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { esCandidatoDelegacion, listarCandidatosDelegacion } from "./delegations.service.js";
 
 const delegationPayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -45,6 +46,26 @@ export async function delegationsRoutes(app: FastifyInstance) {
     },
   );
 
+  // 1 bis. Candidatos a delegado.
+  //
+  // Existe para que el desplegable de la pantalla ofrezca exactamente lo que el
+  // `POST` acepta. Antes se rellenaba con la lista completa de consultores y
+  // casi ninguna opción era válida; ese desajuste entre lo que el formulario
+  // ofrece y lo que el backend admite es el bug R-024, y no se quiere repetir
+  // ahora que la regla se endurece (D-13).
+  //
+  // Mismos roles que el `POST`: solo tiene sentido para quien puede delegar, y
+  // devuelve correos de la plantilla.
+  app.get(
+    "/candidates",
+    {
+      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
+    },
+    async () => {
+      return { data: await listarCandidatosDelegacion() };
+    },
+  );
+
   // 2. Create delegation
   app.post(
     "/",
@@ -74,29 +95,21 @@ export async function delegationsRoutes(app: FastifyInstance) {
         });
       }
 
-      // El delegado tiene que existir, pero "existir" no es solo tener fila en
-      // `User`: esa fila se crea **la primera vez que la persona inicia sesión**
-      // (aprovisionamiento JIT de `auth/guard.ts`). Exigir `User` dejaba fuera a
-      // cualquier consultor dado de alta en Administración que todavía no haya
-      // entrado nunca a la aplicación, y el mensaje sonaba a error de tipeo
-      // cuando el correo era correcto (R-024). Por eso se busca también en
-      // `Consultant`, que es donde una persona existe desde que se la da de alta.
-      //
-      // `Consultant.email` es opcional y no es único, así que va por `findFirst`
-      // y sin distinguir mayúsculas: el correo del payload ya viene en minúscula
-      // pero el de la ficha del consultor pudo guardarse como se escribió.
-      const [usuarioDestino, consultorDestino] = await Promise.all([
-        prisma.user.findUnique({ where: { email: payload.toUserEmail } }),
-        prisma.consultant.findFirst({
-          where: { email: { equals: payload.toUserEmail, mode: "insensitive" } },
-        }),
-      ]);
-
-      if (!usuarioDestino && !consultorDestino) {
+      // El delegado tiene que poder aprobar de verdad, y aprobar horas extra
+      // está reservado al PM del proyecto y al Administrador (D-13: no se
+      // amplían permisos). Antes bastaba con "existir" en `User` o en
+      // `Consultant`, así que se podía nombrar a un consultor que después
+      // chocaba con el guard de la ruta de aprobación. La regla vive en
+      // `delegations.service.ts`, que es también lo que alimenta el desplegable
+      // de la pantalla: una sola definición, para que el formulario no vuelva a
+      // ofrecer lo que el backend rechaza (el bug R-024).
+      if (!(await esCandidatoDelegacion(payload.toUserEmail))) {
         return reply.status(400).send({
           message:
-            `No hay nadie registrado con el correo ${payload.toUserEmail}: no figura ni entre los usuarios ` +
-            `ni entre los consultores. Revisa el correo, o da de alta a la persona antes de delegarle la aprobación.`,
+            `${payload.toUserEmail} no puede recibir la delegación porque no es PM: no figura como responsable ` +
+            `de ningún proyecto ni tiene rol de PM o Administrador en su cuenta. Aprobar horas extra está ` +
+            `reservado al PM del proyecto y al Administrador, así que la delegación quedaría registrada y no ` +
+            `serviría para nada. Asígnale un proyecto como responsable, o delega en otra persona que ya lo sea.`,
         });
       }
 
