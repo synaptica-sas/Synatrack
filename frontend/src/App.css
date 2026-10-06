@@ -3231,7 +3231,10 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  z-index: 9999;
+  /* Por encima de todo lo demás con z-index explícito en la app (el panel
+     de RAG Chat, por ejemplo, usa 10000) — un toast tapado parece "no pasó
+     nada", el peor resultado posible para un mensaje de confirmación. */
+  z-index: 10001;
   max-width: 22rem;
 }
 
@@ -3246,10 +3249,18 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
   animation: toast-slide-in 0.2s ease;
 }
 
-.toast--success { background: var(--state-success-bg); border-color: var(--state-success-border); }
-.toast--error   { background: var(--state-danger-bg);  border-color: var(--state-danger-border); }
-.toast--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
-.toast--info    { background: var(--state-info-bg);    border-color: var(--state-info-border); }
+/*
+ * Los tokens `--state-*-bg` son translúcidos en modo oscuro (pensados para
+ * matizar sobre una tarjeta cuyo fondo ya se conoce). Un toast flota sobre
+ * contenido arbitrario de la página (p. ej. la columna de acciones de una
+ * tabla) con `position: fixed`, así que necesita una base opaca propia: el
+ * tinte de estado se pinta como `background-image` ENCIMA de `--card-bg`,
+ * nunca como único `background`.
+ */
+.toast--success { background-color: var(--card-bg); background-image: linear-gradient(var(--state-success-bg), var(--state-success-bg)); border-color: var(--state-success-border); }
+.toast--error   { background-color: var(--card-bg); background-image: linear-gradient(var(--state-danger-bg),  var(--state-danger-bg));  border-color: var(--state-danger-border); }
+.toast--warning { background-color: var(--card-bg); background-image: linear-gradient(var(--state-warning-bg), var(--state-warning-bg)); border-color: var(--state-warning-border); }
+.toast--info    { background-color: var(--card-bg); background-image: linear-gradient(var(--state-info-bg),    var(--state-info-bg));    border-color: var(--state-info-border); }
 
 .toast__icon {
   display: inline-flex;

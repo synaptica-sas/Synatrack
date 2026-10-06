@@ -36,6 +36,7 @@ import { downloadCsv } from "../../utils/csv";
 import { displayCountryWithFlag } from "../../utils/statusLabels";
 import { CountryFlag } from "../../components/CountryFlag";
 import { formatDate } from "../../utils/formatDate";
+import { useToast } from "../../hooks/useToast";
 
 /**
  * Planificación de Capacidad, migrada al sistema de diseño
@@ -795,6 +796,7 @@ function AssignmentsPanel({
   preselectedConsultantId?: string | null;
   onClearPreselectedConsultant?: () => void;
 }) {
+  const { showToast } = useToast();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -893,7 +895,7 @@ function AssignmentsPanel({
         if (selectedConsultantIds.length === 0) {
           throw new Error("Selecciona al menos un consultor.");
         }
-        await Promise.all(
+        const results = await Promise.all(
           selectedConsultantIds.map((cId) =>
             createAssignment({
               projectId: form.projectId,
@@ -910,11 +912,16 @@ function AssignmentsPanel({
           )
         );
         setSelectedConsultantIds([]);
+        const forecastsCreadas = results.filter((r) => r.forecastCreated).length;
+        showToast(
+          `${results.length} asignaciones creadas${forecastsCreadas > 0 ? ` (${forecastsCreadas} con proyección de horas)` : ""}.`,
+          "success",
+        );
       } else {
         if (!form.consultantId) {
           throw new Error("Selecciona un consultor.");
         }
-        await createAssignment({
+        const result = await createAssignment({
           projectId: form.projectId,
           consultantId: form.consultantId,
           startDate: form.startDate,
@@ -926,6 +933,10 @@ function AssignmentsPanel({
           role: form.role || undefined,
           note: form.note || undefined,
         });
+        showToast(
+          result.forecastCreated ? "Asignación creada, con su proyección de horas." : "Asignación creada.",
+          "success",
+        );
       }
       closeModal();
       await reload();

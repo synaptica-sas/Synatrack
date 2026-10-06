@@ -1373,9 +1373,13 @@ export async function listAssignments(params?: {
   return response.data;
 }
 
-export async function createAssignment(payload: AssignmentPayload): Promise<Assignment> {
-  const response = await request<ApiEnvelope<Assignment>>("/api/assignments", "POST", payload);
-  return response.data;
+/**
+ * R-013: la asignación genera también su `Forecast` de horas (salvo que ya
+ * nazca COMPLETED, o que el período no tenga horas que proyectar).
+ * `forecastCreated` le dice al llamador si eso ocurrió, para poder avisarlo.
+ */
+export async function createAssignment(payload: AssignmentPayload): Promise<{ data: Assignment; forecastCreated: boolean }> {
+  return request<{ data: Assignment; forecastCreated: boolean }>("/api/assignments", "POST", payload);
 }
 
 export async function updateAssignment(id: string, payload: AssignmentPayload): Promise<Assignment> {

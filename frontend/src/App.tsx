@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { env } from "./config/env";
 import { apiTokenRequest, loginRequest } from "./auth/msal";
@@ -2195,7 +2196,7 @@ function App() {
         </div>
       )}
 
-      <ToastContainer toasts={toasts} onDismiss={dismiss} />
+      {createPortal(<ToastContainer toasts={toasts} onDismiss={dismiss} />, document.body)}
     </div>
   );
 }

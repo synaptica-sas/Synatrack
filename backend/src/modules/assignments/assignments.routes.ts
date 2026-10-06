@@ -4,6 +4,8 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { calculateCommittedHours, resolverJornada } from "../../utils/capacity.js";
+import { cargarJornadasPorPais } from "../capacity/workday.routes.js";
 
 const assignmentPayloadSchema = z
   .object({
@@ -83,7 +85,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
 
       const [project, consultant] = await Promise.all([
         prisma.project.findUnique({ where: { id: payload.projectId } }),
-        prisma.consultant.findUnique({ where: { id: payload.consultantId } }),
+        prisma.consultant.findUnique({ where: { id: payload.consultantId }, include: { capacityConfig: true } }),
       ]);
 
       if (!project) return reply.status(400).send({ message: "Proyecto no encontrado" });
@@ -112,13 +114,53 @@ export async function assignmentsRoutes(app: FastifyInstance) {
       const status: AssignmentStatus =
         payload.startDate <= now && payload.endDate >= now ? "ACTIVE" : payload.startDate > now ? "PLANNED" : "COMPLETED";
 
-      const assignment = await prisma.assignment.create({
-        data: { ...payload, status },
-        include: {
-          project: { select: { id: true, name: true } },
-          consultant: { select: { id: true, fullName: true } },
-        },
-      });
+      // R-013: la asignación trae su propia proyección de horas. Una asignación
+      // ya vencida (COMPLETED al crearla, p. ej. captura retroactiva) no genera
+      // Forecast: una "proyección" de algo que ya pasó no tiene sentido, y el
+      // dato real ya vive en TimeEntry.
+      let hoursProjected = 0;
+      if (status !== "COMPLETED") {
+        const jornada = resolverJornada(consultant.capacityConfig, consultant.country, await cargarJornadasPorPais());
+        hoursProjected = Math.round(
+          calculateCommittedHours(
+            [{
+              startDate: payload.startDate,
+              endDate: payload.endDate,
+              allocationMode: payload.allocationMode,
+              allocationPct: payload.allocationPct ?? null,
+              hoursPerPeriod: payload.hoursPerPeriod ?? null,
+              periodUnit: payload.periodUnit ?? null,
+              status,
+            }],
+            { from: payload.startDate, to: payload.endDate },
+            jornada,
+            consultant.country,
+          ) * 100,
+        ) / 100;
+      }
+
+      const assignmentInclude = {
+        project: { select: { id: true, name: true } },
+        consultant: { select: { id: true, fullName: true } },
+      } as const;
+
+      const [assignment, forecast] = hoursProjected > 0
+        ? await prisma.$transaction([
+            prisma.assignment.create({ data: { ...payload, status }, include: assignmentInclude }),
+            prisma.forecast.create({
+              data: {
+                projectId: payload.projectId,
+                consultantId: payload.consultantId,
+                startDate: payload.startDate.toISOString().slice(0, 10),
+                endDate: payload.endDate.toISOString().slice(0, 10),
+                hoursProjected,
+                hourlyRate: consultant.hourlyRate ?? undefined,
+                currency: consultant.rateCurrency,
+                note: "Generado automáticamente al crear la asignación.",
+              },
+            }),
+          ])
+        : [await prisma.assignment.create({ data: { ...payload, status }, include: assignmentInclude }), null];
 
       await writeAudit(prisma, {
         entity: AUDIT_ENTITIES.assignment,
@@ -129,7 +171,18 @@ export async function assignmentsRoutes(app: FastifyInstance) {
         request,
       });
 
-      return reply.status(201).send({ data: assignment });
+      if (forecast) {
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.forecast,
+          entityId: forecast.id,
+          action: "CREATE",
+          changedBy: performedBy,
+          after: forecast as unknown as Record<string, unknown>,
+          request,
+        });
+      }
+
+      return reply.status(201).send({ data: assignment, forecastCreated: forecast !== null });
     },
   );
 
