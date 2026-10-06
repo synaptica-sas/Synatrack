@@ -248,8 +248,13 @@
   }
 }
 
-/* ── Desktop: hide mobile-only elements ────────────────────────────────── */
-@media (min-width: 769px) {
+/* ── Desktop: hide mobile-only elements ──────────────────────────────────
+   861px, no 769px: debe alinearse con el breakpoint de drawer del sidebar
+   en App.css (`@media (max-width: 860px)`). Un umbral distinto aquí dejaba
+   una franja (769–860px) donde el sidebar entraba en modo drawer pero el
+   botón hamburguesa, el botón de cerrar y el backdrop quedaban ocultos por
+   el `!important` de abajo — sin ninguna forma de abrir el menú. */
+@media (min-width: 861px) {
   .mobile-menu-toggle {
     display: none !important;
   }

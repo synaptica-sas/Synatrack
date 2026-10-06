@@ -144,6 +144,30 @@
 
 .sidebar-toggle:hover { background: var(--color-primary-10); }
 
+.sidebar-pin {
+  all: unset;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.3rem 0 0.3rem 0.5rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0.45;
+  border: 1px solid transparent;
+  transition: opacity 0.14s, background 0.14s, border-color 0.14s;
+}
+
+/* El emoji ignora `color`, así que el estado activo se marca con fondo/borde, no con tinte. */
+.sidebar-pin:hover { opacity: 0.8; background: var(--color-primary-10); }
+
+.sidebar-pin--active {
+  opacity: 1;
+  background: var(--color-accent-15);
+  border-color: var(--color-accent);
+}
+
 /* Hidden by default on desktop, shown on mobile */
 .sidebar-close-mobile {
   display: none;
@@ -800,8 +824,9 @@ th.sortable:hover { background: var(--color-primary-10); }
     max-height: 2rem !important;
     padding: 0.25rem 0.75rem 0.2rem !important;
   }
-  /* Hide desktop toggle on mobile */
-  .sidebar-toggle {
+  /* Hide desktop toggle y el pin en móvil: ahí "colapsado" es el drawer cerrado, no tiene sentido fijar */
+  .sidebar-toggle,
+  .sidebar-pin {
     display: none !important;
   }
   /* Show mobile close button */
@@ -1790,6 +1815,75 @@ th.sortable:hover { background: var(--color-primary-10); }
     overflow: hidden !important;
     text-overflow: ellipsis !important;
   }
+
+  /* R-001: la fila de "resumen mes a mes" es contenido de ancho completo (una
+     subtabla), no un par etiqueta/valor — se excluye del diseño de tarjeta.
+     `.project-table td` es un selector descendiente: también alcanza las
+     celdas de la `.capacity-subtable` anidada dentro de esta celda, así que
+     hay que re-exceptuarlas explícitamente con un selector más específico
+     (si no, heredan el `padding-left: 45%` pensado para el par etiqueta/valor
+     de la tabla exterior y el valor queda fuera del viewport). */
+  .project-table td.dashboard-detail-cell {
+    display: block !important;
+    text-align: left !important;
+    padding: 0.75rem !important;
+  }
+  .project-table td.dashboard-detail-cell::before {
+    content: none !important;
+  }
+  .project-table td.dashboard-detail-cell .capacity-subtable thead {
+    display: none !important;
+  }
+  .project-table td.dashboard-detail-cell .capacity-subtable tr {
+    display: block !important;
+    border-bottom: 1px dashed var(--color-primary-10) !important;
+    padding: 0.3rem 0 !important;
+  }
+  .project-table td.dashboard-detail-cell .capacity-subtable td {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    text-align: right !important;
+    padding: 0.35rem 0.25rem 0.35rem 40% !important;
+    position: relative !important;
+    min-height: 1.8rem !important;
+  }
+  .project-table td.dashboard-detail-cell .capacity-subtable td::before {
+    content: attr(data-label) !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    font-weight: 700 !important;
+    font-size: 0.7rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    color: var(--color-sec-blue) !important;
+    width: auto !important;
+    white-space: nowrap !important;
+  }
+  /* `responsive.css` le pone `min-width: 600px` a toda `table` en móvil (para
+     que las tablas normales se puedan desplazar en horizontal); aquí la
+     subtabla ya se convirtió en una pila de pares etiqueta/valor, así que ese
+     mínimo solo la desborda de su celda (332px) y `.shell { overflow-x:
+     hidden }` recorta el valor sin avisar — mismo mecanismo que el reset de
+     `.project-table` de más arriba, pero `.capacity-subtable` es una tabla
+     distinta y ese selector no la alcanza. */
+  .project-table td.dashboard-detail-cell .capacity-subtable,
+  .project-table td.dashboard-detail-cell .capacity-subtable tbody {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+  /* Filas de mensaje ("Cargando…", "Sin movimientos…"): sin `data-label`, un
+     solo `colSpan`, no un par etiqueta/valor. */
+  .project-table td.dashboard-detail-cell .capacity-subtable td.cell-empty {
+    display: block !important;
+    padding: 0.5rem !important;
+    text-align: center !important;
+  }
+  .project-table td.dashboard-detail-cell .capacity-subtable td.cell-empty::before {
+    content: none !important;
+  }
 }
 
 @keyframes fadeInUp {
@@ -1966,7 +2060,13 @@ body.dark .sidebar-toggle {
   color: #f1a323;
 }
 
+body.dark .sidebar-pin--active {
+  background: rgba(241, 163, 35, 0.15);
+  border-color: #f1a323;
+}
+
 body.dark .sidebar-toggle:hover,
+body.dark .sidebar-pin:hover,
 body.dark .sidebar-tab:hover {
   background: #1c1c38;
 }
@@ -3131,7 +3231,10 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  z-index: 9999;
+  /* Por encima de todo lo demás con z-index explícito en la app (el panel
+     de RAG Chat, por ejemplo, usa 10000) — un toast tapado parece "no pasó
+     nada", el peor resultado posible para un mensaje de confirmación. */
+  z-index: 10001;
   max-width: 22rem;
 }
 
@@ -3146,10 +3249,18 @@ body.dark .month-day-cell.is-weekend:not(.out-of-month):not(.is-blocked) {
   animation: toast-slide-in 0.2s ease;
 }
 
-.toast--success { background: var(--state-success-bg); border-color: var(--state-success-border); }
-.toast--error   { background: var(--state-danger-bg);  border-color: var(--state-danger-border); }
-.toast--warning { background: var(--state-warning-bg); border-color: var(--state-warning-border); }
-.toast--info    { background: var(--state-info-bg);    border-color: var(--state-info-border); }
+/*
+ * Los tokens `--state-*-bg` son translúcidos en modo oscuro (pensados para
+ * matizar sobre una tarjeta cuyo fondo ya se conoce). Un toast flota sobre
+ * contenido arbitrario de la página (p. ej. la columna de acciones de una
+ * tabla) con `position: fixed`, así que necesita una base opaca propia: el
+ * tinte de estado se pinta como `background-image` ENCIMA de `--card-bg`,
+ * nunca como único `background`.
+ */
+.toast--success { background-color: var(--card-bg); background-image: linear-gradient(var(--state-success-bg), var(--state-success-bg)); border-color: var(--state-success-border); }
+.toast--error   { background-color: var(--card-bg); background-image: linear-gradient(var(--state-danger-bg),  var(--state-danger-bg));  border-color: var(--state-danger-border); }
+.toast--warning { background-color: var(--card-bg); background-image: linear-gradient(var(--state-warning-bg), var(--state-warning-bg)); border-color: var(--state-warning-border); }
+.toast--info    { background-color: var(--card-bg); background-image: linear-gradient(var(--state-info-bg),    var(--state-info-bg));    border-color: var(--state-info-border); }
 
 .toast__icon {
   display: inline-flex;
@@ -4186,8 +4297,22 @@ tr.row-warning > td { background: var(--state-warning-bg); }
 .col-health  { width: 42px; }
 .col-company { width: 112px; }
 .col-project { min-width: 130px; }
+.col-actions { width: 1%; white-space: nowrap; }
 
 .cell-empty--roomy { padding: var(--space-6); }
+
+/* R-001: resumen mes a mes por proyecto en el Dashboard — reutiliza
+   .capacity-subtable y .capacity-btn-row, ya genéricos para esta UI. */
+.dashboard-detail-cell {
+  background: var(--surface-subtle);
+  padding: var(--space-3) var(--space-4);
+}
+
+.cell-actions {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
 
 .table-foot--tight { margin-top: var(--space-1); font-size: 0.75rem; }
 
@@ -5223,6 +5348,31 @@ body.dark .card .capacity-util.capacity-util--danger  { color: var(--state-dange
 }
 
 .capacity-subtable th { font-weight: 600; }
+
+/* R-015: riesgos abiertos por consultor, dentro del detalle expandido de un proyecto. */
+.capacity-risks {
+  margin-top: var(--space-3);
+}
+
+.capacity-risks h4 {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+}
+
+.capacity-risks__list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.capacity-risks__list > li > ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  font-size: 0.8rem;
+}
 
 /* ── Controles sueltos ────────────────────────────────────────────────────── */
 /* Select estrecho dentro de la cabecera de una tarjeta (ventana de días). */

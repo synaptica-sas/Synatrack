@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { env } from "./config/env";
 import { apiTokenRequest, loginRequest } from "./auth/msal";
@@ -1070,9 +1071,20 @@ function App() {
     }
   }, [darkMode]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth <= 860);
+  // Fija el menú expandido: evita que se recoja a solo íconos al navegar (no aplica en móvil, donde "colapsado" es el drawer cerrado).
+  const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem("sidebarPinned") === "true");
+  const toggleSidebarPinned = () => {
+    setSidebarPinned((prev) => {
+      const next = !prev;
+      localStorage.setItem("sidebarPinned", String(next));
+      if (next) setSidebarCollapsed(false);
+      return next;
+    });
+  };
   const [fxDrawerOpen, setFxDrawerOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1083,6 +1095,19 @@ function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Sin pin, un clic fuera del menú también lo recoge (en escritorio; en móvil ya lo maneja el backdrop).
+  useEffect(() => {
+    if (sidebarPinned || sidebarCollapsed) return;
+    const handleClickOutsideSidebar = (event: MouseEvent) => {
+      if (window.innerWidth <= 860) return;
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
+        setSidebarCollapsed(true);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutsideSidebar);
+    return () => document.removeEventListener("mousedown", handleClickOutsideSidebar);
+  }, [sidebarPinned, sidebarCollapsed]);
 
   // --- Global Feedback States ---
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -1737,8 +1762,18 @@ function App() {
         )}
 
         {/* Sidebar */}
-        <nav className={`sidebar${sidebarCollapsed ? " collapsed" : ""}`} aria-label="Navegación principal">
+        <nav ref={sidebarRef} className={`sidebar${sidebarCollapsed ? " collapsed" : ""}`} aria-label="Navegación principal">
           <div className="sidebar-header">
+            <button
+              type="button"
+              className={`sidebar-pin${sidebarPinned ? " sidebar-pin--active" : ""}`}
+              onClick={toggleSidebarPinned}
+              aria-pressed={sidebarPinned}
+              aria-label={sidebarPinned ? "Desfijar menú" : "Fijar menú expandido"}
+              title={sidebarPinned ? "Menú fijado: clic para desfijar" : "Fijar menú para que no se recoja al navegar"}
+            >
+              📌
+            </button>
             <button
               type="button"
               className="sidebar-toggle"
@@ -1766,7 +1801,12 @@ function App() {
                   key={tab.id}
                   type="button"
                   className={`sidebar-tab${activeTab === tab.id ? " active" : ""}`}
-                  onClick={() => { setActiveTab(tab.id); setSidebarCollapsed(true); if (tab.id !== "projects") setOpenProjectId(null); }}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    const isDesktop = typeof window !== "undefined" && window.innerWidth > 860;
+                    if (!(sidebarPinned && isDesktop)) setSidebarCollapsed(true);
+                    if (tab.id !== "projects") setOpenProjectId(null);
+                  }}
                   title={tab.label}
                   aria-current={activeTab === tab.id ? "page" : undefined}
                 >
@@ -1819,6 +1859,7 @@ function App() {
                   onError={handleError}
                   onDrillTo={drillTo}
                   onIrATasasFx={irATasasFx}
+                  onOpenProject={openProject}
                 />
               )}
 
@@ -1838,6 +1879,7 @@ function App() {
                     onBack={() => setOpenProjectId(null)}
                     onError={handleError}
                     onIrATasasFx={irATasasFx}
+                    consultants={consultantsHook.consultants}
                   />
                 ) : (
                   <ProjectsTab
@@ -1937,6 +1979,7 @@ function App() {
                   onError={handleError}
                   preselectedConsultantId={preselectedCapacityConsultantId}
                   onClearPreselectedConsultant={() => setPreselectedCapacityConsultantId(null)}
+                  onOpenProject={openProject}
                 />
               )}
 
@@ -2153,7 +2196,7 @@ function App() {
         </div>
       )}
 
-      <ToastContainer toasts={toasts} onDismiss={dismiss} />
+      {createPortal(<ToastContainer toasts={toasts} onDismiss={dismiss} />, document.body)}
     </div>
   );
 }

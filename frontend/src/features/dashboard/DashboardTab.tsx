@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   getStatsOverview,
   listAllExtraHours,
-  type Expense, type FxConfig, type Forecast,
+  listAllFinancialEntries,
+  type Expense, type FinancialEntry, type FxConfig, type Forecast,
   type Project, type StatsOverview, type TimeEntry, type ExtraHourEntry,
 } from "../../services/api";
 import { DateRangePicker } from "../../components/DateRangePicker";
@@ -66,6 +67,14 @@ function prevPeriod(from: string, to: string): { from: string; to: string } {
     from: prevFrom.toISOString().slice(0, 10),
     to: prevTo.toISOString().slice(0, 10),
   };
+}
+
+/** "2026-03" → "Mar 2026", para el resumen mensual por proyecto (R-001). */
+function formatMonthLabel(key: string) {
+  const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const [year, month] = key.split("-");
+  const idx = Number(month) - 1;
+  return `${months[idx] ?? month} ${year}`;
 }
 
 // ── Delta calculation ────────────────────────────────────────────────────────
@@ -455,6 +464,7 @@ export function DashboardTab({
   onError,
   onDrillTo,
   onIrATasasFx,
+  onOpenProject,
 }: {
   projects: Project[];
   timeEntries: TimeEntry[];
@@ -471,6 +481,8 @@ export function DashboardTab({
   onDrillTo?: (tab: TabId, financialPanel?: FinancialPanel) => void;
   /** Atajo a la pantalla de Tasas FX desde el aviso de conversión incompleta. */
   onIrATasasFx?: () => void;
+  /** R-001: ir a la ficha del proyecto en Gestión de Proyectos. */
+  onOpenProject?: (projectId: string) => void;
 }) {
   const [stats, setStats] = useState<StatsOverview | null>(initialStats);
   const [baseCurrency, setBaseCurrency] = useState(initialBaseCurrency);
@@ -507,6 +519,49 @@ export function DashboardTab({
   const [sortField, setSortField] = useState<SortField>("projectedPct");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [tablePage, setTablePage] = useState(1);
+
+  // R-001: resumen mes a mes por proyecto, expandido bajo demanda con los
+  // movimientos de `FinancialEntry` (gastos + ingresos) del período filtrado.
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [monthlyEntries, setMonthlyEntries] = useState<FinancialEntry[]>([]);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+
+  async function toggleMonthlyBreakdown(projectId: string) {
+    if (expandedProjectId === projectId) {
+      setExpandedProjectId(null);
+      return;
+    }
+    setExpandedProjectId(projectId);
+    setMonthlyLoading(true);
+    try {
+      const entries = await listAllFinancialEntries({
+        projectId,
+        from: statsFilters.from || undefined,
+        to: statsFilters.to || undefined,
+      });
+      setMonthlyEntries(entries);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Error al cargar el resumen mensual");
+      setMonthlyEntries([]);
+    } finally {
+      setMonthlyLoading(false);
+    }
+  }
+
+  const monthlyBreakdown = useMemo(() => {
+    const byMonth = new Map<string, { gastos: number; ingresos: number }>();
+    for (const entry of monthlyEntries) {
+      const month = entry.entryDate.slice(0, 7);
+      if (!byMonth.has(month)) byMonth.set(month, { gastos: 0, ingresos: 0 });
+      const node = byMonth.get(month)!;
+      const amount = numberish(entry.amount);
+      if (entry.type === "EXPENSE") node.gastos += amount;
+      else node.ingresos += amount;
+    }
+    return Array.from(byMonth.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, v]) => ({ month, ...v, margen: v.ingresos - v.gastos }));
+  }, [monthlyEntries]);
 
   // --- Extra Hours state & loader for Trend and Consultant metrics ---
   const [extraHours, setExtraHours] = useState<ExtraHourEntry[]>([]);
@@ -1328,11 +1383,12 @@ export function DashboardTab({
                 <DashboardSortTh field="grossMarginActual" label="Margen bruto" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <DashboardSortTh field="projectedTotal" label="Total proyectado" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
                 <DashboardSortTh field="alertLevel" label="Alerta" sortField={sortField} sortDir={sortDir} onSort={toggleSort} />
+                <th className="col-actions">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {pagedProjects.length === 0 && (
-                <tr><td colSpan={10} className="cell-empty cell-empty--roomy">
+                <tr><td colSpan={11} className="cell-empty cell-empty--roomy">
                   Sin proyectos{tableSearch ? ` para "${tableSearch}"` : ""}
                 </td></tr>
               )}
@@ -1343,7 +1399,8 @@ export function DashboardTab({
                 // estado completo va en el `title` y en el `aria-label`.
                 const salud = PRESENTACION_SALUD[row.healthStatus as "GREEN" | "YELLOW" | "RED"] ?? PRESENTACION_SALUD.GREEN;
                 return (
-                  <tr key={row.projectId}>
+                  <Fragment key={row.projectId}>
+                  <tr>
                     <td className="sticky-0 cell-center" data-label="Salud">
                       <span
                         className={`health-dot health-dot--${salud.modificador}`}
@@ -1367,7 +1424,50 @@ export function DashboardTab({
                     </td>
                     <td data-label="Total proyectado">{`${fmt(row.projectedTotal, dc)} (${row.projectedPct.toFixed(1)}%)`}</td>
                     <td data-label="Alerta"><AlertBadge level={row.alertLevel} /></td>
+                    <td data-label="Acciones">
+                      <div className="cell-actions">
+                        {onOpenProject && (
+                          <button type="button" className="ghost capacity-btn-row" onClick={() => onOpenProject(row.projectId)}>
+                            Ver
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="ghost capacity-btn-row"
+                          onClick={() => void toggleMonthlyBreakdown(row.projectId)}
+                          aria-expanded={expandedProjectId === row.projectId}
+                        >
+                          {expandedProjectId === row.projectId ? "▲" : "▼ mensual"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
+                  {expandedProjectId === row.projectId && (
+                    <tr>
+                      <td colSpan={11} className="dashboard-detail-cell">
+                        <table className="capacity-subtable">
+                          <thead>
+                            <tr><th>Mes</th><th>Gastos</th><th>Ingresos</th><th>Margen</th></tr>
+                          </thead>
+                          <tbody>
+                            {monthlyLoading ? (
+                              <tr><td colSpan={4} className="cell-empty">Cargando…</td></tr>
+                            ) : monthlyBreakdown.length === 0 ? (
+                              <tr><td colSpan={4} className="cell-empty">Sin movimientos financieros en el período</td></tr>
+                            ) : monthlyBreakdown.map((m) => (
+                              <tr key={m.month}>
+                                <td data-label="Mes">{formatMonthLabel(m.month)}</td>
+                                <td data-label="Gastos">{fmt(m.gastos, dc)}</td>
+                                <td data-label="Ingresos">{fmt(m.ingresos, dc)}</td>
+                                <td data-label="Margen" className={m.margen >= 0 ? undefined : "tone-danger"}>{fmt(m.margen, dc)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>

@@ -246,6 +246,28 @@ export type RevenueEntry = {
   project?: Pick<Project, "id" | "name" | "currency">;
 };
 
+export type FinancialEntryType = "EXPENSE" | "REVENUE";
+
+/**
+ * Lectura unificada de `Expense`+`RevenueEntry` (tabla `FinancialEntry`),
+ * pensada para reportería que necesite ambos tipos de movimiento juntos
+ * (p. ej. el resumen mes a mes del Dashboard). Solo lectura: los paneles de
+ * Gastos e Ingresos siguen usando `/api/expenses` y `/api/revenue`.
+ */
+export type FinancialEntry = {
+  id: string;
+  projectId: string;
+  type: FinancialEntryType;
+  entryDate: string;
+  category: string | null;
+  amount: string;
+  currency: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  project: Pick<Project, "id" | "name" | "currency">;
+};
+
 export type FxConfig = {
   id: string;
   baseCode: string;
@@ -924,6 +946,28 @@ export async function rejectTimeEntry(id: string, rejectionNote: string): Promis
   return response.data;
 }
 
+/** Una página de movimientos financieros (gastos + ingresos), para reportería. */
+export async function listFinancialEntries(
+  params?: { projectId?: string; type?: FinancialEntryType; from?: string; to?: string; page?: number; pageSize?: number },
+): Promise<ApiPage<FinancialEntry>> {
+  const query = new URLSearchParams();
+  if (params?.projectId) query.set("projectId", params.projectId);
+  if (params?.type) query.set("type", params.type);
+  if (params?.from) query.set("from", params.from);
+  if (params?.to) query.set("to", params.to);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<ApiPage<FinancialEntry>>(`/api/financial-entries${suffix}`);
+}
+
+/** Todos los movimientos que cumplen el filtro, recorriendo las páginas. */
+export async function listAllFinancialEntries(
+  params?: { projectId?: string; type?: FinancialEntryType; from?: string; to?: string },
+): Promise<FinancialEntry[]> {
+  return fetchAllPages((page, pageSize) => listFinancialEntries({ ...params, page, pageSize }));
+}
+
 export async function listExpenses(): Promise<Expense[]> {
   const response = await request<ApiEnvelope<Expense[]>>("/api/expenses");
   return response.data;
@@ -1329,9 +1373,13 @@ export async function listAssignments(params?: {
   return response.data;
 }
 
-export async function createAssignment(payload: AssignmentPayload): Promise<Assignment> {
-  const response = await request<ApiEnvelope<Assignment>>("/api/assignments", "POST", payload);
-  return response.data;
+/**
+ * R-013: la asignación genera también su `Forecast` de horas (salvo que ya
+ * nazca COMPLETED, o que el período no tenga horas que proyectar).
+ * `forecastCreated` le dice al llamador si eso ocurrió, para poder avisarlo.
+ */
+export async function createAssignment(payload: AssignmentPayload): Promise<{ data: Assignment; forecastCreated: boolean }> {
+  return request<{ data: Assignment; forecastCreated: boolean }>("/api/assignments", "POST", payload);
 }
 
 export async function updateAssignment(id: string, payload: AssignmentPayload): Promise<Assignment> {
@@ -1548,6 +1596,10 @@ export type Risk = {
   riskScore: number;
   category: string | null;
   owner: string | null;
+  // R-015: responsable cuando es un consultor del equipo. Convive con `owner`,
+  // que sigue sirviendo para un responsable externo.
+  consultantId: string | null;
+  consultant: { id: string; fullName: string } | null;
   mitigationPlan: string | null;
   contingencyPlan: string | null;
   status: RiskStatus;
@@ -1827,6 +1879,7 @@ export async function createRisk(projectId: string, payload: {
   impact: number;
   category?: string;
   owner?: string;
+  consultantId?: string | null;
   mitigationPlan?: string;
   contingencyPlan?: string;
 }): Promise<Risk> {
@@ -1841,6 +1894,7 @@ export async function updateRisk(projectId: string, id: string, payload: {
   impact: number;
   category?: string;
   owner?: string;
+  consultantId?: string | null;
   mitigationPlan?: string;
   contingencyPlan?: string;
 }): Promise<Risk> {

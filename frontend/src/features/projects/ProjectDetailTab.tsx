@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { ConversionNotice, ConversionChip } from "../../components/ConversionNotice";
 import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_TYPE_LABELS, RISK_STATUS_LABELS, ASSIGNMENT_STATUS_LABELS, ISSUE_SEVERITY_LABELS, ISSUE_STATUS_LABELS, label } from "../../utils/statusLabels";
+import { formatDate, formatDateTime } from "../../utils/formatDate";
 import {
   PRESENTACION_NIVEL,
   PRESENTACION_SALUD,
@@ -46,6 +47,7 @@ import {
   getAuditLogs,
   type AuditLog,
   type NivelIndicador,
+  type Consultant,
 } from "../../services/api";
 import { useToast } from "../../hooks/useToast";
 
@@ -436,7 +438,7 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
           {hasBaseline ? (
             <p className="field-help">
               <span className="state-chip state-chip--success">Establecida</span>
-              {" "}{new Date(project.baselineSetAt!).toLocaleDateString("es-CO")}
+              {" "}{formatDateTime(project.baselineSetAt)}
               {project.baselineSetBy ? ` · por ${project.baselineSetBy}` : ""}
             </p>
           ) : (
@@ -458,11 +460,11 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
             </span>
             <span>
               <span className="def-list__term">Inicio base:</span>
-              <span className="def-list__value">{project.baselineStartDate ? new Date(project.baselineStartDate).toLocaleDateString("es-CO") : "—"}</span>
+              <span className="def-list__value">{formatDate(project.baselineStartDate)}</span>
             </span>
             <span>
               <span className="def-list__term">Fin base:</span>
-              <span className="def-list__value">{project.baselineEndDate ? new Date(project.baselineEndDate).toLocaleDateString("es-CO") : "—"}</span>
+              <span className="def-list__value">{formatDate(project.baselineEndDate)}</span>
             </span>
           </div>
         </div>
@@ -560,8 +562,8 @@ function HitosTab({ projectId, milestones, canWrite, onReload }: {
               return (
                 <tr key={m.id}>
                   <td>{m.name}</td>
-                  <td className="cell-date">{new Date(m.plannedDate).toLocaleDateString("es-CO")}</td>
-                  <td className="cell-date">{m.actualDate ? new Date(m.actualDate).toLocaleDateString("es-CO") : "—"}</td>
+                  <td className="cell-date">{formatDate(m.plannedDate)}</td>
+                  <td className="cell-date">{formatDate(m.actualDate)}</td>
                   <td className="cell-num">{m.weight}</td>
                   <td>
                     <span className={`state-chip state-chip--${p.modificador}`}>{p.etiqueta}</span>
@@ -590,14 +592,15 @@ function HitosTab({ projectId, milestones, canWrite, onReload }: {
   );
 }
 
-function RiesgosTab({ projectId, risks, canWrite, onReload }: {
+function RiesgosTab({ projectId, risks, canWrite, onReload, consultants }: {
   projectId: string;
   risks: Risk[];
   canWrite: boolean;
   onReload: () => void;
+  consultants: Consultant[];
 }) {
   const { showToast } = useToast();
-  const [form, setForm] = useState({ title: "", probability: "1", impact: "1", category: "", owner: "", mitigationPlan: "" });
+  const [form, setForm] = useState({ title: "", probability: "1", impact: "1", category: "", owner: "", consultantId: "", mitigationPlan: "" });
   const [submitting, setSubmitting] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
@@ -610,9 +613,10 @@ function RiesgosTab({ projectId, risks, canWrite, onReload }: {
         impact: Number(form.impact),
         category: form.category || undefined,
         owner: form.owner || undefined,
+        consultantId: form.consultantId || undefined,
         mitigationPlan: form.mitigationPlan || undefined,
       });
-      setForm({ title: "", probability: "1", impact: "1", category: "", owner: "", mitigationPlan: "" });
+      setForm({ title: "", probability: "1", impact: "1", category: "", owner: "", consultantId: "", mitigationPlan: "" });
       showToast("Riesgo registrado", "success");
       onReload();
     } catch {
@@ -662,8 +666,20 @@ function RiesgosTab({ projectId, risks, canWrite, onReload }: {
             <input id="riesgo-categoria" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))} />
           </div>
           <div className="inline-form__field inline-form__field--mid">
-            <label className="field-label" htmlFor="riesgo-responsable">Responsable</label>
+            <label className="field-label" htmlFor="riesgo-responsable">Responsable (externo)</label>
             <input id="riesgo-responsable" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} />
+          </div>
+          <div className="inline-form__field inline-form__field--mid">
+            <label className="field-label" htmlFor="riesgo-consultor">Responsable (consultor)</label>
+            <select
+              id="riesgo-consultor"
+              className="select-control"
+              value={form.consultantId}
+              onChange={(e) => setForm((p) => ({ ...p, consultantId: e.target.value }))}
+            >
+              <option value="">— Ninguno —</option>
+              {consultants.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
+            </select>
           </div>
           <button type="submit" className="inline-form__submit" disabled={submitting}>{submitting ? "Creando…" : "Agregar riesgo"}</button>
         </form>
@@ -691,7 +707,7 @@ function RiesgosTab({ projectId, risks, canWrite, onReload }: {
                 <td>{r.title}</td>
                 <td className="cell-small">{r.probability} × {r.impact}</td>
                 <td>{r.category ?? "—"}</td>
-                <td>{r.owner ?? "—"}</td>
+                <td>{r.consultant?.fullName ?? r.owner ?? "—"}</td>
                 <td>
                   {canWrite ? (
                     <>
@@ -775,8 +791,8 @@ function RecursosTab({ assignments }: { assignments: ProjectDetail["assignments"
                 {label(ASSIGNMENT_STATUS_LABELS, a.status)}
               </td>
               <td>{allocationLabel(a)}</td>
-              <td className="cell-date">{new Date(a.startDate).toLocaleDateString("es-CO")}</td>
-              <td className="cell-date">{new Date(a.endDate).toLocaleDateString("es-CO")}</td>
+              <td className="cell-date">{formatDate(a.startDate)}</td>
+              <td className="cell-date">{formatDate(a.endDate)}</td>
             </tr>
           ))}
         </tbody>
@@ -1121,6 +1137,7 @@ export function ProjectDetailTab({
   onBack,
   onError,
   onIrATasasFx,
+  consultants = [],
 }: {
   projectId: string;
   canWrite: boolean;
@@ -1128,6 +1145,8 @@ export function ProjectDetailTab({
   onError: (msg: string) => void;
   /** Atajo a la pantalla de Tasas FX desde el aviso de conversión incompleta. */
   onIrATasasFx?: () => void;
+  /** Para asignar un riesgo a un consultor del equipo (R-015). */
+  consultants?: Consultant[];
 }) {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1224,7 +1243,7 @@ export function ProjectDetailTab({
           <RecursosTab assignments={detail.assignments} />
         )}
         {activeTab === "riesgos" && (
-          <RiesgosTab projectId={projectId} risks={detail.risks} canWrite={canWrite} onReload={() => void load()} />
+          <RiesgosTab projectId={projectId} risks={detail.risks} canWrite={canWrite} onReload={() => void load()} consultants={consultants} />
         )}
         {activeTab === "issues" && (
           <IssuesTab projectId={projectId} issues={detail.issues} canWrite={canWrite} onReload={() => void load()} />

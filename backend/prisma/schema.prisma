@@ -240,6 +240,7 @@ model Consultant {
   extraHourEntries ExtraHourEntry[]
   activities       Activity[]
   runningTimer     RunningTimer?
+  risks            Risk[]
 }
 
 model TimeEntry {
@@ -611,6 +612,11 @@ model Risk {
   riskScore       Int
   category        String?
   owner           String?
+  // Responsable cuando es un consultor del equipo (R-015). Convive con `owner`,
+  // que sigue sirviendo para un responsable externo (cliente, tercero) sin
+  // fila en `Consultant`. Nulable a propósito: no todo riesgo es de alguien
+  // del equipo.
+  consultantId    String?
   mitigationPlan  String?
   contingencyPlan String?
   status          RiskStatus @default(OPEN)
@@ -619,10 +625,12 @@ model Risk {
   createdBy       String
   updatedAt       DateTime   @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  consultant Consultant? @relation(fields: [consultantId], references: [id], onDelete: SetNull)
 
   @@index([projectId, status])
   @@index([riskScore])
+  @@index([consultantId])
 }
 
 model Issue {

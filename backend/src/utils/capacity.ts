@@ -172,9 +172,20 @@ export function calculateCapacityHours(
   return Math.max(totalWorkdays - blockedDays, 0) * hoursPerDay;
 }
 
+/**
+ * Insumo de `calculateCommittedHours`. `allocationPct`/`hoursPerPeriod` aceptan
+ * `number` además de `Decimal`: la función solo los pasa por `Number(...)`, así
+ * que sirve igual para una fila real de `Assignment` (R-013: para construir el
+ * `Forecast` de una asignación que todavía no existe en la base).
+ */
+type CommittedHoursInput = Pick<Assignment, "startDate" | "endDate" | "allocationMode" | "periodUnit" | "status"> & {
+  allocationPct: Decimal | number | null;
+  hoursPerPeriod: Decimal | number | null;
+};
+
 /** Horas comprometidas de un consultor dadas sus asignaciones en un período */
 export function calculateCommittedHours(
-  assignments: Pick<Assignment, "startDate" | "endDate" | "allocationMode" | "allocationPct" | "hoursPerPeriod" | "periodUnit" | "status">[],
+  assignments: CommittedHoursInput[],
   period: { from: Date; to: Date },
   jornada: Jornada,
   country?: string | null,
