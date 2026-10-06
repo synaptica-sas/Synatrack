@@ -1858,6 +1858,7 @@ function App() {
                   onError={handleError}
                   onDrillTo={drillTo}
                   onIrATasasFx={irATasasFx}
+                  onOpenProject={openProject}
                 />
               )}
 

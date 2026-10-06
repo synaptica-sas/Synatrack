@@ -246,6 +246,28 @@ export type RevenueEntry = {
   project?: Pick<Project, "id" | "name" | "currency">;
 };
 
+export type FinancialEntryType = "EXPENSE" | "REVENUE";
+
+/**
+ * Lectura unificada de `Expense`+`RevenueEntry` (tabla `FinancialEntry`),
+ * pensada para reportería que necesite ambos tipos de movimiento juntos
+ * (p. ej. el resumen mes a mes del Dashboard). Solo lectura: los paneles de
+ * Gastos e Ingresos siguen usando `/api/expenses` y `/api/revenue`.
+ */
+export type FinancialEntry = {
+  id: string;
+  projectId: string;
+  type: FinancialEntryType;
+  entryDate: string;
+  category: string | null;
+  amount: string;
+  currency: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  project: Pick<Project, "id" | "name" | "currency">;
+};
+
 export type FxConfig = {
   id: string;
   baseCode: string;
@@ -922,6 +944,28 @@ export async function rejectTimeEntry(id: string, rejectionNote: string): Promis
     rejectionNote,
   });
   return response.data;
+}
+
+/** Una página de movimientos financieros (gastos + ingresos), para reportería. */
+export async function listFinancialEntries(
+  params?: { projectId?: string; type?: FinancialEntryType; from?: string; to?: string; page?: number; pageSize?: number },
+): Promise<ApiPage<FinancialEntry>> {
+  const query = new URLSearchParams();
+  if (params?.projectId) query.set("projectId", params.projectId);
+  if (params?.type) query.set("type", params.type);
+  if (params?.from) query.set("from", params.from);
+  if (params?.to) query.set("to", params.to);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<ApiPage<FinancialEntry>>(`/api/financial-entries${suffix}`);
+}
+
+/** Todos los movimientos que cumplen el filtro, recorriendo las páginas. */
+export async function listAllFinancialEntries(
+  params?: { projectId?: string; type?: FinancialEntryType; from?: string; to?: string },
+): Promise<FinancialEntry[]> {
+  return fetchAllPages((page, pageSize) => listFinancialEntries({ ...params, page, pageSize }));
 }
 
 export async function listExpenses(): Promise<Expense[]> {
