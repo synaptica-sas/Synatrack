@@ -15,6 +15,7 @@ import {
   listAssignments,
   listConsultantBlocks,
   listRisks,
+  updateAssignment,
   type AllocationMode,
   type Assignment,
   type AssignmentStatus,
@@ -34,6 +35,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { downloadCsv } from "../../utils/csv";
 import { displayCountryWithFlag } from "../../utils/statusLabels";
 import { CountryFlag } from "../../components/CountryFlag";
+import { formatDate } from "../../utils/formatDate";
 
 /**
  * Planificación de Capacidad, migrada al sistema de diseño
@@ -433,7 +435,7 @@ function OverviewPanel({
                       <td>{row.committedHours.toFixed(1)}h</td>
                       <td className={row.availableHours > 0 ? "tone-success" : undefined}>{row.availableHours.toFixed(1)}h</td>
                       <td className="capacity-col-util">{utilizationBar(row.utilizationPct)}</td>
-                      <td>{row.nextAvailableDate ? new Date(row.nextAvailableDate).toLocaleDateString("es-CO") : <span className="state-chip state-chip--success">Ahora</span>}</td>
+                      <td>{row.nextAvailableDate ? formatDate(row.nextAvailableDate) : <span className="state-chip state-chip--success">Ahora</span>}</td>
                       <td>
                         {row.activeAssignments.length > 0 && (
                           <button type="button" className="ghost capacity-btn-row" onClick={() => setExpandedConsultant(expandedConsultant === row.consultantId ? null : row.consultantId)}>
@@ -519,7 +521,7 @@ function OverviewPanel({
                       <tr key={r.assignmentId}>
                         <td>{r.consultant.fullName}</td>
                         <td>{r.project.name}</td>
-                        <td>{new Date(r.endDate).toLocaleDateString("es-CO")}</td>
+                        <td>{formatDate(r.endDate)}</td>
                         <td><span className={`state-chip state-chip--${r.daysUntilRelease <= 7 ? "danger" : "warning"}`}>{r.daysUntilRelease}d</span></td>
                         <td>{r.allocationPct !== null ? `${r.allocationPct}%` : "—"}</td>
                       </tr>
@@ -558,7 +560,7 @@ function AssignmentDetail({ assignments }: { assignments: CapacityConsultantRow[
               </td>
               <td>{a.projectName}</td>
               <td className="cell-date">
-                {new Date(a.startDate).toLocaleDateString("es-CO")} – {new Date(a.endDate).toLocaleDateString("es-CO")}
+                {formatDate(a.startDate)} – {formatDate(a.endDate)}
               </td>
               <td>
                 {forecast
@@ -803,6 +805,8 @@ function AssignmentsPanel({
   const [cancelTarget, setCancelTarget] = useState<Assignment | null>(null);
   const [completeTarget, setCompleteTarget] = useState<Assignment | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Assignment | null>(null);
+  // R-014: misma modal de creación, en modo edición cuando no es null.
+  const [editTarget, setEditTarget] = useState<Assignment | null>(null);
 
   const [multipleMode, setMultipleMode] = useState(false);
   const [selectedConsultantIds, setSelectedConsultantIds] = useState<string[]>([]);
@@ -841,11 +845,51 @@ function AssignmentsPanel({
 
   useEffect(() => { void reload(); }, [filterProject, filterConsultant, filterStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleCreate(e: FormEvent) {
+  function closeModal() {
+    setIsModalOpen(false);
+    setForm(emptyAssignmentForm);
+    setMultipleMode(false);
+    setSelectedConsultantIds([]);
+    setEditTarget(null);
+  }
+
+  /** R-014: abre la misma modal precargada con los datos de la asignación. */
+  function openEditModal(a: Assignment) {
+    setEditTarget(a);
+    setMultipleMode(false);
+    setForm({
+      projectId: a.projectId,
+      consultantId: a.consultantId,
+      startDate: a.startDate.slice(0, 10),
+      endDate: a.endDate.slice(0, 10),
+      allocationMode: a.allocationMode,
+      allocationPct: a.allocationPct != null ? String(a.allocationPct) : "100",
+      hoursPerPeriod: a.hoursPerPeriod != null ? String(a.hoursPerPeriod) : "",
+      periodUnit: (a.periodUnit as "week" | "month") || "week",
+      role: a.role ?? "",
+      note: a.note ?? "",
+    });
+    setIsModalOpen(true);
+  }
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      if (multipleMode) {
+      if (editTarget) {
+        await updateAssignment(editTarget.id, {
+          projectId: form.projectId,
+          consultantId: form.consultantId,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          allocationMode: form.allocationMode,
+          allocationPct: form.allocationMode === "PERCENTAGE" ? Number(form.allocationPct) : undefined,
+          hoursPerPeriod: form.allocationMode === "HOURS" ? Number(form.hoursPerPeriod) : undefined,
+          periodUnit: form.allocationMode === "HOURS" ? form.periodUnit : undefined,
+          role: form.role || undefined,
+          note: form.note || undefined,
+        });
+      } else if (multipleMode) {
         if (selectedConsultantIds.length === 0) {
           throw new Error("Selecciona al menos un consultor.");
         }
@@ -883,11 +927,10 @@ function AssignmentsPanel({
           note: form.note || undefined,
         });
       }
-      setForm(emptyAssignmentForm);
-      setIsModalOpen(false);
+      closeModal();
       await reload();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "No se pudo crear la asignación");
+      onError(err instanceof Error ? err.message : `No se pudo ${editTarget ? "editar" : "crear"} la asignación`);
     } finally {
       setSubmitting(false);
     }
@@ -988,8 +1031,8 @@ function AssignmentsPanel({
                   <tr key={a.id}>
                     <td>{a.consultant?.fullName ?? a.consultantId}</td>
                     <td>{a.project?.name ?? a.projectId}</td>
-                    <td>{new Date(a.startDate).toLocaleDateString("es-CO")}</td>
-                    <td>{new Date(a.endDate).toLocaleDateString("es-CO")}</td>
+                    <td>{formatDate(a.startDate)}</td>
+                    <td>{formatDate(a.endDate)}</td>
                     <td>
                       {a.allocationMode === "PERCENTAGE"
                         ? `${a.allocationPct ?? 0}%`
@@ -1001,6 +1044,7 @@ function AssignmentsPanel({
                         <div className="inline-actions">
                           {(a.status === "PLANNED" || a.status === "ACTIVE" || a.status === "PARTIAL") && (
                             <>
+                              <button type="button" className="ghost" onClick={() => openEditModal(a)}>Editar</button>
                               <button type="button" onClick={() => setCompleteTarget(a)}>Completar</button>
                               <button type="button" className="ghost" onClick={() => setCancelTarget(a)}>Cancelar</button>
                             </>
@@ -1049,25 +1093,25 @@ function AssignmentsPanel({
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {/* Modal para Crear Nueva Asignación */}
+      {/* Modal para Crear/Editar Asignación */}
       {canWrite && isModalOpen && createPortal(
-        <div className="modal-overlay" onClick={() => { setIsModalOpen(false); setForm(emptyAssignmentForm); }}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-card capacity-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header capacity-modal-header">
               <h2 className="capacity-modal-title">
-                Nueva asignación
+                {editTarget ? "Editar asignación" : "Nueva asignación"}
               </h2>
               <button
                 type="button"
                 className="ghost capacity-modal-close"
                 aria-label="Cerrar"
-                onClick={() => { setIsModalOpen(false); setForm(emptyAssignmentForm); }}
+                onClick={closeModal}
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleCreate(e)} className="form-grid two-col capacity-form">
+            <form onSubmit={(e) => void handleSubmit(e)} className="form-grid two-col capacity-form">
 
               <div className="capacity-field capacity-field--full">
                 <label className="field-label" htmlFor="asignacion-proyecto">Proyecto *</label>
@@ -1077,19 +1121,21 @@ function AssignmentsPanel({
                 </select>
               </div>
 
-              <div className="capacity-field capacity-field--full">
-                <label className="check capacity-check">
-                  <input
-                    type="checkbox"
-                    checked={multipleMode}
-                    onChange={(e) => {
-                      setMultipleMode(e.target.checked);
-                      setSelectedConsultantIds([]);
-                    }}
-                  />
-                  Asignar múltiples consultores
-                </label>
-              </div>
+              {!editTarget && (
+                <div className="capacity-field capacity-field--full">
+                  <label className="check capacity-check">
+                    <input
+                      type="checkbox"
+                      checked={multipleMode}
+                      onChange={(e) => {
+                        setMultipleMode(e.target.checked);
+                        setSelectedConsultantIds([]);
+                      }}
+                    />
+                    Asignar múltiples consultores
+                  </label>
+                </div>
+              )}
 
               <div className="capacity-field capacity-field--full">
                 <label className="field-label" htmlFor="asignacion-consultor">
@@ -1098,7 +1144,7 @@ function AssignmentsPanel({
                 {!multipleMode ? (
                   <select id="asignacion-consultor" value={form.consultantId} onChange={(e) => setForm((p) => ({ ...p, consultantId: e.target.value }))} required={!multipleMode}>
                     <option value="" disabled hidden>Selecciona consultor...</option>
-                    {consultants.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.fullName} — {c.role}</option>)}
+                    {consultants.filter((c) => c.active || c.id === form.consultantId).map((c) => <option key={c.id} value={c.id}>{c.fullName} — {c.role}</option>)}
                   </select>
                 ) : (
                   <div className="capacity-picker">
@@ -1211,13 +1257,13 @@ function AssignmentsPanel({
                 <button
                   type="button"
                   className="ghost"
-                  onClick={() => { setIsModalOpen(false); setForm(emptyAssignmentForm); }}
+                  onClick={closeModal}
                   disabled={submitting}
                 >
                   Cancelar
                 </button>
                 <button type="submit" disabled={submitting}>
-                  {submitting ? "Creando…" : "Crear asignación"}
+                  {submitting ? (editTarget ? "Guardando…" : "Creando…") : (editTarget ? "Guardar cambios" : "Crear asignación")}
                 </button>
               </div>
             </form>
@@ -1359,8 +1405,8 @@ function BlocksPanel({
                   return (
                     <tr key={b.id}>
                       <td><span className="state-chip state-chip--neutral">{BLOCK_TYPE_LABELS[b.blockType]}</span></td>
-                      <td>{new Date(b.startDate).toLocaleDateString("es-CO")}</td>
-                      <td>{new Date(b.endDate).toLocaleDateString("es-CO")}</td>
+                      <td>{formatDate(b.startDate)}</td>
+                      <td>{formatDate(b.endDate)}</td>
                       <td>{days}d</td>
                       <td>{b.note || "—"}</td>
                       {canWrite && (

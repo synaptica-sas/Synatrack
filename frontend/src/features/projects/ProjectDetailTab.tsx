@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { ConversionNotice, ConversionChip } from "../../components/ConversionNotice";
 import { CHANGE_REQUEST_STATUS_LABELS, CHANGE_REQUEST_TYPE_LABELS, RISK_STATUS_LABELS, ASSIGNMENT_STATUS_LABELS, ISSUE_SEVERITY_LABELS, ISSUE_STATUS_LABELS, label } from "../../utils/statusLabels";
+import { formatDate, formatDateTime } from "../../utils/formatDate";
 import {
   PRESENTACION_NIVEL,
   PRESENTACION_SALUD,
@@ -437,7 +438,7 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
           {hasBaseline ? (
             <p className="field-help">
               <span className="state-chip state-chip--success">Establecida</span>
-              {" "}{new Date(project.baselineSetAt!).toLocaleDateString("es-CO")}
+              {" "}{formatDateTime(project.baselineSetAt)}
               {project.baselineSetBy ? ` · por ${project.baselineSetBy}` : ""}
             </p>
           ) : (
@@ -459,11 +460,11 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
             </span>
             <span>
               <span className="def-list__term">Inicio base:</span>
-              <span className="def-list__value">{project.baselineStartDate ? new Date(project.baselineStartDate).toLocaleDateString("es-CO") : "—"}</span>
+              <span className="def-list__value">{formatDate(project.baselineStartDate)}</span>
             </span>
             <span>
               <span className="def-list__term">Fin base:</span>
-              <span className="def-list__value">{project.baselineEndDate ? new Date(project.baselineEndDate).toLocaleDateString("es-CO") : "—"}</span>
+              <span className="def-list__value">{formatDate(project.baselineEndDate)}</span>
             </span>
           </div>
         </div>
@@ -561,8 +562,8 @@ function HitosTab({ projectId, milestones, canWrite, onReload }: {
               return (
                 <tr key={m.id}>
                   <td>{m.name}</td>
-                  <td className="cell-date">{new Date(m.plannedDate).toLocaleDateString("es-CO")}</td>
-                  <td className="cell-date">{m.actualDate ? new Date(m.actualDate).toLocaleDateString("es-CO") : "—"}</td>
+                  <td className="cell-date">{formatDate(m.plannedDate)}</td>
+                  <td className="cell-date">{formatDate(m.actualDate)}</td>
                   <td className="cell-num">{m.weight}</td>
                   <td>
                     <span className={`state-chip state-chip--${p.modificador}`}>{p.etiqueta}</span>
@@ -790,8 +791,8 @@ function RecursosTab({ assignments }: { assignments: ProjectDetail["assignments"
                 {label(ASSIGNMENT_STATUS_LABELS, a.status)}
               </td>
               <td>{allocationLabel(a)}</td>
-              <td className="cell-date">{new Date(a.startDate).toLocaleDateString("es-CO")}</td>
-              <td className="cell-date">{new Date(a.endDate).toLocaleDateString("es-CO")}</td>
+              <td className="cell-date">{formatDate(a.startDate)}</td>
+              <td className="cell-date">{formatDate(a.endDate)}</td>
             </tr>
           ))}
         </tbody>
