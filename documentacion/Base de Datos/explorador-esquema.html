@@ -1,0 +1,939 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Esquema Synatrack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: barra de marca arriba, pestañas; en "Tablas" una lista lateral fija y la ficha de la tabla a la derecha. */
+:root {
+  --bg: #f5f5f9; --surface: #ffffff; --ink: #121228; --muted: #5c5c72; --line: #e1e1ea; --soft: #efeff5;
+  --brand: #121228; --brand-ink: #ffffff; --accent: #f1a323; --accent-soft: #fdf1dc;
+  --cascade: #a8194c; --cascade-soft: #f8e4ec; --restrict: #3f7a14; --restrict-soft: #e7f3dc;
+  --setnull: #9a5b00; --setnull-soft: #fbefd9; --blue: #234175; --blue-soft: #e3e9f4;
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d0d1a; --surface: #16162a; --ink: #e8e8f2; --muted: #a2a2ba; --line: #2a2a45; --soft: #1d1d34;
+  --brand: #1b1b38; --brand-ink: #ffffff; --accent: #f1a323; --accent-soft: #3a2c12;
+  --cascade: #ec6f9b; --cascade-soft: #3b1426; --restrict: #95d462; --restrict-soft: #1f3312;
+  --setnull: #f4b54a; --setnull-soft: #3a2a0f; --blue: #92b0e6; --blue-soft: #1a2640; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0d0d1a; --surface: #16162a; --ink: #e8e8f2; --muted: #a2a2ba; --line: #2a2a45; --soft: #1d1d34;
+  --brand: #1b1b38; --brand-ink: #ffffff; --accent: #f1a323; --accent-soft: #3a2c12;
+  --cascade: #ec6f9b; --cascade-soft: #3b1426; --restrict: #95d462; --restrict-soft: #1f3312;
+  --setnull: #f4b54a; --setnull-soft: #3a2a0f; --blue: #92b0e6; --blue-soft: #1a2640; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.top { background: var(--brand); color: var(--brand-ink); padding: 20px 16px 0; }
+.top-in, .wrap { max-width: 1240px; margin: 0 auto; }
+.wrap { padding: 20px 16px 48px; }
+.eyebrow { font: 600 11px/1 var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 clamp(24px, 4vw, 32px)/1.15 var(--f-display); margin: 8px 0 6px; text-wrap: balance; }
+.src { color: rgba(255,255,255,.72); font-size: 13px; margin: 0 0 16px; }
+.src code { color: #fff; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { background: transparent; border: 0; color: rgba(255,255,255,.75); padding: 10px 14px; border-radius: 8px 8px 0 0; cursor: pointer; font-weight: 600; font-size: 14px; }
+.tab:hover { color: #fff; }
+.tab[aria-selected="true"] { background: var(--bg); color: var(--ink); }
+.tab .n { font: 500 11px var(--f-mono); opacity: .7; margin-left: 4px; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+.legend b { color: var(--ink); font-weight: 600; }
+.od { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--f-mono); padding: 4px 7px; border-radius: 4px; white-space: nowrap; }
+.od::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.od-Cascade { color: var(--cascade); background: var(--cascade-soft); }
+.od-Restrict { color: var(--restrict); background: var(--restrict-soft); }
+.od-SetNull { color: var(--setnull); background: var(--setnull-soft); }
+
+/* Vista Tablas */
+.split { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; align-items: start; }
+.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+.side input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; font-size: 14px; }
+.grp { margin-top: 14px; }
+.grp h3 { font: 600 11px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px 6px; }
+.item { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 8px; text-align: left; background: none; border: 0; padding: 6px 8px; border-radius: 6px; cursor: pointer; font: 500 13px var(--f-mono); }
+.item:hover { background: var(--soft); }
+.item[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.sev-crit { background: var(--cascade); } .sev-high { background: var(--setnull); } .sev-med { background: var(--blue); } .sev-low { background: var(--muted); }
+
+.detail { min-width: 0; display: grid; gap: 22px; }
+.head h2 { font: 700 28px/1.1 var(--f-mono); margin: 6px 0 8px; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.domain { font: 600 11px/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--blue); }
+.desc { font-size: 16px; max-width: 68ch; margin: 0; }
+.schema-note { color: var(--muted); font-size: 13px; max-width: 75ch; margin: 8px 0 0; border-left: 2px solid var(--line); padding-left: 10px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--muted); margin-top: 12px; }
+.facts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.sql-name { font-size: 13px; color: var(--muted); }
+
+.sec h3 { font: 700 15px var(--f-display); margin: 0 0 10px; }
+.sec h3 small { font: 400 13px var(--f-body); color: var(--muted); margin-left: 6px; }
+
+.findings { display: grid; gap: 8px; }
+.finding { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: baseline; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); }
+.finding .id { font: 600 12px var(--f-mono); }
+.finding.crit { border-left: 4px solid var(--cascade); } .finding.high { border-left: 4px solid var(--setnull); }
+.finding.med { border-left: 4px solid var(--blue); } .finding.low { border-left: 4px solid var(--muted); }
+.ok-note { color: var(--muted); font-size: 14px; margin: 0; }
+
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow-x: auto; }
+.diagram svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.diagram .node rect { fill: var(--soft); stroke: var(--line); }
+.diagram .node.center rect { fill: var(--brand); stroke: var(--brand); }
+.diagram .node text { fill: var(--ink); font: 600 12px var(--f-mono); }
+.diagram .node.center text { fill: #fff; font-size: 14px; }
+.diagram .node .sub { fill: var(--muted); font-weight: 400; font-size: 10.5px; }
+.diagram .node.link { cursor: pointer; }
+.diagram .node.link:hover rect { stroke: var(--accent); stroke-width: 2; }
+.diagram .colhead { fill: var(--muted); font: 600 10.5px var(--f-mono); letter-spacing: .08em; }
+.e-Cascade { stroke: var(--cascade); } .e-Restrict { stroke: var(--restrict); } .e-SetNull { stroke: var(--setnull); }
+.empty-rel { color: var(--muted); font-size: 14px; margin: 4px; }
+
+.tbl-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th { text-align: left; font: 600 11px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--soft); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.col { font: 600 13px var(--f-mono); white-space: nowrap; }
+td.type { font: 400 12.5px var(--f-mono); color: var(--blue); white-space: nowrap; }
+td.def { font: 400 12px var(--f-mono); color: var(--muted); }
+td.note { color: var(--muted); font-size: 13px; min-width: 220px; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-right: 6px; vertical-align: 1px; }
+.chip { font: 600 10.5px/1 var(--f-mono); padding: 3px 6px; border-radius: 4px; background: var(--soft); color: var(--muted); white-space: nowrap; }
+.chip.pk { background: var(--accent-soft); color: var(--setnull); }
+.chip.fk { background: var(--blue-soft); color: var(--blue); cursor: pointer; border: 0; }
+.chip.sens { background: var(--cascade-soft); color: var(--cascade); }
+.yes { color: var(--muted); } .no { font-weight: 600; }
+.idx { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.idx li { display: flex; gap: 10px; align-items: baseline; font-size: 13.5px; }
+.idx .k { font: 600 10.5px var(--f-mono); text-transform: uppercase; color: var(--muted); width: 64px; flex: none; }
+
+/* Vista Relaciones */
+.intro { max-width: 75ch; margin: 0 0 16px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.fbtn { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.fbtn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.rel-row { cursor: pointer; }
+.rel-row:hover td { background: var(--soft); }
+.arrow { color: var(--muted); }
+
+/* Vista Enums */
+.enum-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+.enum { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+.enum h3 { font: 700 15px var(--f-mono); margin: 0 0 4px; overflow-wrap: anywhere; }
+.enum .used { font-size: 12.5px; color: var(--muted); margin: 0 0 10px; }
+.enum ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.enum li { font-size: 13px; }
+.enum li code { font-weight: 600; }
+.enum li span { color: var(--muted); }
+.enum li.obs code { text-decoration: line-through; color: var(--muted); }
+
+/* Supabase vs código */
+.sbchip { font: 600 10px/1 var(--f-mono); padding: 3px 5px; border-radius: 4px; white-space: nowrap; }
+.sb-missing { color: var(--cascade); background: var(--cascade-soft); }
+.sb-diff { color: var(--setnull); background: var(--setnull-soft); }
+.sb-ok { color: var(--restrict); }
+.item .r { display: inline-flex; gap: 6px; align-items: center; }
+.banner { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; max-width: 80ch; }
+.banner.crit { border-left: 4px solid var(--cascade); }
+.banner.high { border-left: 4px solid var(--setnull); }
+.banner b { display: block; margin-bottom: 2px; }
+.sb-grid { display: grid; gap: 18px; }
+.sb-grid h3 { font: 700 15px var(--f-display); margin: 0 0 8px; }
+.sb-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 14px; }
+.sb-list code { font-weight: 600; }
+
+/* Diagrama ER */
+.er-bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-bottom: 10px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.segb { border: 0; background: none; padding: 7px 12px; cursor: pointer; font-size: 13px; font-weight: 600; min-width: 36px; }
+.segb + .segb { border-left: 1px solid var(--line); }
+.segb:hover { background: var(--soft); }
+.segb[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.er-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+.er-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.er-legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.er-split { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 14px; }
+.er-panel { height: max(480px, 72vh); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+.er-panel h2 { font: 700 21px/1.15 var(--f-mono); margin: 4px 0 6px; overflow-wrap: anywhere; }
+.er-panel .desc { font-size: 14px; }
+.er-panel .sec h3 { font-size: 14px; margin-bottom: 8px; }
+.er-panel .banner { font-size: 13px; }
+.er-panel .finding { padding: 8px 10px; font-size: 13px; grid-template-columns: 1fr; }
+.er-panel table { font-size: 12.5px; }
+.er-panel td, .er-panel th { padding: 6px 8px; }
+.er-panel td.col { font-size: 12px; }
+.er-panel td.type { font-size: 11.5px; }
+.er-panel .opt { color: var(--muted); font-weight: 400; }
+.rel-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.rel-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rel-list .via { font: 400 11.5px var(--f-mono); color: var(--muted); }
+.panel-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.btn:hover { background: var(--soft); }
+.er-node.sel .body { stroke: var(--accent); stroke-width: 3; }
+@media (max-width: 1000px) {
+  .er-split { grid-template-columns: 1fr; }
+  .er-panel { height: auto; max-height: none; }
+}
+.er-wrap { position: relative; height: max(480px, 72vh); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; touch-action: none; }
+.er-wrap svg { display: block; width: 100%; height: 100%; cursor: grab; user-select: none; }
+.er-wrap svg.dragging { cursor: grabbing; }
+.er-msg { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--muted); font-size: 14px; padding: 16px; text-align: center; }
+.er-help { font-size: 13px; color: var(--muted); max-width: 90ch; margin: 10px 0 0; }
+.er-node .body { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+.er-node.missing .body { stroke: var(--cascade); stroke-dasharray: 5 3; stroke-width: 1.6; }
+.er-node .hd { font: 700 12.5px var(--f-mono); fill: #fff; }
+.er-node .badge { font: 600 9.5px var(--f-mono); fill: #fff; opacity: .9; }
+.er-node .rn { font: 400 11px var(--f-mono); fill: var(--ink); }
+.er-node .rt { font: 400 10.5px var(--f-mono); fill: var(--muted); }
+.er-node .rk { font: 700 8.5px var(--f-mono); }
+.er-node .rk.pk { fill: var(--setnull); } .er-node .rk.fk { fill: var(--blue); }
+.er-node .rn.miss { fill: var(--setnull); font-style: italic; }
+.er-node .sep { stroke: var(--line); stroke-width: 1; }
+.er-node { cursor: pointer; }
+.er-node:focus-visible { outline: none; }
+.er-node:focus-visible .body { stroke: var(--accent); stroke-width: 2.5; }
+.er-edge { fill: none; stroke-width: 1.5; }
+.er-edge.Cascade { stroke: var(--cascade); } .er-edge.Restrict { stroke: var(--restrict); } .er-edge.SetNull { stroke: var(--setnull); }
+svg.hl .er-node:not(.on), svg.hl .er-edge:not(.on) { opacity: .15; }
+svg.hl .er-edge.on { stroke-width: 2.4; }
+.er-node, .er-edge { transition: opacity .15s; }
+:root { --d-proy: #234175; --d-horas: #a3620a; --d-equipo: #3f7a14; --d-fin: #6b3fa0; --d-users: #0f7480; --d-sis: #5f5f6e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --d-proy: #3c63a8; --d-horas: #a86a12; --d-equipo: #4c8a1f; --d-fin: #7d52b5; --d-users: #16838f; --d-sis: #5d5d75; } }
+:root[data-theme="dark"] { --d-proy: #3c63a8; --d-horas: #a86a12; --d-equipo: #4c8a1f; --d-fin: #7d52b5; --d-users: #16838f; --d-sis: #5d5d75; }
+
+@media (max-width: 820px) {
+  .split { grid-template-columns: 1fr; }
+  .side { position: static; max-height: 260px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="eyebrow">Synatrack · PostgreSQL en Supabase</div>
+    <h1>Esquema de la base de datos</h1>
+    <p class="src" id="src"></p>
+    <nav class="tabs" role="tablist" aria-label="Vistas">
+      <button class="tab" role="tab" id="tab-tablas" aria-selected="true" data-view="tablas">Tablas <span class="n" id="n-t"></span></button>
+      <button class="tab" role="tab" id="tab-er" aria-selected="false" data-view="er">Diagrama ER</button>
+      <button class="tab" role="tab" id="tab-rel" aria-selected="false" data-view="rel">Relaciones y borrado <span class="n" id="n-r"></span></button>
+      <button class="tab" role="tab" id="tab-enum" aria-selected="false" data-view="enum">Valores fijos (enums) <span class="n" id="n-e"></span></button>
+      <button class="tab" role="tab" id="tab-sb" aria-selected="false" data-view="sb" hidden>Supabase vs código <span class="n" id="n-s"></span></button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="legend">
+    <span><b>Al borrar el registro padre:</b></span>
+    <span><span class="od od-Cascade">Cascade</span> se borran también los hijos</span>
+    <span><span class="od od-Restrict">Restrict</span> se impide el borrado</span>
+    <span><span class="od od-SetNull">SetNull</span> el hijo queda sin padre</span>
+  </div>
+
+  <section id="v-tablas" class="split">
+    <aside class="side">
+      <label for="q" class="sr" hidden>Buscar tabla o columna</label>
+      <input id="q" type="search" placeholder="Buscar tabla o columna…" autocomplete="off">
+      <div id="nav"></div>
+    </aside>
+    <article class="detail" id="detail"></article>
+  </section>
+
+  <section id="v-er" hidden>
+    <div class="er-bar">
+      <div class="seg" role="group" aria-label="Columnas a mostrar">
+        <button class="segb" data-er-mode="keys" aria-pressed="true">Solo claves</button>
+        <button class="segb" data-er-mode="all" aria-pressed="false">Todas las columnas</button>
+      </div>
+      <div class="seg" role="group" aria-label="Zoom">
+        <button class="segb" data-er-zoom="out" aria-label="Alejar">−</button>
+        <button class="segb" data-er-zoom="fit">Ajustar</button>
+        <button class="segb" data-er-zoom="in" aria-label="Acercar">+</button>
+      </div>
+      <div class="er-legend" id="er-legend"></div>
+    </div>
+    <div class="er-split">
+      <div class="er-wrap" id="er-wrap">
+        <p class="er-msg" id="er-msg">Calculando el diagrama…</p>
+      </div>
+      <aside class="er-panel" id="er-panel" aria-live="polite"></aside>
+    </div>
+    <p class="er-help">Arrastra para moverte, usa la rueda del ratón para acercar y pasa el cursor sobre una tabla para resaltar sus relaciones. Haz clic en una tabla para ver su ficha al lado. Notación pata de gallo: <span class="mono">○&lt;</span> cero o muchos en el lado hijo, <span class="mono">||</span> exactamente uno y <span class="mono">○|</span> cero o uno en el lado padre.</p>
+  </section>
+
+  <section id="v-rel" hidden>
+    <p class="intro">Cada fila es una clave foránea: una columna de la tabla hija que apunta a la tabla padre. La última columna dice qué pasa con los hijos cuando alguien borra el padre. Las filas en rojo con datos contables son las que señala el hallazgo <b>BD-01</b> del code review.</p>
+    <div class="filters" id="filters"></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Tabla hija</th><th>Columna</th><th></th><th>Tabla padre</th><th>Al borrar el padre</th><th>Qué significa</th></tr></thead>
+      <tbody id="rel-body"></tbody>
+    </table></div>
+  </section>
+
+  <section id="v-sb" hidden></section>
+
+  <section id="v-enum" hidden>
+    <p class="intro">Listas de valores permitidos. La base de datos rechaza cualquier valor que no esté aquí. Los valores tachados están obsoletos: se conservan por el histórico, pero ya no se escriben.</p>
+    <div class="enum-grid" id="enum-grid"></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"></script>
+<script>
+const S = {"models":{"Project":{"name":"Project","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"name","type":"String","list":false,"optional":false,"note":""},{"name":"company","type":"String","list":false,"optional":false,"note":""},{"name":"country","type":"String","list":false,"optional":false,"note":""},{"name":"currency","type":"String","list":false,"optional":false,"note":""},{"name":"budget","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(14, 2)"},{"name":"startDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"endDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":""},{"name":"projectType","type":"ProjectType","list":false,"optional":false,"note":"","default":"TIME_AND_MATERIAL"},{"name":"status","type":"ProjectStatus","list":false,"optional":false,"note":"","default":"ACTIVE"},{"name":"sellPrice","type":"Decimal","list":false,"optional":true,"note":"","db":"Decimal(14, 2)"},{"name":"sellCurrency","type":"String","list":false,"optional":false,"note":"","default":"\"USD\""},{"name":"marginThreshold","type":"Decimal","list":false,"optional":true,"note":"","db":"Decimal(5, 2)"},{"name":"budgetAlertPct","type":"Decimal","list":false,"optional":false,"note":"","default":"90","db":"Decimal(5, 2)"},{"name":"healthStatus","type":"HealthStatus","list":false,"optional":false,"note":"Gestión de proyecto","default":"GREEN"},{"name":"completionPct","type":"Decimal","list":false,"optional":true,"note":"","db":"Decimal(5, 2)"},{"name":"phase","type":"ProjectPhase","list":false,"optional":false,"note":"","default":"EXECUTION"},{"name":"projectManagerEmail","type":"String","list":false,"optional":true,"note":""},{"name":"baselineBudget","type":"Decimal","list":false,"optional":true,"note":"Baseline","db":"Decimal(14, 2)"},{"name":"baselineStartDate","type":"DateTime","list":false,"optional":true,"note":""},{"name":"baselineEndDate","type":"DateTime","list":false,"optional":true,"note":""},{"name":"baselineSetAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"baselineSetBy","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true},{"name":"allowExtraHours","type":"Boolean","list":false,"optional":false,"note":"","default":"true"}],"indexes":[],"uniques":[],"pk":null},"Consultant":{"name":"Consultant","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"fullName","type":"String","list":false,"optional":false,"note":""},{"name":"email","type":"String","list":false,"optional":true,"note":""},{"name":"role","type":"String","list":false,"optional":false,"note":""},{"name":"company","type":"String","list":false,"optional":true,"note":""},{"name":"hourlyRate","type":"Decimal","list":false,"optional":true,"note":"","db":"Decimal(14, 2)"},{"name":"rateCurrency","type":"String","list":false,"optional":false,"note":"","default":"\"USD\""},{"name":"country","type":"String","list":false,"optional":true,"note":""},{"name":"costPerMonth","type":"Decimal","list":false,"optional":true,"note":"","db":"Decimal(14, 2)"},{"name":"skills","type":"String","list":true,"optional":false,"note":"","default":"[]"},{"name":"seniority","type":"String","list":false,"optional":true,"note":"\"Junior\" | \"Mid\" | \"Senior\" | \"Lead\""},{"name":"maxHoursPerDay","type":"Decimal","list":false,"optional":true,"note":"","db":"Decimal(4, 2)"},{"name":"active","type":"Boolean","list":false,"optional":false,"note":"","default":"true"},{"name":"allowWeekendWork","type":"Boolean","list":false,"optional":false,"note":"","default":"false"},{"name":"isInternal","type":"Boolean","list":false,"optional":false,"note":"","default":"true"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true},{"name":"identification","type":"String","list":false,"optional":true,"note":""}],"indexes":[],"uniques":[],"pk":null},"TimeEntry":{"name":"TimeEntry","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"consultantId","type":"String","list":false,"optional":false,"note":""},{"name":"workDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"hours","type":"Decimal","list":false,"optional":false,"note":"4 decimales y no 2: con 2 el valor mas pequeno representable es 0.01 h, o sea 36 segundos, asi que el cronometro no podia registrar un minuto sin inflarlo. Con 4 la resolucion baja a 0.36 s.","db":"Decimal(8, 4)"},{"name":"note","type":"String","list":false,"optional":true,"note":""},{"name":"status","type":"TimeEntryStatus","list":false,"optional":false,"note":"","default":"PENDING"},{"name":"approvedBy","type":"String","list":false,"optional":true,"note":""},{"name":"approvedAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"rejectionNote","type":"String","list":false,"optional":true,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":"Descripcion libre de la tarea (estilo Clockify). `note` se conserva para el flujo de aprobacion existente; `description` es lo que el consultor escribe en el timesheet o en el tracker."},{"name":"activityId","type":"String","list":false,"optional":true,"note":""},{"name":"source","type":"TimeEntrySource","list":false,"optional":false,"note":"","default":"MANUAL"},{"name":"startedAt","type":"DateTime","list":false,"optional":true,"note":"Solo para entradas creadas por el cronometro: inicio y fin reales."},{"name":"endedAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId"],["consultantId"],["status"],["workDate"],["activityId"],["consultantId","workDate"]],"uniques":[],"pk":null},"RunningTimer":{"name":"RunningTimer","note":"Cronometro en curso. Vive en la BD (no en el navegador) para que siga corriendo al cerrar el navegador o cambiar de equipo. Un consultor solo puede tener uno activo a la vez: de ahi el @unique en consultantId.","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"consultantId","type":"String","list":false,"optional":false,"note":"","unique":true},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"activityId","type":"String","list":false,"optional":true,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":""},{"name":"startedAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId"]],"uniques":[],"pk":null},"FinancialEntry":{"name":"FinancialEntry","note":"Movimientos financieros por proyecto: gastos e ingresos unificados en una sola tabla (discriminador `type`) para facilitar la reportería conjunta. Las rutas /api/expenses y /api/revenue siguen siendo independientes, cada una filtrando por su `type`.","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"type","type":"FinancialEntryType","list":false,"optional":false,"note":""},{"name":"entryDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"category","type":"String","list":false,"optional":true,"note":"solo aplica a EXPENSE; null en REVENUE"},{"name":"amount","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(14, 2)"},{"name":"currency","type":"String","list":false,"optional":false,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId"],["entryDate"],["type"]],"uniques":[],"pk":null},"Forecast":{"name":"Forecast","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"consultantId","type":"String","list":false,"optional":false,"note":""},{"name":"startDate","type":"String","list":false,"optional":false,"note":"ISO \"YYYY-MM-DD\" — fecha exacta de inicio","default":"\"\""},{"name":"endDate","type":"String","list":false,"optional":false,"note":"ISO \"YYYY-MM-DD\" — fecha exacta de fin","default":"\"\""},{"name":"hoursProjected","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(10, 2)"},{"name":"hourlyRate","type":"Decimal","list":false,"optional":true,"note":"Costo consultor (lo que pagamos)","db":"Decimal(14, 2)"},{"name":"sellRate","type":"Decimal","list":false,"optional":true,"note":"Tarifa de venta al cliente","db":"Decimal(14, 2)"},{"name":"currency","type":"String","list":false,"optional":false,"note":"","default":"\"USD\""},{"name":"note","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId"],["consultantId"]],"uniques":[],"pk":null},"FxConfig":{"name":"FxConfig","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"baseCode","type":"String","list":false,"optional":false,"note":""},{"name":"quoteCode","type":"String","list":false,"optional":false,"note":""},{"name":"rate","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 6)"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[],"uniques":[],"pk":null},"FxRateHistory":{"name":"FxRateHistory","note":"Historial de tasas con fecha efectiva — evita recalcular el pasado con tasa actual","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"baseCode","type":"String","list":false,"optional":false,"note":""},{"name":"quoteCode","type":"String","list":false,"optional":false,"note":""},{"name":"rate","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 6)"},{"name":"effectiveDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"rateType","type":"FxRateType","list":false,"optional":false,"note":"","default":"SPOT"},{"name":"source","type":"String","list":false,"optional":true,"note":"\"manual\", \"ecb\", \"banrep\", etc."},{"name":"createdBy","type":"String","list":false,"optional":true,"note":"email del usuario que registró la tasa"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["baseCode","quoteCode","effectiveDate"],["rateType"]],"uniques":[],"pk":null},"User":{"name":"User","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"email","type":"String","list":false,"optional":false,"note":"","unique":true},{"name":"displayName","type":"String","list":false,"optional":false,"note":""},{"name":"microsoftOid","type":"String","list":false,"optional":true,"note":"","unique":true},{"name":"active","type":"Boolean","list":false,"optional":false,"note":"","default":"true"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true},{"name":"photoUrl","type":"String","list":false,"optional":true,"note":""},{"name":"bio","type":"String","list":false,"optional":true,"note":""},{"name":"phrase","type":"String","list":false,"optional":true,"note":""},{"name":"skills","type":"String","list":true,"optional":false,"note":"","default":"[]"},{"name":"country","type":"String","list":false,"optional":true,"note":""}],"indexes":[],"uniques":[],"pk":null},"Role":{"name":"Role","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"name","type":"AppRole","list":false,"optional":false,"note":"","unique":true},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[],"uniques":[],"pk":null},"UserRole":{"name":"UserRole","note":"","fields":[{"name":"userId","type":"String","list":false,"optional":false,"note":""},{"name":"roleId","type":"String","list":false,"optional":false,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["roleId"]],"uniques":[],"pk":["userId","roleId"]},"Assignment":{"name":"Assignment","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"consultantId","type":"String","list":false,"optional":false,"note":""},{"name":"startDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"endDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"allocationMode","type":"AllocationMode","list":false,"optional":false,"note":"","default":"PERCENTAGE"},{"name":"allocationPct","type":"Decimal","list":false,"optional":true,"note":"0..100 si mode=PERCENTAGE","db":"Decimal(5, 2)"},{"name":"hoursPerPeriod","type":"Decimal","list":false,"optional":true,"note":"horas/semana o /mes si mode=HOURS","db":"Decimal(8, 2)"},{"name":"periodUnit","type":"String","list":false,"optional":true,"note":"\"week\" | \"month\""},{"name":"status","type":"AssignmentStatus","list":false,"optional":false,"note":"","default":"PLANNED"},{"name":"role","type":"String","list":false,"optional":true,"note":""},{"name":"note","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["consultantId"],["projectId"],["startDate","endDate"],["status"]],"uniques":[],"pk":null},"ConsultantBlock":{"name":"ConsultantBlock","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"consultantId","type":"String","list":false,"optional":false,"note":""},{"name":"startDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"endDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"blockType","type":"BlockType","list":false,"optional":false,"note":"","default":"OTHER"},{"name":"note","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["consultantId","startDate","endDate"]],"uniques":[],"pk":null},"CapacityConfig":{"name":"CapacityConfig","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"consultantId","type":"String","list":false,"optional":true,"note":"","unique":true},{"name":"country","type":"String","list":false,"optional":true,"note":""},{"name":"hoursPerDay","type":"Decimal","list":false,"optional":false,"note":"","default":"8","db":"Decimal(4, 2)"},{"name":"workDaysPerWeek","type":"Int","list":false,"optional":false,"note":"","default":"5"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["country"]],"uniques":[],"pk":null},"MonthlySnapshot":{"name":"MonthlySnapshot","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"year","type":"Int","list":false,"optional":false,"note":""},{"name":"month","type":"Int","list":false,"optional":false,"note":""},{"name":"baseCurrency","type":"String","list":false,"optional":false,"note":""},{"name":"laborCostActual","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 4)"},{"name":"expensesActual","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 4)"},{"name":"totalCostActual","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 4)"},{"name":"revenueRecognized","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 4)"},{"name":"contractValue","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 4)"},{"name":"grossMargin","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(18, 4)"},{"name":"grossMarginPct","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(8, 4)"},{"name":"hoursApproved","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(10, 2)"},{"name":"fxSnapshotJson","type":"Json","list":false,"optional":false,"note":""},{"name":"closedBy","type":"String","list":false,"optional":false,"note":""},{"name":"closedAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["year","month"]],"uniques":[["projectId","year","month"]],"pk":null},"Alert":{"name":"Alert","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"type","type":"AlertType","list":false,"optional":false,"note":""},{"name":"severity","type":"AlertSeverity","list":false,"optional":false,"note":"","default":"WARNING"},{"name":"projectId","type":"String","list":false,"optional":true,"note":""},{"name":"consultantId","type":"String","list":false,"optional":true,"note":""},{"name":"message","type":"String","list":false,"optional":false,"note":""},{"name":"metadata","type":"Json","list":false,"optional":true,"note":""},{"name":"resolvedAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"resolvedBy","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["type","resolvedAt"],["projectId"],["consultantId"]],"uniques":[],"pk":null},"AuditLog":{"name":"AuditLog","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"entity","type":"String","list":false,"optional":false,"note":""},{"name":"entityId","type":"String","list":false,"optional":false,"note":""},{"name":"action","type":"String","list":false,"optional":false,"note":""},{"name":"changedBy","type":"String","list":false,"optional":false,"note":""},{"name":"before","type":"Json","list":false,"optional":true,"note":""},{"name":"after","type":"Json","list":false,"optional":true,"note":""},{"name":"diff","type":"Json","list":false,"optional":true,"note":""},{"name":"ipAddress","type":"String","list":false,"optional":true,"note":""},{"name":"userAgent","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["entity","entityId"],["changedBy"],["createdAt"]],"uniques":[],"pk":null},"Milestone":{"name":"Milestone","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"name","type":"String","list":false,"optional":false,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":""},{"name":"plannedDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"actualDate","type":"DateTime","list":false,"optional":true,"note":""},{"name":"weight","type":"Decimal","list":false,"optional":false,"note":"","default":"0","db":"Decimal(5, 2)"},{"name":"status","type":"MilestoneStatus","list":false,"optional":false,"note":"","default":"PENDING"},{"name":"deliverable","type":"String","list":false,"optional":true,"note":""},{"name":"acceptedBy","type":"String","list":false,"optional":true,"note":""},{"name":"note","type":"String","list":false,"optional":true,"note":""},{"name":"createdBy","type":"String","list":false,"optional":false,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId"],["plannedDate"],["status"]],"uniques":[],"pk":null},"Risk":{"name":"Risk","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"title","type":"String","list":false,"optional":false,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":""},{"name":"probability","type":"Int","list":false,"optional":false,"note":""},{"name":"impact","type":"Int","list":false,"optional":false,"note":""},{"name":"riskScore","type":"Int","list":false,"optional":false,"note":""},{"name":"category","type":"String","list":false,"optional":true,"note":""},{"name":"owner","type":"String","list":false,"optional":true,"note":""},{"name":"mitigationPlan","type":"String","list":false,"optional":true,"note":""},{"name":"contingencyPlan","type":"String","list":false,"optional":true,"note":""},{"name":"status","type":"RiskStatus","list":false,"optional":false,"note":"","default":"OPEN"},{"name":"identifiedAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"resolvedAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"createdBy","type":"String","list":false,"optional":false,"note":""},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId","status"],["riskScore"]],"uniques":[],"pk":null},"Issue":{"name":"Issue","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"title","type":"String","list":false,"optional":false,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":""},{"name":"severity","type":"IssueSeverity","list":false,"optional":false,"note":"","default":"MEDIUM"},{"name":"owner","type":"String","list":false,"optional":true,"note":""},{"name":"status","type":"IssueStatus","list":false,"optional":false,"note":"","default":"OPEN"},{"name":"resolvedAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"resolution","type":"String","list":false,"optional":true,"note":""},{"name":"createdBy","type":"String","list":false,"optional":false,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId","status"]],"uniques":[],"pk":null},"ChangeRequest":{"name":"ChangeRequest","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"title","type":"String","list":false,"optional":false,"note":""},{"name":"description","type":"String","list":false,"optional":false,"note":""},{"name":"type","type":"ChangeRequestType","list":false,"optional":false,"note":""},{"name":"impactScope","type":"String","list":false,"optional":true,"note":""},{"name":"impactBudget","type":"Decimal","list":false,"optional":true,"note":"","db":"Decimal(14, 2)"},{"name":"impactDays","type":"Int","list":false,"optional":true,"note":""},{"name":"requestedBy","type":"String","list":false,"optional":false,"note":""},{"name":"reviewedBy","type":"String","list":false,"optional":true,"note":""},{"name":"status","type":"ChangeRequestStatus","list":false,"optional":false,"note":"","default":"PENDING"},{"name":"resolvedAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"resolution","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["projectId","status"]],"uniques":[],"pk":null},"ExtraHoursConfig":{"name":"ExtraHoursConfig","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"country","type":"String","list":false,"optional":false,"note":"","unique":true,"default":"\"Default\""},{"name":"weeklyExtraHoursLimit","type":"Decimal","list":false,"optional":false,"note":"","default":"12","db":"Decimal(5, 2)"},{"name":"diurnalMultiplier","type":"Decimal","list":false,"optional":false,"note":"","default":"1.25","db":"Decimal(4, 2)"},{"name":"nocturnalMultiplier","type":"Decimal","list":false,"optional":false,"note":"","default":"1.75","db":"Decimal(4, 2)"},{"name":"diurnalHolidayMultiplier","type":"Decimal","list":false,"optional":false,"note":"","default":"2.00","db":"Decimal(4, 2)"},{"name":"nocturnalHolidayMultiplier","type":"Decimal","list":false,"optional":false,"note":"","default":"2.50","db":"Decimal(4, 2)"},{"name":"diurnalStart","type":"String","list":false,"optional":false,"note":"","default":"\"06:00:00\""},{"name":"diurnalEnd","type":"String","list":false,"optional":false,"note":"","default":"\"21:00:00\""},{"name":"monthlyDivisor","type":"Decimal","list":false,"optional":false,"note":"","default":"220","db":"Decimal(5, 2)"},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[],"uniques":[],"pk":null},"ExtraHourEntry":{"name":"ExtraHourEntry","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"consultantId","type":"String","list":false,"optional":false,"note":""},{"name":"projectId","type":"String","list":false,"optional":true,"note":""},{"name":"date","type":"DateTime","list":false,"optional":false,"note":""},{"name":"startTime","type":"String","list":false,"optional":false,"note":""},{"name":"endTime","type":"String","list":false,"optional":false,"note":""},{"name":"diurnal","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(6, 2)"},{"name":"nocturnal","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(6, 2)"},{"name":"diurnalHoliday","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(6, 2)"},{"name":"nocturnalHoliday","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(6, 2)"},{"name":"totalHours","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(6, 2)"},{"name":"diurnalAmount","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(14, 2)"},{"name":"nocturnalAmount","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(14, 2)"},{"name":"diurnalHolidayAmount","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(14, 2)"},{"name":"nocturnalHolidayAmount","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(14, 2)"},{"name":"totalAmount","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(14, 2)"},{"name":"observations","type":"String","list":false,"optional":true,"note":""},{"name":"status","type":"ExtraHourStatus","list":false,"optional":false,"note":"","default":"PENDING_PM"},{"name":"approvedBy","type":"String","list":false,"optional":true,"note":""},{"name":"approvedAt","type":"DateTime","list":false,"optional":true,"note":""},{"name":"rejectionNote","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["consultantId"],["projectId"],["status"]],"uniques":[],"pk":null},"Estimation":{"name":"Estimation","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":true,"note":""},{"name":"projectName","type":"String","list":false,"optional":false,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"totalIdealHours","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(10, 2)"},{"name":"totalAdjustedHours","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(10, 2)"},{"name":"bufferPercentage","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(5, 2)"},{"name":"riskLevel","type":"String","list":false,"optional":false,"note":""},{"name":"confidenceLevel","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(5, 2)"},{"name":"rawDataJson","type":"String","list":false,"optional":false,"note":"","db":"Text"}],"indexes":[["projectId"]],"uniques":[],"pk":null},"Activity":{"name":"Activity","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"title","type":"String","list":false,"optional":false,"note":""},{"name":"description","type":"String","list":false,"optional":true,"note":""},{"name":"consultantId","type":"String","list":false,"optional":false,"note":""},{"name":"projectId","type":"String","list":false,"optional":true,"note":""},{"name":"activityType","type":"String","list":false,"optional":false,"note":"\"project\" | \"personal\" | \"meeting\" | \"training\" | \"support\" | \"other\"","default":"\"project\""},{"name":"scheduledDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"dueDate","type":"DateTime","list":false,"optional":true,"note":""},{"name":"completedDate","type":"DateTime","list":false,"optional":true,"note":""},{"name":"estimatedHours","type":"Decimal","list":false,"optional":false,"note":"","db":"Decimal(5, 2)"},{"name":"actualHours","type":"Decimal","list":false,"optional":false,"note":"","default":"0","db":"Decimal(5, 2)"},{"name":"status","type":"String","list":false,"optional":false,"note":"\"pending\" | \"in_progress\" | \"completed\" | \"cancelled\" | \"blocked\"","default":"\"pending\""},{"name":"priority","type":"String","list":false,"optional":false,"note":"\"low\" | \"medium\" | \"high\" | \"urgent\"","default":"\"medium\""},{"name":"comments","type":"String","list":false,"optional":true,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[["consultantId"],["projectId"],["scheduledDate"]],"uniques":[],"pk":null},"CustomHoliday":{"name":"CustomHoliday","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"name","type":"String","list":false,"optional":false,"note":""},{"name":"date","type":"DateTime","list":false,"optional":false,"note":""},{"name":"country","type":"String","list":false,"optional":false,"note":"\"All\" indica global/corporativo, o un país específico (\"Colombia\", \"Peru\", etc.)","default":"\"All\""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"},{"name":"updatedAt","type":"DateTime","list":false,"optional":false,"note":"","updatedAt":true}],"indexes":[],"uniques":[["date","country"]],"pk":null},"ApprovalDelegation":{"name":"ApprovalDelegation","note":"","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"projectId","type":"String","list":false,"optional":false,"note":""},{"name":"fromUserEmail","type":"String","list":false,"optional":false,"note":""},{"name":"toUserEmail","type":"String","list":false,"optional":false,"note":""},{"name":"startDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"endDate","type":"DateTime","list":false,"optional":false,"note":""},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["projectId"],["fromUserEmail"],["toUserEmail"]],"uniques":[],"pk":null},"JobRun":{"name":"JobRun","note":"Rastro PERSISTENTE de cada ejecución de un trabajo periódico.  Existe porque el resultado del ciclo vivía solo en una variable de módulo (`jobs.service.ts`) y el plan free de Render duerme el servicio a los 15 minutos de inactividad: tras cada siesta esa evidencia desaparecía y no había forma de responder \"¿cuándo fue la última vez que esto corrió?\".  La tabla NO crece sin límite: `job-runs.service.ts` purga, después de cada inserción, todo lo que exceda las últimas N ejecuciones de ese mismo trabajo (ver RETENCION_POR_TRABAJO). Con los trabajos vigilados de hoy el techo es de unos pocos cientos de filas.","fields":[{"name":"id","type":"String","list":false,"optional":false,"note":"","id":true,"default":"cuid()"},{"name":"jobName","type":"String","list":false,"optional":false,"note":"Nombre del trabajo: \"assignment-maintenance\", \"alert-engine\", \"fx-sync\"."},{"name":"origin","type":"String","list":false,"optional":false,"note":"De dónde salió la ejecución: \"arranque\" | \"intervalo\" | \"http\"."},{"name":"startedAt","type":"DateTime","list":false,"optional":false,"note":""},{"name":"finishedAt","type":"DateTime","list":false,"optional":false,"note":""},{"name":"durationMs","type":"Int","list":false,"optional":false,"note":""},{"name":"ok","type":"Boolean","list":false,"optional":false,"note":""},{"name":"error","type":"String","list":false,"optional":true,"note":"Mensaje del error cuando `ok = false`. Nunca lleva el stack."},{"name":"createdAt","type":"DateTime","list":false,"optional":false,"note":"","default":"now()"}],"indexes":[["jobName","startedAt"],["jobName","ok","startedAt"]],"uniques":[],"pk":null}},"enums":{"TimeEntryStatus":{"name":"TimeEntryStatus","values":[{"v":"PENDING","note":""},{"v":"APPROVED","note":""},{"v":"REJECTED","note":""}],"note":""},"TimeEntrySource":{"name":"TimeEntrySource","values":[{"v":"MANUAL","note":""},{"v":"TIMESHEET","note":""},{"v":"TIMER","note":"Historico: el cronometro escribia TIMER hasta el 2026-09-30. Ahora produce TIMESHEET, porque es una forma de rellenar el timesheet y sus horas cuentan en el informe igual que las demas. No quedan filas con este valor; se conserva en el enum porque quitarlo en Postgres obliga a recrear el tipo."}],"note":"Origen del registro de horas: formulario clasico, grilla semanal (timesheet) o cronometro en vivo (tracker)."},"AppRole":{"name":"AppRole","values":[{"v":"ADMIN","note":""},{"v":"PM","note":""},{"v":"CONSULTANT","note":""},{"v":"FINANCE","note":""},{"v":"VIEWER","note":""}],"note":""},"ProjectType":{"name":"ProjectType","values":[{"v":"FIXED_PRICE","note":"Llave en mano: precio fijo contractual"},{"v":"TIME_AND_MATERIAL","note":"Bolsa de horas: factura por horas consumidas"},{"v":"STAFFING","note":"Staffing: tarifa mensual por recurso asignado"}],"note":""},"ProjectStatus":{"name":"ProjectStatus","values":[{"v":"ACTIVE","note":""},{"v":"PAUSED","note":""},{"v":"CLOSED","note":""}],"note":""},"FxRateType":{"name":"FxRateType","values":[{"v":"SPOT","note":"Tasa puntual del día"},{"v":"AVERAGE","note":"Promedio del período (mensual/trimestral)"},{"v":"BUDGET","note":"Tasa presupuestada al inicio del año fiscal"}],"note":""},"AssignmentStatus":{"name":"AssignmentStatus","values":[{"v":"PLANNED","note":"Confirmada para el futuro"},{"v":"ACTIVE","note":"En ejecución"},{"v":"PARTIAL","note":"Asignación parcial activa"},{"v":"COMPLETED","note":"Terminada normalmente"},{"v":"CANCELLED","note":"Cancelada antes de iniciar"}],"note":""},"AllocationMode":{"name":"AllocationMode","values":[{"v":"PERCENTAGE","note":"% de capacidad total"},{"v":"HOURS","note":"Horas fijas por semana/mes"}],"note":""},"BlockType":{"name":"BlockType","values":[{"v":"VACATION","note":""},{"v":"SICK_LEAVE","note":""},{"v":"NATIONAL_HOLIDAY","note":""},{"v":"INTERNAL_BENCH","note":""},{"v":"TRAINING","note":""},{"v":"OTHER","note":""}],"note":""},"AlertSeverity":{"name":"AlertSeverity","values":[{"v":"INFO","note":""},{"v":"WARNING","note":""},{"v":"CRITICAL","note":""}],"note":""},"HealthStatus":{"name":"HealthStatus","values":[{"v":"GREEN","note":""},{"v":"YELLOW","note":""},{"v":"RED","note":""}],"note":""},"ProjectPhase":{"name":"ProjectPhase","values":[{"v":"INITIATION","note":""},{"v":"PLANNING","note":""},{"v":"EXECUTION","note":""},{"v":"MONITORING","note":""},{"v":"CLOSING","note":""}],"note":""},"MilestoneStatus":{"name":"MilestoneStatus","values":[{"v":"PENDING","note":""},{"v":"IN_PROGRESS","note":""},{"v":"COMPLETED","note":""},{"v":"DELAYED","note":""},{"v":"CANCELLED","note":""}],"note":""},"RiskStatus":{"name":"RiskStatus","values":[{"v":"OPEN","note":""},{"v":"MITIGATED","note":""},{"v":"ACCEPTED","note":""},{"v":"CLOSED","note":""}],"note":""},"IssueSeverity":{"name":"IssueSeverity","values":[{"v":"LOW","note":""},{"v":"MEDIUM","note":""},{"v":"HIGH","note":""},{"v":"CRITICAL","note":""}],"note":""},"IssueStatus":{"name":"IssueStatus","values":[{"v":"OPEN","note":""},{"v":"IN_PROGRESS","note":""},{"v":"RESOLVED","note":""},{"v":"CLOSED","note":""}],"note":""},"ChangeRequestType":{"name":"ChangeRequestType","values":[{"v":"SCOPE","note":""},{"v":"BUDGET","note":""},{"v":"SCHEDULE","note":""},{"v":"RESOURCE","note":""},{"v":"OTHER","note":""}],"note":""},"ChangeRequestStatus":{"name":"ChangeRequestStatus","values":[{"v":"PENDING","note":""},{"v":"APPROVED","note":""},{"v":"REJECTED","note":""},{"v":"WITHDRAWN","note":""}],"note":""},"AlertType":{"name":"AlertType","values":[{"v":"BUDGET_WARNING","note":""},{"v":"BUDGET_EXCEEDED","note":""},{"v":"MARGIN_BELOW_THRESHOLD","note":""},{"v":"ASSIGNMENT_ENDING","note":""},{"v":"CONSULTANT_OVERLOADED","note":""},{"v":"FORECAST_DEVIATION","note":""},{"v":"FX_RATE_MISSING","note":""}],"note":""},"FinancialEntryType":{"name":"FinancialEntryType","values":[{"v":"EXPENSE","note":""},{"v":"REVENUE","note":""}],"note":""},"ExtraHourStatus":{"name":"ExtraHourStatus","values":[{"v":"PENDING_PM","note":""},{"v":"PENDING_FINANCE","note":"OBSOLETO desde `20260930120000_aprobacion_unica_pm`. La aprobación de Finanzas dejó de existir: el PM aprueba y la solicitud queda APPROVED. El valor se conserva —sin producirse nunca— porque el histórico de `AuditLog` lo guarda dentro de `before`/`after` para siempre y quitarlo dejaría esos registros sin un estado legible. No escribir filas con él."},{"v":"APPROVED","note":""},{"v":"REJECTED","note":""}],"note":""}},"relations":[{"from":"TimeEntry","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"TimeEntry","fk":"consultantId","to":"Consultant","optional":false,"onDelete":"Restrict","unique":false},{"from":"TimeEntry","fk":"activityId","to":"Activity","optional":true,"onDelete":"SetNull","unique":false},{"from":"RunningTimer","fk":"consultantId","to":"Consultant","optional":false,"onDelete":"Cascade","unique":true},{"from":"RunningTimer","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"RunningTimer","fk":"activityId","to":"Activity","optional":true,"onDelete":"SetNull","unique":false},{"from":"FinancialEntry","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"Forecast","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"Forecast","fk":"consultantId","to":"Consultant","optional":false,"onDelete":"Restrict","unique":false},{"from":"UserRole","fk":"userId","to":"User","optional":false,"onDelete":"Cascade","unique":false},{"from":"UserRole","fk":"roleId","to":"Role","optional":false,"onDelete":"Cascade","unique":false},{"from":"Assignment","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"Assignment","fk":"consultantId","to":"Consultant","optional":false,"onDelete":"Restrict","unique":false},{"from":"ConsultantBlock","fk":"consultantId","to":"Consultant","optional":false,"onDelete":"Cascade","unique":false},{"from":"CapacityConfig","fk":"consultantId","to":"Consultant","optional":true,"onDelete":"Cascade","unique":true},{"from":"MonthlySnapshot","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"Alert","fk":"projectId","to":"Project","optional":true,"onDelete":"Cascade","unique":false},{"from":"Alert","fk":"consultantId","to":"Consultant","optional":true,"onDelete":"Cascade","unique":false},{"from":"Milestone","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"Risk","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"Issue","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"ChangeRequest","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false},{"from":"ExtraHourEntry","fk":"consultantId","to":"Consultant","optional":false,"onDelete":"Restrict","unique":false},{"from":"ExtraHourEntry","fk":"projectId","to":"Project","optional":true,"onDelete":"SetNull","unique":false},{"from":"Estimation","fk":"projectId","to":"Project","optional":true,"onDelete":"SetNull","unique":false},{"from":"Activity","fk":"consultantId","to":"Consultant","optional":false,"onDelete":"Cascade","unique":false},{"from":"Activity","fk":"projectId","to":"Project","optional":true,"onDelete":"SetNull","unique":false},{"from":"ApprovalDelegation","fk":"projectId","to":"Project","optional":false,"onDelete":"Cascade","unique":false}],"supabase":{"file":"ddl_supabase_2026-10-05.sql","date":"2026-10-05","tables":{"Activity":{"id":{"type":"text","notNull":true},"title":{"type":"text","notNull":true},"description":{"type":"text","notNull":false},"consultantId":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":false},"activityType":{"type":"text","notNull":true},"scheduledDate":{"type":"timestamp(3)","notNull":true},"dueDate":{"type":"timestamp(3)","notNull":false},"completedDate":{"type":"timestamp(3)","notNull":false},"estimatedHours":{"type":"numeric(5,2)","notNull":true},"actualHours":{"type":"numeric(5,2)","notNull":true},"status":{"type":"text","notNull":true},"priority":{"type":"text","notNull":true},"comments":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"Alert":{"id":{"type":"text","notNull":true},"type":{"type":"AlertType","notNull":true},"severity":{"type":"AlertSeverity","notNull":true},"projectId":{"type":"text","notNull":false},"consultantId":{"type":"text","notNull":false},"message":{"type":"text","notNull":true},"metadata":{"type":"jsonb","notNull":false},"resolvedAt":{"type":"timestamp(3)","notNull":false},"resolvedBy":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true}},"ApprovalDelegation":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"fromUserEmail":{"type":"text","notNull":true},"toUserEmail":{"type":"text","notNull":true},"startDate":{"type":"timestamp(3)","notNull":true},"endDate":{"type":"timestamp(3)","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true}},"Assignment":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"consultantId":{"type":"text","notNull":true},"startDate":{"type":"timestamp(3)","notNull":true},"endDate":{"type":"timestamp(3)","notNull":true},"allocationMode":{"type":"AllocationMode","notNull":true},"allocationPct":{"type":"numeric(5,2)","notNull":false},"hoursPerPeriod":{"type":"numeric(8,2)","notNull":false},"periodUnit":{"type":"text","notNull":false},"status":{"type":"AssignmentStatus","notNull":true},"role":{"type":"text","notNull":false},"note":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"AuditLog":{"id":{"type":"text","notNull":true},"entity":{"type":"text","notNull":true},"entityId":{"type":"text","notNull":true},"action":{"type":"text","notNull":true},"changedBy":{"type":"text","notNull":true},"before":{"type":"jsonb","notNull":false},"after":{"type":"jsonb","notNull":false},"diff":{"type":"jsonb","notNull":false},"ipAddress":{"type":"text","notNull":false},"userAgent":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true}},"CapacityConfig":{"id":{"type":"text","notNull":true},"consultantId":{"type":"text","notNull":false},"country":{"type":"text","notNull":false},"hoursPerDay":{"type":"numeric(4,2)","notNull":true},"workDaysPerWeek":{"type":"integer","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"ChangeRequest":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"title":{"type":"text","notNull":true},"description":{"type":"text","notNull":true},"type":{"type":"ChangeRequestType","notNull":true},"impactScope":{"type":"text","notNull":false},"impactBudget":{"type":"numeric(14,2)","notNull":false},"impactDays":{"type":"integer","notNull":false},"requestedBy":{"type":"text","notNull":true},"reviewedBy":{"type":"text","notNull":false},"status":{"type":"ChangeRequestStatus","notNull":true},"resolvedAt":{"type":"timestamp(3)","notNull":false},"resolution":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"Consultant":{"id":{"type":"text","notNull":true},"fullName":{"type":"text","notNull":true},"email":{"type":"text","notNull":false},"role":{"type":"text","notNull":true},"hourlyRate":{"type":"numeric(14,2)","notNull":false},"rateCurrency":{"type":"text","notNull":true},"country":{"type":"text","notNull":false},"costPerMonth":{"type":"numeric(14,2)","notNull":false},"skills":{"type":"text[]","notNull":false},"seniority":{"type":"text","notNull":false},"maxHoursPerDay":{"type":"numeric(4,2)","notNull":false},"active":{"type":"boolean","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true},"identification":{"type":"text","notNull":false},"allowWeekendWork":{"type":"boolean","notNull":true},"isInternal":{"type":"boolean","notNull":true},"company":{"type":"text","notNull":false}},"ConsultantBlock":{"id":{"type":"text","notNull":true},"consultantId":{"type":"text","notNull":true},"startDate":{"type":"timestamp(3)","notNull":true},"endDate":{"type":"timestamp(3)","notNull":true},"blockType":{"type":"BlockType","notNull":true},"note":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true}},"CustomHoliday":{"id":{"type":"text","notNull":true},"name":{"type":"text","notNull":true},"date":{"type":"timestamp(3)","notNull":true},"country":{"type":"text","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"Estimation":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":false},"projectName":{"type":"text","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"totalIdealHours":{"type":"numeric(10,2)","notNull":true},"totalAdjustedHours":{"type":"numeric(10,2)","notNull":true},"bufferPercentage":{"type":"numeric(5,2)","notNull":true},"riskLevel":{"type":"text","notNull":true},"confidenceLevel":{"type":"numeric(5,2)","notNull":true},"rawDataJson":{"type":"text","notNull":true}},"Expense":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"expenseDate":{"type":"timestamp(3)","notNull":true},"category":{"type":"text","notNull":true},"amount":{"type":"numeric(14,2)","notNull":true},"currency":{"type":"text","notNull":true},"description":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"ExtraHourEntry":{"id":{"type":"text","notNull":true},"consultantId":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":false},"date":{"type":"timestamp(3)","notNull":true},"startTime":{"type":"text","notNull":true},"endTime":{"type":"text","notNull":true},"diurnal":{"type":"numeric(6,2)","notNull":true},"nocturnal":{"type":"numeric(6,2)","notNull":true},"diurnalHoliday":{"type":"numeric(6,2)","notNull":true},"nocturnalHoliday":{"type":"numeric(6,2)","notNull":true},"totalHours":{"type":"numeric(6,2)","notNull":true},"diurnalAmount":{"type":"numeric(14,2)","notNull":true},"nocturnalAmount":{"type":"numeric(14,2)","notNull":true},"diurnalHolidayAmount":{"type":"numeric(14,2)","notNull":true},"nocturnalHolidayAmount":{"type":"numeric(14,2)","notNull":true},"totalAmount":{"type":"numeric(14,2)","notNull":true},"observations":{"type":"text","notNull":false},"status":{"type":"ExtraHourStatus","notNull":true},"approvedBy":{"type":"text","notNull":false},"approvedAt":{"type":"timestamp(3)","notNull":false},"rejectionNote":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"ExtraHoursConfig":{"id":{"type":"text","notNull":true},"weeklyExtraHoursLimit":{"type":"numeric(5,2)","notNull":true},"diurnalMultiplier":{"type":"numeric(4,2)","notNull":true},"nocturnalMultiplier":{"type":"numeric(4,2)","notNull":true},"diurnalHolidayMultiplier":{"type":"numeric(4,2)","notNull":true},"nocturnalHolidayMultiplier":{"type":"numeric(4,2)","notNull":true},"diurnalStart":{"type":"text","notNull":true},"diurnalEnd":{"type":"text","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true},"country":{"type":"text","notNull":true},"monthlyDivisor":{"type":"numeric(5,2)","notNull":true}},"Forecast":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"consultantId":{"type":"text","notNull":true},"startDate":{"type":"text","notNull":true},"endDate":{"type":"text","notNull":true},"hoursProjected":{"type":"numeric(10,2)","notNull":true},"hourlyRate":{"type":"numeric(14,2)","notNull":false},"sellRate":{"type":"numeric(14,2)","notNull":false},"currency":{"type":"text","notNull":true},"note":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"FxConfig":{"id":{"type":"text","notNull":true},"baseCode":{"type":"text","notNull":true},"quoteCode":{"type":"text","notNull":true},"rate":{"type":"numeric(18,6)","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"FxRateHistory":{"id":{"type":"text","notNull":true},"baseCode":{"type":"text","notNull":true},"quoteCode":{"type":"text","notNull":true},"rate":{"type":"numeric(18,6)","notNull":true},"effectiveDate":{"type":"timestamp(3)","notNull":true},"rateType":{"type":"FxRateType","notNull":true},"source":{"type":"text","notNull":false},"createdBy":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true}},"Issue":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"title":{"type":"text","notNull":true},"description":{"type":"text","notNull":false},"severity":{"type":"IssueSeverity","notNull":true},"owner":{"type":"text","notNull":false},"status":{"type":"IssueStatus","notNull":true},"resolvedAt":{"type":"timestamp(3)","notNull":false},"resolution":{"type":"text","notNull":false},"createdBy":{"type":"text","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"Milestone":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"name":{"type":"text","notNull":true},"description":{"type":"text","notNull":false},"plannedDate":{"type":"timestamp(3)","notNull":true},"actualDate":{"type":"timestamp(3)","notNull":false},"weight":{"type":"numeric(5,2)","notNull":true},"status":{"type":"MilestoneStatus","notNull":true},"deliverable":{"type":"text","notNull":false},"acceptedBy":{"type":"text","notNull":false},"note":{"type":"text","notNull":false},"createdBy":{"type":"text","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"MonthlySnapshot":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"year":{"type":"integer","notNull":true},"month":{"type":"integer","notNull":true},"baseCurrency":{"type":"text","notNull":true},"laborCostActual":{"type":"numeric(18,4)","notNull":true},"expensesActual":{"type":"numeric(18,4)","notNull":true},"totalCostActual":{"type":"numeric(18,4)","notNull":true},"revenueRecognized":{"type":"numeric(18,4)","notNull":true},"contractValue":{"type":"numeric(18,4)","notNull":true},"grossMargin":{"type":"numeric(18,4)","notNull":true},"grossMarginPct":{"type":"numeric(8,4)","notNull":true},"hoursApproved":{"type":"numeric(10,2)","notNull":true},"fxSnapshotJson":{"type":"jsonb","notNull":true},"closedBy":{"type":"text","notNull":true},"closedAt":{"type":"timestamp(3)","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true}},"Project":{"id":{"type":"text","notNull":true},"name":{"type":"text","notNull":true},"company":{"type":"text","notNull":true},"country":{"type":"text","notNull":true},"currency":{"type":"text","notNull":true},"budget":{"type":"numeric(14,2)","notNull":true},"startDate":{"type":"timestamp(3)","notNull":true},"endDate":{"type":"timestamp(3)","notNull":true},"description":{"type":"text","notNull":false},"projectType":{"type":"ProjectType","notNull":true},"status":{"type":"ProjectStatus","notNull":true},"sellPrice":{"type":"numeric(14,2)","notNull":false},"sellCurrency":{"type":"text","notNull":true},"marginThreshold":{"type":"numeric(5,2)","notNull":false},"budgetAlertPct":{"type":"numeric(5,2)","notNull":true},"healthStatus":{"type":"HealthStatus","notNull":true},"completionPct":{"type":"numeric(5,2)","notNull":false},"phase":{"type":"ProjectPhase","notNull":true},"projectManagerEmail":{"type":"text","notNull":false},"baselineBudget":{"type":"numeric(14,2)","notNull":false},"baselineStartDate":{"type":"timestamp(3)","notNull":false},"baselineEndDate":{"type":"timestamp(3)","notNull":false},"baselineSetAt":{"type":"timestamp(3)","notNull":false},"baselineSetBy":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true},"allowExtraHours":{"type":"boolean","notNull":true}},"RevenueEntry":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"entryDate":{"type":"timestamp(3)","notNull":true},"amount":{"type":"numeric(14,2)","notNull":true},"currency":{"type":"text","notNull":true},"description":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"Risk":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"title":{"type":"text","notNull":true},"description":{"type":"text","notNull":false},"probability":{"type":"integer","notNull":true},"impact":{"type":"integer","notNull":true},"riskScore":{"type":"integer","notNull":true},"category":{"type":"text","notNull":false},"owner":{"type":"text","notNull":false},"mitigationPlan":{"type":"text","notNull":false},"contingencyPlan":{"type":"text","notNull":false},"status":{"type":"RiskStatus","notNull":true},"identifiedAt":{"type":"timestamp(3)","notNull":true},"resolvedAt":{"type":"timestamp(3)","notNull":false},"createdBy":{"type":"text","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"Role":{"id":{"type":"text","notNull":true},"name":{"type":"AppRole","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"TimeEntry":{"id":{"type":"text","notNull":true},"projectId":{"type":"text","notNull":true},"consultantId":{"type":"text","notNull":true},"workDate":{"type":"timestamp(3)","notNull":true},"hours":{"type":"numeric(8,2)","notNull":true},"note":{"type":"text","notNull":false},"status":{"type":"TimeEntryStatus","notNull":true},"approvedBy":{"type":"text","notNull":false},"approvedAt":{"type":"timestamp(3)","notNull":false},"rejectionNote":{"type":"text","notNull":false},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true}},"User":{"id":{"type":"text","notNull":true},"email":{"type":"text","notNull":true},"displayName":{"type":"text","notNull":true},"microsoftOid":{"type":"text","notNull":false},"active":{"type":"boolean","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true},"updatedAt":{"type":"timestamp(3)","notNull":true},"bio":{"type":"text","notNull":false},"photoUrl":{"type":"text","notNull":false},"phrase":{"type":"text","notNull":false},"skills":{"type":"text[]","notNull":false},"country":{"type":"text","notNull":false}},"UserRole":{"userId":{"type":"text","notNull":true},"roleId":{"type":"text","notNull":true},"createdAt":{"type":"timestamp(3)","notNull":true}},"_prisma_migrations":{"id":{"type":"charactervarying(36)","notNull":true},"checksum":{"type":"charactervarying(64)","notNull":true},"finished_at":{"type":"timestampwithtimezone","notNull":false},"migration_name":{"type":"charactervarying(255)","notNull":true},"logs":{"type":"text","notNull":false},"rolled_back_at":{"type":"timestampwithtimezone","notNull":false},"started_at":{"type":"timestampwithtimezone","notNull":true},"applied_steps_count":{"type":"integer","notNull":true}}},"enums":["AlertSeverity","AlertType","AllocationMode","AppRole","AssignmentStatus","BlockType","ChangeRequestStatus","ChangeRequestType","ExtraHourStatus","FxRateType","HealthStatus","IssueSeverity","IssueStatus","MilestoneStatus","ProjectPhase","ProjectStatus","ProjectType","RiskStatus","TimeEntryStatus"],"rls":[],"anonGrants":28}};
+
+const GROUPS = [
+  ["Proyectos", ["Project", "Milestone", "Risk", "Issue", "ChangeRequest"]],
+  ["Horas y actividades", ["TimeEntry", "RunningTimer", "Activity", "ExtraHourEntry", "ExtraHoursConfig", "ApprovalDelegation"]],
+  ["Equipo y capacidad", ["Consultant", "Assignment", "ConsultantBlock", "CapacityConfig", "CustomHoliday"]],
+  ["Finanzas y moneda", ["FinancialEntry", "Forecast", "MonthlySnapshot", "Estimation", "FxConfig", "FxRateHistory"]],
+  ["Usuarios y acceso", ["User", "Role", "UserRole"]],
+  ["Sistema", ["Alert", "AuditLog", "JobRun"]],
+];
+
+const DESC = {
+  Project: "Proyecto de consultoría: cliente, presupuesto, precio de venta, fechas, estado y salud. Es el centro del modelo; casi todas las tablas cuelgan de aquí.",
+  Milestone: "Hitos del proyecto, con fecha planificada, fecha real y peso en el avance.",
+  Risk: "Riesgos del proyecto con probabilidad, impacto, puntaje y planes de mitigación y contingencia.",
+  Issue: "Problemas abiertos del proyecto, su severidad y cómo se resolvieron.",
+  ChangeRequest: "Solicitudes de cambio de alcance, presupuesto o plazo, con su impacto y la decisión tomada.",
+  TimeEntry: "Horas que un consultor registra en un proyecto. Pasan por aprobación: pendiente, luego aprobada o rechazada.",
+  RunningTimer: "Cronómetro en marcha. Cada consultor puede tener uno solo; al detenerlo se convierte en un registro de horas.",
+  Activity: "Tareas planificadas de un consultor, ligadas o no a un proyecto, con horas estimadas y reales.",
+  ExtraHourEntry: "Solicitud de horas extra con el desglose diurno, nocturno y festivo y su monto a pagar. La aprueba el PM.",
+  ExtraHoursConfig: "Reglas de recargo de horas extra por país: multiplicadores, franja diurna y divisor mensual.",
+  ApprovalDelegation: "Delegación temporal: un PM cede su facultad de aprobar en un proyecto a otra persona.",
+  Consultant: "Ficha de cada consultor: tarifa, costo mensual, país, moneda y habilidades. Guarda datos salariales sensibles.",
+  Assignment: "Asignación de un consultor a un proyecto durante un rango de fechas, por porcentaje o por horas.",
+  ConsultantBlock: "Periodos en que un consultor no está disponible: vacaciones, incapacidad, formación, banca.",
+  CapacityConfig: "Horas por día y días por semana, definidos por consultor o por país.",
+  CustomHoliday: "Festivos corporativos o por país que se suman a los que el sistema calcula solo.",
+  FinancialEntry: "Gastos e ingresos del proyecto en una sola tabla; el campo type indica cuál es cuál.",
+  Forecast: "Pronóstico de horas de un consultor en un proyecto para un rango de fechas, con costo y tarifa de venta.",
+  MonthlySnapshot: "Cierre mensual: la foto financiera congelada de un proyecto en un mes. No debería cambiar nunca.",
+  Estimation: "Estimaciones guardadas desde la calculadora; el detalle completo va como texto JSON.",
+  FxConfig: "Tasas de cambio vigentes entre pares de monedas. Todas las conversiones las usan.",
+  FxRateHistory: "Historial de tasas de cambio con fecha efectiva.",
+  User: "Persona que inicia sesión con Microsoft. Se crea sola en el primer login.",
+  Role: "Catálogo de los cinco roles: ADMIN, PM, CONSULTANT, FINANCE y VIEWER.",
+  UserRole: "Qué roles tiene cada usuario. Tabla intermedia entre User y Role.",
+  Alert: "Alertas que genera el motor automático: presupuesto, margen, sobrecarga, tasa faltante.",
+  AuditLog: "Registro de auditoría: quién cambió qué y cuándo, con el antes y el después.",
+  JobRun: "Historial de ejecuciones de los trabajos automáticos (alertas, asignaciones, tasas de cambio).",
+};
+
+// Hallazgos del code review del 2026-10-05 (documentacion/codereview_2026-10-05.md) que tocan cada tabla.
+const FIND = {
+  Project: [["BD-01", "crit", "Borrarlo borra en cascada horas, gastos, ingresos, forecasts, asignaciones y cierres mensuales."], ["SEG-04", "crit", "Un CONSULTANT recibe budget, sellPrice y marginThreshold por la API."], ["BD-06", "med", "Sin índice por status ni por projectManagerEmail, que se usan en filtros."]],
+  TimeEntry: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto, incluidas las horas aprobadas."], ["BE-07", "med", "hours no tiene tope: se pueden registrar cientos de horas en un día."], ["BD-06", "med", "Falta el índice compuesto (projectId, status, workDate)."]],
+  MonthlySnapshot: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto."], ["BD-02", "high", "Nada en la base de datos impide modificarlo o borrarlo."], ["BD-05", "med", "month no tiene restricción 1..12."]],
+  FinancialEntry: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto."], ["BE-02", "high", "Se puede crear o borrar en un mes ya cerrado."], ["BD-06", "med", "Falta el índice compuesto (projectId, type, entryDate)."]],
+  Forecast: [["SEG-05", "high", "La API entrega hourlyRate y sellRate a VIEWER."], ["BD-05", "med", "startDate y endDate son texto con valor por defecto vacío, no fechas."], ["BD-01", "crit", "Se borra en cascada al borrar el proyecto."]],
+  Consultant: [["SEG-02", "crit", "hourlyRate, costPerMonth e identification se filtran a otros consultores por la API."], ["BD-04", "med", "email no es único: el sistema ya crea fichas duplicadas."], ["BD-05", "med", "seniority es texto libre en lugar de lista fija."]],
+  ExtraHourEntry: [["NEG-01", "crit", "No guarda su moneda: el consolidado de nómina la deduce del consultor actual."], ["BD-03", "med", "Hay filas APPROVED con approvedBy vacío tras la migración de aprobación única."], ["BD-05", "med", "startTime y endTime son texto sin validación de formato."], ["BD-06", "med", "Faltan índices (consultantId, date) y (status, date)."]],
+  ExtraHoursConfig: [["SEG-07", "high", "PM y FINANCE pueden cambiar los multiplicadores sin dejar auditoría."], ["NEG-03", "high", "Parte de los recargos legales están fijos en el código e ignoran esta tabla."]],
+  CustomHoliday: [["SEG-07", "high", "Un PM puede crear festivos globales sin auditoría; suben el recargo de horas extra."]],
+  Assignment: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto."], ["BD-05", "med", "periodUnit es texto libre (\"week\" | \"month\")."]],
+  FxConfig: [["BD-04", "med", "Sin unicidad por par de monedas: puede haber dos tasas para el mismo par."], ["SEG-08", "high", "FINANCE la modifica sin auditoría."]],
+  FxRateHistory: [["BD-04", "med", "Sin unicidad por par y fecha: un reintento duplica el historial."], ["NEG-06", "med", "Ningún cálculo la usa; el costo pasado se convierte con la tasa de hoy."]],
+  ApprovalDelegation: [["BD-05", "med", "Usa correos sin clave foránea a User y no valida que startDate ≤ endDate."], ["BE-12", "med", "La delegación vence al empezar su último día, no al terminarlo."]],
+  Activity: [["BD-05", "med", "activityType, status y priority son texto libre."], ["BD-07", "low", "Se borra en cascada al borrar el consultor."]],
+  Estimation: [["BD-05", "low", "rawDataJson es texto en lugar de JSON."]],
+  User: [["SEG-10", "med", "microsoftOid existe pero nunca se compara; la identidad depende del correo."]],
+  Milestone: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto."]],
+  Risk: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto."]],
+  Issue: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto."]],
+  ChangeRequest: [["BD-01", "crit", "Se borra en cascada al borrar el proyecto."]],
+  RunningTimer: [["BE-07", "med", "startedAt solo se valida contra el futuro: un inicio de hace un mes genera cientos de horas."]],
+};
+const SEV_ORDER = { crit: 0, high: 1, med: 2, low: 3 };
+const SEV_LABEL = { crit: "Crítica", high: "Alta", med: "Media", low: "Baja" };
+
+const SENSITIVE = {
+  Consultant: ["hourlyRate", "costPerMonth", "identification"],
+  Forecast: ["hourlyRate", "sellRate"],
+  Project: ["budget", "sellPrice", "marginThreshold", "baselineBudget"],
+  ExtraHourEntry: ["diurnalAmount", "nocturnalAmount", "diurnalHolidayAmount", "nocturnalHolidayAmount", "totalAmount"],
+  MonthlySnapshot: ["laborCostActual", "grossMargin", "grossMarginPct"],
+};
+
+const OD_TEXT = {
+  Cascade: "Se borran también estas filas.",
+  Restrict: "La base de datos impide borrar el padre mientras existan filas.",
+  SetNull: "La fila se conserva y la columna queda vacía.",
+};
+const ACCOUNTING = new Set(["TimeEntry", "FinancialEntry", "MonthlySnapshot", "Forecast", "Assignment", "ExtraHourEntry"]);
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const M = S.models;
+const groupOf = {};
+GROUPS.forEach(([g, ts]) => ts.forEach((t) => (groupOf[t] = g)));
+
+function pgType(f) {
+  let t;
+  if (S.enums[f.type]) t = `"${f.type}"`;
+  else switch (f.type) {
+    case "String": t = "text"; break;
+    case "Decimal": t = f.db && f.db.startsWith("Decimal") ? "numeric" + f.db.slice(7) : "numeric(65,30)"; break;
+    case "DateTime": t = "timestamp(3)"; break;
+    case "Int": t = "integer"; break;
+    case "Boolean": t = "boolean"; break;
+    case "Json": t = "jsonb"; break;
+    default: t = f.type;
+  }
+  return t + (f.list ? "[]" : "");
+}
+function fmtDefault(f) {
+  if (f.updatedAt) return "se actualiza solo";
+  if (f.default == null) return "";
+  if (f.default === "cuid()") return "cuid() — id generado";
+  return f.default;
+}
+const outRels = (t) => S.relations.filter((r) => r.from === t);
+const inRels = (t) => S.relations.filter((r) => r.to === t);
+function maxSev(t) {
+  const f = FIND[t]; if (!f) return null;
+  return f.map((x) => x[1]).sort((a, b) => SEV_ORDER[a] - SEV_ORDER[b])[0];
+}
+
+/* ── Comparación con el DDL de Supabase ── */
+const SB = S.supabase;
+const normType = (s) => s.replace(/"/g, "").replace(/\s/g, "");
+// Estado de cada columna esperada frente a la base real: null si no hay DDL.
+function colStatus(t, f) {
+  if (!SB) return null;
+  const tbl = SB.tables[t];
+  if (!tbl) return { k: "missing", txt: "tabla ausente" };
+  const real = tbl[f.name];
+  if (!real) return { k: "missing", txt: "falta" };
+  const diffs = [];
+  if (normType(pgType(f)) !== real.type) diffs.push(`tipo ${real.type}`);
+  const expectNotNull = !f.optional && !f.list;
+  if (expectNotNull !== real.notNull) diffs.push(real.notNull ? "NOT NULL" : "admite vacío");
+  return diffs.length ? { k: "diff", txt: diffs.join(", ") } : { k: "ok", txt: "igual" };
+}
+function tableStatus(t) {
+  if (!SB) return null;
+  if (!SB.tables[t]) return "missing";
+  const extra = Object.keys(SB.tables[t]).some((c) => !M[t].fields.some((f) => f.name === c));
+  return extra || M[t].fields.some((f) => colStatus(t, f).k !== "ok") ? "diff" : "ok";
+}
+function sbSummary() {
+  const missingTables = Object.keys(M).filter((t) => !SB.tables[t]);
+  const extraTables = Object.keys(SB.tables).filter((t) => !M[t] && t !== "_prisma_migrations");
+  const cols = [];
+  for (const t of Object.keys(M)) {
+    if (!SB.tables[t]) continue;
+    for (const f of M[t].fields) { const s = colStatus(t, f); if (s.k !== "ok") cols.push({ t, c: f.name, ...s }); }
+    for (const c of Object.keys(SB.tables[t])) if (!M[t].fields.some((f) => f.name === c)) cols.push({ t, c, k: "extra", txt: "sobra: el código ya no la usa" });
+  }
+  const missingEnums = Object.keys(S.enums).filter((e) => !SB.enums.includes(e));
+  const openRls = SB.rls.length === 0 && SB.anonGrants > 0;
+  return { missingTables, extraTables, cols, missingEnums, openRls, total: missingTables.length + extraTables.length + cols.length + missingEnums.length };
+}
+function renderSb() {
+  const d = sbSummary();
+  const li = (x) => `<li>${x}</li>`;
+  document.getElementById("v-sb").innerHTML = `
+    <div class="sb-grid">
+      <p class="intro">Comparación entre lo que espera el código (<code>schema.prisma</code>, que coincide con las migraciones) y la estructura real de Supabase según <code>${esc(SB.file)}</code>. ${d.total ? `Hay <b>${d.total}</b> diferencias.` : "No hay diferencias de estructura."}</p>
+      ${d.openRls ? `<div class="banner crit"><b>Tablas expuestas a la API pública de Supabase</b>Ninguna tabla tiene activada la seguridad por filas (RLS) y los roles <code>anon</code> y <code>authenticated</code> tienen todos los permisos sobre ${SB.anonGrants} tablas. Cualquiera con la clave pública (anon key) del proyecto puede leer, modificar o borrar todos los datos, incluidos sueldos, por la API REST de Supabase.</div>` : ""}
+      ${d.missingTables.length || d.cols.length ? `<div class="banner high"><b>Supabase va atrasada respecto al código</b>Faltan tablas y columnas que crean migraciones que no se han aplicado. El backend actual falla al usar esas partes.</div>` : ""}
+      ${d.missingTables.length ? `<section><h3>Tablas que faltan en Supabase</h3><ul class="sb-list">${d.missingTables.map((t) => li(`<button class="chip fk" data-t="${t}">${t}</button> ${esc(DESC[t] || "")}`)).join("")}</ul></section>` : ""}
+      ${d.extraTables.length ? `<section><h3>Tablas que existen en Supabase pero no en el código</h3><ul class="sb-list">${d.extraTables.map((t) => li(`<code>${t}</code> — ${Object.keys(SB.tables[t]).length} columnas`)).join("")}</ul></section>` : ""}
+      ${d.cols.length ? `<section><h3>Columnas distintas</h3><div class="tbl-wrap"><table><thead><tr><th>Tabla</th><th>Columna</th><th>En el código</th><th>En Supabase</th></tr></thead><tbody>${d.cols.map((x) => {
+        const f = M[x.t].fields.find((ff) => ff.name === x.c);
+        const real = SB.tables[x.t][x.c];
+        return `<tr class="rel-row" data-t="${x.t}" tabindex="0"><td class="col">${x.t}</td><td class="col">${x.c}</td><td class="type">${f ? esc(pgType(f)) + (!f.optional && !f.list ? " NOT NULL" : "") : "—"}</td><td class="type">${real ? esc(real.type) + (real.notNull ? " NOT NULL" : "") : `<span class="sbchip sb-missing">falta</span>`}</td></tr>`;
+      }).join("")}</tbody></table></div></section>` : ""}
+      ${d.missingEnums.length ? `<section><h3>Enums que faltan en Supabase</h3><ul class="sb-list">${d.missingEnums.map((e) => li(`<code>${e}</code>`)).join("")}</ul></section>` : ""}
+    </div>`;
+  return d.total;
+}
+
+/* ── Diagrama entidad-relación (layout con ELK, dibujo propio en SVG) ── */
+const DOMAIN_VAR = {
+  "Proyectos": "--d-proy", "Horas y actividades": "--d-horas", "Equipo y capacidad": "--d-equipo",
+  "Finanzas y moneda": "--d-fin", "Usuarios y acceso": "--d-users", "Sistema": "--d-sis",
+};
+const ER = { mode: "keys", layouts: {}, vp: { x: 0, y: 0, k: 1 }, size: null, suppressClick: false, rendered: null };
+const ROW_H = 18, HEAD_H = 30, PAD = 10, CH = 6.75;
+const SVGNS = "http://www.w3.org/2000/svg";
+
+const shortType = (f) => pgType(f).replace(/"/g, "").replace(/\s/g, "").replace("timestamp(3)", "timestamp");
+
+function erRows(t) {
+  const m = M[t];
+  const fk = new Set(outRels(t).map((r) => r.fk));
+  const pk = new Set(m.pk || m.fields.filter((f) => f.id).map((f) => f.name));
+  const fields = ER.mode === "keys" ? m.fields.filter((f) => pk.has(f.name) || fk.has(f.name)) : m.fields;
+  return fields.map((f) => ({ name: f.name, type: shortType(f), pk: pk.has(f.name), fk: fk.has(f.name), st: colStatus(t, f) }));
+}
+function erNodeSize(t, rows) {
+  const missing = tableStatus(t) === "missing";
+  const headW = t.length * 8 + (missing ? 70 : 0) + 2 * PAD;
+  const rowW = Math.max(0, ...rows.map((r) => (r.name.length + r.type.length) * CH + 18 + 3 * PAD));
+  return { w: Math.ceil(Math.max(150, headW, rowW)), h: HEAD_H + Math.max(rows.length, 1) * ROW_H + 4 };
+}
+// Columnas del diagrama. Casi todo cuelga de dos tablas "eje" (las de más hijos): sus hijos exclusivos van
+// a los lados y los compartidos al centro. Sin eso ELK apila todo en una sola columna altísima.
+function erColumns() {
+  const kids = {};
+  S.relations.forEach((r) => (kids[r.to] ||= new Set()).add(r.from));
+  const hubs = Object.keys(kids).filter((t) => kids[t].size >= 5).sort((a, b) => kids[b].size - kids[a].size);
+  if (hubs.length !== 2) return null;
+  const [h1, h2] = hubs, col = { [h1]: 1, [h2]: 3 };
+  for (const t of Object.keys(M)) {
+    if (t in col) continue;
+    const ps = new Set(outRels(t).map((r) => r.to));
+    col[t] = ps.has(h1) && ps.has(h2) ? 2 : ps.has(h1) ? 0 : ps.has(h2) ? 4 : null;
+  }
+  // Tablas que solo dependen de otras no-eje (p. ej. TimeEntry → Activity) se colocan junto a su padre.
+  for (const t of Object.keys(M)) if (col[t] === null) {
+    const p = outRels(t).map((r) => col[r.to]).find((c) => c != null);
+    col[t] = p ?? 4;
+  }
+  return col;
+}
+// Grafo para ELK: cada fila tiene un puerto a cada lado para que las líneas salgan de la columna FK y lleguen al id del padre.
+function erGraph() {
+  const col = erColumns();
+  const children = Object.keys(M).map((t) => {
+    const rows = erRows(t), { w, h } = erNodeSize(t, rows);
+    const ports = [];
+    rows.forEach((r, i) => {
+      const y = HEAD_H + i * ROW_H + ROW_H / 2;
+      ports.push({ id: `${t}|${r.name}|E`, x: w, y, width: 0, height: 0, layoutOptions: { "elk.port.side": "EAST" } });
+      ports.push({ id: `${t}|${r.name}|W`, x: 0, y, width: 0, height: 0, layoutOptions: { "elk.port.side": "WEST" } });
+    });
+    const opts = { "elk.portConstraints": "FIXED_POS" };
+    if (col) opts["elk.partitioning.partition"] = String(col[t]);
+    return { id: t, width: w, height: h, ports, layoutOptions: opts, _rows: rows };
+  });
+  // Si el padre queda a la izquierda del hijo, la línea sale por el lado oeste del hijo y entra por el este del padre.
+  const edges = S.relations.map((r, i) => {
+    const back = col && col[r.from] > col[r.to];
+    return { id: "e" + i, sources: [`${r.from}|${r.fk}|${back ? "W" : "E"}`], targets: [`${r.to}|id|${back ? "E" : "W"}`], _r: r };
+  });
+  return {
+    id: "root",
+    layoutOptions: {
+      "elk.algorithm": "layered", "elk.direction": "RIGHT", "elk.edgeRouting": "ORTHOGONAL",
+      "elk.layered.spacing.nodeNodeBetweenLayers": "90", "elk.spacing.nodeNode": "34",
+      "elk.layered.spacing.edgeNodeBetweenLayers": "24", "elk.spacing.edgeEdge": "10", "elk.spacing.edgeNode": "18",
+      "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX", "elk.separateConnectedComponents": "true",
+      "elk.spacing.componentComponent": "60", "elk.padding": "[top=30,left=30,bottom=30,right=30]",
+      "elk.aspectRatio": "1.6", "elk.partitioning.activate": col ? "true" : "false",
+    },
+    children, edges,
+  };
+}
+
+function svgEl(tag, attrs, parent) {
+  const el = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(el);
+  return el;
+}
+// Marcadores pata de gallo, uno por regla de borrado para heredar su color. El punto (16,0) toca el borde de la tabla.
+function erMarkers(defs) {
+  const shapes = {
+    many: "M2 0 H16 M6 0 L16 -6 M6 0 L16 6",
+    one: "M2 0 H16 M8 -6 V6 M12 -6 V6",
+    zeroone: "M9 0 H16 M12 -6 V6",
+  };
+  for (const od of ["Cascade", "Restrict", "SetNull"]) {
+    for (const [k, d] of Object.entries(shapes)) {
+      const mk = svgEl("marker", { id: `mk-${k}-${od}`, viewBox: "0 -8 18 16", refX: 16, refY: 0, markerWidth: 18, markerHeight: 16, markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" }, defs);
+      svgEl("path", { d, class: `er-edge ${od}`, "stroke-width": 1.5, fill: "none" }, mk);
+      if (k === "zeroone" || k === "many") svgEl("circle", { cx: k === "many" ? 2 : 5, cy: 0, r: 3.2, class: `er-edge ${od}`, style: "fill: var(--surface)", "stroke-width": 1.5 }, mk);
+    }
+  }
+}
+
+function erRender(layout) {
+  const wrap = document.getElementById("er-wrap");
+  wrap.querySelector("svg")?.remove();
+  const svg = svgEl("svg", { id: "er-svg", role: "img", "aria-label": "Diagrama entidad-relación de Synatrack" });
+  erMarkers(svgEl("defs", {}, svg));
+  const vp = svgEl("g", { id: "er-vp" }, svg);
+  const gEdges = svgEl("g", {}, vp), gNodes = svgEl("g", {}, vp);
+  const nb = {};
+  for (const e of layout.edges) {
+    const r = e._r;
+    (nb[r.from] ||= new Set()).add(r.to); (nb[r.to] ||= new Set()).add(r.from);
+    const sec = e.sections && e.sections[0];
+    if (!sec) continue;
+    const pts = [sec.startPoint, ...(sec.bendPoints || []), sec.endPoint];
+    const p = svgEl("path", {
+      d: "M" + pts.map((q) => `${q.x} ${q.y}`).join(" L"),
+      class: `er-edge ${r.onDelete}`, "data-a": r.from, "data-b": r.to,
+      "marker-start": `url(#mk-${r.unique ? "zeroone" : "many"}-${r.onDelete})`,
+      "marker-end": `url(#mk-${r.optional ? "zeroone" : "one"}-${r.onDelete})`,
+    }, gEdges);
+    svgEl("title", {}, p).textContent = `${r.from}.${r.fk} → ${r.to} · al borrar: ${r.onDelete}`;
+  }
+  for (const n of layout.children) {
+    const t = n.id, missing = tableStatus(t) === "missing";
+    const g = svgEl("g", { class: "er-node" + (missing ? " missing" : ""), "data-er": t, tabindex: 0, role: "button", "aria-label": `Ver la ficha de ${t}`, transform: `translate(${n.x} ${n.y})` }, gNodes);
+    svgEl("title", {}, g).textContent = (DESC[t] || t) + (missing ? " (No existe en Supabase.)" : "");
+    svgEl("rect", { class: "body", x: 0, y: 0, width: n.width, height: n.height, rx: 7 }, g);
+    const color = `var(${DOMAIN_VAR[groupOf[t]]})`;
+    svgEl("path", { d: `M0 7 a7 7 0 0 1 7 -7 H${n.width - 7} a7 7 0 0 1 7 7 V${HEAD_H} H0 Z`, style: `fill: ${color}` }, g);
+    svgEl("text", { class: "hd", x: PAD, y: 19 }, g).textContent = t;
+    if (missing) svgEl("text", { class: "badge", x: n.width - PAD, y: 19, "text-anchor": "end" }, g).textContent = "FALTA EN BD";
+    n._rows.forEach((r, i) => {
+      const y = HEAD_H + i * ROW_H;
+      if (i) svgEl("line", { class: "sep", x1: 0, x2: n.width, y1: y, y2: y }, g);
+      if (r.pk || r.fk) svgEl("text", { class: "rk " + (r.pk ? "pk" : "fk"), x: PAD, y: y + 13 }, g).textContent = r.pk ? "PK" : "FK";
+      // Si falta la tabla entera ya lo dice la cabecera; solo se marcan columnas sueltas.
+      const off = !missing && r.st && r.st.k !== "ok";
+      const nm = svgEl("text", { class: "rn" + (off ? " miss" : ""), x: PAD + 20, y: y + 13 }, g);
+      nm.textContent = r.name;
+      if (off) svgEl("title", {}, nm).textContent = `En Supabase: ${r.st.txt}`;
+      svgEl("text", { class: "rt", x: n.width - PAD, y: y + 13, "text-anchor": "end" }, g).textContent = r.type;
+    });
+    // Al pasar el cursor se resalta esa tabla; al salir vuelve el resalte de la seleccionada.
+    g.addEventListener("pointerenter", () => erHighlight(t));
+    g.addEventListener("pointerleave", () => erHighlight(ER.sel));
+  }
+  wrap.appendChild(svg);
+  ER.size = { w: layout.width, h: layout.height };
+  ER.nb = nb;
+  ER.pos = Object.fromEntries(layout.children.map((n) => [n.id, n]));
+  erBindPan(svg);
+  erFit();
+  erSelect(ER.sel || "Project", false);
+}
+
+function erHighlight(t) {
+  const svg = document.getElementById("er-svg");
+  if (!svg) return;
+  svg.classList.toggle("hl", !!t);
+  const on = new Set(t ? [t, ...(ER.nb[t] || [])] : []);
+  svg.querySelectorAll(".er-node").forEach((x) => {
+    x.classList.toggle("on", on.has(x.dataset.er));
+    x.classList.toggle("sel", x.dataset.er === ER.sel);
+  });
+  svg.querySelectorAll("path.er-edge[data-a]").forEach((x) => x.classList.toggle("on", x.dataset.a === t || x.dataset.b === t));
+}
+// Centra una tabla en el diagrama sin cambiar el zoom, salvo que esté demasiado lejos para leerse.
+function erCenter(t) {
+  const n = ER.pos && ER.pos[t], wrap = document.getElementById("er-wrap");
+  if (!n) return;
+  const k = Math.max(ER.vp.k, 0.7);
+  ER.vp = { k, x: wrap.clientWidth / 2 - (n.x + n.width / 2) * k, y: wrap.clientHeight / 2 - (n.y + n.height / 2) * k };
+  erApply();
+}
+function erSelect(t, center) {
+  ER.sel = t;
+  erHighlight(t);
+  if (center) erCenter(t);
+  document.getElementById("er-panel").innerHTML = erPanel(t);
+}
+
+// Ficha compacta de la tabla para el panel lateral del diagrama.
+function erPanel(t) {
+  const m = M[t];
+  const fks = Object.fromEntries(outRels(t).map((r) => [r.fk, r]));
+  const sens = new Set(SENSITIVE[t] || []);
+  const pkCols = new Set(m.pk || m.fields.filter((f) => f.id).map((f) => f.name));
+  const uniqueCols = new Set([...m.uniques.filter((u) => u.length === 1).map((u) => u[0]), ...m.fields.filter((f) => f.unique).map((f) => f.name)]);
+  const finds = (FIND[t] || []).slice().sort((a, b) => SEV_ORDER[a[1]] - SEV_ORDER[b[1]]);
+  const ts = tableStatus(t);
+  const relItem = (other, via, od) => `<li><button class="chip fk" data-er-sel="${other}">${other}</button><span class="via">${esc(via)}</span><span class="od od-${od}">${od}</span></li>`;
+  const rows = m.fields.map((f) => {
+    const chips = [];
+    if (pkCols.has(f.name)) chips.push(`<span class="chip pk">PK</span>`);
+    if (fks[f.name]) chips.push(`<button class="chip fk" data-er-sel="${fks[f.name].to}">→ ${fks[f.name].to}</button>`);
+    if (uniqueCols.has(f.name)) chips.push(`<span class="chip">único</span>`);
+    if (sens.has(f.name)) chips.push(`<span class="chip sens">sensible</span>`);
+    const cs = ts === "missing" ? null : colStatus(t, f);
+    if (cs && cs.k !== "ok") chips.push(`<span class="sbchip sb-${cs.k}" title="En Supabase">${esc(cs.txt)}</span>`);
+    const title = [f.note, fmtDefault(f) && "Por defecto: " + fmtDefault(f)].filter(Boolean).join(" · ");
+    return `<tr${title ? ` title="${esc(title)}"` : ""}><td class="col">${f.name}${f.optional ? `<span class="opt">?</span>` : ""}</td><td class="type">${esc(pgType(f).replace(/"/g, ""))}</td><td>${chips.length ? `<span class="chips">${chips.join("")}</span>` : ""}</td></tr>`;
+  }).join("");
+  return `
+    <div>
+      <div class="domain">${esc(groupOf[t])}</div>
+      <h2>${t}</h2>
+      <p class="desc">${esc(DESC[t] || "")}</p>
+    </div>
+    ${ts === "missing" ? `<div class="banner crit"><b>No existe en Supabase</b>La crea una migración pendiente de aplicar.</div>` : ts === "diff" ? `<div class="banner high"><b>Difiere de Supabase</b>Las columnas marcadas no coinciden con la base real.</div>` : ""}
+    ${finds.length ? `<div class="sec"><h3>Hallazgos del code review</h3><div class="findings">${finds.map(([id, s, txt]) => `<div class="finding ${s}"><span class="id">${id} · ${SEV_LABEL[s]}</span><span>${esc(txt)}</span></div>`).join("")}</div></div>` : ""}
+    <div class="sec"><h3>Columnas <small>${m.fields.length} · <span class="mono">?</span> admite vacío</small></h3>
+      <div class="tbl-wrap"><table><tbody>${rows}</tbody></table></div></div>
+    ${outRels(t).length ? `<div class="sec"><h3>Apunta a</h3><ul class="rel-list">${outRels(t).map((r) => relItem(r.to, `por ${r.fk}`, r.onDelete)).join("")}</ul></div>` : ""}
+    ${inRels(t).length ? `<div class="sec"><h3>Le apuntan</h3><ul class="rel-list">${inRels(t).map((r) => relItem(r.from, `.${r.fk}`, r.onDelete)).join("")}</ul></div>` : ""}
+    <div class="panel-actions"><button class="btn" data-t="${t}">Abrir ficha completa</button></div>`;
+}
+
+function erApply() { document.getElementById("er-vp")?.setAttribute("transform", `translate(${ER.vp.x} ${ER.vp.y}) scale(${ER.vp.k})`); }
+function erFit() {
+  const wrap = document.getElementById("er-wrap");
+  if (!ER.size || !wrap.clientWidth) return;
+  const k = Math.min(wrap.clientWidth / ER.size.w, wrap.clientHeight / ER.size.h, 1.2);
+  ER.vp = { k, x: (wrap.clientWidth - ER.size.w * k) / 2, y: (wrap.clientHeight - ER.size.h * k) / 2 };
+  erApply();
+}
+function erZoomAt(f, px, py) {
+  const k = Math.min(4, Math.max(0.08, ER.vp.k * f)), r = k / ER.vp.k;
+  ER.vp = { k, x: px - (px - ER.vp.x) * r, y: py - (py - ER.vp.y) * r };
+  erApply();
+}
+function erBindPan(svg) {
+  let drag = null;
+  svg.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const b = svg.getBoundingClientRect();
+    erZoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - b.left, e.clientY - b.top);
+  }, { passive: false });
+  svg.addEventListener("pointerdown", (e) => {
+    drag = { x: e.clientX, y: e.clientY, vx: ER.vp.x, vy: ER.vp.y, moved: false, id: e.pointerId };
+  });
+  svg.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) > 4) { drag.moved = true; svg.setPointerCapture(e.pointerId); svg.classList.add("dragging"); }
+    if (drag.moved) { ER.vp.x = drag.vx + dx; ER.vp.y = drag.vy + dy; erApply(); }
+  });
+  const end = () => { if (drag?.moved) ER.suppressClick = true; drag = null; svg.classList.remove("dragging"); };
+  svg.addEventListener("pointerup", end);
+  svg.addEventListener("pointercancel", end);
+}
+
+async function erShow() {
+  const msg = document.getElementById("er-msg");
+  document.querySelectorAll("[data-er-mode]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.erMode === ER.mode));
+  if (typeof ELK === "undefined") {
+    msg.textContent = "No se pudo cargar la librería del diagrama (elkjs). Revisa la conexión a internet y recarga la página.";
+    return;
+  }
+  if (ER.rendered === ER.mode) { erFit(); return; }
+  msg.hidden = false;
+  msg.textContent = "Calculando el diagrama…";
+  try {
+    if (!ER.layouts[ER.mode]) {
+      const graph = erGraph();
+      const out = await new ELK().layout(graph);
+      // ELK no conserva las propiedades propias: se reponen desde el grafo de entrada.
+      out.children.forEach((c, i) => (c._rows = graph.children[i]._rows));
+      out.edges.forEach((e, i) => (e._r = graph.edges[i]._r));
+      ER.layouts[ER.mode] = out;
+    }
+    msg.hidden = true;
+    erRender(ER.layouts[ER.mode]);
+    ER.rendered = ER.mode;
+  } catch (err) {
+    msg.textContent = "No se pudo calcular el diagrama: " + err.message;
+  }
+}
+document.getElementById("er-legend").innerHTML = GROUPS.map(([g]) => `<span><i style="background: var(${DOMAIN_VAR[g]})"></i>${esc(g)}</span>`).join("");
+
+/* ── Navegación lateral ── */
+function renderNav() {
+  const q = document.getElementById("q").value.trim().toLowerCase();
+  const sel = current();
+  let html = "";
+  for (const [g, ts] of GROUPS) {
+    const hits = ts.filter((t) => !q || t.toLowerCase().includes(q) || M[t].fields.some((f) => f.name.toLowerCase().includes(q)));
+    if (!hits.length) continue;
+    html += `<div class="grp"><h3>${esc(g)}</h3>`;
+    for (const t of hits) {
+      const s = maxSev(t), ts = tableStatus(t);
+      const sbChip = ts === "missing" ? `<span class="sbchip sb-missing" title="No existe en Supabase">falta</span>` : ts === "diff" ? `<span class="sbchip sb-diff" title="Difiere de Supabase">difiere</span>` : "";
+      html += `<button class="item" data-t="${t}" aria-current="${t === sel}"><span>${t}</span><span class="r">${sbChip}${s ? `<span class="dot sev-${s}" title="Hallazgo ${SEV_LABEL[s].toLowerCase()} en el code review"></span>` : ""}</span></button>`;
+    }
+    html += `</div>`;
+  }
+  document.getElementById("nav").innerHTML = html || `<p class="empty-rel">Ninguna tabla o columna coincide con “${esc(q)}”.</p>`;
+}
+
+/* ── Diagrama de vecindad ── */
+function diagram(t) {
+  const parents = outRels(t), children = inRels(t);
+  if (!parents.length && !children.length) return `<p class="empty-rel">Esta tabla no tiene claves foráneas ni otras tablas que apunten a ella.</p>`;
+  const W = 820, NW = 210, NH = 34, GAP = 10, TOP = 30;
+  const rows = Math.max(parents.length, children.length, 1);
+  const H = TOP + rows * (NH + GAP) + 10;
+  const cx = W / 2 - 95, cy = TOP + (rows * (NH + GAP) - GAP) / 2 - 22;
+  const colY = (n, i) => TOP + ((rows - n) * (NH + GAP)) / 2 + i * (NH + GAP);
+  let edges = "", nodes = "";
+  const node = (x, y, name, sub, link) =>
+    `<g class="node${link ? " link" : ""}" ${link ? `data-t="${name}" tabindex="0" role="link" aria-label="Abrir ${name}"` : ""}><rect x="${x}" y="${y}" width="${NW}" height="${NH}" rx="6"/><text x="${x + 10}" y="${y + 15}">${name}</text><text class="sub" x="${x + 10}" y="${y + 28}">${esc(sub)}</text></g>`;
+  parents.forEach((r, i) => {
+    const y = colY(parents.length, i), x = 10;
+    edges += `<path class="e-${r.onDelete}" d="M${x + NW} ${y + NH / 2} C ${x + NW + 60} ${y + NH / 2}, ${cx - 60} ${cy + 22}, ${cx} ${cy + 22}" fill="none" stroke-width="1.6"/>`;
+    nodes += node(x, y, r.to, `${r.fk} → ${r.onDelete}`, true);
+  });
+  children.forEach((r, i) => {
+    const y = colY(children.length, i), x = W - NW - 10;
+    edges += `<path class="e-${r.onDelete}" d="M${cx + 190} ${cy + 22} C ${cx + 250} ${cy + 22}, ${x - 60} ${y + NH / 2}, ${x} ${y + NH / 2}" fill="none" stroke-width="1.6"/>`;
+    nodes += node(x, y, r.from, `.${r.fk} · ${r.onDelete}`, true);
+  });
+  nodes += `<g class="node center"><rect x="${cx}" y="${cy}" width="190" height="44" rx="8"/><text x="${cx + 95}" y="${cy + 27}" text-anchor="middle">${t}</text></g>`;
+  const heads = `<text class="colhead" x="10" y="16">${parents.length ? "APUNTA A (PADRES)" : ""}</text><text class="colhead" x="${W - 10}" y="16" text-anchor="end">${children.length ? "LE APUNTAN (HIJOS)" : ""}</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Relaciones de ${t}">${heads}${edges}${nodes}</svg>`;
+}
+
+/* ── Ficha de tabla ── */
+function renderDetail(t) {
+  const m = M[t];
+  const fks = Object.fromEntries(outRels(t).map((r) => [r.fk, r]));
+  const sens = new Set(SENSITIVE[t] || []);
+  const uniqueCols = new Set(m.uniques.filter((u) => u.length === 1).map((u) => u[0]));
+  const pkCols = new Set(m.pk || m.fields.filter((f) => f.id).map((f) => f.name));
+  const finds = (FIND[t] || []).slice().sort((a, b) => SEV_ORDER[a[1]] - SEV_ORDER[b[1]]);
+
+  const rowsHtml = m.fields.map((f) => {
+    const chips = [];
+    if (pkCols.has(f.name)) chips.push(`<span class="chip pk">PK</span>`);
+    if (f.unique || uniqueCols.has(f.name)) chips.push(`<span class="chip">único</span>`);
+    if (fks[f.name]) chips.push(`<button class="chip fk" data-t="${fks[f.name].to}" title="Abrir ${fks[f.name].to}">→ ${fks[f.name].to}</button>`);
+    if (sens.has(f.name)) chips.push(`<span class="chip sens">sensible</span>`);
+    const cs = colStatus(t, f);
+    const sbCell = !cs ? "" : `<td>${cs.k === "ok" ? `<span class="sb-ok" title="Igual en Supabase">✓</span>` : `<span class="sbchip sb-${cs.k}">${esc(cs.txt)}</span>`}</td>`;
+    return `<tr><td class="col">${f.name}</td><td class="type">${esc(pgType(f))}</td><td class="${f.optional ? "yes" : "no"}">${f.optional ? "Sí" : "No"}</td><td class="def">${esc(fmtDefault(f))}</td>${sbCell}<td class="note">${chips.length ? `<span class="chips">${chips.join("")}</span>` : ""}${esc(f.note)}</td></tr>`;
+  }).join("");
+  const extraCols = SB && SB.tables[t] ? Object.keys(SB.tables[t]).filter((c) => !m.fields.some((f) => f.name === c)) : [];
+  const ts = tableStatus(t);
+  const sbBanner = ts === "missing"
+    ? `<div class="banner crit"><b>Esta tabla no existe en Supabase</b>La crea una migración que todavía no se ha aplicado en la base real. Las funciones que la usan fallan en producción.</div>`
+    : ts === "diff"
+      ? `<div class="banner high"><b>Supabase tiene una versión distinta de esta tabla</b>Revisa la columna “En Supabase”.${extraCols.length ? ` Además Supabase tiene columnas que el código ya no usa: ${extraCols.map((c) => `<code>${c}</code>`).join(", ")}.` : ""}</div>`
+      : "";
+
+  const idx = [];
+  if (m.pk) idx.push(["clave", m.pk]);
+  m.uniques.forEach((u) => idx.push(["único", u]));
+  m.fields.filter((f) => f.unique).forEach((f) => idx.push(["único", [f.name]]));
+  m.indexes.forEach((i) => idx.push(["índice", i]));
+
+  document.getElementById("detail").innerHTML = `
+    <div class="head">
+      <div class="domain">${esc(groupOf[t])}</div>
+      <h2>${t}</h2>
+      <p class="desc">${esc(DESC[t] || "")}</p>
+      ${m.note ? `<p class="schema-note">Nota en el esquema: ${esc(m.note)}</p>` : ""}
+      <div class="facts">
+        <span><b>${m.fields.length}</b> columnas</span>
+        <span><b>${outRels(t).length}</b> apunta a</span>
+        <span><b>${inRels(t).length}</b> le apuntan</span>
+        <span><b>${idx.length}</b> índices y claves</span>
+        <span class="sql-name">En Postgres: <code>public."${t}"</code></span>
+      </div>
+    </div>
+    ${sbBanner}
+    <div class="sec"><h3>Hallazgos del code review<small>${finds.length ? `${finds.length} en esta tabla` : ""}</small></h3>
+      ${finds.length ? `<div class="findings">${finds.map(([id, s, txt]) => `<div class="finding ${s}"><span class="id">${id} · ${SEV_LABEL[s]}</span><span>${esc(txt)}</span></div>`).join("")}</div>` : `<p class="ok-note">El code review no señaló problemas en esta tabla.</p>`}
+    </div>
+    <div class="sec"><h3>Relaciones<small>pulsa una tabla para abrirla</small></h3><div class="diagram">${diagram(t)}</div></div>
+    <div class="sec"><h3>Columnas</h3><div class="tbl-wrap"><table>
+      <thead><tr><th>Columna</th><th>Tipo en Postgres</th><th>Admite vacío</th><th>Por defecto</th>${SB ? "<th>En Supabase</th>" : ""}<th>Notas</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table></div></div>
+    <div class="sec"><h3>Índices y restricciones</h3>
+      ${idx.length ? `<ul class="idx">${idx.map(([k, cols]) => `<li><span class="k">${k}</span><code>(${cols.join(", ")})</code></li>`).join("")}</ul>` : `<p class="ok-note">Solo la clave primaria.</p>`}
+    </div>`;
+}
+
+/* ── Vista Relaciones ── */
+let relFilter = "all";
+function renderRel() {
+  const counts = { all: S.relations.length };
+  S.relations.forEach((r) => (counts[r.onDelete] = (counts[r.onDelete] || 0) + 1));
+  document.getElementById("filters").innerHTML = [["all", "Todas"], ["Cascade", "Cascade"], ["Restrict", "Restrict"], ["SetNull", "SetNull"]]
+    .map(([k, l]) => `<button class="fbtn" data-f="${k}" aria-pressed="${relFilter === k}">${l} · ${counts[k] || 0}</button>`).join("");
+  const order = { Cascade: 0, Restrict: 1, SetNull: 2 };
+  const rows = S.relations.filter((r) => relFilter === "all" || r.onDelete === relFilter)
+    .sort((a, b) => order[a.onDelete] - order[b.onDelete] || a.to.localeCompare(b.to) || a.from.localeCompare(b.from));
+  document.getElementById("rel-body").innerHTML = rows.map((r) => {
+    const risk = r.onDelete === "Cascade" && ACCOUNTING.has(r.from);
+    return `<tr class="rel-row" data-t="${r.from}" tabindex="0"><td class="col">${r.from}</td><td class="def">${r.fk}${r.optional ? " (opcional)" : ""}</td><td class="arrow">→</td><td class="col">${r.to}</td><td><span class="od od-${r.onDelete}">${r.onDelete}</span></td><td class="note">${OD_TEXT[r.onDelete]}${risk ? ` <b style="color:var(--cascade)">Riesgo contable (BD-01).</b>` : ""}</td></tr>`;
+  }).join("");
+}
+
+/* ── Vista Enums ── */
+function renderEnums() {
+  const usage = {};
+  for (const m of Object.values(M)) for (const f of m.fields) if (S.enums[f.type]) (usage[f.type] ||= []).push(`${m.name}.${f.name}`);
+  document.getElementById("enum-grid").innerHTML = Object.values(S.enums).map((e) => `
+    <div class="enum"><h3>${e.name}</h3>
+      <p class="used">${usage[e.name] ? "Usado en " + usage[e.name].map((u) => `<code>${u}</code>`).join(", ") : "No lo usa ninguna columna"}</p>
+      <ul>${e.values.map((v) => `<li class="${/OBSOLETO|Historico/i.test(v.note) ? "obs" : ""}"><code>${v.v}</code>${v.note ? ` <span>— ${esc(v.note.length > 140 ? v.note.slice(0, 140) + "…" : v.note)}</span>` : ""}</li>`).join("")}</ul>
+    </div>`).join("");
+}
+
+/* ── Estado y eventos ── */
+function current() { const h = decodeURIComponent(location.hash.slice(1)); return M[h] ? h : "Project"; }
+function setView(v) {
+  document.querySelectorAll(".tab").forEach((b) => b.setAttribute("aria-selected", b.dataset.view === v));
+  document.getElementById("v-tablas").hidden = v !== "tablas";
+  document.getElementById("v-rel").hidden = v !== "rel";
+  document.getElementById("v-enum").hidden = v !== "enum";
+  document.getElementById("v-sb").hidden = v !== "sb";
+  document.getElementById("v-er").hidden = v !== "er";
+  if (v === "er") erShow();
+}
+function openTable(t) {
+  setView("tablas");
+  if (location.hash.slice(1) !== t) history.replaceState(null, "", "#" + t);
+  renderNav(); renderDetail(t);
+  window.scrollTo({ top: 0 });
+}
+
+document.getElementById("src").innerHTML = `Generado desde <code>backend/prisma/schema.prisma</code> (commit 3dee1f7, generado el 2026-10-05). ` +
+  (SB ? `Comparado con el DDL real de Supabase del ${esc(SB.date)}.` : `Refleja lo que el código espera de la base; para compararlo con Supabase hay que añadir un dump del DDL a la carpeta.`);
+if (SB) {
+  document.getElementById("tab-sb").hidden = false;
+  document.getElementById("n-s").textContent = renderSb();
+}
+document.getElementById("n-t").textContent = Object.keys(M).length;
+document.getElementById("n-r").textContent = S.relations.length;
+document.getElementById("n-e").textContent = Object.keys(S.enums).length;
+
+document.addEventListener("click", (e) => {
+  // Un arrastre en el diagrama no debe abrir la tabla sobre la que terminó.
+  if (ER.suppressClick) { ER.suppressClick = false; return; }
+  const tab = e.target.closest(".tab"); if (tab) { setView(tab.dataset.view); return; }
+  const em = e.target.closest("[data-er-mode]"); if (em) { ER.mode = em.dataset.erMode; erShow(); return; }
+  const en = e.target.closest("[data-er]"); if (en) { erSelect(en.dataset.er, false); return; }
+  const es = e.target.closest("[data-er-sel]"); if (es) { erSelect(es.dataset.erSel, true); return; }
+  const ez = e.target.closest("[data-er-zoom]");
+  if (ez) {
+    const w = document.getElementById("er-wrap");
+    if (ez.dataset.erZoom === "fit") erFit(); else erZoomAt(ez.dataset.erZoom === "in" ? 1.25 : 0.8, w.clientWidth / 2, w.clientHeight / 2);
+    return;
+  }
+  const f = e.target.closest(".fbtn"); if (f) { relFilter = f.dataset.f; renderRel(); return; }
+  const t = e.target.closest("[data-t]"); if (t) openTable(t.dataset.t);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const g = e.target.closest?.("g[data-er]"); if (g) { e.preventDefault(); erSelect(g.dataset.er, false); return; }
+  const t = e.target.closest?.("g[data-t], tr[data-t]"); if (t) { e.preventDefault(); openTable(t.dataset.t); }
+});
+document.getElementById("q").addEventListener("input", renderNav);
+window.addEventListener("hashchange", () => { if (M[location.hash.slice(1)]) openTable(location.hash.slice(1)); });
+
+renderRel(); renderEnums(); renderNav(); renderDetail(current());
+</script>
+
+</body>
+</html>
