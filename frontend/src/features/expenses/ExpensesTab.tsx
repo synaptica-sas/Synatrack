@@ -14,7 +14,7 @@ import {
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { downloadCsv } from "../../utils/csv";
 import type { DateRange } from "../../components/dateRangeUtils";
-import { numberish } from "./gastosUtils";
+import { monedaBasePorDefecto, numberish } from "./gastosUtils";
 import { useGastosGrouped, type GroupBy } from "./useGastosGrouped";
 import { GastosKPIStrip } from "./GastosKPIStrip";
 import { GastosFilters } from "./GastosFilters";
@@ -107,10 +107,25 @@ export function ExpensesTab({
   // ── Filter state ──────────────────────────────────────────────────────────
   const [groupBy, setGroupBy]                   = useState<GroupBy>("project");
   const [dateRange, setDateRange]               = useState<DateRange>({ from: "", to: "" });
-  const [search, setSearch]                     = useState("");
+  /**
+   * Filtro de proyecto (R-027). Guarda el `id` cuando se elige del desplegable
+   * y el texto tal cual cuando se escribe a mano, igual que en Portafolio.
+   */
+  const [projectFilter, setProjectFilter]       = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedCurrency, setSelectedCurrency] = useState("");
-  const [baseCurrency, setBaseCurrency]         = useState(initialBaseCurrency);
+  /**
+   * Moneda de presentación **elegida a mano**. `null` = el usuario no ha tocado
+   * el selector y manda la moneda del proyecto (R-026). En cuanto elige una, su
+   * elección se respeta aunque cambien los filtros.
+   */
+  const [baseCurrencyElegida, setBaseCurrencyElegida] = useState<string | null>(null);
+
+  // ── Opciones del desplegable de proyecto (R-027) ──────────────────────────
+  const projectOptions = useMemo(
+    () => projects.map((p) => ({ value: p.id, label: p.name })),
+    [projects],
+  );
 
   // ── Derived: available categories from data ───────────────────────────────
   const availableCategories = useMemo(
@@ -120,20 +135,31 @@ export function ExpensesTab({
 
   // ── Filtered expenses ─────────────────────────────────────────────────────
   const filteredExpenses = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = projectFilter.trim().toLowerCase();
     return expenses.filter((e) => {
       if (dateRange.from && e.expenseDate < dateRange.from) return false;
       if (dateRange.to   && e.expenseDate > dateRange.to)   return false;
       if (selectedCurrency && e.currency !== selectedCurrency) return false;
       if (selectedCategories.length > 0 && !selectedCategories.includes(e.category)) return false;
+      // Elegido del desplegable → viene el id y la coincidencia es exacta.
+      // Escrito a mano → se busca por nombre. Mismo criterio que Portafolio.
       if (q && !(
-        e.project.name.toLowerCase().includes(q) ||
-        e.category.toLowerCase().includes(q) ||
-        String(numberish(e.amount)).includes(q)
+        e.projectId === projectFilter ||
+        e.project.name.toLowerCase().includes(q)
       )) return false;
       return true;
     });
-  }, [expenses, dateRange, search, selectedCategories, selectedCurrency]);
+  }, [expenses, dateRange, projectFilter, selectedCategories, selectedCurrency]);
+
+  /**
+   * Moneda en la que se presenta la vista agrupada (R-026): la del proyecto
+   * mientras el usuario no elija otra.
+   */
+  const monedaSugerida = useMemo(
+    () => monedaBasePorDefecto(filteredExpenses, initialBaseCurrency),
+    [filteredExpenses, initialBaseCurrency],
+  );
+  const baseCurrency = baseCurrencyElegida ?? monedaSugerida;
 
   // ── Grouped data ──────────────────────────────────────────────────────────
   const { groups, totals } = useGastosGrouped(
@@ -304,8 +330,9 @@ export function ExpensesTab({
 
           {/* Filters */}
           <GastosFilters
-            search={search}
-            onSearchChange={setSearch}
+            projectFilter={projectFilter}
+            onProjectFilterChange={setProjectFilter}
+            projectOptions={projectOptions}
             groupBy={groupBy}
             onGroupByChange={setGroupBy}
             dateRange={dateRange}
@@ -315,7 +342,7 @@ export function ExpensesTab({
             selectedCurrency={selectedCurrency}
             onCurrencyChange={setSelectedCurrency}
             baseCurrency={baseCurrency}
-            onBaseCurrencyChange={setBaseCurrency}
+            onBaseCurrencyChange={setBaseCurrencyElegida}
             availableCategories={availableCategories}
             onExport={handleExport}
             onNew={() => setShowNewForm(true)}

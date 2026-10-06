@@ -1856,6 +1856,22 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             <p className="section-intro__text">
               Permite a los Directores de Proyecto (PM) delegar temporalmente la aprobación de horas extra a un consultor normal para un proyecto y rango de fechas específico.
             </p>
+            {/* El delegado se puede **nombrar** aunque nunca haya entrado a la
+                aplicación (R-024), pero poder aprobar es otra cosa: la ruta de
+                aprobación sigue exigiendo rol PM o Administrador. Decirlo aquí
+                evita que alguien registre una delegación y descubra tarde que no
+                sirve. Ampliar ese permiso es una decisión de negocio pendiente. */}
+            <div className="notice notice--warning" role="note">
+              <div className="notice__title">Antes de delegar, comprueba el rol del delegado</div>
+              <p className="notice__text">
+                La delegación queda registrada para cualquier persona dada de alta, aunque todavía no
+                haya iniciado sesión nunca. Pero para <strong>aprobar</strong> horas extra la
+                aplicación sigue exigiendo el rol <strong>PM</strong> o <strong>Administrador</strong>:
+                un consultor sin ese rol aparecerá como delegado y aun así recibirá un «no tienes
+                permiso» al intentar aprobar. Ampliar ese permiso está pendiente de una decisión de
+                negocio.
+              </p>
+            </div>
           </div>
 
           <div className="two-pane">

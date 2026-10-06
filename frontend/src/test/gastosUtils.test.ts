@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { convertToBase, getBudgetStatus, toMonthKey, formatMonthKey, prevPeriod } from '../features/expenses/gastosUtils';
+import { convertToBase, getBudgetStatus, monedaBasePorDefecto, toMonthKey, formatMonthKey, prevPeriod } from '../features/expenses/gastosUtils';
 import type { FxConfig } from '../services/api';
 
 // ── Mock FX configs ─────────────────────────────────────────────────────────
@@ -93,5 +93,33 @@ describe('prevPeriod', () => {
     const durMs = new Date("2026-01-31").getTime() - new Date("2026-01-01").getTime();
     const expectedFrom = new Date(new Date("2025-12-31").getTime() - durMs).toISOString().slice(0, 10);
     expect(prev.from).toBe(expectedFrom);
+  });
+});
+
+// ── Moneda de presentación por defecto (R-026) ──────────────────────────────
+
+describe('monedaBasePorDefecto (R-026)', () => {
+  const gasto = (currency: string | null) =>
+    ({ project: currency === null ? null : { currency } }) as Parameters<typeof monedaBasePorDefecto>[0][number];
+
+  it('usa la moneda del proyecto cuando todos los gastos comparten una', () => {
+    expect(monedaBasePorDefecto([gasto('COP'), gasto('COP')], 'USD')).toBe('COP');
+  });
+
+  it('no se queda en USD solo porque USD sea el respaldo', () => {
+    // El defecto que reportó el usuario: un proyecto en pesos se leía en dólares.
+    expect(monedaBasePorDefecto([gasto('COP')], 'USD')).not.toBe('USD');
+  });
+
+  it('cae al respaldo si se mezclan proyectos de monedas distintas', () => {
+    expect(monedaBasePorDefecto([gasto('COP'), gasto('EUR')], 'USD')).toBe('USD');
+  });
+
+  it('cae al respaldo sin gastos a la vista', () => {
+    expect(monedaBasePorDefecto([], 'USD')).toBe('USD');
+  });
+
+  it('ignora los gastos sin proyecto cargado en vez de romperse', () => {
+    expect(monedaBasePorDefecto([gasto(null), gasto('PEN')], 'USD')).toBe('PEN');
   });
 });

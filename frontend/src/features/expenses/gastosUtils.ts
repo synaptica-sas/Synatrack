@@ -90,6 +90,38 @@ export function convertToBase(
   };
 }
 
+// ── Moneda de presentación por defecto (R-026) ───────────────────────────────
+
+/**
+ * Decide en qué moneda se muestra la vista agrupada de Gastos **antes** de que
+ * el usuario toque el selector.
+ *
+ * Hasta R-026 la respuesta era `USD` fija, sin mirar el dato: un proyecto que
+ * factura y gasta en pesos se leía convertido a dólares sin que nadie lo
+ * hubiera pedido. Ahora manda la moneda del proyecto, que es la moneda en la
+ * que ese gasto se discute de verdad.
+ *
+ * Solo hay una respuesta buena cuando **todos** los gastos a la vista
+ * pertenecen a proyectos que comparten moneda —el caso normal al filtrar por un
+ * proyecto—. Si se mezclan varias, ninguna de ellas es "la del proyecto" y se
+ * cae al respaldo (la moneda base de la aplicación), porque elegir una al azar
+ * sería peor que elegir siempre la misma.
+ *
+ * Es una decisión de presentación: no cambia ningún importe, solo la moneda a
+ * la que se convierten para sumarlos.
+ */
+export function monedaBasePorDefecto(
+  expenses: { project?: { currency?: string | null } | null }[],
+  respaldo: string,
+): string {
+  const monedas = new Set<string>();
+  for (const gasto of expenses) {
+    const moneda = gasto.project?.currency;
+    if (moneda) monedas.add(moneda);
+  }
+  return monedas.size === 1 ? [...monedas][0] : respaldo;
+}
+
 // ── Estado presupuestal ───────────────────────────────────────────────────────
 
 export type BudgetStatus = "ok" | "warning" | "exceeded";

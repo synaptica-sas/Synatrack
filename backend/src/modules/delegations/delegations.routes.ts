@@ -74,14 +74,29 @@ export async function delegationsRoutes(app: FastifyInstance) {
         });
       }
 
-      // Check target user email exists
-      const targetUser = await prisma.user.findUnique({
-        where: { email: payload.toUserEmail },
-      });
+      // El delegado tiene que existir, pero "existir" no es solo tener fila en
+      // `User`: esa fila se crea **la primera vez que la persona inicia sesión**
+      // (aprovisionamiento JIT de `auth/guard.ts`). Exigir `User` dejaba fuera a
+      // cualquier consultor dado de alta en Administración que todavía no haya
+      // entrado nunca a la aplicación, y el mensaje sonaba a error de tipeo
+      // cuando el correo era correcto (R-024). Por eso se busca también en
+      // `Consultant`, que es donde una persona existe desde que se la da de alta.
+      //
+      // `Consultant.email` es opcional y no es único, así que va por `findFirst`
+      // y sin distinguir mayúsculas: el correo del payload ya viene en minúscula
+      // pero el de la ficha del consultor pudo guardarse como se escribió.
+      const [usuarioDestino, consultorDestino] = await Promise.all([
+        prisma.user.findUnique({ where: { email: payload.toUserEmail } }),
+        prisma.consultant.findFirst({
+          where: { email: { equals: payload.toUserEmail, mode: "insensitive" } },
+        }),
+      ]);
 
-      if (!targetUser) {
+      if (!usuarioDestino && !consultorDestino) {
         return reply.status(400).send({
-          message: `El consultor con correo ${payload.toUserEmail} no está registrado en el sistema.`,
+          message:
+            `No hay nadie registrado con el correo ${payload.toUserEmail}: no figura ni entre los usuarios ` +
+            `ni entre los consultores. Revisa el correo, o da de alta a la persona antes de delegarle la aprobación.`,
         });
       }
 

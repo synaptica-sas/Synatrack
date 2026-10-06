@@ -377,6 +377,48 @@ que nadie la configure a ciegas.
 
 ---
 
+## D-13 · ¿Quién puede ser delegado para aprobar horas extra?
+
+*Decisión nueva, surgida el 06/10/2026 al arreglar el bug de delegación.*
+
+**Qué pasaba.** Al delegar la aprobación de horas extra, el sistema fallaba diciendo que el
+correo no estaba registrado. La causa: exigía que esa persona ya hubiera **iniciado sesión
+alguna vez**. Como el desplegable se rellena con la lista de consultores, y en la práctica casi
+ninguno ha entrado, **el formulario ofrecía exactamente las opciones que el sistema rechazaba**.
+No era un caso raro: era el caso normal. Ya está corregido.
+
+**Lo que queda, y es más de fondo.** Arreglar eso permite **nombrar** al delegado, pero ese
+delegado **sigue sin poder aprobar**. Los endpoints de aprobación solo admiten los roles
+Administrador y PM, así que un consultor normal recibe un rechazo antes incluso de que el
+sistema mire si tiene una delegación vigente.
+
+Es decir: **hoy la delegación solo funciona de verdad entre personas que ya son PM**, mientras
+la pantalla promete delegar en cualquier consultor.
+
+**Por qué no se resolvió sin preguntar.** Se comprobó que basta **una línea** para que funcione.
+Pero esa línea amplía quién puede autorizar el pago de horas extra, y eso no es una decisión de
+desarrollo.
+
+**Opciones.**
+
+1. **Permitir que un consultor con delegación vigente apruebe.** Es lo que la pantalla ya
+   promete. El control sigue existiendo: la delegación tiene fecha de inicio y de fin, y se
+   registra quién aprobó.
+2. **Restringir la pantalla** a personas que ya son PM. Más conservador, pero entonces la
+   delegación sirve de poco: un PM ausente solo puede delegar en otro PM.
+3. **Crear un rol de "aprobador delegado"** que se otorgue aparte. Más control, más
+   administración.
+
+**Recomendación del equipo.** La 1, que es lo que la pantalla ya ofrece y lo que parece que se
+esperaba al pedir la funcionalidad. La delegación ya tiene ventana temporal y deja rastro.
+
+**Mientras tanto**, la pantalla avisa de que el delegado necesita rol PM o Administrador para
+poder aprobar, en vez de dejar que lo descubra fallando.
+
+**Decisión:** _______________________________________________
+
+---
+
 ## Resumen para acta
 
 | # | Acordado | Estado | Fecha |
@@ -393,6 +435,7 @@ que nadie la configure a ciegas.
 | D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | Implementado lo conservador, a confirmar | — |
 | D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | Por decidir | — |
 | D-12 | *Pendiente.* Hora y zona horaria del resumen semanal. | Implementado con hora única, a confirmar | — |
+| D-13 | *Pendiente.* Si un consultor con delegación vigente puede aprobar. | Bug corregido; falta la decisión de permisos | — |
 
 ---
 

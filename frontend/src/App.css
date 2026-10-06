@@ -5540,9 +5540,12 @@ body.dark .card .gastos-kpi-delta.tone-danger  { color: var(--state-danger-stron
   margin-bottom: var(--space-3);
 }
 
+/* La primera fila mezcla un campo apilado —Proyecto, con su etiqueta encima,
+   igual que en Portafolio (R-027)— con filtros de etiqueta en línea. Alinear
+   por abajo deja todos los controles sobre la misma línea pese a esa mezcla. */
 .gastos-filters__row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: var(--space-2);
 }

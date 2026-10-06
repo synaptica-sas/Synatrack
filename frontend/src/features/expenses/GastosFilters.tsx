@@ -1,5 +1,6 @@
 import type { GroupBy } from "./useGastosGrouped";
 import { DateRangePicker, type DateRange } from "../../components/DateRangePicker";
+import { SearchableSelect, type SearchableSelectOption } from "../../components/SearchableSelect";
 
 const CURRENCY_OPTIONS = ["COP", "USD", "EUR", "MXN", "PEN", "CLP"];
 const BASE_CURRENCY_OPTIONS = ["USD", "COP", "EUR", "MXN"];
@@ -10,8 +11,9 @@ const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
 ];
 
 export function GastosFilters({
-  search,
-  onSearchChange,
+  projectFilter,
+  onProjectFilterChange,
+  projectOptions,
   groupBy,
   onGroupByChange,
   dateRange,
@@ -27,8 +29,9 @@ export function GastosFilters({
   onNew,
   canWrite,
 }: {
-  search: string;
-  onSearchChange: (v: string) => void;
+  projectFilter: string;
+  onProjectFilterChange: (v: string) => void;
+  projectOptions: SearchableSelectOption[];
   groupBy: GroupBy;
   onGroupByChange: (v: GroupBy) => void;
   dateRange: DateRange;
@@ -44,6 +47,13 @@ export function GastosFilters({
   onNew: () => void;
   canWrite: boolean;
 }) {
+  // La moneda por defecto sale del proyecto (R-026) y puede ser una que no esté
+  // en la lista fija —un proyecto en PEN o CLP—. Si falta, se añade al principio
+  // para que el selector nunca aparezca en blanco.
+  const opcionesMonedaBase = BASE_CURRENCY_OPTIONS.includes(baseCurrency)
+    ? BASE_CURRENCY_OPTIONS
+    : [baseCurrency, ...BASE_CURRENCY_OPTIONS];
+
   function toggleCategory(cat: string) {
     onCategoriesChange(
       selectedCategories.includes(cat)
@@ -56,13 +66,19 @@ export function GastosFilters({
     <div className="gastos-filters">
       {/* Row 1: search + group-by + actions */}
       <div className="gastos-filters__row">
-        <input
-          type="search"
-          placeholder="Buscar proyecto, categoría…"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="gastos-search control-sm"
-        />
+        {/* R-027: el proyecto se elige de una lista, igual que en Portafolio.
+            `allowFreeText` conserva la posibilidad de escribirlo a mano. */}
+        <div className="field-stack gastos-search">
+          <span className="field-label">Proyecto</span>
+          <SearchableSelect
+            options={projectOptions}
+            value={projectFilter}
+            onChange={onProjectFilterChange}
+            placeholder="Buscar o escribir proyecto..."
+            emptyLabel="Todos los proyectos"
+            allowFreeText={true}
+          />
+        </div>
 
         <div className="inline-filter gastos-inline-filter">
           <label className="inline-filter__label" htmlFor="gastos-group-by">
@@ -90,7 +106,7 @@ export function GastosFilters({
             onChange={(e) => onBaseCurrencyChange(e.target.value)}
             className="control-sm"
           >
-            {BASE_CURRENCY_OPTIONS.map((c) => (
+            {opcionesMonedaBase.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
