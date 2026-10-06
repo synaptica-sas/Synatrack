@@ -284,6 +284,68 @@ alguien mire. Depende de cómo se facturen esas horas.
 
 ---
 
+## D-10 · ¿Qué fecha fija el tipo de cambio de un contrato, y cuál la de un ingreso?
+
+*Decisión nueva, surgida el 05/10/2026 al implementar la conversión por fecha.*
+
+**Qué pasa.** Hasta ahora todo se convertía con la tasa de hoy, así que el presupuesto de un
+contrato firmado hace meses se reexpresaba cada día y el número cambiaba solo. Ya está
+corregido: cada importe se convierte con la tasa de su fecha. Pero **hubo que elegir qué fecha
+le toca a cada cosa**, y dos de esas elecciones son provisionales porque el modelo de datos no
+ofrece nada mejor.
+
+**Lo que se implementó, en espera de confirmación:**
+
+| | Se valora a | Pregunta |
+|---|---|---|
+| Presupuesto y precio de venta | La fecha de **inicio del proyecto** | ¿Es esa la fecha del contrato, o se firma antes y habría que guardar la fecha de firma? |
+| Ingresos | La fecha de **factura** | ¿O debería ser la de **cobro**? |
+
+**Por qué importa.** Si el contrato se firma en marzo y el proyecto arranca en junio, hoy se
+está usando la tasa de junio para un valor pactado en marzo. Y si lo que cuenta contablemente
+es el cobro y no la factura, los ingresos están valorados con la fecha equivocada.
+
+**Lo que cuesta cada respuesta.** Confirmar lo implementado no cuesta nada. Cualquiera de las
+dos alternativas exige **un campo nuevo** en la base —fecha de firma, o fecha de cobro— con su
+formulario, porque hoy ninguno de los dos existe.
+
+**Recomendación del equipo.** Confirmar lo implementado salvo que contabilidad diga lo
+contrario. Si la respuesta es "cobro", conviene saberlo pronto: cuantos más ingresos se
+registren, más caro es rellenar esa fecha hacia atrás.
+
+**Decisión:** _______________________________________________
+
+---
+
+## D-11 · ¿Hay que cargar el histórico de tasas de cambio hacia atrás?
+
+*Decisión nueva, surgida el 05/10/2026.*
+
+**Qué pasa.** La aplicación ya sabe convertir con la tasa de la fecha de cada movimiento, pero
+**el histórico de tasas solo tiene cinco registros**, todos del día en que se creó la base. Para
+cualquier fecha anterior no hay tasa, así que el cálculo cae a la de hoy.
+
+**Lo bueno:** eso ya no pasa en silencio. La aplicación lo dice en pantalla con el aviso
+*"Valoración a la tasa de hoy"*. **Lo malo:** mientras no haya histórico, el presupuesto de un
+proyecto de mayo sigue moviéndose cada día, que es justo lo que se quería evitar.
+
+**Opciones.**
+
+1. **Cargar la serie histórica.** Se puede hacer a mano desde la pantalla de Tasas FX, o pidiendo
+   el histórico al proveedor. Cuánto hacia atrás depende de desde cuándo hay contratos vivos.
+2. **Asumir que los contratos anteriores se revalúan.** Sin coste, pero el aviso de "Valoración a
+   la tasa de hoy" seguirá apareciendo en casi todas las pantallas, y conviene que se sepa por
+   qué en vez de que se reporte como un fallo.
+3. **Cargar solo las fechas que hacen falta**: una tasa por cada fecha de inicio de proyecto
+   activo. Es el mínimo que hace que los presupuestos dejen de moverse.
+
+**Recomendación del equipo.** La 3 como primer paso: son pocas fechas, resuelve lo que más
+molesta —el presupuesto que no para quieto— y no obliga a conseguir una serie completa.
+
+**Decisión:** _______________________________________________
+
+---
+
 ## Resumen para acta
 
 | # | Acordado | Estado | Fecha |
@@ -297,6 +359,8 @@ alguien mire. Depende de cómo se facturen esas horas.
 | D-7 | Son configuración general: hace falta una pantalla para editarlos en vez de tenerlos en el código. | Por hacer | 05/10/2026 |
 | D-8 | En espera. Mientras tanto, ocultar la pantalla de Actividades salvo para ADMIN. | StandBy + ocultar | 05/10/2026 |
 | D-9 | Sí, sábado y domingo cuentan. | **Hecho** por Wilson (`5953b7f`) | 05/10/2026 |
+| D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | Implementado lo conservador, a confirmar | — |
+| D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | Por decidir | — |
 
 ---
 
