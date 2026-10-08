@@ -260,6 +260,45 @@ describe("DEP-38: fugas de tarifas en las rutas que quedaban", () => {
     });
   });
 
+  describe("GET /api/capacity/overview (R-016: costo total por consultor)", () => {
+    it("un VIEWER recibe el costo estimado en null", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/capacity/overview?from=2026-06-01&to=2026-06-30",
+        headers: comoRol(AppRole.VIEWER, "viewer@synaptica.test"),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json().data as {
+        consultants: Array<{ consultantId: string; estimatedCost: number | null }>;
+      };
+      const fila = data.consultants.find((c) => c.consultantId === escenario.consultorB.id);
+
+      expect(fila).toBeDefined();
+      expect(fila!.estimatedCost).toBeNull();
+      expect(res.body).not.toContain(TARIFA_MARCADA);
+    });
+
+    it("un ADMIN recibe el costo total consolidado entre todos sus proyectos", async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/capacity/overview?from=2026-06-01&to=2026-06-30",
+        headers: comoRol(AppRole.ADMIN),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const data = res.json().data as {
+        consultants: Array<{ consultantId: string; estimatedCost: number | null; costCurrency: string }>;
+      };
+      const fila = data.consultants.find((c) => c.consultantId === escenario.consultorB.id);
+
+      expect(fila).toBeDefined();
+      expect(typeof fila!.estimatedCost).toBe("number");
+      expect(fila!.estimatedCost).toBeGreaterThan(0);
+      expect(fila!.costCurrency).toBeTruthy();
+    });
+  });
+
   describe("GET /api/assignments (revisada, sin cambios)", () => {
     it("ya entregaba el consultor con un select acotado: no hay tarifa que recortar", async () => {
       const res = await app.inject({

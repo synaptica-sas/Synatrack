@@ -286,6 +286,7 @@ function OverviewPanel({
         comprometidas: c.committedHours.toFixed(1),
         disponibles: c.availableHours.toFixed(1),
         utilizacion: `${c.utilizationPct.toFixed(1)}%`,
+        costoTotal: c.estimatedCost !== null ? money(c.estimatedCost, c.costCurrency) : "—",
       })),
       [
         { key: "consultor", label: "Consultor" },
@@ -296,6 +297,7 @@ function OverviewPanel({
         { key: "comprometidas", label: "Horas comprometidas" },
         { key: "disponibles", label: "Horas disponibles" },
         { key: "utilizacion", label: "Utilización" },
+        { key: "costoTotal", label: "Costo total estimado" },
       ],
       "capacidad",
     );
@@ -421,6 +423,7 @@ function OverviewPanel({
                   <th>Disp. h</th>
                   <th>Utilización</th>
                   <th>Próx. libre</th>
+                  <th>Costo total est.</th>
                   <th>Asignaciones</th>
                 </tr>
               </thead>
@@ -437,6 +440,8 @@ function OverviewPanel({
                       <td className={row.availableHours > 0 ? "tone-success" : undefined}>{row.availableHours.toFixed(1)}h</td>
                       <td className="capacity-col-util">{utilizationBar(row.utilizationPct)}</td>
                       <td>{row.nextAvailableDate ? formatDate(row.nextAvailableDate) : <span className="state-chip state-chip--success">Ahora</span>}</td>
+                      {/* `null` = el rol no puede ver tarifas (DEP-38); 0 = sin costo. Ambos se pintan "—". */}
+                      <td>{row.estimatedCost !== null && row.estimatedCost > 0 ? money(row.estimatedCost, row.costCurrency) : "—"}</td>
                       <td>
                         {row.activeAssignments.length > 0 && (
                           <button type="button" className="ghost capacity-btn-row" onClick={() => setExpandedConsultant(expandedConsultant === row.consultantId ? null : row.consultantId)}>
@@ -447,7 +452,7 @@ function OverviewPanel({
                     </tr>
                     {expandedConsultant === row.consultantId && (
                       <tr>
-                        <td colSpan={10} className="capacity-detail-cell">
+                        <td colSpan={11} className="capacity-detail-cell">
                           <AssignmentDetail assignments={row.activeAssignments} />
                         </td>
                       </tr>

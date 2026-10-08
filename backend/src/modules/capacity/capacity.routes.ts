@@ -54,6 +54,11 @@ function defaultPeriod(): { from: Date; to: Date } {
 async function buildCapacityRows(
   period: { from: Date; to: Date },
   filters: { country?: string; skill?: string; seniority?: string },
+  // R-016: costo total consolidado por consultor. Mismo criterio DEP-38 que
+  // `/capacity/project/:projectId` y `/capacity/by-project` — para quien no
+  // puede verlas, la tarifa ni se lee de la base (por eso `select` explícito
+  // en vez del `include` de antes, que traía todos los escalares).
+  verTarifas: boolean,
 ) {
   // Pre-cargar todos los CustomHoliday que coincidan temporalmente con el periodo consultado
   const customHolidays = await prisma.customHoliday.findMany({
@@ -76,7 +81,15 @@ async function buildCapacityRows(
       ...(filters.seniority ? { seniority: { equals: filters.seniority, mode: "insensitive" } } : {}),
       ...(filters.skill ? { skills: { has: filters.skill } } : {}),
     },
-    include: {
+    select: {
+      id: true,
+      fullName: true,
+      role: true,
+      seniority: true,
+      country: true,
+      skills: true,
+      rateCurrency: true,
+      hourlyRate: verTarifas,
       capacityConfig: true,
       blocks: {
         where: {
@@ -168,6 +181,11 @@ async function buildCapacityRows(
       : 0;
     const newStatus = getAvailabilityStatus(utilizationPct);
 
+    // R-016: costo total consolidado entre todos los proyectos del consultor
+    // en el período (antes solo existía desglosado por proyecto).
+    const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
+    const estimatedCost = verTarifas ? Math.round(totalCommitted * hourlyRate * 100) / 100 : null;
+
     // nextAvailableDate: use real assignment date when available, fall back to latest forecast end
     const nextAvailableDate = newStatus !== "FREE"
       ? (availability.nextAvailableDate
@@ -195,6 +213,8 @@ async function buildCapacityRows(
       utilizationPct,
       availabilityStatus: newStatus,
       nextAvailableDate,
+      estimatedCost,
+      costCurrency: c.rateCurrency ?? "USD",
       activeAssignments: [
         ...c.assignments.map((a) => ({
           assignmentId: a.id,
@@ -225,11 +245,13 @@ export async function capacityRoutes(app: FastifyInstance) {
         to: query.to ?? defaultPeriod().to,
       };
 
+      const verTarifas = puedeVerTarifas(request.authUser!.roles);
+
       let rows = await buildCapacityRows(period, {
         country: query.country,
         skill: query.skill,
         seniority: query.seniority,
-      });
+      }, verTarifas);
 
       if (query.status) {
         rows = rows.filter((r) => r.availabilityStatus === query.status);
@@ -256,6 +278,11 @@ export async function capacityRoutes(app: FastifyInstance) {
             : 0,
       };
 
+      // R-016: cada fila ya trae su costo en su propia moneda (`costCurrency`),
+      // pero sumarlas aquí mezclaría monedas sin convertir — por eso no hay un
+      // total consolidado en el resumen, solo por fila. Ver `estimatedCost` en
+      // `consultants`.
+
       return { data: { period, consultants: rows, summary } };
     },
   );
@@ -275,7 +302,7 @@ export async function capacityRoutes(app: FastifyInstance) {
         country: query.country,
         skill: query.skill,
         seniority: query.seniority,
-      });
+      }, puedeVerTarifas(request.authUser!.roles));
 
       rows = rows.filter((r) => r.availabilityStatus === "FREE" || r.availabilityStatus === "PARTIAL");
 
@@ -300,6 +327,7 @@ export async function capacityRoutes(app: FastifyInstance) {
       const rows = await buildCapacityRows(
         { from: asOf, to: query.to ?? addDays(asOf, 30) },
         { country: query.country, skill: query.skill, seniority: query.seniority },
+        puedeVerTarifas(request.authUser!.roles),
       );
 
       const bench = rows.filter((r) => r.availabilityStatus === "FREE");
@@ -357,7 +385,7 @@ export async function capacityRoutes(app: FastifyInstance) {
         to: query.to ?? defaultPeriod().to,
       };
 
-      const rows = await buildCapacityRows(period, {});
+      const rows = await buildCapacityRows(period, {}, puedeVerTarifas(request.authUser!.roles));
       const overloaded = rows.filter((r) => r.availabilityStatus === "OVERLOADED");
 
       return { data: overloaded };

@@ -1281,6 +1281,10 @@ export type CapacityConsultantRow = {
   utilizationPct: number;
   availabilityStatus: AvailabilityStatus;
   nextAvailableDate: string | null;
+  /** R-016: costo total consolidado entre todos los proyectos del consultor en
+   * el período. `null` = el rol no puede ver tarifas (DEP-38), no que sea cero. */
+  estimatedCost: number | null;
+  costCurrency: string;
   activeAssignments: ActiveAssignment[];
 };
 
