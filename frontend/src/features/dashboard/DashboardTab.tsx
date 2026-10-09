@@ -1,10 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   getStatsOverview,
-  listAllExtraHours,
   listAllFinancialEntries,
   type Expense, type FinancialEntry, type FxConfig, type Forecast,
-  type Project, type StatsOverview, type TimeEntry, type ExtraHourEntry,
+  type Project, type StatsOverview, type TimeEntry,
 } from "../../services/api";
 import { DateRangePicker } from "../../components/DateRangePicker";
 import { readPersistedRange, type DateRange } from "../../components/dateRangeUtils";
@@ -141,74 +140,6 @@ function BudgetChart({ rows }: { rows: BudgetChartRow[] }) {
   );
 }
 
-function ExtraHoursTrendChart({ data }: { data: { month: string; hours: number }[] }) {
-  const W = 500;
-  const H = 200;
-  const PAD_L = 40;
-  const PAD_R = 20;
-  const PAD_T = 20;
-  const PAD_B = 30;
-  const chartW = W - PAD_L - PAD_R;
-  const chartH = H - PAD_T - PAD_B;
-
-  const maxVal = Math.max(...data.map(d => d.hours), 10);
-  const getX = (i: number) => PAD_L + (i / 11) * chartW;
-  const getY = (v: number) => PAD_T + chartH - (v / maxVal) * chartH;
-
-  const points = data.map((d, i) => `${getX(i)},${getY(d.hours)}`).join(" ");
-  const areaPoints = `${getX(0)},${PAD_T + chartH} ${points} ${getX(11)},${PAD_T + chartH}`;
-
-  return (
-    <div className="chart-scroll">
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" style={{ maxWidth: W }}>
-        <defs>
-          <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" className="chart-grad-from" />
-            <stop offset="100%" className="chart-grad-to" />
-          </linearGradient>
-        </defs>
-
-        {/* Rejilla */}
-        {[0, 0.25, 0.5, 0.75, 1].map((p, i) => {
-          const val = p * maxVal;
-          const y = getY(val);
-          return (
-            <g key={i}>
-              <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} className="chart-grid" strokeDasharray="3 3" />
-              <text x={PAD_L - 8} y={y + 4} textAnchor="end" fontSize={9} className="chart-axis">{val.toFixed(0)}h</text>
-            </g>
-          );
-        })}
-
-        {/* Área bajo la línea */}
-        <polygon points={areaPoints} fill="url(#lineGrad)" />
-
-        {/* Línea de tendencia */}
-        <polyline points={points} fill="none" className="chart-stroke--1" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-
-        {/* Puntos y valor */}
-        {data.map((d, i) => (
-          <g key={i}>
-            <circle cx={getX(i)} cy={getY(d.hours)} r={4} className="chart-fill--1 chart-gap" strokeWidth={2} />
-            {d.hours > 0 && (
-              <text x={getX(i)} y={getY(d.hours) - 8} textAnchor="middle" fontSize={8} fontWeight={700} className="chart-value--1">
-                {d.hours.toFixed(0)}
-              </text>
-            )}
-          </g>
-        ))}
-
-        {/* Etiquetas del eje X */}
-        {data.map((d, i) => (
-          <text key={i} x={getX(i)} y={H - PAD_B + 16} textAnchor="middle" fontSize={9} className="chart-axis">
-            {d.month}
-          </text>
-        ))}
-      </svg>
-    </div>
-  );
-}
-
 function ExpensesDonutChart({ data }: { data: { category: string; amount: number; pct: number }[] }) {
   /**
    * Serie categórica del sistema de diseño (`--chart-1..7` en `index.css`), no
@@ -285,44 +216,6 @@ function ExpensesDonutChart({ data }: { data: { category: string; amount: number
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function ExtraHoursByConsultantChart({ data }: { data: { name: string; hours: number }[] }) {
-  const BAR_HEIGHT = 20;
-  const BAR_GAP = 8;
-  const LABEL_W = 100;
-  const CHART_W = 200;
-  const PAD_R = 40;
-  const W = LABEL_W + CHART_W + PAD_R;
-  const H = data.length * (BAR_HEIGHT + BAR_GAP) + BAR_GAP;
-
-  const maxVal = Math.max(...data.map(d => d.hours), 5);
-  const scale = (v: number) => (v / maxVal) * CHART_W;
-
-  if (data.length === 0) {
-    return <p className="chart-empty">Sin horas extras aprobadas</p>;
-  }
-
-  return (
-    <div className="chart-scroll">
-      <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" style={{ maxWidth: W }}>
-        {data.map((d, i) => {
-          const y = BAR_GAP + i * (BAR_HEIGHT + BAR_GAP);
-          return (
-            <g key={i}>
-              <text x={LABEL_W - 6} y={y + BAR_HEIGHT / 2 + 4} textAnchor="end" fontSize={10} className="chart-label">
-                {d.name.length > 12 ? d.name.slice(0, 11) + "…" : d.name}
-              </text>
-              <rect x={LABEL_W} y={y} width={scale(d.hours)} height={BAR_HEIGHT} rx={4} className="chart-fill--1" />
-              <text x={LABEL_W + scale(d.hours) + 6} y={y + BAR_HEIGHT / 2 + 4} fontSize={10} fontWeight={700} className="chart-value--1">
-                {d.hours.toFixed(1)}h
-              </text>
-            </g>
-          );
-        })}
-      </svg>
     </div>
   );
 }
@@ -563,23 +456,6 @@ export function DashboardTab({
       .map(([month, v]) => ({ month, ...v, margen: v.ingresos - v.gastos }));
   }, [monthlyEntries]);
 
-  // --- Extra Hours state & loader for Trend and Consultant metrics ---
-  const [extraHours, setExtraHours] = useState<ExtraHourEntry[]>([]);
-  useEffect(() => {
-    let active = true;
-    // Solo se usan las aprobadas, así que se piden solo esas: el filtro viaja
-    // al servidor y se recorren todas sus páginas a propósito, porque la
-    // tendencia y el desglose por consultor son agregados del conjunto.
-    listAllExtraHours({ status: "APPROVED" }).then((data) => {
-      if (active) setExtraHours(data);
-    }).catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
-
-
-
   // Saved views
   const [savedViews, setSavedViews] = useState<SavedView[]>(loadViews);
   const [viewName, setViewName] = useState("");
@@ -706,27 +582,6 @@ export function DashboardTab({
       .sort((a, b) => b.totalHours - a.totalHours);
   }, [dashboardForecasts]);
 
-  const monthlyExtraHoursData = useMemo(() => {
-    const months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-    const currentYear = new Date().getFullYear();
-    const dataMap = new Map<number, number>();
-    for (let i = 0; i < 12; i++) {
-      dataMap.set(i, 0);
-    }
-    const approvedEH = extraHours.filter(eh => eh.status === "APPROVED");
-    for (const eh of approvedEH) {
-      const ehDate = new Date(eh.date);
-      if (ehDate.getFullYear() === currentYear) {
-        const m = ehDate.getMonth();
-        dataMap.set(m, (dataMap.get(m) || 0) + Number(eh.totalHours));
-      }
-    }
-    return Array.from(dataMap.entries()).map(([mIdx, hours]) => ({
-      month: months[mIdx],
-      hours
-    }));
-  }, [extraHours]);
-
   const expensesCategoryData = useMemo(() => {
     const grouped = new Map<string, number>();
     for (const exp of dashboardExpenses) {
@@ -741,19 +596,6 @@ export function DashboardTab({
       pct: total > 0 ? (amount / total) * 100 : 0
     })).sort((a, b) => b.amount - a.amount);
   }, [dashboardExpenses]);
-
-  const extraHoursByConsultantData = useMemo(() => {
-    const grouped = new Map<string, number>();
-    const approvedEH = extraHours.filter(eh => eh.status === "APPROVED");
-    for (const eh of approvedEH) {
-      const name = eh.consultant?.fullName || "Consultor";
-      grouped.set(name, (grouped.get(name) || 0) + Number(eh.totalHours));
-    }
-    return Array.from(grouped.entries())
-      .map(([name, hours]) => ({ name, hours }))
-      .sort((a, b) => b.hours - a.hours)
-      .slice(0, 5);
-  }, [extraHours]);
 
   /**
    * DEP-36. Sin estadísticas no hay nada que mostrar: el único origen válido de
@@ -1573,7 +1415,7 @@ export function DashboardTab({
         </article>
       </section>
 
-      {/* ── Gráficos Principales (Presupuesto vs Gasto + Horas Extras Aprobadas) ── */}
+      {/* ── Gráficos Principales (Presupuesto vs Gasto + Distribución de Gastos) ── */}
       <section className="grid two-col">
         {displayProjects.length > 0 ? (
           <article className="card">
@@ -1597,25 +1439,6 @@ export function DashboardTab({
           </article>
         )}
 
-        <article className="card">
-          <h3>📊 Horas Extras Aprobadas por Consultor (Top 5)</h3>
-          <p className="chart-caption">
-            Comparativa de consultores con mayor volumen de horas extras aprobadas.
-          </p>
-          <ExtraHoursByConsultantChart data={extraHoursByConsultantData} />
-        </article>
-      </section>
-
-      {/* ── Métricas y Análisis Visual ── */}
-      <section className="grid two-col">
-        <article className="card">
-          <h3>📈 Tendencia Mensual de Horas Extras (Año en Curso)</h3>
-          <p className="chart-caption">
-            Muestra el consolidado de horas extras aprobadas mes a mes durante el presente año.
-          </p>
-          <ExtraHoursTrendChart data={monthlyExtraHoursData} />
-        </article>
-        
         <article className="card">
           <h3>🍩 Distribución de Gastos por Categoría</h3>
           <p className="chart-caption">
