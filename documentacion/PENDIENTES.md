@@ -760,18 +760,18 @@ Quedan **20 ítems reales, 34 puntos entre los tres** (≈11-12 cada uno).
 archivos que el trabajo de Persona 3 sobre tasas de cambio. Avisarse antes de tocarlos para no
 pisarse.
 
-### Juan Espinosa — Dashboard y Capacidad (11 puntos)
+### ~~Juan Espinosa — Dashboard y Capacidad (11 puntos)~~ — COMPLETADO
 
-> **Tomado por Juan Espinosa el 05/10/2026.**
+> **Tomado por Juan Espinosa el 05/10/2026. Completado el 08/10/2026.**
 
 | ID | Qué hay que hacer | Tamaño |
 |---|---|---|
-| R-002 | Quitar los gráficos de horas extra del Dashboard (`DashboardTab.tsx:1500-1517`); la navegación a Horas ya funciona | S |
-| R-016 | Vista consolidada de costo total por consultor en Capacidad (hoy solo existe por proyecto) | S |
-| R-013 | Al crear una asignación, crear también su `Forecast` correspondiente | M |
-| R-014 | Opción de editar una asignación (hoy solo cancelar/completar/eliminar) — necesita endpoint `PATCH` | M |
-| R-001 | Resumen mensual por proyecto en el Dashboard, con clic que lleve a su ficha en Proyectos | M |
-| R-015 | Asociar riesgos a un consultor dentro de Capacidad — necesita `consultantId` en `Risk` | L |
+| ~~R-002~~ | ~~Quitar los gráficos de horas extra del Dashboard (`DashboardTab.tsx:1500-1517`); la navegación a Horas ya funciona~~ | S |
+| ~~R-016~~ | ~~Vista consolidada de costo total por consultor en Capacidad (hoy solo existe por proyecto)~~ | S |
+| ~~R-013~~ | ~~Al crear una asignación, crear también su `Forecast` correspondiente~~ | M |
+| ~~R-014~~ | ~~Opción de editar una asignación (hoy solo cancelar/completar/eliminar) — necesita endpoint `PATCH`~~ | M |
+| ~~R-001~~ | ~~Resumen mensual por proyecto en el Dashboard, con clic que lleve a su ficha en Proyectos~~ | M |
+| ~~R-015~~ | ~~Asociar riesgos a un consultor dentro de Capacidad — necesita `consultantId` en `Risk`~~ | L |
 
 **Coordinar con Persona 1**: R-015 y R-009 tocan el mismo modelo `Risk`. Si se resuelven en
 paralelo, quien vaya segundo rebasa sobre una migración que el otro ya aplicó — decidir el
