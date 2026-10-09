@@ -47,6 +47,19 @@ formal, este es el sitio donde documentarlo.
 
 ## 2. Llevar `dev` a producción
 
+> ### 🔴 Dos cosas que hay que hacer sí o sí en este despliegue
+>
+> **1. Cerrar la base de Supabase.** Hoy no tiene seguridad por filas en ninguna de sus 28 tablas
+> y los roles públicos `anon` y `authenticated` tienen todos los permisos, así que la API REST
+> automática de Supabase expone sueldos, tarifas y documentos de identidad a cualquiera que tenga
+> la clave pública. Detalle y arreglo en
+> `documentacion/Base de Datos/comparacion_supabase_2026-10-05.md` §3.
+>
+> **2. Añadir `prisma migrate deploy` al arranque en Render.** Hoy el servicio arranca con
+> `npm run start` y **nunca aplica migraciones**. Ésa es la razón de fondo por la que Supabase
+> lleva semanas atrasada: si no se corrige, el próximo despliegue volverá a dejarla atrás.
+
+
 > ### ⚠ El orden importa: primero la base, después el backend, después el frontend
 >
 > El workflow de Azure Static Web Apps **despliega el frontend en cada push a `main`**, sin

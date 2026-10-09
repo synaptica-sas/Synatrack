@@ -286,6 +286,9 @@ alguien mire. Depende de cómo se facturen esas horas.
 
 ## D-10 · ¿Qué fecha fija el tipo de cambio de un contrato, y cuál la de un ingreso?
 
+> **Se habla con Greisy.** Esta pregunta está también, en lenguaje de negocio, en
+> `PREGUNTAS_PARA_GREISY.md`.
+
 *Decisión nueva, surgida el 05/10/2026 al implementar la conversión por fecha.*
 
 **Qué pasa.** Hasta ahora todo se convertía con la tasa de hoy, así que el presupuesto de un
@@ -313,11 +316,13 @@ formulario, porque hoy ninguno de los dos existe.
 contrario. Si la respuesta es "cobro", conviene saberlo pronto: cuantos más ingresos se
 registren, más caro es rellenar esa fecha hacia atrás.
 
-**Decisión:** _______________________________________________
-
+**Decisión:** Se debe hablar con greisy
 ---
 
 ## D-11 · ¿Hay que cargar el histórico de tasas de cambio hacia atrás?
+
+> **Se habla con Greisy.** Esta pregunta está también, en lenguaje de negocio, en
+> `PREGUNTAS_PARA_GREISY.md`.
 
 *Decisión nueva, surgida el 05/10/2026.*
 
@@ -374,7 +379,7 @@ hasta que alguien se ocupe de registrar el país de cada persona.
 que nadie la configure a ciegas.
 
 **Decisión (06/10/2026): una sola hora, en horario universal.** No se configura por país. Es lo
-que ya estaba implementado, así que no hace falta cambiar nada.
+que ya estaba implementado, así que no hubo trabajo asociado.
 
 ---
 
@@ -416,35 +421,18 @@ esperaba al pedir la funcionalidad. La delegación ya tiene ventana temporal y d
 **Mientras tanto**, la pantalla avisa de que el delegado necesita rol PM o Administrador para
 poder aprobar, en vez de dejar que lo descubra fallando.
 
-**Decisión (06/10/2026): opción 2.** No se amplían permisos: únicamente aprueba **el PM
-relacionado con el proyecto**. La delegación se restringe a quien ya es PM, y deja de ofrecer
-consultores que no podrían aprobar.
-
-**Aplicada el 06/10/2026.** Cómo quedó, con el matiz que el dueño del producto confirmó
-expresamente:
-
-- **«Ser PM» = figurar como responsable de algún proyecto** (`Project.projectManagerEmail`), no
-  tener el rol asignado en la cuenta. Es lo que evita repetir el bug: el rol vive en `User` y esa
-  fila solo nace al iniciar sesión, así que un PM que todavía no ha entrado no podría recibir una
-  delegación. Además hoy solo hay un usuario con rol en todo el sistema, y esa regla habría dejado
-  la funcionalidad inservible.
-- **Vale ser responsable de cualquier proyecto**, no solo de uno del delegante: un proyecto tiene
-  un único `projectManagerEmail`, así que exigir «PM de este proyecto» dejaría como único candidato
-  al propio delegante. Lo normal es justo lo contrario — cubrir a un compañero que dirige otros
-  proyectos.
-- **También se acepta una cuenta con rol ADMIN o PM** aunque no dirija proyectos. Es un camino
-  añadido, nunca el único: el Administrador ya puede aprobar cualquier hora extra sin delegación,
-  así que rechazarlo sería negar una delegación que funcionaría.
-- **Las delegaciones ya registradas no se tocan.** No se migran ni se revalidan al usarse: la regla
-  es una condición de alta, y revalidar en caliente dejaría sin efecto una delegación vigente a
-  mitad de su ventana si el delegado deja de llevar proyectos. Siguen a la vista en la lista y se
-  pueden borrar.
-- **Ningún `authorize([...])` cambió.** Quien puede aprobar horas extra es exactamente el mismo
-  conjunto de antes, y hay pruebas que lo fijan.
+**Decisión (06/10/2026): opción 2, y ya está aplicada** (`852550e`). No se amplían permisos:
+únicamente aprueba el PM del proyecto. La delegación se restringe a quien ya es PM —entendido
+como figurar de responsable de algún proyecto, no como tener el rol en la cuenta, para no
+reintroducir el bug de R-024— y el desplegable dejó de ofrecer consultores que no podrían
+aprobar.
 
 ---
 
 ## D-14 · ¿Con qué fecha se valora el presupuesto al compararlo con el gasto?
+
+> **Se habla con Greisy.** Esta pregunta está también, en lenguaje de negocio, en
+> `PREGUNTAS_PARA_GREISY.md`.
 
 *Decisión nueva, surgida el 06/10/2026 al unificar la conversión de Gastos.*
 
@@ -495,11 +483,11 @@ sino una gestión pendiente: conseguir el buzón de correo.
 | D-7 | Son configuración general: hace falta una pantalla para editarlos en vez de tenerlos en el código. | **Hecho** — pantalla "Umbrales de Salud" (`5f62bd4`); de paso se eliminó la contradicción entre Portafolio y el semáforo | 05/10/2026
 | D-8 | En espera. Mientras tanto, ocultar la pantalla de Actividades salvo para ADMIN. | StandBy + ocultar | 05/10/2026 |
 | D-9 | Sí, sábado y domingo cuentan. | **Hecho** por Wilson (`5953b7f`) | 05/10/2026 |
-| D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | **Para hablar con Greisy** | — |
+| D-10 | *Pendiente.* Qué fecha fija el tipo de cambio de contratos e ingresos. | **Para hablar con Greisy** — implementado lo conservador | — |
 | D-11 | *Pendiente.* Si se carga el histórico de tasas hacia atrás. | **Para hablar con Greisy** | — |
-| D-12 | **Una sola hora, en horario universal.** No se configura por país. | **Resuelto** — ya era lo implementado | 06/10/2026 |
-| D-13 | **No se amplían permisos.** Solo puede aprobar el PM relacionado con el proyecto; la delegación se restringe a quien ya es PM. | **Aplicada** el 06/10/2026 | 06/10/2026 |
-| D-14 | *Pendiente.* Fecha de valoración del presupuesto frente al gasto. | **Para hablar con Greisy** | — |
+| D-12 | **Una sola hora, en horario universal.** No se configura por país. | **Resuelto** — ya era lo implementado, sin trabajo asociado | 06/10/2026 |
+| D-13 | **No se amplían permisos.** Solo aprueba el PM del proyecto; la delegación se restringe a quien ya es PM. | **Resuelto y aplicado** (`852550e`) | 06/10/2026 |
+| D-14 | *Pendiente.* Fecha de valoración del presupuesto frente al gasto. | **Para hablar con Greisy** — el KPI que suma monedas es defecto aparte | — |
 
 ---
 

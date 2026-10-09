@@ -182,6 +182,14 @@ paso, mapa de la aplicación, lista viva de pendientes y convenciones de diseño
 
 ## 6. Qué falta antes de desplegar
 
+**Antes que nada: hay un problema de seguridad en la base de producción.** Se encontró el 5 de
+octubre. La base de datos publica una interfaz automática que hoy **no tiene ninguna
+restricción**: cualquiera que tenga la clave pública de la aplicación —que por diseño no es
+secreta— puede leer o modificar sueldos, tarifas, documentos de identidad y márgenes sin pasar
+por la aplicación ni por ningún control. Se corrige en minutos y no afecta al funcionamiento,
+pero **debe hacerse antes del despliegue**.
+
+
 Con franqueza, porque conviene saberlo antes y no después:
 
 1. **La base de datos de producción hay que rehacerla.** La que está funcionando quedó atada a un

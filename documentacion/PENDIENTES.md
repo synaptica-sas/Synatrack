@@ -2,7 +2,7 @@
 
 Lista viva de lo que falta. Si vas a tomar algo, empieza por aquí.
 
-**Actualizado:** 2026-10-06 · **Rama con todo lo hecho:** `dev`
+**Actualizado:** 2026-10-09 · **Rama con todo lo hecho:** `dev`
 
 Para el detalle de cada arreglo ya hecho, ver `documentacion/cambios/`.
 Para el histórico completo de la depuración, `documentacion/BACKLOG_DEPURACION.md`
@@ -13,9 +13,28 @@ documento. Este documento es el que hay que mirar para saber qué queda.
 
 ---
 
-## 0. Lo primero: nada de esto está en producción
+## 0. Lo primero
 
-`dev` va **45 commits por delante de `main`**. Producción sigue en el estado de
+### 🔴 Urgente y anterior a todo lo demás: la base de producción está expuesta
+
+Lo encontró Marcos Armas el 05/10/2026 volcando el esquema real de Supabase
+(`documentacion/Base de Datos/comparacion_supabase_2026-10-05.md`, §1).
+
+Supabase **publica automáticamente una API REST por cada tabla** del esquema público. Hoy:
+
+- **ninguna de las 28 tablas tiene activada la seguridad por filas (RLS)**;
+- los roles públicos `anon` y `authenticated` tienen **todos los permisos** sobre todas.
+
+Es decir: cualquiera con la *anon key* del proyecto —que **no es secreta por diseño**, viaja en
+el frontend— puede leer, modificar o borrar sueldos, tarifas, documentos de identidad, márgenes y
+usuarios **sin pasar por la aplicación**. Ningún control del backend interviene.
+
+Según quien lo encontró, se corrige en minutos y no afecta a la aplicación; el detalle está en la
+§3 de su documento. **Esto va antes que cualquier otro pendiente de esta lista.**
+
+### Y nada de lo hecho está todavía en producción
+
+`main` y `dev` están sincronizadas, pero **eso no significa desplegado**. Producción sigue en el estado de
 principios de septiembre, así que **todo lo arreglado no le sirve a nadie todavía**: el
 drift del esquema, las fugas de tarifas, la suplantación al registrar horas, el cron de
 tasas de cambio apuntando a un host inexistente, la auditoría, el planificador de tareas.
@@ -27,6 +46,12 @@ de migraciones.
 
 Resumen de lo que hay que hacer:
 
+- [ ] **Activar la seguridad por filas (RLS) en las 28 tablas y revocar los permisos de `anon`
+      y `authenticated`.** Ver el recuadro de arriba: hoy la base está abierta a cualquiera que
+      tenga la clave pública.
+- [ ] **Añadir `prisma migrate deploy` al arranque del despliegue en Render.** Hoy arranca con
+      `npm run start` y nunca aplica migraciones — ésa es la razón de fondo por la que Supabase
+      lleva semanas atrasada, no un olvido puntual.
 - [ ] Rehacer la base de **Supabase**: no se construyó con las migraciones de este repo
       (se usó `db push` desde Railway), así que `migrate deploy` falla contra ella.
 - [ ] **Cargar las tasas de cambio** con `POST /api/fx/sync` justo después. El seed deja
@@ -745,7 +770,15 @@ Quedan **20 ítems reales, 34 puntos entre los tres** (≈11-12 cada uno).
 > El bloque de Moneda queda en **11 puntos reales**. Antes de empezar cualquier ítem conviene
 > comprobar si sigue abierto: la base se movió mucho esta semana.
 
-### Persona 1 — Portafolio y Proyectos (11 puntos)
+### Persona 1 — Portafolio y Proyectos (11 puntos) — **SIN ASIGNAR**
+
+> **Al 09/10/2026 es el único bloque que nadie ha tomado**, y sigue con el marcador «Persona 1»
+> en vez de un nombre, que es probablemente la razón. Los otros dos están completados.
+>
+> Antes de repartirlo conviene saber que **R-003 no se puede empezar sin una decisión previa**:
+> pide comisiones, impuestos y descuento, y esos conceptos **no existen hoy en ninguna parte del
+> código**. Hay que definir qué campos llevan y cómo entran en el margen antes de poder siquiera
+> estimarlo.
 
 | ID | Qué hay que hacer | Tamaño |
 |---|---|---|
@@ -777,7 +810,7 @@ pisarse.
 paralelo, quien vaya segundo rebasa sobre una migración que el otro ya aplicó — decidir el
 orden antes de empezar, no a mitad de camino.
 
-### Juan Mahecha — Moneda transversal, Horas Extra y Gastos (11 puntos)
+### ~~Juan Mahecha — Moneda transversal, Horas Extra y Gastos (11 puntos)~~ — COMPLETADO
 
 > **Tomado por Juan Mahecha el 05/10/2026.** Se elige este bloque a propósito: `R-008+R-012`
 > continúa directamente el trabajo de conversión de monedas que ya se hizo esta semana
