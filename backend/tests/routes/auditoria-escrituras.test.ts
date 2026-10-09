@@ -86,7 +86,7 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
     const aprobacion = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.PM, `pm.${escenario.prefijo}@synaptica.test`),
     });
     expect(aprobacion.statusCode).toBe(200);
     expect(aprobacion.json().data.status).toBe(ExtraHourStatus.APPROVED);
@@ -99,7 +99,7 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
 
     // Un único registro: es lo que permite responder "quién aprobó el pago".
     expect(registros).toHaveLength(1);
-    expect(registros[0].changedBy).toBe(ADMIN_EMAIL);
+    expect(registros[0].changedBy).toBe(`pm.${escenario.prefijo}@synaptica.test`);
 
     const diff = registros[0].diff as Record<string, { before: unknown; after: unknown }>;
     expect(diff.status).toEqual({
@@ -107,7 +107,7 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
       after: ExtraHourStatus.APPROVED,
     });
     // Esa misma aprobación sella `approvedBy`, y el diff lo recoge.
-    expect(diff.approvedBy.after).toBe(ADMIN_EMAIL);
+    expect(diff.approvedBy.after).toBe(`pm.${escenario.prefijo}@synaptica.test`);
   });
 
   it("rechazar horas extra deja un REJECT con el motivo en el diff", async () => {
@@ -120,14 +120,14 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
     const res = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/reject`,
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.PM, `pm.${escenario.prefijo}@synaptica.test`),
       payload: { rejectionNote: "Sin autorización previa" },
     });
     expect(res.statusCode).toBe(200);
 
     const registro = await ultimoRegistro("extraHourEntry", entrada.id);
     expect(registro!.action).toBe("REJECT");
-    expect(registro!.changedBy).toBe(ADMIN_EMAIL);
+    expect(registro!.changedBy).toBe(`pm.${escenario.prefijo}@synaptica.test`);
 
     const diff = registro!.diff as Record<string, { before: unknown; after: unknown }>;
     expect(diff.status.after).toBe(ExtraHourStatus.REJECTED);

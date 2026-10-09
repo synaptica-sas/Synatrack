@@ -231,6 +231,18 @@ async function ensureDefaultConfigs(): Promise<void> {
 
 export { ensureDefaultConfigs };
 
+/**
+ * Puerta de rol de aprobar y rechazar: todos los roles, porque cualquiera puede
+ * figurar como PM de un proyecto. La regla real es `canReviewExtraHour`.
+ */
+const ROLES_QUE_PUEDEN_SER_PM = [
+  AppRole.ADMIN,
+  AppRole.PM,
+  AppRole.CONSULTANT,
+  AppRole.FINANCE,
+  AppRole.VIEWER,
+];
+
 /** Lo mínimo que hace falta de la solicitud para decidir quién puede actuar. */
 type ExtraHourForAuth = {
   status: ExtraHourStatus;
@@ -257,8 +269,11 @@ type AuthUserForAuth = {
  * desembolsa —lo aprobado aparece directamente en `GET /payroll`—, no decide, y
  * por eso ya no puede ni aprobar ni rechazar.
  *
- * Regla única: pueden actuar el PM del proyecto, un ADMIN, o quien tenga una
- * delegación de aprobación vigente sobre ese proyecto. El estado no entra en la
+ * **Solo el PM del proyecto** (decisión del dueño del producto, 2026-10-09):
+ * quien figura en `Project.projectManagerEmail`. Ni el Administrador ni un
+ * delegado pueden aprobar o rechazar. Ser PM se decide por ese campo y no por
+ * el rol de la cuenta (igual que en D-13): un PM cuya cuenta solo tenga rol
+ * CONSULTANT sigue siendo el PM de su proyecto. El estado no entra en la
  * decisión: los handlers ya descartan antes lo que no es `PENDING_PM`.
  */
 export async function canReviewExtraHour(
@@ -266,27 +281,8 @@ export async function canReviewExtraHour(
   user: AuthUserForAuth,
 ): Promise<{ authorized: boolean }> {
   const email = user.email.toLowerCase();
-  const isAdmin = user.roles.includes(AppRole.ADMIN);
-
-  const isPM = entry.project?.projectManagerEmail?.toLowerCase() === email;
-
-  let hasDelegation = false;
-  if (!isPM && !isAdmin && entry.project?.id) {
-    const now = new Date();
-    const activeDelegation = await prisma.approvalDelegation.findFirst({
-      where: {
-        projectId: entry.project.id,
-        toUserEmail: email,
-        startDate: { lte: now },
-        endDate: { gte: now },
-      },
-    });
-    if (activeDelegation) {
-      hasDelegation = true;
-    }
-  }
-
-  return { authorized: isPM || isAdmin || hasDelegation };
+  const pmEmail = entry.project?.projectManagerEmail?.trim().toLowerCase();
+  return { authorized: !!pmEmail && pmEmail === email };
 }
 
 /**
@@ -342,8 +338,19 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           ],
         };
       } else {
-        alcance = { consultant: { email: email } };
-        soloPropias = true;
+        // Las suyas y, si figura como PM de algún proyecto, las de ese proyecto:
+        // es quien las aprueba aunque su cuenta no tenga rol PM. Las tarifas de
+        // los demás no viajan (`soloPropias` solo es cierto si no dirige nada).
+        alcance = {
+          OR: [
+            { consultant: { email: email } },
+            { project: { projectManagerEmail: { equals: email, mode: "insensitive" } } },
+          ],
+        };
+        const diriges = await prisma.project.count({
+          where: { projectManagerEmail: { equals: email, mode: "insensitive" } },
+        });
+        soloPropias = diriges === 0;
       }
 
       const filtros: Prisma.ExtraHourEntryWhereInput[] = [];
@@ -787,13 +794,14 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
   // 6. Aprobar solicitud de horas extras (aprobación única del PM)
   //
-  //    FINANCE ya no figura entre los roles autorizados: el segundo nivel de
-  //    aprobación se eliminó. Nómina consulta lo aprobado en `GET /payroll` y
-  //    desembolsa; no decide si se paga.
+  //    Solo el PM del proyecto aprueba: ni ADMIN, ni Finanzas, ni delegados.
+  //    La puerta de rol deja pasar a cualquier usuario autenticado porque ser
+  //    PM no depende del rol de la cuenta, sino de figurar como
+  //    `projectManagerEmail` del proyecto; eso lo decide `canReviewExtraHour`.
   app.patch(
     "/:id/approve",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
+      preHandler: [authenticate, authorize(ROLES_QUE_PUEDEN_SER_PM)],
     },
     async (request, reply) => {
       const { id } = idParamsSchema.parse(request.params);
@@ -836,12 +844,11 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         }
       }
 
-      // Veredicto compartido con `reject` (DEP-17): PM del proyecto, ADMIN o
-      // delegado vigente. Ya no hay niveles que distinguir.
+      // Veredicto compartido con `reject` (DEP-17): solo el PM del proyecto.
       const auth = await canReviewExtraHour(existing, user);
 
       if (!auth.authorized) {
-        return reply.status(403).send({ message: "Solo el supervisor (PM) de este proyecto, un consultor con delegación activa o el Administrador pueden aprobar estas horas extra." });
+        return reply.status(403).send({ message: "Solo el PM de este proyecto puede aprobar estas horas extra." });
       }
 
       // Aprobación única: la del PM ya es la autorización de pago, así que aquí
@@ -901,11 +908,11 @@ export async function extraHoursRoutes(app: FastifyInstance) {
     },
   );
 
-  // 7. Rechazar solicitud (mismo alcance que aprobar: solo el nivel del PM)
+  // 7. Rechazar solicitud (mismo alcance que aprobar: solo el PM del proyecto)
   app.patch(
     "/:id/reject",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
+      preHandler: [authenticate, authorize(ROLES_QUE_PUEDEN_SER_PM)],
     },
     async (request, reply) => {
       const { id } = idParamsSchema.parse(request.params);
@@ -955,7 +962,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       if (!auth.authorized) {
         return reply.status(403).send({
-          message: "Solo el PM de este proyecto, un consultor con delegación activa o el Administrador pueden rechazar estas horas extra.",
+          message: "Solo el PM de este proyecto puede rechazar estas horas extra.",
         });
       }
 

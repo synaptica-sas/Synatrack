@@ -28,13 +28,7 @@ import {
   type ExtraHoursConfig,
   type ExtraHoursCalculationResult,
   type PayrollConsolidationRow,
-  type ApprovalDelegation,
-  type DelegationCandidate,
   listSupportedCountries,
-  listDelegations,
-  listDelegationCandidates,
-  createDelegation,
-  deleteDelegation
 } from "../../services/api";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { displayCountryWithFlag } from "../../utils/statusLabels";
@@ -153,7 +147,7 @@ const LEGISLATIONS: Record<string, LegislationInfo> = {
 
 export function ExtraHoursTab({ projects, consultants, authUser, can, onError, configModeOnly = false }: ExtraHoursTabProps) {
   // Sub-navigation tabs
-  const [activeSubTab, setActiveSubTab] = useState<"report" | "pm" | "payroll" | "config" | "holidays" | "delegations">(
+  const [activeSubTab, setActiveSubTab] = useState<"report" | "pm" | "payroll" | "config" | "holidays">(
     configModeOnly ? "config" : "report"
   );
 
@@ -217,6 +211,15 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
   // --- 1. Report Form state ---
   const myConsultant = consultants.find((c) => c.email?.toLowerCase() === authUser?.email?.toLowerCase());
+
+  // Solo el PM del proyecto aprueba horas extra (ni el Administrador ni un
+  // delegado): el buzón muestra únicamente las solicitudes de los proyectos que
+  // dirige quien está conectado, que es la misma regla que aplica el backend.
+  const myEmail = authUser?.email?.trim().toLowerCase() ?? "";
+  const soyPmDe = (pmEmail: string | null | undefined) =>
+    !!myEmail && pmEmail?.trim().toLowerCase() === myEmail;
+  const dirijoAlgunProyecto = projects.some((p) => soyPmDe(p.projectManagerEmail));
+  const misPendientes = pmPendingEntries.filter((e) => soyPmDe(e.project?.projectManagerEmail));
   const [reportConsultantId, setReportConsultantId] = useState(myConsultant?.id || "");
   const [reportProjectId, setReportProjectId] = useState("");
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -258,15 +261,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   const [configMonthlyDivisor, setConfigMonthlyDivisor] = useState<number>(220);
   const [savingConfig, setSavingConfig] = useState(false);
 
-  // --- 6. Delegations state ---
-  const [delegations, setDelegations] = useState<ApprovalDelegation[]>([]);
-  const [delegationCandidates, setDelegationCandidates] = useState<DelegationCandidate[]>([]);
-  const [loadingDelegations, setLoadingDelegations] = useState(false);
-  const [delegateProjectId, setDelegateProjectId] = useState("");
-  const [delegateToEmail, setDelegateToEmail] = useState("");
-  const [delegateStartDate, setDelegateStartDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [delegateEndDate, setDelegateEndDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [savingDelegation, setSavingDelegation] = useState(false);
 
   // Show a success message that auto-dismisses
   const triggerSuccess = (msg: string) => {
@@ -276,62 +270,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }, 5000);
   };
 
-  const loadDelegationsList = useCallback(async () => {
-    if (!can("extrahours:review") && !authUser?.roles.includes("ADMIN")) return;
-    setLoadingDelegations(true);
-    try {
-      // Las dos cosas en paralelo: la lista registrada y los candidatos que el
-      // backend acepta. El desplegable sale de `candidates` y no de la lista de
-      // consultores, porque aprobar está reservado al PM del proyecto y al
-      // Administrador (D-13): ofrecer consultores era ofrecer justo lo que el
-      // backend rechaza, que es el desajuste que causó R-024.
-      const [registradas, posibles] = await Promise.all([listDelegations(), listDelegationCandidates()]);
-      setDelegations(registradas);
-      setDelegationCandidates(posibles);
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "Error al cargar delegaciones");
-    } finally {
-      setLoadingDelegations(false);
-    }
-  }, [onError, can, authUser]);
 
-  const handleAddDelegation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!delegateProjectId || !delegateToEmail || !delegateStartDate || !delegateEndDate) {
-      onError("Por favor completa todos los campos.");
-      return;
-    }
-    setSavingDelegation(true);
-    try {
-      await createDelegation({
-        projectId: delegateProjectId,
-        toUserEmail: delegateToEmail,
-        startDate: delegateStartDate,
-        endDate: delegateEndDate,
-      });
-      triggerSuccess("Delegación registrada con éxito.");
-      setDelegateProjectId("");
-      setDelegateToEmail("");
-      await loadDelegationsList();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "Error al registrar delegación");
-    } finally {
-      setSavingDelegation(false);
-    }
-  };
 
-  const handleDeleteDelegation = async (id: string) => {
-    if (!window.confirm("¿Está seguro de que desea eliminar esta delegación?")) {
-      return;
-    }
-    try {
-      await deleteDelegation(id);
-      triggerSuccess("Delegación eliminada con éxito.");
-      await loadDelegationsList();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "Error al eliminar delegación");
-    }
-  };
 
   // Una página del historial. El filtro de consultor viaja al servidor para
   // que el total del paginador sea el del filtro, no el de la tabla entera.
@@ -437,12 +377,9 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
       void loadConfigs();
       void loadCustomHolidaysList();
     }
-    if (can("extrahours:review") || authUser?.roles.includes("ADMIN")) {
-      void loadDelegationsList();
-    }
     // Fetch supported countries from backend
     void listSupportedCountries().then(setSupportedCountries).catch(() => {});
-  }, [loadPendingInboxes, loadConfigs, loadCustomHolidaysList, loadDelegationsList, can, authUser]);
+  }, [loadPendingInboxes, loadConfigs, loadCustomHolidaysList, can]);
 
 
   // Handle selected country changes in config
@@ -801,13 +738,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   // Filter projects with allowExtraHours = true
   const availableProjects = projects.filter((p) => p.allowExtraHours !== false);
 
-  // A quién puede delegar *esta* persona: los candidatos que acepta el backend
-  // (D-13) menos ella misma, porque delegarse a uno mismo no cubre nada. Si la
-  // resta deja la lista vacía, el formulario muestra el estado vacío en vez de
-  // un desplegable sin opciones.
-  const delegableCandidates = delegationCandidates.filter(
-    (c) => c.email !== authUser?.email?.toLowerCase(),
-  );
 
 
   return (
@@ -858,13 +788,13 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 </button>
               )}
 
-              {can("extrahours:review") && (
+              {dirijoAlgunProyecto && (
                 <button
                   type="button"
                   className={activeSubTab === "pm" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("pm")}
                 >
-                  👥 Aprobaciones ({pmPendingEntries.length})
+                  👥 Aprobaciones ({misPendientes.length})
                 </button>
               )}
 
@@ -875,15 +805,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   onClick={() => setActiveSubTab("payroll")}
                 >
                   📁 Cierre de Nómina
-                </button>
-              )}
-              {(can("projects:write") || authUser?.roles.includes("ADMIN")) && (
-                <button
-                  type="button"
-                  className={activeSubTab === "delegations" ? "toolbar-btn" : "toolbar-btn ghost"}
-                  onClick={() => { setActiveSubTab("delegations"); void loadDelegationsList(); }}
-                >
-                  🤝 Delegaciones
                 </button>
               )}
             </>
@@ -1231,8 +1152,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             Revisa las horas extra registradas en tus proyectos. Tu aprobación es la única necesaria: lo que apruebes queda aprobado y pasa directamente al cierre de nómina para su pago.
           </p>
 
-          {pmPendingEntries.length === 0 ? (
-            <p className="empty-note">No hay solicitudes pendientes por aprobación PM.</p>
+          {misPendientes.length === 0 ? (
+            <p className="empty-note">No hay solicitudes pendientes en los proyectos que diriges.</p>
           ) : (
             <div className="table-wrap">
               <table>
@@ -1249,7 +1170,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   </tr>
                 </thead>
                 <tbody>
-                  {pmPendingEntries.map((entry) => (
+                  {misPendientes.map((entry) => (
                     <tr key={entry.id}>
                       <td><strong>{entry.consultant?.fullName}</strong> (<CountryFlag country={entry.consultant?.country || "Default"} />)</td>
                       <td>{entry.project?.name}</td>
@@ -1861,189 +1782,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         </div>
       )}
 
-      {/* --- DELEGATIONS SUB-TAB --- */}
-      {activeSubTab === "delegations" && (
-        <div className="page-stack">
-
-          {/* Header */}
-          <div className="card glass-card card--roomy">
-            <h3 className="section-intro__title">
-              🤝 Delegación de Aprobaciones
-            </h3>
-            <p className="section-intro__text">
-              Permite a un Director de Proyecto (PM) delegar temporalmente la aprobación de horas extra
-              en otro PM, para un proyecto y un rango de fechas concretos.
-            </p>
-            {/* El aviso anterior decía que el delegado necesita rol PM o
-                Administrador «para aprobar», y avisaba de que podía nombrarse a
-                cualquiera. Con D-13 eso dejó de ser cierto: ya no se puede
-                nombrar a quien no es PM, así que el aviso pasa de advertencia a
-                explicación — qué significa «ser PM» aquí y por qué el desplegable
-                ofrece lo que ofrece. */}
-            <div className="notice notice--info" role="note">
-              <div className="notice__title">Solo se puede delegar en quien ya es PM</div>
-              <p className="notice__text">
-                Aprobar horas extra está reservado al <strong>PM responsable del proyecto</strong> y al
-                <strong> Administrador</strong>, y la delegación no amplía ese permiso. Por eso el
-                desplegable solo ofrece a quien <strong>figura como responsable de algún proyecto</strong>,
-                o tiene rol de PM o Administrador en su cuenta. No hace falta que haya iniciado sesión
-                nunca: basta con estar asignado como responsable en la ficha del proyecto.
-              </p>
-            </div>
-          </div>
-
-          <div className="two-pane">
-
-            {/* Left Column: Create Delegation */}
-            <form onSubmit={handleAddDelegation} className="card card--roomy card--stack">
-              <h4 className="card-title card-title--rule">
-                ➕ Registrar Nueva Delegación
-              </h4>
-
-              <div className="form-stack">
-                <div>
-                  <label className="form-label form-label--sm">Proyecto *</label>
-                  <select
-                    value={delegateProjectId}
-                    onChange={(e) => setDelegateProjectId(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Selecciona --</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="form-label form-label--sm">Delegar a (PM) *</label>
-                  {loadingDelegations ? (
-                    <p className="field-help">Buscando a quién se puede delegar…</p>
-                  ) : delegableCandidates.length === 0 ? (
-                    /* Estado vacío con salida: decir «no hay nadie» a secas deja
-                       al usuario sin saber qué hacer. */
-                    <div className="notice notice--warning" role="note">
-                      <div className="notice__title">No hay nadie a quien delegar</div>
-                      <p className="notice__text">
-                        Aparte de ti, nadie figura como responsable de un proyecto ni tiene rol de PM o
-                        Administrador en su cuenta. Asigna un responsable en la ficha de algún proyecto y
-                        vuelve a entrar aquí.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <select
-                        value={delegateToEmail || ""}
-                        onChange={(e) => setDelegateToEmail(e.target.value)}
-                        required
-                      >
-                        <option value="">-- Selecciona --</option>
-                        {delegableCandidates
-                          .map((c) => (
-                            <option key={c.email} value={c.email}>
-                              {c.nombre} ({c.email})
-                              {c.motivo === "PROYECTO"
-                                ? ` — dirige ${c.proyectos.length === 1 ? c.proyectos[0] : `${c.proyectos.length} proyectos`}`
-                                : " — rol en su cuenta"}
-                            </option>
-                          ))}
-                      </select>
-                      <p className="field-help">
-                        Responsables de proyecto y cuentas con rol de PM o Administrador.
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                <div>
-                  <label className="form-label form-label--sm">Fecha Inicio *</label>
-                  <input
-                    type="date"
-                    required
-                    value={delegateStartDate}
-                    onChange={(e) => setDelegateStartDate(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label form-label--sm">Fecha Fin *</label>
-                  <input
-                    type="date"
-                    required
-                    value={delegateEndDate}
-                    onChange={(e) => setDelegateEndDate(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                className="btn-block"
-                disabled={savingDelegation || delegableCandidates.length === 0}
-              >
-                {savingDelegation ? "Guardando..." : "Delegar Aprobación"}
-              </button>
-            </form>
-
-            {/* Right Column: Delegations List */}
-            <div className="card card--roomy">
-              <h4 className="card-title card-title--rule">
-                📋 Delegaciones Activas y Registradas
-              </h4>
-
-              <div className="table-wrap table-wrap--spaced">
-                {loadingDelegations ? (
-                  <p className="empty-note empty-note--center">
-                    Cargando delegaciones...
-                  </p>
-                ) : delegations.length === 0 ? (
-                  <p className="empty-note empty-note--center">
-                    No hay delegaciones de aprobación registradas.
-                  </p>
-                ) : (
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Proyecto</th>
-                        <th>Delegado Por</th>
-                        <th>Delegado A</th>
-                        <th>Rango</th>
-                        <th className="cell-right">Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {delegations.map((d) => {
-                        const project = projects.find(p => p.id === d.projectId);
-                        const startFormatted = new Date(d.startDate).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
-                        const endFormatted = new Date(d.endDate).toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
-                        return (
-                          <tr key={d.id}>
-                            <td className="cell-strong">{project ? project.name : d.projectId}</td>
-                            <td>{d.fromUserEmail}</td>
-                            <td className="cell-strong">{d.toUserEmail}</td>
-                            <td className="cell-date">{startFormatted} al {endFormatted}</td>
-                            <td className="cell-right">
-                              <button
-                                type="button"
-                                className="btn-icon-danger btn-sm"
-                                onClick={() => handleDeleteDelegation(d.id)}
-                              >
-                                🗑️ Eliminar
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-      )}
 
     </div>
   );

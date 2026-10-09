@@ -18,13 +18,15 @@ import {
  * quién autorizó un pago es falsificable.
  */
 describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del token", () => {
-  const ADMIN_EMAIL = "admin@synaptica.local";
   let app: FastifyInstance;
   let escenario: EscenarioBasico;
+  // Quien revisa es el PM del proyecto: es el único que puede hacerlo.
+  let PM_EMAIL: string;
 
   beforeAll(async () => {
     app = await crearAppDePrueba();
     escenario = await crearEscenarioBasico("eh-rev");
+    PM_EMAIL = `pm.${escenario.prefijo}@synaptica.test`;
   });
 
   afterAll(async () => {
@@ -44,16 +46,16 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
     const res = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.PM, PM_EMAIL),
       payload: { approvedBy: "PM Falsificado" },
     });
 
     expect(res.statusCode).toBe(200);
     expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
-    expect(res.json().data.approvedBy).toBe(ADMIN_EMAIL);
+    expect(res.json().data.approvedBy).toBe(PM_EMAIL);
 
     const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
-    expect(enBase.approvedBy).toBe(ADMIN_EMAIL);
+    expect(enBase.approvedBy).toBe(PM_EMAIL);
     expect(enBase.approvedAt).not.toBeNull();
   });
 
@@ -67,7 +69,7 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
     const res = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/approve`,
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.PM, PM_EMAIL),
     });
 
     expect(res.statusCode).toBe(200);
@@ -84,16 +86,16 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
     const res = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/reject`,
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.PM, PM_EMAIL),
       payload: { approvedBy: "Alguien Más", rejectionNote: "Fuera del límite semanal" },
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.approvedBy).toBe(ADMIN_EMAIL);
+    expect(res.json().data.approvedBy).toBe(PM_EMAIL);
     expect(res.json().data.rejectionNote).toBe("Fuera del límite semanal");
 
     const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
-    expect(enBase.approvedBy).toBe(ADMIN_EMAIL);
+    expect(enBase.approvedBy).toBe(PM_EMAIL);
   });
 
   it("el rechazo sigue exigiendo un motivo (400 de Zod si falta)", async () => {
@@ -106,7 +108,7 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
     const res = await app.inject({
       method: "PATCH",
       url: `/api/extra-hours/${entrada.id}/reject`,
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.PM, PM_EMAIL),
       payload: { approvedBy: "Alguien Más" },
     });
 
@@ -122,8 +124,8 @@ describe("PATCH /api/extra-hours/:id: la identidad de quien revisa sale del toke
  * pueden pagar. Finanzas desembolsa —consulta `GET /payroll`—, no decide.
  *
  * Estas pruebas fijan quién puede autorizar un pago, que es lo que no puede
- * cambiar por accidente: el PM del proyecto, un ADMIN o un delegado vigente, y
- * nadie más. `approve` y `reject` comparten el veredicto (`canReviewExtraHour`,
+ * cambiar por accidente: el PM del proyecto y nadie más —ni el Administrador ni
+ * un delegado— (decisión del dueño del producto, 2026-10-09). `approve` y `reject` comparten el veredicto (`canReviewExtraHour`,
  * DEP-17), así que ambos se prueban juntos.
  */
 describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar", () => {
@@ -213,7 +215,56 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar", () => {
     expect(enBase.status).toBe(ExtraHourStatus.PENDING_PM);
   });
 
-  it("una delegación vigente habilita a quien no es PM", async () => {
+  it("el Administrador que no es PM del proyecto recibe 403 al aprobar y al rechazar", async () => {
+    const entrada = await nuevaEntrada(8);
+
+    const aprobar = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.ADMIN),
+    });
+    expect(aprobar.statusCode).toBe(403);
+
+    const rechazar = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/reject`,
+      headers: comoRol(AppRole.ADMIN),
+      payload: { rejectionNote: "No corresponde" },
+    });
+    expect(rechazar.statusCode).toBe(403);
+
+    const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe(ExtraHourStatus.PENDING_PM);
+  });
+
+  it("el PM del proyecto aprueba aunque su cuenta solo tenga rol de Consultor", async () => {
+    const entrada = await nuevaEntrada(9);
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.CONSULTANT, pmEmail),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.approvedBy).toBe(pmEmail);
+  });
+
+  it("el PM con cuenta de Consultor ve en el listado las solicitudes de su proyecto", async () => {
+    const entrada = await nuevaEntrada(10);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/extra-hours?status=PENDING_PM&pageSize=100",
+      headers: comoRol(AppRole.CONSULTANT, pmEmail),
+    });
+    expect(res.statusCode).toBe(200);
+    const fila = (res.json().data as Array<{ id: string; consultant: Record<string, unknown> }>).find(
+      (e) => e.id === entrada.id,
+    );
+    expect(fila).toBeDefined();
+    // Las tarifas del consultor que pidió las horas no viajan.
+    expect(fila!.consultant).not.toHaveProperty("hourlyRate");
+  });
+
+  it("una delegación vigente ya no habilita a nadie", async () => {
     const entrada = await nuevaEntrada(4);
     const delegacion = await prisma.approvalDelegation.create({
       data: {
@@ -230,8 +281,7 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar", () => {
       url: `/api/extra-hours/${entrada.id}/approve`,
       headers: comoRol(AppRole.PM, DELEGADO_EMAIL),
     });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
+    expect(res.statusCode).toBe(403);
 
     await prisma.approvalDelegation.delete({ where: { id: delegacion.id } });
   });

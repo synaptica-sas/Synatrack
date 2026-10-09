@@ -401,7 +401,9 @@ describe("POST /api/delegations: a quién se puede nombrar delegado (R-024 + D-1
     }
   });
 
-  it("y el camino que sí debe seguir funcionando: delegado con rol PM y delegación vigente aprueba", async () => {
+  // Desde el 2026-10-09 solo aprueba el PM del proyecto: una delegación, aunque
+  // sea vigente y a otro PM, ya no habilita la aprobación.
+  it("un delegado con rol PM y delegación vigente ya no puede aprobar", async () => {
     const delegacion = await prisma.approvalDelegation.create({
       data: {
         projectId: escenario.projectId,
@@ -423,8 +425,7 @@ describe("POST /api/delegations: a quién se puede nombrar delegado (R-024 + D-1
         url: `/api/extra-hours/${entrada.id}/approve`,
         headers: comoRol(AppRole.PM, pmAjenoEmail),
       });
-      expect(res.statusCode).toBe(200);
-      expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
+      expect(res.statusCode).toBe(403);
     } finally {
       await prisma.approvalDelegation.delete({ where: { id: delegacion.id } });
     }
