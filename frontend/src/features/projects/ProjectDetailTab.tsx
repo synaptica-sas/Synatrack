@@ -383,6 +383,11 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
         <KpiCard label="SPI" value={evm?.spi != null ? pct(evm.spi) : "—"} sub="≥1 adelantado" />
         <KpiCard label="Presupuesto" value={fmt(financials.budget, financials.displayCurrency)} sub={financials.displayCurrency} />
         <KpiCard label="Ejecutado" value={fmt(financials.spent, financials.displayCurrency)} sub={`${financials.usedBudgetPercent.toFixed(1)}% del presupuesto`} />
+        <KpiCard
+          label="Exposición a riesgos"
+          value={fmt(financials.riskExposure, financials.displayCurrency)}
+          sub="Riesgos abiertos/aceptados con costo, ya incluidos en el proyectado"
+        />
         {/*
           El margen lleva su nivel en palabras además del tono: con dos umbrales
           (D-2) el color ya no distingue por sí solo advertencia de crítico.
@@ -592,6 +597,13 @@ function HitosTab({ projectId, milestones, canWrite, onReload }: {
   );
 }
 
+const CURRENCY_OPTIONS = ["COP", "USD", "EUR", "MXN", "PEN", "CLP"];
+
+const RIESGO_FORM_VACIO = {
+  title: "", probability: "1", impact: "1", category: "", estimatedCost: "", costCurrency: "USD",
+  owner: "", consultantId: "", mitigationPlan: "",
+};
+
 function RiesgosTab({ projectId, risks, canWrite, onReload, consultants }: {
   projectId: string;
   risks: Risk[];
@@ -600,7 +612,7 @@ function RiesgosTab({ projectId, risks, canWrite, onReload, consultants }: {
   consultants: Consultant[];
 }) {
   const { showToast } = useToast();
-  const [form, setForm] = useState({ title: "", probability: "1", impact: "1", category: "", owner: "", consultantId: "", mitigationPlan: "" });
+  const [form, setForm] = useState(RIESGO_FORM_VACIO);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
@@ -612,11 +624,13 @@ function RiesgosTab({ projectId, risks, canWrite, onReload, consultants }: {
         probability: Number(form.probability),
         impact: Number(form.impact),
         category: form.category || undefined,
+        estimatedCost: form.estimatedCost ? Number(form.estimatedCost) : undefined,
+        costCurrency: form.costCurrency,
         owner: form.owner || undefined,
         consultantId: form.consultantId || undefined,
         mitigationPlan: form.mitigationPlan || undefined,
       });
-      setForm({ title: "", probability: "1", impact: "1", category: "", owner: "", consultantId: "", mitigationPlan: "" });
+      setForm(RIESGO_FORM_VACIO);
       showToast("Riesgo registrado", "success");
       onReload();
     } catch {
@@ -665,6 +679,29 @@ function RiesgosTab({ projectId, risks, canWrite, onReload, consultants }: {
             <label className="field-label" htmlFor="riesgo-categoria">Categoría</label>
             <input id="riesgo-categoria" value={form.category} onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))} />
           </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="riesgo-costo">Costo estimado</label>
+            <input
+              id="riesgo-costo"
+              type="number"
+              min={0}
+              step="0.01"
+              placeholder="Opcional"
+              value={form.estimatedCost}
+              onChange={(e) => setForm((p) => ({ ...p, estimatedCost: e.target.value }))}
+            />
+          </div>
+          <div className="inline-form__field inline-form__field--narrow">
+            <label className="field-label" htmlFor="riesgo-costo-moneda">Moneda</label>
+            <select
+              id="riesgo-costo-moneda"
+              className="select-control"
+              value={form.costCurrency}
+              onChange={(e) => setForm((p) => ({ ...p, costCurrency: e.target.value }))}
+            >
+              {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
           <div className="inline-form__field inline-form__field--mid">
             <label className="field-label" htmlFor="riesgo-responsable">Responsable (externo)</label>
             <input id="riesgo-responsable" value={form.owner} onChange={(e) => setForm((p) => ({ ...p, owner: e.target.value }))} />
@@ -687,11 +724,11 @@ function RiesgosTab({ projectId, risks, canWrite, onReload, consultants }: {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>Score</th><th>Título</th><th>P × I</th><th>Categoría</th><th>Responsable</th><th>Estado</th>{canWrite && <th>Acciones</th>}</tr>
+            <tr><th>Score</th><th>Título</th><th>P × I</th><th>Categoría</th><th>Costo estimado</th><th>Responsable</th><th>Estado</th>{canWrite && <th>Acciones</th>}</tr>
           </thead>
           <tbody>
             {risks.length === 0 && (
-              <tr><td colSpan={canWrite ? 7 : 6} className="cell-empty cell-empty--roomy">Sin riesgos registrados</td></tr>
+              <tr><td colSpan={canWrite ? 8 : 7} className="cell-empty cell-empty--roomy">Sin riesgos registrados</td></tr>
             )}
             {risks.map((r) => (
               <tr key={r.id}>
@@ -707,6 +744,7 @@ function RiesgosTab({ projectId, risks, canWrite, onReload, consultants }: {
                 <td>{r.title}</td>
                 <td className="cell-small">{r.probability} × {r.impact}</td>
                 <td>{r.category ?? "—"}</td>
+                <td className="cell-small">{r.estimatedCost != null ? fmt(Number(r.estimatedCost), r.costCurrency) : "—"}</td>
                 <td>{r.consultant?.fullName ?? r.owner ?? "—"}</td>
                 <td>
                   {canWrite ? (

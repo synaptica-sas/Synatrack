@@ -160,6 +160,7 @@ describe("computeProjectFinancials — cada movimiento con la tasa de SU fecha",
     revenueEntries: [],
     approvedTimeEntries: [],
     expenses: [],
+    risks: [],
     forecasts: [],
     rateBook: libro,
     // Proyecto contratado en enero: su presupuesto se congela a 4.000/USD.

@@ -11,6 +11,7 @@ import {
   calculateProfitability,
   marginThresholdsAreCoherent,
   splitFinancialEntries,
+  toRiskCostInputs,
 } from "../../utils/financial.js";
 import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 
@@ -369,6 +370,7 @@ export async function projectsRoutes(app: FastifyInstance) {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           financialEntries: true,
+          risks: { select: { estimatedCost: true, costCurrency: true, status: true, identifiedAt: true } },
           forecasts: {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
@@ -408,6 +410,7 @@ export async function projectsRoutes(app: FastifyInstance) {
           rateCurrency: e.consultant.rateCurrency,
         })),
         expenses,
+        risks: toRiskCostInputs(project.risks),
         forecasts: project.forecasts.map((f) => ({
           consultantId: f.consultantId,
           hoursProjected: Number(f.hoursProjected),

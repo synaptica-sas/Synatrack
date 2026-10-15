@@ -306,6 +306,19 @@ export type ProjectForecastInput = ForecastInput & {
   endDate: string;   // "YYYY-MM-DD"
 };
 
+/**
+ * Costo estimado de un riesgo (R-009). Solo los vigentes (`OPEN`/`ACCEPTED`)
+ * exponen al presupuesto: uno `MITIGATED` ya se neutralizó y uno `CLOSED` dejó
+ * de aplicar, así que no representan una amenaza real al costo del proyecto.
+ */
+export type RiskCostInput = {
+  amount: number;
+  currency: string;
+  status: "OPEN" | "MITIGATED" | "ACCEPTED" | "CLOSED";
+  /** Fecha con la que se valora el importe: no es un movimiento, así que se usa la de identificación del riesgo. */
+  identifiedAt: Date;
+};
+
 export type ProjectFinancialsInput = {
   budget: number;
   budgetCurrency: string;
@@ -332,6 +345,12 @@ export type ProjectFinancialsInput = {
   approvedTimeEntries: ApprovedTimeEntryInput[];
   expenses: ExpenseInput[];
   forecasts: ProjectForecastInput[];
+  /**
+   * Exposición de riesgos (R-009). Obligatorio a propósito, igual que
+   * `healthThresholds`: así ningún llamador nuevo olvida pasar los riesgos y
+   * el presupuesto queda calculado sin su exposición sin que nadie lo note.
+   */
+  risks: RiskCostInput[];
   /**
    * Libro de tasas con dimensión temporal (R-008/R-012). Sustituye al
    * `rateMap` único de las tasas de hoy: cada importe se convierte con la tasa
@@ -376,6 +395,12 @@ export type ProjectFinancialsResult = {
   laborCostActual: number;
   laborCostForecast: number;
   expensesActual: number;
+  /**
+   * Costo potencial de los riesgos vigentes (OPEN/ACCEPTED) (R-009). Ya está
+   * incluido en `totalCostProjected`: es una exposición futura, no un gasto
+   * incurrido, así que nunca entra a `totalCostActual`.
+   */
+  riskExposure: number;
   totalCostActual: number;
   totalCostProjected: number;
 
@@ -438,6 +463,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     approvedTimeEntries,
     expenses,
     forecasts,
+    risks,
     rateBook,
     valuationDate,
     baseCurrency,
@@ -552,7 +578,18 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     );
   }
 
-  const totalCostProjected = totalCostActual + laborCostForecast;
+  // Exposición de riesgos vigentes (R-009): se valora a la fecha en que se
+  // identificó el riesgo (no es un movimiento con fecha propia como un gasto)
+  // y solo suma al costo PROYECTADO, nunca al real.
+  const riskExposure = risks
+    .filter((r) => r.status === "OPEN" || r.status === "ACCEPTED")
+    .reduce(
+      (sum, r) =>
+        sum + convertAmountFallbackOnDate(r.amount, r.currency, baseCurrency, r.identifiedAt, rateBook, ledger),
+      0,
+    );
+
+  const totalCostProjected = totalCostActual + laborCostForecast + riskExposure;
   const budgetConsumedPct = budgetBase > 0 ? round2((totalCostActual / budgetBase) * 100) : 0;
   const projectedPct = budgetBase > 0 ? round2((totalCostProjected / budgetBase) * 100) : 0;
 
@@ -597,6 +634,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     laborCostActual,
     laborCostForecast,
     expensesActual,
+    riskExposure,
     totalCostActual,
     totalCostProjected,
     approvedHours,
@@ -652,6 +690,34 @@ export function splitFinancialEntries(entries: FinancialEntryRow[]): {
 }
 
 /**
+ * Fila cruda de `Risk` tal como la devuelve Prisma (R-009). `estimatedCost` es
+ * `unknown` porque llega como `Decimal` (o `null` si el riesgo no tiene costo
+ * estimado todavía).
+ */
+export type RiskRow = {
+  estimatedCost: unknown;
+  costCurrency: string;
+  status: "OPEN" | "MITIGATED" | "ACCEPTED" | "CLOSED";
+  identifiedAt: Date;
+};
+
+/**
+ * Adapta filas de `Risk` al insumo del cálculo. Descarta los que no tienen
+ * costo estimado: un riesgo sin costo no debe sumar como si fuera $0 de
+ * exposición deliberada, simplemente no participa del cálculo.
+ */
+export function toRiskCostInputs(risks: RiskRow[]): RiskCostInput[] {
+  return risks
+    .filter((r) => r.estimatedCost != null)
+    .map((r) => ({
+      amount: Number(r.estimatedCost),
+      currency: r.costCurrency,
+      status: r.status,
+      identifiedAt: r.identifiedAt,
+    }));
+}
+
+/**
  * Adapta las filas de Prisma al insumo del cálculo unificado de `financial.ts`.
  * Vive aquí (capa de ruta) para que la utilidad siga siendo pura.
  */
@@ -669,6 +735,7 @@ type ProjectRowForFinancials = {
   marginCriticalPct: unknown;
   budgetAlertPct: unknown;
   financialEntries: FinancialEntryRow[];
+  risks: RiskRow[];
   forecasts: Array<{
     consultantId: string;
     hoursProjected: unknown;
@@ -730,6 +797,7 @@ export function toFinancialsInput(
       rateCurrency: e.consultant.rateCurrency,
     })),
     expenses: split.expenses,
+    risks: toRiskCostInputs(project.risks),
     forecasts: project.forecasts.map((f) => ({
       consultantId: f.consultantId,
       hoursProjected: Number(f.hoursProjected),
@@ -761,8 +829,9 @@ export type ProfitabilityResult = {
   laborCostActual: number;    // horas aprobadas * hourlyRate en baseCurrency
   laborCostForecast: number;  // forecast pendiente (ajustado) en baseCurrency
   expensesActual: number;     // gastos reales en baseCurrency
+  riskExposure: number;       // costo potencial de riesgos vigentes (R-009), ya incluido en totalCostProjected
   totalCostActual: number;    // laborCostActual + expensesActual
-  totalCostProjected: number; // totalCostActual + laborCostForecast
+  totalCostProjected: number; // totalCostActual + laborCostForecast + riskExposure
 
   // Presupuesto
   budget: number;
@@ -803,6 +872,8 @@ export type ProfitabilityInput = {
   revenueEntries: RevenueEntryInput[];
   approvedTimeEntries: Array<TimeEntryInput & { consultantId: string; hourlyRate: number | null; rateCurrency: string }>;
   expenses: ExpenseInput[];
+  /** Exposición de riesgos (R-009). Obligatorio igual que en `ProjectFinancialsInput`. */
+  risks: RiskCostInput[];
   forecasts: Array<ForecastInput & { consultantId: string; consultant: ConsultantInput; startDate: string; endDate: string }>;
   fxConfigs: FxRateRecord[];
   /** Histórico de `FxRateHistory` para valorar cada importe a su fecha (R-008). */
@@ -829,6 +900,7 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     revenueEntries: input.revenueEntries,
     approvedTimeEntries: input.approvedTimeEntries,
     expenses: input.expenses,
+    risks: input.risks,
     forecasts: input.forecasts,
     rateBook: buildRateBook(input.fxConfigs, input.fxHistory ?? []),
     valuationDate: input.valuationDate,
@@ -844,6 +916,7 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     laborCostActual: f.laborCostActual,
     laborCostForecast: f.laborCostForecast,
     expensesActual: f.expensesActual,
+    riskExposure: f.riskExposure,
     totalCostActual: f.totalCostActual,
     totalCostProjected: f.totalCostProjected,
     budget: f.budget,

@@ -13,6 +13,11 @@ const riskPayloadSchema = z.object({
   probability: z.coerce.number().int().min(1).max(3),
   impact: z.coerce.number().int().min(1).max(3),
   category: z.string().optional(),
+  // R-009: costo estimado si el riesgo se materializa. Mismo patrón que
+  // `sellPrice`/`sellCurrency` en Proyectos: monto opcional, moneda siempre
+  // con un valor (default USD) aunque no se haya puesto costo todavía.
+  estimatedCost: z.coerce.number().positive().optional(),
+  costCurrency: z.string().trim().toUpperCase().length(3).default("USD"),
   owner: z.string().optional(),
   // R-015: responsable cuando es un consultor del equipo. Convive con `owner`,
   // que sigue sirviendo para un responsable externo. Cadena vacía desasigna.

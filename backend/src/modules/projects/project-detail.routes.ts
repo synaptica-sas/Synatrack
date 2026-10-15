@@ -153,6 +153,9 @@ export async function projectDetailRoutes(app: FastifyInstance) {
             spent: totalCostActual,
             laborCostActual,
             expensesActual,
+            // R-009: exposición de riesgos vigentes (OPEN/ACCEPTED), ya sumada
+            // a `projectedTotal` pero no al gasto real.
+            riskExposure: fin.riskExposure,
             remainingBudget: budget - totalCostActual,
             usedBudgetPercent: usedBudgetPct,
             projectedPct: fin.projectedPct,

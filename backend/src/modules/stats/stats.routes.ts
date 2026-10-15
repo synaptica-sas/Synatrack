@@ -87,7 +87,7 @@ export async function statsRoutes(app: FastifyInstance) {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           milestones: { select: { status: true, plannedDate: true, weight: true } },
-          risks: { select: { riskScore: true, status: true } },
+          risks: { select: { riskScore: true, status: true, estimatedCost: true, costCurrency: true, identifiedAt: true } },
         },
       });
 
@@ -306,7 +306,7 @@ export async function statsRoutes(app: FastifyInstance) {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           milestones: { select: { status: true, plannedDate: true, weight: true } },
-          risks: { select: { riskScore: true, status: true } },
+          risks: { select: { riskScore: true, status: true, estimatedCost: true, costCurrency: true, identifiedAt: true } },
           issues: { select: { status: true, severity: true } },
         },
       });

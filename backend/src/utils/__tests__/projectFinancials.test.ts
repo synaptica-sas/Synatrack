@@ -47,6 +47,7 @@ const base: ProjectFinancialsInput = {
     },
   ],
   expenses: [{ amount: 2_000, currency: "USD", entryDate: FECHA }],
+  risks: [],
   forecasts: [],
   rateBook,
   valuationDate: FECHA,
@@ -119,6 +120,48 @@ describe("computeProjectFinancials — costos e ingresos", () => {
     expect(f.projectedPct).toBe(30); // sin forecast, proyectado = real
     expect(f.estimateAtCompletion).toBe(30_000);
     expect(f.budgetVariance).toBe(70_000);
+  });
+});
+
+// ─── Exposición de riesgos (R-009) ───────────────────────────────────────────
+
+describe("computeProjectFinancials — exposición de riesgos", () => {
+  it("un riesgo OPEN con costo suma al proyectado, no al real", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      risks: [{ amount: 10_000, currency: "USD", status: "OPEN", identifiedAt: FECHA }],
+    });
+    expect(f.riskExposure).toBe(10_000);
+    expect(f.totalCostActual).toBe(30_000); // sin cambio: no es gasto incurrido
+    expect(f.totalCostProjected).toBe(40_000);
+  });
+
+  it("un riesgo ACCEPTED también cuenta como exposición vigente", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      risks: [{ amount: 5_000, currency: "USD", status: "ACCEPTED", identifiedAt: FECHA }],
+    });
+    expect(f.riskExposure).toBe(5_000);
+  });
+
+  it("un riesgo MITIGATED o CLOSED no afecta el presupuesto", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      risks: [
+        { amount: 10_000, currency: "USD", status: "MITIGATED", identifiedAt: FECHA },
+        { amount: 10_000, currency: "USD", status: "CLOSED", identifiedAt: FECHA },
+      ],
+    });
+    expect(f.riskExposure).toBe(0);
+    expect(f.totalCostProjected).toBe(f.totalCostActual);
+  });
+
+  it("convierte el costo del riesgo a la moneda base", () => {
+    const f = computeProjectFinancials({
+      ...base,
+      risks: [{ amount: 400_000, currency: "COP", status: "OPEN", identifiedAt: FECHA }],
+    });
+    expect(f.riskExposure).toBeCloseTo(100, 6); // 400 000 / 4000
   });
 });
 
@@ -552,6 +595,7 @@ describe("toFinancialsInput", () => {
           { type: "REVENUE" as const, amount: "1000.00", currency: "USD", entryDate: FECHA },
           { type: "EXPENSE" as const, amount: "50.00", currency: "USD", entryDate: FECHA },
         ],
+        risks: [],
         forecasts: [],
       },
       [
@@ -590,6 +634,7 @@ describe("toFinancialsInput", () => {
         marginCriticalPct: "0.00",
         budgetAlertPct: null,
         financialEntries: [],
+        risks: [],
         forecasts: [],
       },
       [],

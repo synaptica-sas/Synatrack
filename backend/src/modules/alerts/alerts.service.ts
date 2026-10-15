@@ -189,6 +189,7 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
       financialEntries: true,
+      risks: { select: { estimatedCost: true, costCurrency: true, status: true, identifiedAt: true } },
       forecasts: {
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },

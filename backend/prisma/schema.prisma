@@ -37,9 +37,9 @@ enum AppRole {
 }
 
 enum ProjectType {
-  FIXED_PRICE        // Llave en mano: precio fijo contractual
-  TIME_AND_MATERIAL  // Bolsa de horas: factura por horas consumidas
-  STAFFING           // Staffing: tarifa mensual por recurso asignado
+  FIXED_PRICE // Llave en mano: precio fijo contractual
+  TIME_AND_MATERIAL // Bolsa de horas: factura por horas consumidas
+  STAFFING // Staffing: tarifa mensual por recurso asignado
 }
 
 enum ProjectStatus {
@@ -49,22 +49,22 @@ enum ProjectStatus {
 }
 
 enum FxRateType {
-  SPOT     // Tasa puntual del día
-  AVERAGE  // Promedio del período (mensual/trimestral)
-  BUDGET   // Tasa presupuestada al inicio del año fiscal
+  SPOT // Tasa puntual del día
+  AVERAGE // Promedio del período (mensual/trimestral)
+  BUDGET // Tasa presupuestada al inicio del año fiscal
 }
 
 enum AssignmentStatus {
-  PLANNED    // Confirmada para el futuro
-  ACTIVE     // En ejecución
-  PARTIAL    // Asignación parcial activa
-  COMPLETED  // Terminada normalmente
-  CANCELLED  // Cancelada antes de iniciar
+  PLANNED // Confirmada para el futuro
+  ACTIVE // En ejecución
+  PARTIAL // Asignación parcial activa
+  COMPLETED // Terminada normalmente
+  CANCELLED // Cancelada antes de iniciar
 }
 
 enum AllocationMode {
   PERCENTAGE // % de capacidad total
-  HOURS      // Horas fijas por semana/mes
+  HOURS // Horas fijas por semana/mes
 }
 
 enum BlockType {
@@ -153,63 +153,63 @@ enum AlertType {
 // ─── Modelos de negocio ────────────────────────────────────────────────────────
 
 model Project {
-  id              String        @id @default(cuid())
-  name            String
-  company         String
-  country         String
-  currency        String
-  budget          Decimal       @db.Decimal(14, 2)
-  startDate       DateTime
-  endDate         DateTime
-  description     String?
-  projectType     ProjectType   @default(TIME_AND_MATERIAL)
-  status          ProjectStatus @default(ACTIVE)
+  id                  String        @id @default(cuid())
+  name                String
+  company             String
+  country             String
+  currency            String
+  budget              Decimal       @db.Decimal(14, 2)
+  startDate           DateTime
+  endDate             DateTime
+  description         String?
+  projectType         ProjectType   @default(TIME_AND_MATERIAL)
+  status              ProjectStatus @default(ACTIVE)
   // Categoría de proyecto (R-010). Texto libre por nombre, no llave foránea —
   // mismo criterio que `FinancialEntry.category` tras D-4: renombrar una
   // categoría no debe dejar proyectos huérfanos, y una categoría nueva escrita
   // aquí se agrega sola al catálogo (`ProjectCategory`) para quedar disponible
   // en el desplegable de los próximos proyectos. Nulo = sin categorizar.
-  category        String?
-  sellPrice       Decimal?      @db.Decimal(14, 2)
-  sellCurrency    String        @default("USD")
+  category            String?
+  sellPrice           Decimal?      @db.Decimal(14, 2)
+  sellCurrency        String        @default("USD")
   // Dos umbrales de margen bruto (decisión de negocio D-2). Nulos = "sin umbral
   // propio": se aplican los valores por defecto de la empresa declarados en
   // `utils/financial.ts` (30 % advertencia, 15 % crítico). Se mantienen nulables
   // a propósito para que cambiar el criterio de la empresa no obligue a reescribir
   // todas las filas. Invariante: crítico <= advertencia (validado en la ruta).
-  marginWarningPct     Decimal?      @db.Decimal(5, 2)
-  marginCriticalPct    Decimal?      @db.Decimal(5, 2)
+  marginWarningPct    Decimal?      @db.Decimal(5, 2)
+  marginCriticalPct   Decimal?      @db.Decimal(5, 2)
   // Umbral de AVISO de presupuesto del proyecto (%). Nulo = "sin umbral
   // propio": se aplica `HealthThresholdConfig.budgetWarningPct`, el valor
   // general de la empresa (D-7). Antes era `@default(90)` NOT NULL, con lo que
   // ninguna fila podía heredar nada y el valor general nunca llegaba a usarse.
   // El nivel CRÍTICO ("presupuesto excedido") no es por proyecto: es general.
-  budgetAlertPct       Decimal?      @db.Decimal(5, 2)
+  budgetAlertPct      Decimal?      @db.Decimal(5, 2)
   // Gestión de proyecto
-  healthStatus         HealthStatus  @default(GREEN)
-  completionPct        Decimal?      @db.Decimal(5, 2)
-  phase                ProjectPhase  @default(EXECUTION)
-  projectManagerEmail  String?
+  healthStatus        HealthStatus  @default(GREEN)
+  completionPct       Decimal?      @db.Decimal(5, 2)
+  phase               ProjectPhase  @default(EXECUTION)
+  projectManagerEmail String?
   // Baseline
-  baselineBudget       Decimal?      @db.Decimal(14, 2)
-  baselineStartDate    DateTime?
-  baselineEndDate      DateTime?
-  baselineSetAt        DateTime?
-  baselineSetBy        String?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  baselineBudget      Decimal?      @db.Decimal(14, 2)
+  baselineStartDate   DateTime?
+  baselineEndDate     DateTime?
+  baselineSetAt       DateTime?
+  baselineSetBy       String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
-  timeEntries    TimeEntry[]
+  timeEntries      TimeEntry[]
   financialEntries FinancialEntry[]
-  forecasts      Forecast[]
-  assignments    Assignment[]
-  snapshots      MonthlySnapshot[]
-  alerts         Alert[]
-  milestones     Milestone[]
-  risks          Risk[]
-  issues         Issue[]
-  changeRequests ChangeRequest[]
-  allowExtraHours Boolean         @default(true)
+  forecasts        Forecast[]
+  assignments      Assignment[]
+  snapshots        MonthlySnapshot[]
+  alerts           Alert[]
+  milestones       Milestone[]
+  risks            Risk[]
+  issues           Issue[]
+  changeRequests   ChangeRequest[]
+  allowExtraHours  Boolean              @default(true)
   extraHourEntries ExtraHourEntry[]
   estimations      Estimation[]
   activities       Activity[]
@@ -218,31 +218,31 @@ model Project {
 }
 
 model Consultant {
-  id             String   @id @default(cuid())
-  fullName       String
-  email          String?
-  role           String
-  company        String?
-  hourlyRate     Decimal? @db.Decimal(14, 2)
-  rateCurrency   String   @default("USD")
-  country        String?
-  costPerMonth   Decimal? @db.Decimal(14, 2)
-  skills         String[] @default([])
-  seniority      String?  // "Junior" | "Mid" | "Senior" | "Lead"
-  maxHoursPerDay Decimal? @db.Decimal(4, 2)
-  active         Boolean  @default(true)
-  allowWeekendWork Boolean @default(false)
-  isInternal     Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id               String   @id @default(cuid())
+  fullName         String
+  email            String?
+  role             String
+  company          String?
+  hourlyRate       Decimal? @db.Decimal(14, 2)
+  rateCurrency     String   @default("USD")
+  country          String?
+  costPerMonth     Decimal? @db.Decimal(14, 2)
+  skills           String[] @default([])
+  seniority        String? // "Junior" | "Mid" | "Senior" | "Lead"
+  maxHoursPerDay   Decimal? @db.Decimal(4, 2)
+  active           Boolean  @default(true)
+  allowWeekendWork Boolean  @default(false)
+  isInternal       Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  timeEntries    TimeEntry[]
-  forecasts      Forecast[]
-  assignments    Assignment[]
-  blocks         ConsultantBlock[]
-  capacityConfig CapacityConfig?
-  alerts         Alert[]
-  identification String?
+  timeEntries      TimeEntry[]
+  forecasts        Forecast[]
+  assignments      Assignment[]
+  blocks           ConsultantBlock[]
+  capacityConfig   CapacityConfig?
+  alerts           Alert[]
+  identification   String?
   extraHourEntries ExtraHourEntry[]
   activities       Activity[]
   runningTimer     RunningTimer?
@@ -394,8 +394,8 @@ model Forecast {
   startDate      String   @default("") // ISO "YYYY-MM-DD" — fecha exacta de inicio
   endDate        String   @default("") // ISO "YYYY-MM-DD" — fecha exacta de fin
   hoursProjected Decimal  @db.Decimal(10, 2)
-  hourlyRate     Decimal? @db.Decimal(14, 2)  // Costo consultor (lo que pagamos)
-  sellRate       Decimal? @db.Decimal(14, 2)  // Tarifa de venta al cliente
+  hourlyRate     Decimal? @db.Decimal(14, 2) // Costo consultor (lo que pagamos)
+  sellRate       Decimal? @db.Decimal(14, 2) // Tarifa de venta al cliente
   currency       String   @default("USD")
   note           String?
   createdAt      DateTime @default(now())
@@ -427,8 +427,8 @@ model FxRateHistory {
   rate          Decimal    @db.Decimal(18, 6)
   effectiveDate DateTime
   rateType      FxRateType @default(SPOT)
-  source        String?    // "manual", "ecb", "banrep", etc.
-  createdBy     String?    // email del usuario que registró la tasa
+  source        String? // "manual", "ecb", "banrep", etc.
+  createdBy     String? // email del usuario que registró la tasa
   createdAt     DateTime   @default(now())
 
   @@index([baseCode, quoteCode, effectiveDate])
@@ -446,12 +446,12 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  photoUrl     String?
-  bio          String?
-  phrase       String?
-  skills       String[] @default([])
-  roles UserRole[]
-  country      String?
+  photoUrl String?
+  bio      String?
+  phrase   String?
+  skills   String[]   @default([])
+  roles    UserRole[]
+  country  String?
 }
 
 model Role {
@@ -484,9 +484,9 @@ model Assignment {
   startDate      DateTime
   endDate        DateTime
   allocationMode AllocationMode   @default(PERCENTAGE)
-  allocationPct  Decimal?         @db.Decimal(5, 2)   // 0..100 si mode=PERCENTAGE
-  hoursPerPeriod Decimal?         @db.Decimal(8, 2)   // horas/semana o /mes si mode=HOURS
-  periodUnit     String?          // "week" | "month"
+  allocationPct  Decimal?         @db.Decimal(5, 2) // 0..100 si mode=PERCENTAGE
+  hoursPerPeriod Decimal?         @db.Decimal(8, 2) // horas/semana o /mes si mode=HOURS
+  periodUnit     String? // "week" | "month"
   status         AssignmentStatus @default(PLANNED)
   role           String?
   note           String?
@@ -637,6 +637,11 @@ model Risk {
   impact          Int
   riskScore       Int
   category        String?
+  // Costo estimado del riesgo si se materializa (R-009): cuánto afectaría al
+  // presupuesto del proyecto. Nulable a propósito: no todo riesgo tiene un
+  // costo estimable todavía. Mismo patrón que `Project.sellPrice`/`sellCurrency`.
+  estimatedCost   Decimal?   @db.Decimal(14, 2)
+  costCurrency    String     @default("USD")
   owner           String?
   // Responsable cuando es un consultor del equipo (R-015). Convive con `owner`,
   // que sigue sirviendo para un responsable externo (cliente, tercero) sin
@@ -679,21 +684,21 @@ model Issue {
 }
 
 model ChangeRequest {
-  id            String              @id @default(cuid())
-  projectId     String
-  title         String
-  description   String
-  type          ChangeRequestType
-  impactScope   String?
-  impactBudget  Decimal?            @db.Decimal(14, 2)
-  impactDays    Int?
-  requestedBy   String
-  reviewedBy    String?
-  status        ChangeRequestStatus @default(PENDING)
-  resolvedAt    DateTime?
-  resolution    String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  id           String              @id @default(cuid())
+  projectId    String
+  title        String
+  description  String
+  type         ChangeRequestType
+  impactScope  String?
+  impactBudget Decimal?            @db.Decimal(14, 2)
+  impactDays   Int?
+  requestedBy  String
+  reviewedBy   String?
+  status       ChangeRequestStatus @default(PENDING)
+  resolvedAt   DateTime?
+  resolution   String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -756,32 +761,32 @@ model HealthThresholdConfig {
 }
 
 model ExtraHourEntry {
-  id                     String           @id @default(cuid())
+  id                     String          @id @default(cuid())
   consultantId           String
   projectId              String?
   date                   DateTime
-  startTime              String           
-  endTime                String           
-  diurnal                Decimal          @db.Decimal(6, 2)
-  nocturnal              Decimal          @db.Decimal(6, 2)
-  diurnalHoliday         Decimal          @db.Decimal(6, 2)
-  nocturnalHoliday       Decimal          @db.Decimal(6, 2)
-  totalHours             Decimal          @db.Decimal(6, 2)
-  diurnalAmount          Decimal          @db.Decimal(14, 2)
-  nocturnalAmount        Decimal          @db.Decimal(14, 2)
-  diurnalHolidayAmount   Decimal          @db.Decimal(14, 2)
-  nocturnalHolidayAmount Decimal          @db.Decimal(14, 2)
-  totalAmount            Decimal          @db.Decimal(14, 2)
+  startTime              String
+  endTime                String
+  diurnal                Decimal         @db.Decimal(6, 2)
+  nocturnal              Decimal         @db.Decimal(6, 2)
+  diurnalHoliday         Decimal         @db.Decimal(6, 2)
+  nocturnalHoliday       Decimal         @db.Decimal(6, 2)
+  totalHours             Decimal         @db.Decimal(6, 2)
+  diurnalAmount          Decimal         @db.Decimal(14, 2)
+  nocturnalAmount        Decimal         @db.Decimal(14, 2)
+  diurnalHolidayAmount   Decimal         @db.Decimal(14, 2)
+  nocturnalHolidayAmount Decimal         @db.Decimal(14, 2)
+  totalAmount            Decimal         @db.Decimal(14, 2)
   observations           String?
-  status                 ExtraHourStatus  @default(PENDING_PM)
+  status                 ExtraHourStatus @default(PENDING_PM)
   approvedBy             String?
   approvedAt             DateTime?
   rejectionNote          String?
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
-  consultant             Consultant       @relation(fields: [consultantId], references: [id], onDelete: Restrict)
-  project                Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([consultantId])
   @@index([projectId])
@@ -789,44 +794,44 @@ model ExtraHourEntry {
 }
 
 model Estimation {
-  id                   String     @id @default(cuid())
-  projectId            String?
-  projectName          String
-  createdAt            DateTime   @default(now())
-  totalIdealHours      Decimal    @db.Decimal(10, 2)
-  totalAdjustedHours   Decimal    @db.Decimal(10, 2)
-  bufferPercentage     Decimal    @db.Decimal(5, 2)
-  riskLevel            String     
-  confidenceLevel      Decimal    @db.Decimal(5, 2)
-  rawDataJson          String     @db.Text
-  
-  project              Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  id                 String   @id @default(cuid())
+  projectId          String?
+  projectName        String
+  createdAt          DateTime @default(now())
+  totalIdealHours    Decimal  @db.Decimal(10, 2)
+  totalAdjustedHours Decimal  @db.Decimal(10, 2)
+  bufferPercentage   Decimal  @db.Decimal(5, 2)
+  riskLevel          String
+  confidenceLevel    Decimal  @db.Decimal(5, 2)
+  rawDataJson        String   @db.Text
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
 }
 
 model Activity {
-  id             String      @id @default(cuid())
+  id             String    @id @default(cuid())
   title          String
   description    String?
   consultantId   String
   projectId      String?
-  activityType   String      @default("project") // "project" | "personal" | "meeting" | "training" | "support" | "other"
+  activityType   String    @default("project") // "project" | "personal" | "meeting" | "training" | "support" | "other"
   scheduledDate  DateTime
   dueDate        DateTime?
   completedDate  DateTime?
-  estimatedHours Decimal     @db.Decimal(5, 2)
-  actualHours    Decimal     @default(0) @db.Decimal(5, 2)
-  status         String      @default("pending") // "pending" | "in_progress" | "completed" | "cancelled" | "blocked"
-  priority       String      @default("medium")  // "low" | "medium" | "high" | "urgent"
+  estimatedHours Decimal   @db.Decimal(5, 2)
+  actualHours    Decimal   @default(0) @db.Decimal(5, 2)
+  status         String    @default("pending") // "pending" | "in_progress" | "completed" | "cancelled" | "blocked"
+  priority       String    @default("medium") // "low" | "medium" | "high" | "urgent"
   comments       String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  consultant     Consultant  @relation(fields: [consultantId], references: [id], onDelete: Cascade)
-  project        Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  timeEntries    TimeEntry[]
-  runningTimers  RunningTimer[]
+  consultant    Consultant     @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  project       Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  timeEntries   TimeEntry[]
+  runningTimers RunningTimer[]
 
   @@index([consultantId])
   @@index([projectId])
@@ -845,15 +850,15 @@ model CustomHoliday {
 }
 
 model ApprovalDelegation {
-  id             String   @id @default(cuid())
-  projectId      String
-  fromUserEmail  String
-  toUserEmail    String
-  startDate      DateTime
-  endDate        DateTime
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  projectId     String
+  fromUserEmail String
+  toUserEmail   String
+  startDate     DateTime
+  endDate       DateTime
+  createdAt     DateTime @default(now())
 
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([fromUserEmail])

@@ -1700,6 +1700,10 @@ export type Risk = {
   impact: number;
   riskScore: number;
   category: string | null;
+  // R-009: costo estimado si el riesgo se materializa (nulable: no todo riesgo
+  // tiene costo estimable todavía).
+  estimatedCost: string | null;
+  costCurrency: string;
   owner: string | null;
   // R-015: responsable cuando es un consultor del equipo. Convive con `owner`,
   // que sigue sirviendo para un responsable externo.
@@ -1775,6 +1779,8 @@ export type ProjectDetailFinancials = {
   spent: number;
   laborCostActual: number;
   expensesActual: number;
+  /** R-009: exposición de riesgos vigentes (OPEN/ACCEPTED), ya sumada a `projectedTotal`. */
+  riskExposure: number;
   remainingBudget: number;
   usedBudgetPercent: number;
   alertLevel: "ok" | "warning" | "exceeded";
@@ -1983,6 +1989,8 @@ export async function createRisk(projectId: string, payload: {
   probability: number;
   impact: number;
   category?: string;
+  estimatedCost?: number;
+  costCurrency?: string;
   owner?: string;
   consultantId?: string | null;
   mitigationPlan?: string;
@@ -1998,6 +2006,8 @@ export async function updateRisk(projectId: string, id: string, payload: {
   probability: number;
   impact: number;
   category?: string;
+  estimatedCost?: number;
+  costCurrency?: string;
   owner?: string;
   consultantId?: string | null;
   mitigationPlan?: string;

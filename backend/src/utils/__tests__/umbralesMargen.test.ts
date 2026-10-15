@@ -167,6 +167,7 @@ function proyectoConIngresos(
       },
     ],
     expenses: [],
+    risks: [],
     forecasts: [],
     rateBook,
     valuationDate: FECHA,

@@ -140,6 +140,7 @@ describe("calculateProfitability", () => {
       { hours: 6, workDate: new Date("2026-04-01"), status: "APPROVED" as const, hourlyRate: 65, rateCurrency: "USD", consultantId: "c1" },
     ],
     expenses: [{ amount: 1200, currency: "USD", entryDate: FECHA }],
+    risks: [],
     forecasts: [
       {
         consultantId: "c1",
