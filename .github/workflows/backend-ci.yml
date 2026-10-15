@@ -1,0 +1,63 @@
+name: Backend CI
+
+# Hasta ahora el backend no se verificaba en ningún pipeline: solo el frontend
+# corría type-check y tests antes de desplegar. Este workflow no despliega nada
+# (Render despliega por su cuenta); solo impide que un cambio roto pase sin aviso.
+on:
+  push:
+    branches: [main, dev]
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+  pull_request:
+    branches: [main, dev]
+    paths: ["backend/**", ".github/workflows/backend-ci.yml"]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    name: Type check y tests del backend
+    defaults:
+      run:
+        working-directory: ./backend
+    # Postgres real para las pruebas de ruta (`npm run test:routes`). Se publica en
+    # 5433, el mismo puerto que usa el entorno local, para no tocar la configuración
+    # de `tests/setup/test-database.ts`. El globalSetup crea `synatrack_test` solo.
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    # `config/env.ts` valida las variables al importarse; los tests unitarios
+    # importan módulos que lo cargan, así que necesitan valores mínimos válidos.
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres?schema=public
+      AUTH_ENABLED: "false"
+      AUTH_DEMO_BYPASS: "true"
+      ADMIN_EMAIL: admin@synaptica.local
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: 'backend/.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: 'backend/package-lock.json'
+      - name: Install dependencies
+        run: npm ci
+      - name: Prisma generate
+        run: npx prisma generate
+      - name: Type check
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Unit tests
+        run: npm test
+      - name: Route tests
+        run: npm run test:routes

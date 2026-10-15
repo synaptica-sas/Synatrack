@@ -15,6 +15,8 @@ import { revenueRoutes } from "../modules/revenue/revenue.routes.js";
 import { assignmentsRoutes } from "../modules/assignments/assignments.routes.js";
 import { capacityRoutes } from "../modules/capacity/capacity.routes.js";
 import { workdayRoutes } from "../modules/capacity/workday.routes.js";
+import { monthlyCapacityRoutes } from "../modules/capacity/monthly.routes.js";
+import { capacitySettingsRoutes } from "../modules/capacity/settings.routes.js";
 import { snapshotsRoutes } from "../modules/snapshots/snapshots.routes.js";
 import { alertsRoutes } from "../modules/alerts/alerts.routes.js";
 import { auditRoutes } from "../modules/audit/audit.routes.js";
@@ -28,6 +30,7 @@ import { estimationsRoutes } from "../modules/estimations/estimations.routes.js"
 import { profileRoutes } from "../modules/profile/profile.routes.js";
 import { activitiesRoutes } from "../modules/activities/activities.routes.js";
 import { customHolidaysRoutes } from "../modules/holidays/custom-holidays.routes.js";
+import { holidaysRoutes } from "../modules/holidays/holidays.routes.js";
 import { delegationsRoutes } from "../modules/delegations/delegations.routes.js";
 import { feedbackRoutes } from "../modules/feedback/feedback.routes.js";
 import { jobsRoutes } from "../modules/jobs/jobs.routes.js";
@@ -59,6 +62,8 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(assignmentsRoutes, { prefix: "/api/assignments" });
   await app.register(capacityRoutes, { prefix: "/api/capacity" });
   await app.register(workdayRoutes, { prefix: "/api/capacity" });
+  await app.register(capacitySettingsRoutes, { prefix: "/api/capacity" });
+  await app.register(monthlyCapacityRoutes, { prefix: "/api/capacity/monthly" });
   await app.register(snapshotsRoutes, { prefix: "/api/snapshots" });
   await app.register(alertsRoutes, { prefix: "/api/alerts" });
   await app.register(auditRoutes, { prefix: "/api/audit" });
@@ -67,6 +72,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(profileRoutes, { prefix: "/api/profile" });
   await app.register(activitiesRoutes, { prefix: "/api/activities" });
   await app.register(customHolidaysRoutes, { prefix: "/api/custom-holidays" });
+  await app.register(holidaysRoutes, { prefix: "/api/holidays" });
   await app.register(delegationsRoutes, { prefix: "/api/delegations" });
   await app.register(feedbackRoutes, { prefix: "/api/feedback" });
   await app.register(jobsRoutes, { prefix: "/api/jobs" });

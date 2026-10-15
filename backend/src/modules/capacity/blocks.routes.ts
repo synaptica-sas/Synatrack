@@ -1,7 +1,7 @@
-import { AppRole, BlockType } from "@prisma/client";
+import { BlockType } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, authorize } from "../../auth/guard.js";
+import { authenticate, requirePermission } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
@@ -25,7 +25,7 @@ export async function blocksRoutes(app: FastifyInstance) {
   // GET /api/consultants/:consultantId/blocks
   app.get(
     "/:consultantId/blocks",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request, reply) => {
       const { consultantId } = paramsSchema.parse(request.params);
       const consultant = await prisma.consultant.findUnique({ where: { id: consultantId } });
@@ -42,7 +42,7 @@ export async function blocksRoutes(app: FastifyInstance) {
   // POST /api/consultants/:consultantId/blocks
   app.post(
     "/:consultantId/blocks",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])] },
+    { preHandler: [authenticate, requirePermission("assignments:write")] },
     async (request, reply) => {
       const { consultantId } = paramsSchema.parse(request.params);
       const payload = blockPayloadSchema.parse(request.body);
@@ -67,7 +67,7 @@ export async function blocksRoutes(app: FastifyInstance) {
   // DELETE /api/consultants/:consultantId/blocks/:blockId
   app.delete(
     "/:consultantId/blocks/:blockId",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])] },
+    { preHandler: [authenticate, requirePermission("assignments:write")] },
     async (request, reply) => {
       const { consultantId, blockId } = blockIdSchema.parse(request.params);
       const block = await prisma.consultantBlock.findFirst({ where: { id: blockId, consultantId } });

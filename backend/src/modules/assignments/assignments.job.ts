@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { fromIsoDate, toIsoDate } from "../../utils/isoDate.js";
 import { getLogger } from "../../infra/logger.js";
 
 /**
@@ -6,8 +7,9 @@ import { getLogger } from "../../infra/logger.js";
  * Debe ejecutarse diariamente (vía cron o al iniciar el servidor).
  */
 export async function runAssignmentMaintenance(prisma: PrismaClient): Promise<void> {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // BE-12: las fechas de asignación son DATE (día calendario); se compara el día de hoy en UTC,
+  // no la hora local del servidor (que movía el corte según la zona horaria).
+  const today = fromIsoDate(toIsoDate(new Date()));
 
   // PLANNED → ACTIVE si startDate ya llegó y endDate aún no pasó
   const activated = await prisma.assignment.updateMany({

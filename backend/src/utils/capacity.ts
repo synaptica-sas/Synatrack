@@ -267,9 +267,15 @@ export function getNextAvailableDate(
   return addDays(latestEnd, 1);
 }
 
+/**
+ * Suma días calendario en UTC (NEG-08). Antes usaba `setDate` (hora local): en una zona con cambio
+ * de hora el resultado se corría una hora y, truncado a fecha, caía en el día equivocado
+ * (p. ej. en Europe/Madrid, 2026-03-29 + 1 daba 2026-03-29T23:00Z). En un servidor en UTC, o en
+ * zonas sin horario de verano (Quito, Bogotá), el resultado es idéntico al de antes.
+ */
 export function addDays(date: Date, days: number): Date {
   const d = new Date(date);
-  d.setDate(d.getDate() + days);
+  d.setUTCDate(d.getUTCDate() + days);
   return d;
 }
 

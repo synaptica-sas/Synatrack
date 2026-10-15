@@ -1,8 +1,9 @@
 import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, authorize } from "../../auth/guard.js";
+import { authenticate, requirePermission } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 import { normalizeCountry } from "../../utils/country.js";
 
@@ -22,7 +23,7 @@ export async function customHolidaysRoutes(app: FastifyInstance) {
   app.get(
     "/",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.FINANCE, AppRole.VIEWER])],
+      preHandler: [authenticate, requirePermission("holidays:read")],
     },
     async () => {
       const holidays = await prisma.customHoliday.findMany({
@@ -32,11 +33,11 @@ export async function customHolidaysRoutes(app: FastifyInstance) {
     },
   );
 
-  // 2. Crear un nuevo feriado especial de la empresa
+  // 2. Crear un nuevo feriado especial de la empresa (solo ADMIN: mueve la capacidad de todos)
   app.post(
     "/",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
+      preHandler: [authenticate, requirePermission("holidays:write")],
     },
     async (request, reply) => {
       const payload = customHolidayPayloadSchema.parse(request.body);
@@ -65,6 +66,15 @@ export async function customHolidaysRoutes(app: FastifyInstance) {
         },
       });
 
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.customHoliday,
+        entityId: holiday.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: holiday as unknown as Record<string, unknown>,
+        request,
+      });
+
       return reply.status(201).send({ data: holiday });
     },
   );
@@ -73,7 +83,7 @@ export async function customHolidaysRoutes(app: FastifyInstance) {
   app.delete(
     "/:id",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
+      preHandler: [authenticate, requirePermission("holidays:write")],
     },
     async (request, reply) => {
       const { id } = paramsSchema.parse(request.params);
@@ -84,6 +94,14 @@ export async function customHolidaysRoutes(app: FastifyInstance) {
       }
 
       await prisma.customHoliday.delete({ where: { id } });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.customHoliday,
+        entityId: id,
+        action: "DELETE",
+        changedBy: request.authUser!.email,
+        before: existing as unknown as Record<string, unknown>,
+        request,
+      });
       return reply.status(204).send();
     },
   );

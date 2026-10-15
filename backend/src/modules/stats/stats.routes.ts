@@ -65,6 +65,8 @@ export async function statsRoutes(app: FastifyInstance) {
       const projects = await prisma.project.findMany({
         where: {
           id: query.projectId || undefined,
+          // Un PROSPECT (oportunidad no ganada) no entra en KPIs ni en el portafolio (CONTRATO 3.7).
+          status: { not: "PROSPECT" },
           company: query.company ? { equals: query.company, mode: "insensitive" } : undefined,
         },
         include: {
@@ -295,6 +297,8 @@ export async function statsRoutes(app: FastifyInstance) {
       const projects = await prisma.project.findMany({
         where: {
           id: query.projectId || undefined,
+          // Un PROSPECT (oportunidad no ganada) no entra en KPIs ni en el portafolio (CONTRATO 3.7).
+          status: { not: "PROSPECT" },
           company: query.company ? { equals: query.company, mode: "insensitive" } : undefined,
         },
         include: {

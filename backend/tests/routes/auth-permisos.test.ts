@@ -32,7 +32,7 @@ describe("GET /api/auth/permissions", () => {
     expect(res.json().data).toEqual(rolePermissions);
   });
 
-  it("incluye los cinco roles, VIEWER entre ellos", async () => {
+  it("incluye los seis roles, VIEWER y COMMERCIAL entre ellos", async () => {
     const res = await app.inject({
       method: "GET",
       url: "/api/auth/permissions",
@@ -41,7 +41,7 @@ describe("GET /api/auth/permissions", () => {
 
     expect(res.statusCode).toBe(200);
     expect(Object.keys(res.json().data).sort()).toEqual(
-      ["ADMIN", "CONSULTANT", "FINANCE", "PM", "VIEWER"],
+      ["ADMIN", "COMMERCIAL", "CONSULTANT", "FINANCE", "PM", "VIEWER"],
     );
   });
 });

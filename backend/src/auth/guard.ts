@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { env } from "../config/env.js";
 import { prisma } from "../infra/prisma.js";
+import { resolvePermissions, type Permission } from "./roles.js";
 
 /**
  * Crea la relación usuario-rol si no existe. El frontend dispara varias
@@ -277,6 +278,9 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       if (appRole === "NOMINA") {
         appRole = "FINANCE";
       }
+      if (appRole === "COMERCIAL") {
+        appRole = "COMMERCIAL";
+      }
       if (appRole in AppRole) {
         tokenRoles.push(appRole as AppRole);
       }
@@ -386,6 +390,24 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     email: user.email,
     displayName: user.displayName,
     roles,
+  };
+}
+
+/**
+ * Exige un permiso del mapa `rolePermissions` (auth/roles.ts) en vez de una
+ * lista de roles escrita a mano en cada ruta. Mismo formato de respuesta que
+ * `authorize`.
+ */
+export function requirePermission(permission: Permission) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = request.authUser;
+    if (!user) {
+      return reply.status(401).send({ message: "Not authenticated" });
+    }
+
+    if (!resolvePermissions(user.roles).includes(permission)) {
+      return reply.status(403).send({ message: "Insufficient permissions" });
+    }
   };
 }
 

@@ -54,23 +54,72 @@ function moveChileanHoliday(year: number, month: number, day: number): Date {
   return date;
 }
 
-// Helper to move Ecuadorian holidays
-// (Sat -> preceding Fri, Sun -> following Mon, Tue -> preceding Mon, Wed/Thu -> following Fri)
-function moveEcuadorHoliday(year: number, month: number, day: number): Date {
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const dayOfWeek = date.getUTCDay();
-  if (dayOfWeek === 6) {
-    return new Date(date.getTime() - 1 * 24 * 60 * 60 * 1000);
-  } else if (dayOfWeek === 0) {
-    return new Date(date.getTime() + 1 * 24 * 60 * 60 * 1000);
-  } else if (dayOfWeek === 2) {
-    return new Date(date.getTime() - 1 * 24 * 60 * 60 * 1000);
-  } else if (dayOfWeek === 3) {
-    return new Date(date.getTime() + 2 * 24 * 60 * 60 * 1000);
-  } else if (dayOfWeek === 4) {
-    return new Date(date.getTime() + 1 * 24 * 60 * 60 * 1000);
+/**
+ * Traslado de feriados de Ecuador (Código del Trabajo art. 65 y LOSEP, reformados por la Ley
+ * Orgánica Reformatoria de dic-2016):
+ * - martes -> lunes anterior; miércoles o jueves -> viernes de la misma semana;
+ * - sábado -> viernes anterior; domingo -> lunes siguiente.
+ * Se exceptúan (no se trasladan) el 1 de enero, el 25 de diciembre y el carnaval; el Viernes Santo
+ * tampoco se mueve (siempre es viernes). Los traslados extraordinarios por decreto ejecutivo
+ * (p. ej. Navidad 2021 o Año Nuevo 2022) no los produce este generador: se cargan a mano como
+ * feriado DECREE. Coincide con la hoja Feriados del Excel del cliente (Navidad 2027, sábado, sin
+ * trasladar).
+ */
+function ecuadorMoveOffset(dayOfWeek: number): number {
+  switch (dayOfWeek) {
+    case 6: return -1; // sábado -> viernes anterior
+    case 0: return 1; // domingo -> lunes siguiente
+    case 2: return -1; // martes -> lunes anterior
+    case 3: return 2; // miércoles -> viernes
+    case 4: return 1; // jueves -> viernes
+    default: return 0; // lunes y viernes no se mueven
   }
-  return date;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type HolidayDef = { month: number; day: number; name: string };
+
+/**
+ * Coloca los feriados de Ecuador sin que dos caigan el mismo día.
+ * Primero se fijan los no trasladables y los que no necesitan moverse; después los que se mueven,
+ * en orden cronológico. Si el día de destino ya está ocupado por otro feriado, el que se iba a
+ * mover se queda en su fecha original. Es el caso de Difuntos (2-nov) e Independencia de Cuenca
+ * (3-nov), que son consecutivos: en 2026 (lunes y martes) Cuenca no se pasa al lunes 2 sino que se
+ * queda el martes 3, como en el calendario oficial; en 2027 (martes y miércoles) Difuntos pasa al
+ * lunes 1 y Cuenca al viernes 5, sin choque.
+ * Supuesto (la ley no lo resuelve): ante un choque, gana el feriado que ya estaba en ese día.
+ */
+function placeEcuadorHolidays(
+  year: number,
+  fixed: HolidayDef[],
+  movable: HolidayDef[],
+  easterBased: { date: Date; name: string }[],
+): { date: Date; name: string }[] {
+  const placed: { date: Date; name: string }[] = [];
+  const taken = new Set<number>();
+  const place = (date: Date, name: string) => {
+    placed.push({ date, name });
+    taken.add(date.getTime());
+  };
+
+  for (const f of fixed) place(new Date(Date.UTC(year, f.month - 1, f.day)), f.name);
+  for (const e of easterBased) place(e.date, e.name);
+
+  const toMove: { original: Date; target: Date; name: string }[] = [];
+  for (const m of movable) {
+    const original = new Date(Date.UTC(year, m.month - 1, m.day));
+    const offset = ecuadorMoveOffset(original.getUTCDay());
+    if (offset === 0) place(original, m.name);
+    else toMove.push({ original, target: new Date(original.getTime() + offset * DAY_MS), name: m.name });
+  }
+
+  toMove.sort((a, b) => a.original.getTime() - b.original.getTime());
+  for (const m of toMove) {
+    if (taken.has(m.target.getTime())) place(m.original, m.name);
+    else place(m.target, `${m.name} (trasladado)`);
+  }
+  return placed;
 }
 
 export function getHolidaysForYear(year: number, country: string): { date: Date; name: string }[] {
@@ -250,27 +299,32 @@ export function getHolidaysForYear(year: number, country: string): { date: Date;
 
   // 5. ECUADOR
   else if (normalizedCountry === "ecuador") {
-    // Fixed (Año Nuevo, Trabajo, Navidad do not move)
-    holidays.push({ date: new Date(Date.UTC(year, 0, 1)), name: "Año Nuevo" });
-    holidays.push({ date: new Date(Date.UTC(year, 4, 1)), name: "Día del Trabajo" });
-    holidays.push({ date: new Date(Date.UTC(year, 11, 25)), name: "Navidad" });
-
-    // Movable (moveEcuadorHoliday applied)
-    holidays.push({ date: moveEcuadorHoliday(year, 5, 24), name: "Batalla de Pichincha" });
-    holidays.push({ date: moveEcuadorHoliday(year, 8, 10), name: "Primer Grito de Independencia" });
-    holidays.push({ date: moveEcuadorHoliday(year, 10, 9), name: "Independencia de Guayaquil" });
-    
-    // Nov 2 and Nov 3 are consecutive.
-    // If they fall on Sat/Sun: Nov 2 goes to Fri, Nov 3 goes to Mon.
-    // Standard moveEcuadorHoliday handles them fine, but let's keep it simple:
-    holidays.push({ date: moveEcuadorHoliday(year, 11, 2), name: "Día de los Difuntos" });
-    holidays.push({ date: moveEcuadorHoliday(year, 11, 3), name: "Independencia de Cuenca" });
-
-    // Easter & Carnival
     const easter = calculateEasterSunday(year);
-    holidays.push({ date: new Date(easter.getTime() - 48 * 24 * 60 * 60 * 1000), name: "Lunes de Carnaval" });
-    holidays.push({ date: new Date(easter.getTime() - 47 * 24 * 60 * 60 * 1000), name: "Martes de Carnaval" });
-    holidays.push({ date: new Date(easter.getTime() - 2 * 24 * 60 * 60 * 1000), name: "Viernes Santo" });
+    holidays.push(
+      ...placeEcuadorHolidays(
+        year,
+        // No trasladables por ley (ver ecuadorMoveOffset).
+        [
+          { month: 1, day: 1, name: "Año Nuevo" },
+          { month: 12, day: 25, name: "Navidad" },
+        ],
+        // Trasladables. Día del Trabajo también se traslada (antes se dejaba fijo por error).
+        [
+          { month: 5, day: 1, name: "Día del Trabajo" },
+          { month: 5, day: 24, name: "Batalla de Pichincha" },
+          { month: 8, day: 10, name: "Primer Grito de Independencia" },
+          { month: 10, day: 9, name: "Independencia de Guayaquil" },
+          { month: 11, day: 2, name: "Día de los Difuntos" },
+          { month: 11, day: 3, name: "Independencia de Cuenca" },
+        ],
+        // Carnaval y Viernes Santo dependen de la Pascua y no se trasladan.
+        [
+          { date: new Date(easter.getTime() - 48 * DAY_MS), name: "Lunes de Carnaval" },
+          { date: new Date(easter.getTime() - 47 * DAY_MS), name: "Martes de Carnaval" },
+          { date: new Date(easter.getTime() - 2 * DAY_MS), name: "Viernes Santo" },
+        ],
+      ),
+    );
   }
 
   // 6. ARGENTINA
@@ -340,7 +394,16 @@ export function getHolidaysForYear(year: number, country: string): { date: Date;
     holidays.push({ date: memorialDay, name: "Memorial Day" });
   }
 
-  return holidays.sort((a, b) => a.date.getTime() - b.date.getTime());
+  // Dos feriados pueden coincidir legítimamente (p. ej. en Colombia 2000, San Pedro trasladado y
+  // Sagrado Corazón caen el lunes 3-jul). Se devuelve una sola entrada por fecha con los nombres
+  // unidos, para que quien precargue la tabla Holiday (única por país/ciudad/fecha) no choque.
+  const byDate = new Map<number, { date: Date; name: string }>();
+  for (const h of holidays) {
+    const prev = byDate.get(h.date.getTime());
+    if (prev) prev.name = `${prev.name} / ${h.name}`;
+    else byDate.set(h.date.getTime(), { date: h.date, name: h.name });
+  }
+  return [...byDate.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
 export function isPublicHoliday(date: Date, country: string): boolean {

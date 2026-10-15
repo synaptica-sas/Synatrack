@@ -287,6 +287,8 @@ export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
     where: {
       status: { in: ["ACTIVE", "PARTIAL"] },
       endDate: { gte: new Date(), lte: addDays(new Date(), 7) },
+      // Una oportunidad (PROSPECT) no genera alertas.
+      project: { status: { not: "PROSPECT" } },
     },
     include: { consultant: { select: { fullName: true } }, project: { select: { name: true } } },
   });

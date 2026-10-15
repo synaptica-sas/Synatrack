@@ -21,6 +21,8 @@ export type Permission =
   | "assignments:write"
   | "capacity:read"
   | "capacity:config"
+  | "holidays:read"
+  | "holidays:write"
   | "snapshots:close"
   | "alerts:read"
   | "alerts:resolve"
@@ -66,6 +68,10 @@ const allPermissions: Permission[] = [
   // Solo ADMIN: la jornada laboral (D-5) mueve las ocupaciones de todo el
   // portafolio a la vez, igual que `extrahours:config` mueve los recargos.
   "capacity:config",
+  // Feriados: leer lo tienen todos los roles (la capacidad y las horas extra los
+  // usan); escribir solo ADMIN, porque mueve la capacidad de todo el equipo.
+  "holidays:read",
+  "holidays:write",
   "snapshots:close",
   "alerts:read",
   "alerts:resolve",
@@ -113,8 +119,9 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "fx:read",
     "stats:read",
     "assignments:read",
-    "assignments:write",
+    // Sin `assignments:write` (P5): solo ADMIN crea y mueve asignaciones.
     "capacity:read",
+    "holidays:read",
     "alerts:read",
     "alerts:resolve",
     "extrahours:read",
@@ -130,10 +137,23 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "extrahours:read",
     "extrahours:write",
     "estimations:read",
+    "holidays:read",
   ],
   FINANCE: [
     "extrahours:read",
     "extrahours:review",
+    "assignments:read",
+    "capacity:read",
+    "holidays:read",
+  ],
+  // Comercial: ve la ocupación y los feriados para saber a quién puede vender.
+  // `assignments:read` es lo único extra: la pantalla de Capacidad lo usa para
+  // mostrar el detalle de asignaciones en solo lectura (`canWrite` sale de
+  // `assignments:write`, que no tiene). No recibe proyectos, tarifas ni dinero.
+  COMMERCIAL: [
+    "capacity:read",
+    "assignments:read",
+    "holidays:read",
   ],
   VIEWER: [
     "projects:read",
@@ -145,7 +165,8 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "fx:read",
     "stats:read",
     "assignments:read",
-    "capacity:read",
+    // Sin `capacity:read` (P3): la ocupación del equipo dejó de ser pública.
+    "holidays:read",
     "alerts:read",
     "extrahours:read",
   ],

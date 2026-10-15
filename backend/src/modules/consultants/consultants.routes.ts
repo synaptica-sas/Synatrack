@@ -7,6 +7,31 @@ import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
 
 import { normalizeCountry } from "../../utils/country.js";
+import { fromIsoDate, isValidIsoDate, toIsoDate } from "../../utils/isoDate.js";
+
+/** Fecha "YYYY-MM-DD" real (rechaza 2026-02-30); null o ausente se respetan. */
+const fechaOpcional = z
+  .union([z.literal(""), z.string().trim().refine(isValidIsoDate, { message: "Fecha inválida, se espera YYYY-MM-DD" })])
+  .nullish()
+  .transform((valor) => (valor === "" ? null : valor));
+
+/** Cambia las fechas @db.Date a "YYYY-MM-DD" para que la respuesta no dependa de la zona horaria. */
+function conFechas<T extends { hireDate?: Date | null; exitDate?: Date | null }>(fila: T) {
+  return {
+    ...fila,
+    ...("hireDate" in fila ? { hireDate: fila.hireDate ? toIsoDate(fila.hireDate) : null } : {}),
+    ...("exitDate" in fila ? { exitDate: fila.exitDate ? toIsoDate(fila.exitDate) : null } : {}),
+  };
+}
+
+/** Datos de Prisma para city, hireDate y exitDate; "undefined" deja el campo como está. */
+function camposDeVinculo(p: { city?: string | null; hireDate?: string | null; exitDate?: string | null }) {
+  return {
+    ...(p.city !== undefined ? { city: p.city } : {}),
+    ...(p.hireDate !== undefined ? { hireDate: p.hireDate ? fromIsoDate(p.hireDate) : null } : {}),
+    ...(p.exitDate !== undefined ? { exitDate: p.exitDate ? fromIsoDate(p.exitDate) : null } : {}),
+  };
+}
 
 const consultantPayloadSchema = z.object({
   fullName: z.string().trim().min(1),
@@ -28,10 +53,24 @@ const consultantPayloadSchema = z.object({
     .nullish()
     .transform((valor) => (valor === "" ? null : valor)),
   costPerMonth: z.coerce.number().nonnegative().optional(),
+  // Ciudad para feriados locales: espacios simples; vacía se guarda como null.
+  city: z
+    .string()
+    .nullish()
+    .transform((valor) => {
+      if (valor === undefined || valor === null) return valor;
+      const limpia = valor.trim().replace(/\s+/g, " ");
+      return limpia === "" ? null : limpia;
+    })
+    .pipe(z.string().max(80).nullish()),
+  hireDate: fechaOpcional,
+  exitDate: fechaOpcional,
   active: z.coerce.boolean().default(true),
   allowWeekendWork: z.coerce.boolean().default(false),
   isInternal: z.coerce.boolean().default(true),
 });
+
+const MENSAJE_FECHAS = "La fecha de salida no puede ser anterior a la fecha de ingreso";
 
 const consultantParamsSchema = z.object({ id: z.string().min(1) });
 
@@ -94,7 +133,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
         ? await prisma.consultant.findMany({ orderBy })
         : await prisma.consultant.findMany({ select: consultantSinDatosSensiblesSelect, orderBy });
 
-      return { data: consultants };
+      return { data: consultants.map(conFechas) };
     },
   );
 
@@ -105,6 +144,10 @@ export async function consultantsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
     const payload = consultantPayloadSchema.parse(request.body);
+
+    if (payload.hireDate && payload.exitDate && payload.exitDate < payload.hireDate) {
+      return reply.status(400).send({ message: MENSAJE_FECHAS });
+    }
 
     const consultant = await prisma.consultant.create({
       data: {
@@ -121,6 +164,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
         active: payload.active,
         allowWeekendWork: payload.allowWeekendWork,
         isInternal: payload.isInternal,
+        ...camposDeVinculo(payload),
       },
     });
 
@@ -138,7 +182,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
       request,
     });
 
-      return reply.status(201).send({ data: consultant });
+      return reply.status(201).send({ data: conFechas(consultant) });
     },
   );
 
@@ -154,6 +198,13 @@ export async function consultantsRoutes(app: FastifyInstance) {
     const existing = await prisma.consultant.findUnique({ where: { id } });
     if (!existing) {
       return reply.status(404).send({ message: "Consultant not found" });
+    }
+
+    // Una fecha ausente conserva la guardada: se valida contra el resultado final.
+    const ingreso = payload.hireDate !== undefined ? payload.hireDate : existing.hireDate ? toIsoDate(existing.hireDate) : null;
+    const salida = payload.exitDate !== undefined ? payload.exitDate : existing.exitDate ? toIsoDate(existing.exitDate) : null;
+    if (ingreso && salida && salida < ingreso) {
+      return reply.status(400).send({ message: MENSAJE_FECHAS });
     }
 
     const consultant = await prisma.consultant.update({
@@ -172,6 +223,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
         active: payload.active,
         allowWeekendWork: payload.allowWeekendWork,
         isInternal: payload.isInternal,
+        ...camposDeVinculo(payload),
       },
     });
 
@@ -187,7 +239,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
       request,
     });
 
-      return { data: consultant };
+      return { data: conFechas(consultant) };
     },
   );
 

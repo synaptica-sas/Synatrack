@@ -71,3 +71,89 @@ describe("Accented and tilde country names normalization", () => {
     expect(isPublicHoliday(dateEspana, "España")).toBe(true);
   });
 });
+
+// ─── Contra la hoja Feriados del Excel del cliente (tarea 0.1) ────────────────
+
+function isoListBetween(country: string, from: string, to: string): string[] {
+  const years = [Number(from.slice(0, 4)), Number(to.slice(0, 4))];
+  const out: string[] = [];
+  for (let y = years[0]; y <= years[1]; y++) {
+    for (const h of getHolidaysForYear(y, country)) {
+      const iso = h.date.toISOString().slice(0, 10);
+      if (iso >= from && iso <= to) out.push(iso);
+    }
+  }
+  return out.sort();
+}
+
+describe("Generador contra la hoja Feriados del Excel (2026-10 a 2027-12)", () => {
+  it("Ecuador: lista exacta de feriados nacionales (sin decretos ni locales)", () => {
+    expect(isoListBetween("Ecuador", "2026-10-01", "2027-12-31")).toEqual([
+      "2026-10-09", // Independencia de Guayaquil (viernes)
+      "2026-11-02", // Difuntos (lunes)
+      "2026-11-03", // Independencia de Cuenca (martes; no se mueve al lunes porque choca con Difuntos)
+      "2026-12-25", // Navidad
+      "2027-01-01", // Año Nuevo
+      "2027-02-08", // Carnaval
+      "2027-02-09", // Carnaval
+      "2027-03-26", // Viernes Santo
+      "2027-04-30", // Día del Trabajo (sábado 1-may -> viernes anterior)
+      "2027-05-24", // Batalla de Pichincha (lunes)
+      "2027-08-09", // Primer Grito (martes 10-ago -> lunes anterior)
+      "2027-10-08", // Independencia de Guayaquil (sábado 9-oct -> viernes anterior)
+      "2027-11-01", // Difuntos (martes 2-nov -> lunes anterior)
+      "2027-11-05", // Independencia de Cuenca (miércoles 3-nov -> viernes)
+      "2027-12-25", // Navidad (sábado: excepción legal, no se traslada)
+    ]);
+  });
+
+  it("Ecuador: el generador no produce los feriados por decreto ni los locales de Quito", () => {
+    const list = isoListBetween("Ecuador", "2026-10-01", "2027-12-31");
+    expect(list).not.toContain("2026-11-20"); // Decreto 507
+    expect(list).not.toContain("2026-12-07"); // Fundación de Quito (local)
+    expect(list).not.toContain("2027-12-06"); // Fundación de Quito (local)
+  });
+
+  it("Ecuador: Día del Trabajo en domingo pasa al lunes y en jueves al viernes", () => {
+    // 2022-05-01 domingo -> lunes 2; 2025-05-01 jueves -> viernes 2
+    expect(isPublicHoliday(new Date(Date.UTC(2022, 4, 2)), "Ecuador")).toBe(true);
+    expect(isPublicHoliday(new Date(Date.UTC(2022, 4, 1)), "Ecuador")).toBe(false);
+    expect(isPublicHoliday(new Date(Date.UTC(2025, 4, 2)), "Ecuador")).toBe(true);
+    expect(isPublicHoliday(new Date(Date.UTC(2025, 4, 1)), "Ecuador")).toBe(false);
+  });
+
+  it("Ecuador: 1 de enero y 25 de diciembre no se trasladan aunque caigan en fin de semana", () => {
+    // 2028-01-01 es sábado; 2027-12-25 es sábado
+    expect(isPublicHoliday(new Date(Date.UTC(2028, 0, 1)), "Ecuador")).toBe(true);
+    expect(isPublicHoliday(new Date(Date.UTC(2027, 11, 24)), "Ecuador")).toBe(false);
+  });
+
+  it("Colombia: lista exacta (coincide con el Excel)", () => {
+    expect(isoListBetween("Colombia", "2026-10-01", "2027-12-31")).toEqual([
+      "2026-10-12", "2026-11-02", "2026-11-16", "2026-12-08", "2026-12-25",
+      "2027-01-01", "2027-01-11", "2027-03-22", "2027-03-25", "2027-03-26",
+      "2027-05-01", "2027-05-10", "2027-05-31", "2027-06-07", "2027-07-05",
+      "2027-07-20", "2027-08-07", "2027-08-16", "2027-10-18", "2027-11-01",
+      "2027-11-15", "2027-12-08", "2027-12-25",
+    ]);
+  });
+
+  it("dos feriados que coinciden se devuelven en una sola entrada con los dos nombres", () => {
+    // Colombia 2000: San Pedro (jue 29-jun -> lun 3-jul) y Sagrado Corazón (Pascua + 71 = lun 3-jul)
+    const julio3 = getHolidaysForYear(2000, "Colombia").filter((h) => h.date.toISOString().startsWith("2000-07-03"));
+    expect(julio3).toHaveLength(1);
+    expect(julio3[0].name).toContain("San Pedro");
+    expect(julio3[0].name).toContain("Sagrado Corazón");
+  });
+
+  it("ningún país produce dos feriados el mismo día en un año (2000-2050)", () => {
+    const countries = ["Ecuador", "Colombia", "Peru", "Chile", "Mexico", "Argentina", "España", "Default"];
+    for (const country of countries) {
+      for (let year = 2000; year <= 2050; year++) {
+        const dates = getHolidaysForYear(year, country).map((h) => h.date.toISOString().slice(0, 10));
+        const dups = dates.filter((d, i) => dates.indexOf(d) !== i);
+        expect({ country, year, dups }).toEqual({ country, year, dups: [] });
+      }
+    }
+  });
+});

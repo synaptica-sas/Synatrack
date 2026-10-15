@@ -179,11 +179,11 @@ describe("DEP-38: fugas de tarifas en las rutas que quedaban", () => {
   });
 
   describe("GET /api/capacity/by-project (costo derivado)", () => {
-    it("un VIEWER recibe el costo estimado en null, no un número del que despejar la tarifa", async () => {
+    it("un COMERCIAL (capacity:read sin tarifas; el VIEWER ya no accede a capacity) recibe el costo estimado en null, no un número del que despejar la tarifa", async () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/capacity/by-project?from=2026-06-01&to=2026-06-30",
-        headers: comoRol(AppRole.VIEWER, "viewer@synaptica.test"),
+        headers: comoRol(AppRole.COMMERCIAL, "comercial@synaptica.test"),
       });
 
       expect(res.statusCode).toBe(200);
@@ -224,11 +224,11 @@ describe("DEP-38: fugas de tarifas en las rutas que quedaban", () => {
   });
 
   describe("GET /api/capacity/project/:projectId (costo derivado)", () => {
-    it("un VIEWER recibe null en el costo estimado y en el resumen", async () => {
+    it("un COMERCIAL (capacity:read sin tarifas; el VIEWER ya no accede a capacity) recibe null en el costo estimado y en el resumen", async () => {
       const res = await app.inject({
         method: "GET",
         url: `/api/capacity/project/${escenario.projectId}?from=2026-06-01&to=2026-06-30`,
-        headers: comoRol(AppRole.VIEWER, "viewer@synaptica.test"),
+        headers: comoRol(AppRole.COMMERCIAL, "comercial@synaptica.test"),
       });
 
       expect(res.statusCode).toBe(200);
@@ -261,11 +261,11 @@ describe("DEP-38: fugas de tarifas en las rutas que quedaban", () => {
   });
 
   describe("GET /api/capacity/overview (R-016: costo total por consultor)", () => {
-    it("un VIEWER recibe el costo estimado en null", async () => {
+    it("un COMERCIAL (capacity:read sin tarifas; el VIEWER ya no accede a capacity) recibe el costo estimado en null", async () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/capacity/overview?from=2026-06-01&to=2026-06-30",
-        headers: comoRol(AppRole.VIEWER, "viewer@synaptica.test"),
+        headers: comoRol(AppRole.COMMERCIAL, "comercial@synaptica.test"),
       });
 
       expect(res.statusCode).toBe(200);
@@ -300,11 +300,11 @@ describe("DEP-38: fugas de tarifas en las rutas que quedaban", () => {
   });
 
   describe("GET /api/assignments (revisada, sin cambios)", () => {
-    it("ya entregaba el consultor con un select acotado: no hay tarifa que recortar", async () => {
+    it("ya entregaba el consultor con un select acotado: no hay tarifa que recortar (se prueba con COMMERCIAL: el VIEWER ya no tiene capacity:read)", async () => {
       const res = await app.inject({
         method: "GET",
         url: "/api/assignments",
-        headers: comoRol(AppRole.VIEWER, "viewer@synaptica.test"),
+        headers: comoRol(AppRole.COMMERCIAL, "comercial@synaptica.test"),
       });
 
       expect(res.statusCode).toBe(200);

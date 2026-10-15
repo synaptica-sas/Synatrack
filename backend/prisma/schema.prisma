@@ -34,6 +34,7 @@ enum AppRole {
   CONSULTANT
   FINANCE
   VIEWER
+  COMMERCIAL // Ve capacity y feriados para vender; no escribe asignaciones
 }
 
 enum ProjectType {
@@ -43,6 +44,7 @@ enum ProjectType {
 }
 
 enum ProjectStatus {
+  PROSPECT // Oportunidad comercial aun no ganada
   ACTIVE
   PAUSED
   CLOSED
@@ -52,6 +54,20 @@ enum FxRateType {
   SPOT // Tasa puntual del día
   AVERAGE // Promedio del período (mensual/trimestral)
   BUDGET // Tasa presupuestada al inicio del año fiscal
+}
+
+/// Certeza de una asignacion: las PROBABLES solo suman a la capacidad
+/// asignada cuando el reporte pide incluirlas.
+enum AssignmentCertainty {
+  CONFIRMED
+  PROBABLE
+}
+
+/// Origen de un feriado: calculado por el sistema, cargado a mano o por decreto.
+enum HolidaySource {
+  GENERATED
+  MANUAL
+  DECREE
 }
 
 enum AssignmentStatus {
@@ -215,32 +231,40 @@ model Project {
   activities       Activity[]
   delegations      ApprovalDelegation[]
   runningTimers    RunningTimer[]
+  // Proyecto interno / stand-by. No es lo mismo que Consultant.isInternal
+  // (empleado propio frente a externo).
+  isInternal       Boolean              @default(false)
 }
 
 model Consultant {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   fullName         String
   email            String?
   role             String
   company          String?
-  hourlyRate       Decimal? @db.Decimal(14, 2)
-  rateCurrency     String   @default("USD")
+  hourlyRate       Decimal?  @db.Decimal(14, 2)
+  rateCurrency     String    @default("USD")
   country          String?
-  costPerMonth     Decimal? @db.Decimal(14, 2)
-  skills           String[] @default([])
+  costPerMonth     Decimal?  @db.Decimal(14, 2)
+  skills           String[]  @default([])
   seniority        String? // "Junior" | "Mid" | "Senior" | "Lead"
-  maxHoursPerDay   Decimal? @db.Decimal(4, 2)
-  active           Boolean  @default(true)
-  allowWeekendWork Boolean  @default(false)
-  isInternal       Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  maxHoursPerDay   Decimal?  @db.Decimal(4, 2)
+  // Ciudad para feriados locales ("Quito"); null = solo feriados nacionales.
+  city             String?
+  // Fuera de [hireDate, exitDate] la capacidad del consultor es 0.
+  hireDate         DateTime? @db.Date
+  exitDate         DateTime? @db.Date
+  active           Boolean   @default(true)
+  allowWeekendWork Boolean   @default(false)
+  isInternal       Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   timeEntries      TimeEntry[]
   forecasts        Forecast[]
   assignments      Assignment[]
   blocks           ConsultantBlock[]
-  capacityConfig   CapacityConfig?
+  capacityConfigs  CapacityConfig[]
   alerts           Alert[]
   identification   String?
   extraHourEntries ExtraHourEntry[]
@@ -478,27 +502,30 @@ model UserRole {
 // ─── Asignaciones y Capacidad ─────────────────────────────────────────────────
 
 model Assignment {
-  id             String           @id @default(cuid())
+  id             String              @id @default(cuid())
   projectId      String
   consultantId   String
-  startDate      DateTime
-  endDate        DateTime
-  allocationMode AllocationMode   @default(PERCENTAGE)
-  allocationPct  Decimal?         @db.Decimal(5, 2) // 0..100 si mode=PERCENTAGE
-  hoursPerPeriod Decimal?         @db.Decimal(8, 2) // horas/semana o /mes si mode=HOURS
+  // @db.Date: una asignacion es por dias calendario, sin hora ni zona horaria.
+  startDate      DateTime            @db.Date
+  endDate        DateTime            @db.Date
+  certainty      AssignmentCertainty @default(CONFIRMED)
+  allocationMode AllocationMode      @default(PERCENTAGE)
+  allocationPct  Decimal?            @db.Decimal(5, 2) // 0..100 si mode=PERCENTAGE
+  hoursPerPeriod Decimal?            @db.Decimal(8, 2) // horas/semana o /mes si mode=HOURS
   periodUnit     String? // "week" | "month"
-  status         AssignmentStatus @default(PLANNED)
+  status         AssignmentStatus    @default(PLANNED)
   role           String?
   note           String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 
-  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Restrict) // no borrar el historial de asignaciones junto con el proyecto
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
 
   @@index([consultantId])
   @@index([projectId])
   @@index([startDate, endDate])
+  @@index([consultantId, startDate, endDate]) // la consulta mensual filtra por consultor y rango
   @@index([status])
 }
 
@@ -520,18 +547,25 @@ model ConsultantBlock {
 /// un consultor (`consultantId`, `country` NULL) o bien la de un pais
 /// (`country`, `consultantId` NULL). La fila `country = "Default"` es el valor
 /// general que hereda cualquier pais sin configuracion propia.
-/// `country` es unico: en PostgreSQL los NULL no chocan entre si, asi que las
-/// filas por consultor conviven con las de pais bajo el mismo indice.
+/// Con vigencia (`validFrom`): una clave puede tener varias filas y la jornada
+/// aplicable a un dia es la de mayor `validFrom` <= dia. Asi un cambio de
+/// jornada no reescribe los meses pasados. Los unicos son (clave, validFrom);
+/// en PostgreSQL los NULL no chocan entre si, asi que las filas por consultor
+/// conviven con las de pais.
 model CapacityConfig {
   id              String   @id @default(cuid())
-  consultantId    String?  @unique
-  country         String?  @unique
+  consultantId    String?
+  country         String?
+  validFrom       DateTime @default(dbgenerated("'2000-01-01'::date")) @db.Date
   hoursPerDay     Decimal  @default(8) @db.Decimal(4, 2)
   workDaysPerWeek Int      @default(5)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   consultant Consultant? @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+
+  @@unique([consultantId, validFrom])
+  @@unique([country, validFrom])
 }
 
 // ─── Cierre Mensual ───────────────────────────────────────────────────────────
@@ -847,6 +881,45 @@ model CustomHoliday {
   updatedAt DateTime @updatedAt
 
   @@unique([date, country])
+}
+
+/// Fuente unica de feriados para capacity (reemplaza a CustomHoliday, que
+/// convive hasta la fase 3). `city = ""` (y no NULL) es el feriado nacional:
+/// un NULL no choca en un UNIQUE y permitiria duplicar nacionales.
+model Holiday {
+  id        String        @id @default(cuid())
+  country   String // nombre normalizado ("Ecuador")
+  city      String        @default("")
+  date      DateTime      @db.Date
+  name      String
+  source    HolidaySource @default(MANUAL)
+  createdBy String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@unique([country, city, date])
+  @@index([country, date])
+}
+
+/// Anio de feriados confirmado por un ADMIN para un pais; alimenta la alerta
+/// "faltan feriados" (detecta huecos, cosa que la fecha maxima no hace).
+model HolidayCalendarYear {
+  country     String
+  year        Int
+  confirmedBy String
+  confirmedAt DateTime @default(now())
+
+  @@id([country, year])
+}
+
+/// Umbrales de capacity. Fila unica (patron HealthThresholdConfig).
+model CapacitySettings {
+  scope                   String   @id @default("GENERAL")
+  underThresholdPct       Decimal  @default(70) @db.Decimal(5, 2)
+  overThresholdPct        Decimal  @default(100) @db.Decimal(5, 2)
+  includeProbablesDefault Boolean  @default(false)
+  updatedBy               String?
+  updatedAt               DateTime @updatedAt
 }
 
 model ApprovalDelegation {

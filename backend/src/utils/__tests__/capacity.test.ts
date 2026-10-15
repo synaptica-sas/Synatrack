@@ -406,6 +406,21 @@ describe("addDays", () => {
     const result = addDays(new Date("2026-01-31T00:00:00.000Z"), 1);
     expect(result.toISOString().slice(0, 10)).toBe("2026-02-01");
   });
+
+  it("suma en UTC aunque el proceso esté en una zona con cambio de hora (NEG-08)", () => {
+    const originalTz = process.env.TZ;
+    try {
+      process.env.TZ = "Europe/Madrid"; // 29-mar-2026 y 25-oct-2026 cambian la hora
+      expect(addDays(new Date("2026-03-29T00:00:00.000Z"), 1).toISOString()).toBe("2026-03-30T00:00:00.000Z");
+      expect(addDays(new Date("2026-10-25T00:00:00.000Z"), 1).toISOString()).toBe("2026-10-26T00:00:00.000Z");
+      expect(addDays(new Date("2026-03-30T00:00:00.000Z"), -1).toISOString()).toBe("2026-03-29T00:00:00.000Z");
+      process.env.TZ = "America/Guayaquil";
+      expect(addDays(new Date("2026-10-31T00:00:00.000Z"), 1).toISOString()).toBe("2026-11-01T00:00:00.000Z");
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
+  });
 });
 
 // ─── Jornada laboral configurable (decisión de negocio D-5) ──────────────────

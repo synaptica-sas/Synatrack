@@ -1,7 +1,6 @@
-import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, authorize } from "../../auth/guard.js";
+import { authenticate, requirePermission } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { puedeVerTarifas } from "../../utils/consultant-scope.js";
 import {
@@ -9,11 +8,9 @@ import {
   calculateCommittedHours,
   calculateCapacityHours,
   addDays,
-  getAvailabilityStatus,
   resolverJornada,
-  type AvailabilityStatus,
 } from "../../utils/capacity.js";
-import { cargarJornadasPorPais } from "./workday.routes.js";
+import { cargarJornadasPorPais, hoyUtc, jornadaVigenteDe } from "./workday.routes.js";
 
 const periodQuerySchema = z.object({
   from: z.coerce.date().optional(),
@@ -28,26 +25,11 @@ const periodQuerySchema = z.object({
 const withinSchema = z.object({ within: z.coerce.number().int().positive().default(30) });
 const consultantIdSchema = z.object({ consultantId: z.string().min(1) });
 
-/** Pro-rate `total` hours by calendar-day overlap between forecast range and the query period */
-function proRateHours(
-  total: number,
-  forecastRange: { from: Date; to: Date },
-  queryPeriod: { from: Date; to: Date },
-): number {
-  const oStart = forecastRange.from > queryPeriod.from ? forecastRange.from : queryPeriod.from;
-  const oEnd   = forecastRange.to   < queryPeriod.to   ? forecastRange.to   : queryPeriod.to;
-  if (oEnd < oStart) return 0;
-  const overlapMs = oEnd.getTime() - oStart.getTime() + 86_400_000; // +1 day inclusive
-  const totalMs   = forecastRange.to.getTime() - forecastRange.from.getTime() + 86_400_000;
-  return totalMs > 0 ? total * (overlapMs / totalMs) : 0;
-}
-
+/** Periodo por defecto: el mes en curso, en UTC (nunca hora local). */
 function defaultPeriod(): { from: Date; to: Date } {
-  const from = new Date();
-  from.setDate(1);
-  from.setHours(0, 0, 0, 0);
-  const to = new Date(from.getFullYear(), from.getMonth() + 1, 0);
-  to.setHours(23, 59, 59, 999);
+  const hoy = new Date();
+  const from = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
+  const to = new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth() + 1, 0, 23, 59, 59, 999));
   return { from, to };
 }
 
@@ -90,7 +72,7 @@ async function buildCapacityRows(
       skills: true,
       rateCurrency: true,
       hourlyRate: verTarifas,
-      capacityConfig: true,
+      capacityConfigs: jornadaVigenteDe(),
       blocks: {
         where: {
           startDate: { lte: period.to },
@@ -103,9 +85,6 @@ async function buildCapacityRows(
           startDate: { lte: period.to },
           endDate: { gte: period.from },
         },
-        include: { project: { select: { id: true, name: true } } },
-      },
-      forecasts: {
         include: { project: { select: { id: true, name: true } } },
       },
     },
@@ -131,74 +110,20 @@ async function buildCapacityRows(
       c.id,
       c.assignments,
       c.blocks,
-      resolverJornada(c.capacityConfig, c.country, jornadasPorPais),
+      resolverJornada(c.capacityConfigs[0] ?? null, c.country, jornadasPorPais),
       period,
       c.country,
       customHolidaySet,
     );
 
-    // ── Forecast contribution ──────────────────────────────────────────────
-    let forecastHours = 0;
-    const forecastEntries: {
-      assignmentId: string;
-      projectId: string;
-      projectName: string;
-      startDate: Date;
-      endDate: Date;
-      allocationMode: "HOURS";
-      allocationPct: null;
-      hoursPerPeriod: number;
-      status: string;
-    }[] = [];
-
-    for (const f of c.forecasts) {
-      if (!f.startDate || !f.endDate) continue;
-      const range = {
-        from: new Date(f.startDate + "T00:00:00Z"),
-        to:   new Date(f.endDate   + "T23:59:59Z"),
-      };
-      const prorated = proRateHours(Number(f.hoursProjected), range, period);
-      if (prorated <= 0) continue;
-      forecastHours += prorated;
-      forecastEntries.push({
-        assignmentId: `forecast-${f.id}`,
-        projectId: f.projectId,
-        projectName: (f as unknown as { project?: { name: string } }).project?.name ?? f.projectId,
-        startDate: range.from,
-        endDate:   range.to,
-        allocationMode: "HOURS",
-        allocationPct: null,
-        hoursPerPeriod: Math.round(Number(f.hoursProjected) * 10) / 10,
-        status: "FORECAST",
-      });
-    }
-
-    // ── Merge forecast into availability ───────────────────────────────────
-    const totalCommitted  = Math.round((availability.committedHours + forecastHours) * 10) / 10;
-    const availableHours  = Math.max(Math.round((availability.capacityHours - totalCommitted) * 10) / 10, 0);
-    const utilizationPct  = availability.capacityHours > 0
-      ? Math.round((totalCommitted / availability.capacityHours) * 1000) / 10
-      : 0;
-    const newStatus = getAvailabilityStatus(utilizationPct);
+    // Los forecasts NO se suman aquí: la asignación ya es la fuente de las horas
+    // comprometidas y sumarlos duplicaba la carga (tarea 0.2 del plan de capacity).
+    const totalCommitted = availability.committedHours;
 
     // R-016: costo total consolidado entre todos los proyectos del consultor
     // en el período (antes solo existía desglosado por proyecto).
     const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
     const estimatedCost = verTarifas ? Math.round(totalCommitted * hourlyRate * 100) / 100 : null;
-
-    // nextAvailableDate: use real assignment date when available, fall back to latest forecast end
-    const nextAvailableDate = newStatus !== "FREE"
-      ? (availability.nextAvailableDate
-          ?? (forecastEntries.length > 0
-              ? addDays(
-                  forecastEntries.reduce(
-                    (latest, fe) => (fe.endDate > latest ? fe.endDate : latest),
-                    forecastEntries[0].endDate,
-                  ),
-                  1,
-                )
-              : null))
-      : null;
 
     return {
       consultantId: c.id,
@@ -209,14 +134,13 @@ async function buildCapacityRows(
       skills: c.skills,
       capacityHours: availability.capacityHours,
       committedHours: totalCommitted,
-      availableHours,
-      utilizationPct,
-      availabilityStatus: newStatus,
-      nextAvailableDate,
+      availableHours: availability.availableHours,
+      utilizationPct: availability.utilizationPct,
+      availabilityStatus: availability.availabilityStatus,
+      nextAvailableDate: availability.nextAvailableDate,
       estimatedCost,
       costCurrency: c.rateCurrency ?? "USD",
-      activeAssignments: [
-        ...c.assignments.map((a) => ({
+      activeAssignments: c.assignments.map((a) => ({
           assignmentId: a.id,
           projectId: a.projectId,
           projectName: (a as { project?: { name: string } }).project?.name ?? "",
@@ -226,9 +150,7 @@ async function buildCapacityRows(
           allocationPct: a.allocationPct ? Number(a.allocationPct) : null,
           hoursPerPeriod: a.hoursPerPeriod ? Number(a.hoursPerPeriod) : null,
           status: a.status,
-        })),
-        ...forecastEntries,
-      ],
+      })),
     };
   });
 }
@@ -237,7 +159,7 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/overview
   app.get(
     "/overview",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
       const period = {
@@ -290,7 +212,7 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/available — consultores FREE o PARTIAL
   app.get(
     "/available",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
       const period = {
@@ -319,10 +241,10 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/bench — consultores sin ninguna asignación activa hoy
   app.get(
     "/bench",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
-      const asOf = query.from ?? new Date();
+      const asOf = query.from ?? hoyUtc();
 
       const rows = await buildCapacityRows(
         { from: asOf, to: query.to ?? addDays(asOf, 30) },
@@ -339,7 +261,7 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/releasing — consultores cuya asignación termina pronto
   app.get(
     "/releasing",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const { within } = withinSchema.parse(request.query);
       const now = new Date();
@@ -377,7 +299,7 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/overloaded
   app.get(
     "/overloaded",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
       const period = {
@@ -395,7 +317,7 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/consultant/:consultantId — detalle mensual para un consultor
   app.get(
     "/consultant/:consultantId",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request, reply) => {
       const { consultantId } = consultantIdSchema.parse(request.params);
       const query = z
@@ -405,7 +327,7 @@ export async function capacityRoutes(app: FastifyInstance) {
       const consultant = await prisma.consultant.findUnique({
         where: { id: consultantId },
         include: {
-          capacityConfig: true,
+          capacityConfigs: jornadaVigenteDe(),
           blocks: true,
           assignments: {
             where: { status: { in: ["ACTIVE", "PARTIAL", "PLANNED", "COMPLETED"] } },
@@ -418,21 +340,25 @@ export async function capacityRoutes(app: FastifyInstance) {
       if (!consultant) return reply.status(404).send({ message: "Consultor no encontrado" });
 
       const jornada = resolverJornada(
-        consultant.capacityConfig,
+        consultant.capacityConfigs[0] ?? null,
         consultant.country,
         await cargarJornadasPorPais(),
       );
 
-      const from = query.from ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-      const to = query.to ?? new Date(from.getFullYear(), from.getMonth() + 6, 0);
+      // Todo en UTC: con hora local el mes cambiaba según la zona del servidor.
+      const hoy = new Date();
+      const from =
+        query.from ?? new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
+      const to =
+        query.to ?? new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 6, 0));
 
       // Calcular disponibilidad mes a mes
       const months: { year: number; month: number; from: Date; to: Date }[] = [];
-      let cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+      let cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
       while (cursor <= to) {
-        const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
-        months.push({ year: cursor.getFullYear(), month: cursor.getMonth() + 1, from: cursor, to: monthEnd });
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+        const monthEnd = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 0));
+        months.push({ year: cursor.getUTCFullYear(), month: cursor.getUTCMonth() + 1, from: cursor, to: monthEnd });
+        cursor = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1));
       }
 
       const timeline = months.map(({ year, month, from: mFrom, to: mTo }) => {
@@ -468,7 +394,7 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/project/:projectId — recursos asignados al proyecto con costo estimado
   app.get(
     "/project/:projectId",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request, reply) => {
       const { projectId } = z.object({ projectId: z.string().min(1) }).parse(request.params);
       const query = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() }).parse(request.query);
@@ -501,7 +427,7 @@ export async function capacityRoutes(app: FastifyInstance) {
               country: true,
               rateCurrency: true,
               hourlyRate: verTarifas,
-              capacityConfig: true,
+              capacityConfigs: jornadaVigenteDe(),
               blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } },
             },
           },
@@ -517,7 +443,7 @@ export async function capacityRoutes(app: FastifyInstance) {
           if (overlapTo < overlapFrom) return null;
 
           const overlapPeriod = { from: overlapFrom, to: overlapTo };
-          const jornada = resolverJornada(c.capacityConfig, c.country, jornadasPorPais);
+          const jornada = resolverJornada(c.capacityConfigs[0] ?? null, c.country, jornadasPorPais);
           const capacityHours = calculateCapacityHours(overlapPeriod, jornada, c.blocks, c.country);
           const committedHours = calculateCommittedHours([a], overlapPeriod, jornada, c.country);
           const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
@@ -569,7 +495,7 @@ export async function capacityRoutes(app: FastifyInstance) {
   // GET /api/capacity/by-project — resumen de capacidad consumida por proyecto
   app.get(
     "/by-project",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
+    { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
       const period = { from: query.from ?? defaultPeriod().from, to: query.to ?? defaultPeriod().to };
@@ -580,7 +506,9 @@ export async function capacityRoutes(app: FastifyInstance) {
       const jornadasPorPais = await cargarJornadasPorPais();
 
       const projects = await prisma.project.findMany({
-        where: { status: { not: "CLOSED" } },
+        // Las oportunidades (PROSPECT) no son proyectos en ejecución: su carga
+        // probable ya se ve en el capacity mensual con el filtro de probables.
+        where: { status: { notIn: ["CLOSED", "PROSPECT"] } },
         include: {
           assignments: {
             where: {
@@ -596,7 +524,7 @@ export async function capacityRoutes(app: FastifyInstance) {
                   country: true,
                   rateCurrency: true,
                   hourlyRate: verTarifas,
-                  capacityConfig: true,
+                  capacityConfigs: jornadaVigenteDe(),
                   blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } },
                 },
               },
@@ -614,7 +542,7 @@ export async function capacityRoutes(app: FastifyInstance) {
             const overlapTo = a.endDate < period.to ? a.endDate : period.to;
             if (overlapTo < overlapFrom) return null;
             const overlapPeriod = { from: overlapFrom, to: overlapTo };
-            const jornada = resolverJornada(c.capacityConfig, c.country, jornadasPorPais);
+            const jornada = resolverJornada(c.capacityConfigs[0] ?? null, c.country, jornadasPorPais);
             const committedHours = calculateCommittedHours([a], overlapPeriod, jornada, c.country);
             const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
             return {
