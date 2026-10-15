@@ -219,3 +219,127 @@ un consultor pueden tener varias filas.
 - Claim de Entra: `Commercial` y `COMERCIAL` se mapean a `COMMERCIAL`.
 - Helper `requirePermission(perm)` en `auth/guard.ts`: preHandler que usa `rolePermissions`. Lo usan todas
   las rutas de capacity, assignments y holidays.
+
+---
+
+## 5. Fase 2: exportación, reporte oficial y alertas (2026-10-15)
+
+### 5.1 Esquema
+
+```prisma
+enum AlertType { ... CONSULTANT_UNDERUTILIZED }      // + valor (CONSULTANT_OVERLOADED ya existe)
+
+CapacitySettings (+ campos):
+  alertsEnabled       Boolean @default(true)
+  alertHorizonMonths  Int     @default(3)      // mes en curso + (n-1) siguientes; 1..12
+  digestEnabled       Boolean @default(true)
+  digestWeekday       Int     @default(1)      // ISO: 1 = lunes … 7 = domingo
+  digestHourUtc       Int     @default(13)     // 13 UTC = 08:00 en Bogotá/Quito
+  digestLastSentAt    DateTime?
+
+model CapacityReport {                         // reporte oficial, inmutable
+  id               String   @id @default(cuid())
+  title            String
+  note             String?
+  fromMonth        String                      // "YYYY-MM"
+  toMonth          String
+  includeProbables Boolean
+  internal         String                      // "include" | "exclude"
+  filters          Json                        // { country?, city?, company? } usados
+  settings         Json                        // umbrales vigentes al publicar
+  payload          Json                        // respuesta completa de /monthly con includeAssignments=true
+  publishedBy      String
+  publishedAt      DateTime @default(now())
+  revokedAt        DateTime?                   // "anulado": no se borra, queda la marca
+  revokedBy        String?
+  revokeReason     String?
+  @@index([publishedAt])
+}
+```
+
+### 5.2 API
+
+- **`GET /api/capacity/monthly?...&includeAssignments=true`** agrega a cada consultor
+  `assignments: AssignmentDetail[]`, con la misma forma que §3.2. Sirve para exportar el detalle
+  completo y para congelar el reporte.
+- **Reportes oficiales**, en `/api/capacity/reports`:
+
+| Ruta | Permiso | Notas |
+|---|---|---|
+| `POST /` | `capacity:publish` (solo ADMIN) | Recibe `{ title, note?, from, to, includeProbables, internal?, country?, city?, company? }`. El **servidor** calcula el payload, nunca lo recibe del cliente. Registra auditoría. Responde 201 con el reporte completo |
+| `GET /?page&pageSize` | `capacity:read` | Lista paginada (`{ data, meta }`) **sin `payload`**: id, título, periodo, filtros, quién y cuándo publicó, y si está anulado |
+| `GET /:id` | `capacity:read` | Reporte completo con su payload |
+| `POST /:id/revoke` | `capacity:publish` | Recibe `{ reason }` (mínimo 5 caracteres) y lo marca como anulado. Responde 409 si ya estaba anulado. Registra auditoría |
+
+  No hay `PUT` ni `DELETE`: un reporte publicado es inmutable.
+- **Parámetros**: `GET/PUT /api/capacity/settings` incluye los campos nuevos. Se valida
+  `alertHorizonMonths` entre 1 y 12, `digestWeekday` entre 1 y 7 y `digestHourUtc` entre 0 y 23.
+- **Permiso nuevo**: `capacity:publish`, solo para ADMIN.
+
+### 5.3 Alertas de capacity (job `capacity-alerts` en `TRABAJOS`)
+
+Se ejecuta en cada ciclo de jobs si `alertsEnabled` está activo. Usa la carga y el cálculo de
+`monthly.service` sobre los meses `[mes en curso UTC, + alertHorizonMonths − 1]`, con solo asignaciones
+confirmadas (`includeProbables = false`) y los internos incluidos.
+
+- Por cada consultor con país y cada mes del horizonte:
+  - Si `status = OVER`, corresponde una alerta `CONSULTANT_OVERLOADED`, severidad `CRITICAL` si
+    `pct > overPct + 20` y `WARNING` en otro caso.
+  - Si `billableStatus = UNDER`, corresponde una alerta `CONSULTANT_UNDERUTILIZED`, severidad `WARNING`.
+- Las alertas son **idempotentes**. La clave es `(type, consultantId, metadata.month)` entre las
+  alertas sin resolver:
+  - si la alerta ya existe, se actualizan `message` y `metadata` (pct, horas);
+  - si existe pero la condición desapareció, o el mes ya salió del horizonte, se resuelve con
+    `resolvedAt = now` y `resolvedBy = "system:capacity-alerts"`.
+- `metadata` lleva `{ month, pct, billablePct, assignedHours, capacityHours }`.
+- El mensaje va en español, por ejemplo: "Ana Pérez: 120 % asignado en nov-2026 (sobreasignado)".
+- Un consultor sin capacidad en el mes (`pct = null`) no genera alerta.
+- Las alertas de capacity solo las ven los roles con `capacity:read` (ver la ruta de alertas).
+
+### 5.4 Resumen semanal por correo (job `capacity-digest`)
+
+- **Cuándo**: se envía si `digestEnabled` está activo, si `ahora` (UTC) está en `digestWeekday` y
+  `≥ digestHourUtc`, y si no se envió ya esa semana ISO. La marca es `digestLastSentAt`. Es el mismo
+  patrón que `approval-digest`.
+- **Destinatarios**: usuarios `active` con rol ADMIN o COMMERCIAL que tengan correo. Si no hay
+  ninguno, no se envía y no se marca.
+- **Contenido**:
+  - utilización del equipo de cada mes del horizonte;
+  - tabla de sobreasignados (consultor, mes, %);
+  - tabla de subutilizados (consultor, mes, % facturable);
+  - enlace a la app.
+- **Seguridad del correo**: todo texto que venga del usuario se **escapa en el HTML** (nombres de
+  consultores). Usa la utilidad de notificaciones existente; si SMTP no está configurado, se simula
+  y se deja registro.
+- **Prioridad de la marca**: el envío marca `digestLastSentAt` aunque la lista esté vacía, pero en
+  ese caso no envía el correo y deja registro de que "no hubo novedades".
+
+### 5.5 Exportación (frontend)
+
+Se exporta la vista actual, o un reporte oficial abierto. Los datos salen de la respuesta con
+`includeAssignments=true` o del `payload` del reporte.
+
+- **Excel** (`xlsx`, carga dinámica). SheetJS CE **no escribe colores**, así que el estado va en texto.
+  Nombre del archivo: `capacity_<from>_<to>.xlsx`, o `reporte-oficial_<id>.xlsx`. Hojas:
+  - **Capacity**: consultor, país, ciudad, % de cada mes y del periodo, más la fila Equipo y las filas
+    "# Sobreasignados" y "# Subutilizados", como en el Excel del cliente.
+  - **Estado**: la misma matriz con el texto SOBRE / OK / SUB.
+  - **Horas**: capacidad, asignadas y disponibles por mes.
+  - **Detalle**: consultor, proyecto, cliente, certeza, interno, h/sem, horas por mes, total e incluida.
+  - **Parámetros**: periodo, probables, internos, filtros, umbrales, fecha de generación, avisos y, si es
+    oficial, título, quién lo publicó, cuándo y si está anulado.
+- **PDF** (`jspdf` + `jspdf-autotable`, carga dinámica), en A4 horizontal:
+  - **Encabezado**: título ("Informe de Capacity", o el título del reporte oficial), periodo, "Incluye
+    probables / Solo confirmados", fecha de generación y, si corresponde, la marca **ANULADO** en rojo.
+  - **KPIs** en una línea.
+  - **Mapa de calor** con autoTable, cada celda **coloreada** según su `status` con los mismos colores
+    de la app.
+  - **Fila Equipo**.
+  - **Gráfico** de utilización mensual dibujado con primitivas de jsPDF (columnas y líneas de umbral).
+  - **Leyenda** con los umbrales.
+  - **Avisos**.
+  - **Detalle** por consultor en las páginas siguientes.
+  - **Pie** con número de página.
+
+Las funciones que arman los datos (filas, colores y nombres) son **puras** y van en
+`features/capacity/export/`, con pruebas unitarias.

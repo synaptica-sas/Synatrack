@@ -41,6 +41,7 @@ export const AUDIT_ENTITIES = {
   consultantBlock: "consultantBlock",
   capacityConfig: "capacityConfig",
   capacitySettings: "capacitySettings",
+  capacityReport: "capacityReport",
   holiday: "holiday",
   holidayCalendarYear: "holidayCalendarYear",
   customHoliday: "customHoliday",

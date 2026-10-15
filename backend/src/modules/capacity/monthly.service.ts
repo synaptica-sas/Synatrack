@@ -6,6 +6,7 @@ import {
   normalizeKey,
   toHoursPerWeek,
   type IsoDate,
+  monthRange,
   type MonthKey,
   type MonthlyCapacityInput,
   type MonthlyCapacityResult,
@@ -230,3 +231,136 @@ export async function cargarYCalcular(opts: OpcionesCalculo): Promise<CalculoMen
 
 /** Redondeo de presentación a 1 decimal (horas y %). */
 export const redondear1 = (n: number): number => Math.round(n * 10) / 10;
+
+/** Redondea a 1 decimal los campos de horas y porcentajes de una celda (workdays y contadores quedan enteros). */
+const CAMPOS_REDONDEO = [
+  "capacityHours",
+  "assignedHours",
+  "billableHours",
+  "internalHours",
+  "probableHours",
+  "availableHours",
+  "pct",
+  "billablePct",
+  "utilizationPct",
+] as const;
+
+export function redondearCelda<T extends object>(celda: T): T {
+  const out = { ...celda } as Record<string, unknown>;
+  for (const campo of CAMPOS_REDONDEO) {
+    const v = out[campo];
+    if (typeof v === "number") out[campo] = redondear1(v);
+  }
+  return out as T;
+}
+
+/** Rango pedido (por defecto, el año en curso en UTC); un rango inválido lanza Error (la ruta responde 400). */
+export function resolverRango(from?: string, to?: string): { months: MonthKey[]; from: MonthKey; to: MonthKey } {
+  const anio = new Date().getUTCFullYear();
+  const desde = from ?? `${anio}-01`;
+  const hasta = to ?? `${anio}-12`;
+  return { months: monthRange(desde, hasta), from: desde, to: hasta };
+}
+
+/** Detalle por asignación de un consultor (CONTRATO §3.2). Sin tarifas ni costos. */
+export function detalleAsignaciones(
+  asignaciones: readonly AsignacionCargada[],
+  desglose: ReadonlyMap<string, MonthlyCapacityResult["consultants"][number]["assignments"][number]>,
+) {
+  return asignaciones.map((a) => {
+    const b = desglose.get(a.id)!;
+    return {
+      assignmentId: a.id,
+      projectId: a.projectId,
+      projectName: a.projectName,
+      client: a.client,
+      projectStatus: a.projectStatus,
+      isInternal: a.isInternal,
+      certainty: a.certainty,
+      status: a.status,
+      startDate: a.startDate,
+      endDate: a.endDate,
+      hoursPerWeek: Math.round(a.hoursPerWeek * 100) / 100,
+      included: b.included,
+      totalHours: redondear1(b.totalHours),
+      months: b.months.map((m) => ({ month: m.month, hours: redondear1(m.hours) })),
+    };
+  });
+}
+
+export type OpcionesInforme = {
+  /** Si no se indica, se usa el valor por defecto de los parámetros. */
+  includeProbables?: boolean;
+  internal: "include" | "exclude";
+  from?: string;
+  to?: string;
+  country?: string;
+  city?: string;
+  company?: string;
+  consultantId?: string;
+  includeAssignments?: boolean;
+};
+
+/**
+ * Informe completo de `GET /api/capacity/monthly` (CONTRATO §3.1). Lo usan la ruta y la
+ * publicación del reporte oficial, para que el payload congelado sea idéntico al del informe.
+ * Lanza Error si el rango es inválido.
+ */
+export async function construirInformeMensual(opts: OpcionesInforme) {
+  const rango = resolverRango(opts.from, opts.to);
+  const settings = await cargarSettings();
+  const includeProbables = opts.includeProbables ?? settings.includeProbablesDefault;
+
+  const { consultants, assignments, result } = await cargarYCalcular({
+    months: rango.months,
+    includeProbables,
+    internal: opts.internal,
+    thresholds: { underPct: settings.underThresholdPct, overPct: settings.overThresholdPct },
+    consultantWhere: opts.consultantId ? { id: opts.consultantId } : undefined,
+    filtros: { country: opts.country, city: opts.city, company: opts.company },
+  });
+
+  const porId = new Map(consultants.map((c) => [c.id, c]));
+  const asignacionesDe = new Map<string, AsignacionCargada[]>();
+  for (const a of assignments) {
+    const lista = asignacionesDe.get(a.consultantId) ?? [];
+    lista.push(a);
+    asignacionesDe.set(a.consultantId, lista);
+  }
+
+  return {
+    from: rango.from,
+    to: rango.to,
+    includeProbables,
+    internal: opts.internal,
+    settings: { underThresholdPct: settings.underThresholdPct, overThresholdPct: settings.overThresholdPct },
+    months: result.months,
+    consultants: result.consultants.map((r) => {
+      const c = porId.get(r.consultantId)!;
+      const base = {
+        id: c.id,
+        fullName: c.fullName,
+        country: c.country,
+        city: c.city,
+        company: c.company,
+        isInternal: c.isInternal,
+        role: c.role,
+        hireDate: c.hireDate,
+        exitDate: c.exitDate,
+        months: r.months.map(redondearCelda),
+        period: redondearCelda(r.period),
+      };
+      if (!opts.includeAssignments) return base;
+      const desglose = new Map(r.assignments.map((b) => [b.assignmentId, b]));
+      return { ...base, assignments: detalleAsignaciones(asignacionesDe.get(c.id) ?? [], desglose) };
+    }),
+    team: {
+      months: result.team.months.map(redondearCelda),
+      period: redondearCelda(result.team.period),
+    },
+    kpis: redondearCelda(result.kpis),
+    warnings: result.warnings.map((w) =>
+      w.code === "CONSULTANT_WITHOUT_COUNTRY" ? { ...w, fullName: porId.get(w.consultantId)?.fullName ?? null } : w,
+    ),
+  };
+}

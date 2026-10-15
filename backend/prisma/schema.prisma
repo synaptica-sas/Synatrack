@@ -164,6 +164,7 @@ enum AlertType {
   CONSULTANT_OVERLOADED
   FORECAST_DEVIATION
   FX_RATE_MISSING
+  CONSULTANT_UNDERUTILIZED
 }
 
 // ─── Modelos de negocio ────────────────────────────────────────────────────────
@@ -918,8 +919,39 @@ model CapacitySettings {
   underThresholdPct       Decimal  @default(70) @db.Decimal(5, 2)
   overThresholdPct        Decimal  @default(100) @db.Decimal(5, 2)
   includeProbablesDefault Boolean  @default(false)
+  // Alertas de capacity: horizonte = mes en curso + (n-1) siguientes (1..12)
+  alertsEnabled           Boolean   @default(true)
+  alertHorizonMonths      Int       @default(3)
+  // Resumen semanal por correo. Weekday ISO (1 = lunes ... 7 = domingo); 13 UTC = 08:00 Bogota/Quito.
+  // digestLastSentAt evita reenviar dentro de la misma semana ISO.
+  digestEnabled           Boolean   @default(true)
+  digestWeekday           Int       @default(1)
+  digestHourUtc           Int       @default(13)
+  digestLastSentAt        DateTime?
   updatedBy               String?
   updatedAt               DateTime @updatedAt
+}
+
+// Reporte oficial de capacity: foto inmutable calculada por el servidor al publicar.
+// No se edita ni se borra; si fue un error se anula (revokedAt) y queda la marca como rastro.
+model CapacityReport {
+  id               String    @id @default(cuid())
+  title            String
+  note             String?
+  fromMonth        String // "YYYY-MM"
+  toMonth          String
+  includeProbables Boolean
+  internal         String // "include" | "exclude"
+  filters          Json // { country?, city?, company? } usados
+  settings         Json // umbrales vigentes al publicar
+  payload          Json // respuesta completa de /monthly con includeAssignments=true
+  publishedBy      String
+  publishedAt      DateTime  @default(now())
+  revokedAt        DateTime?
+  revokedBy        String?
+  revokeReason     String?
+
+  @@index([publishedAt])
 }
 
 model ApprovalDelegation {

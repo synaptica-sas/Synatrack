@@ -4,6 +4,8 @@ import { getLogger } from "../../infra/logger.js";
 import { runAlertEngine } from "../alerts/alerts.service.js";
 import { runWeeklyApprovalDigest } from "../approvals/weekly-digest.job.js";
 import { runAssignmentMaintenance } from "../assignments/assignments.job.js";
+import { runCapacityAlerts } from "../capacity/capacity-alerts.service.js";
+import { runCapacityDigest } from "../capacity/capacity-digest.service.js";
 import { registrarEjecucion } from "./job-runs.service.js";
 
 /** De dónde salió la ejecución. Solo sirve para el log y la respuesta HTTP. */
@@ -52,6 +54,20 @@ const TRABAJOS: Trabajo[] = [
     // pruebas y en el log) y el ciclo solo espera `Promise<void>`.
     ejecutar: async (prisma) => {
       await runWeeklyApprovalDigest(prisma);
+    },
+  },
+  // Capacity (CONTRATO fase 2 §5.3/§5.4). Las alertas van después del motor
+  // general; el resumen semanal va el último porque solo observa.
+  {
+    nombre: "capacity-alerts",
+    ejecutar: async (prisma) => {
+      await runCapacityAlerts(prisma);
+    },
+  },
+  {
+    nombre: "capacity-digest",
+    ejecutar: async (prisma) => {
+      await runCapacityDigest(prisma);
     },
   },
 ];

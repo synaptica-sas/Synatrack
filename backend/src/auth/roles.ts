@@ -20,6 +20,7 @@ export type Permission =
   | "assignments:write"
   | "capacity:read"
   | "capacity:config"
+  | "capacity:publish"
   | "holidays:read"
   | "holidays:write"
   | "snapshots:close"
@@ -66,6 +67,8 @@ const allPermissions: Permission[] = [
   // Solo ADMIN: la jornada laboral (D-5) mueve las ocupaciones de todo el
   // portafolio a la vez, igual que `extrahours:config` mueve los recargos.
   "capacity:config",
+  // Solo ADMIN: publicar o anular el reporte oficial de capacity (inmutable).
+  "capacity:publish",
   // Feriados: leer lo tienen todos los roles (la capacidad y las horas extra los
   // usan); escribir solo ADMIN, porque mueve la capacidad de todo el equipo.
   "holidays:read",

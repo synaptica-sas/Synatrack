@@ -10,6 +10,8 @@ vi.mock("../../../config/env.js", () => ({
 const mantenimientoAsignaciones = vi.fn<() => Promise<void>>();
 const motorDeAlertas = vi.fn<() => Promise<void>>();
 const resumenSemanal = vi.fn<() => Promise<void>>();
+const alertasCapacity = vi.fn<() => Promise<void>>();
+const resumenCapacity = vi.fn<() => Promise<void>>();
 
 vi.mock("../../assignments/assignments.job.js", () => ({
   runAssignmentMaintenance: () => mantenimientoAsignaciones(),
@@ -21,6 +23,14 @@ vi.mock("../../alerts/alerts.service.js", () => ({
 
 vi.mock("../../approvals/weekly-digest.job.js", () => ({
   runWeeklyApprovalDigest: () => resumenSemanal(),
+}));
+
+vi.mock("../../capacity/capacity-alerts.service.js", () => ({
+  runCapacityAlerts: () => alertasCapacity(),
+}));
+
+vi.mock("../../capacity/capacity-digest.service.js", () => ({
+  runCapacityDigest: () => resumenCapacity(),
 }));
 
 // El registro persistente se simula: aquí solo interesa QUÉ se manda a guardar.
@@ -55,11 +65,13 @@ describe("runMaintenanceCycle", () => {
     mantenimientoAsignaciones.mockReset().mockResolvedValue(undefined);
     motorDeAlertas.mockReset().mockResolvedValue(undefined);
     resumenSemanal.mockReset().mockResolvedValue(undefined);
+    alertasCapacity.mockReset().mockResolvedValue(undefined);
+    resumenCapacity.mockReset().mockResolvedValue(undefined);
     registrarEjecucion.mockReset().mockResolvedValue(true);
     stopJobsScheduler();
   });
 
-  it("ejecuta los tres trabajos y reporta duración y resultado", async () => {
+  it("ejecuta los cinco trabajos y reporta duración y resultado", async () => {
     const resultado = await runMaintenanceCycle(prismaFalso, "http");
 
     expect(resultado.omitido).toBe(false);
@@ -70,6 +82,8 @@ describe("runMaintenanceCycle", () => {
       // El resumen semanal de aprobaciones (R-020 + R-022) corre el último: solo
       // observa, así que un fallo suyo no debe retrasar el mantenimiento.
       "approval-digest",
+      "capacity-alerts",
+      "capacity-digest",
     ]);
     expect(resultado.trabajos.every((t) => t.ok)).toBe(true);
     expect(resultado.duracionMs).toBeGreaterThanOrEqual(0);
@@ -122,7 +136,7 @@ describe("runMaintenanceCycle", () => {
 
     await runMaintenanceCycle(prismaFalso, "intervalo");
 
-    expect(registrarEjecucion).toHaveBeenCalledTimes(3);
+    expect(registrarEjecucion).toHaveBeenCalledTimes(5);
 
     const [, fallido] = registrarEjecucion.mock.calls[0] as [unknown, Record<string, unknown>];
     expect(fallido).toMatchObject({
@@ -150,7 +164,7 @@ describe("runMaintenanceCycle", () => {
     // El fallo al registrar se contabiliza contra el trabajo, pero ni tumba el
     // ciclo ni impide que el siguiente trabajo corra, y el cerrojo se libera.
     expect(resultado.omitido).toBe(false);
-    expect(resultado.trabajos).toHaveLength(3);
+    expect(resultado.trabajos).toHaveLength(5);
     expect(motorDeAlertas).toHaveBeenCalledTimes(1);
     expect(hayCicloEnCurso()).toBe(false);
   });

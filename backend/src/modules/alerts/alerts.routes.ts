@@ -23,7 +23,7 @@ const idSchema = z.object({ id: z.string().min(1) });
  * del equipo; solo las ve quien tiene `capacity:read`. Para el resto se
  * excluyen en la consulta, no después.
  */
-const TIPOS_DE_CAPACITY = ["ASSIGNMENT_ENDING", "CONSULTANT_OVERLOADED"] as const;
+const TIPOS_DE_CAPACITY = ["ASSIGNMENT_ENDING", "CONSULTANT_OVERLOADED", "CONSULTANT_UNDERUTILIZED"] as const;
 
 function filtroSinCapacity(roles: AppRole[]) {
   return hasPermission(roles, "capacity:read") ? {} : { type: { notIn: [...TIPOS_DE_CAPACITY] } };

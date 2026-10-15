@@ -18,6 +18,11 @@ const settingsSchema = z
     underThresholdPct: z.coerce.number().min(0).max(300),
     overThresholdPct: z.coerce.number().min(0).max(300),
     includeProbablesDefault: z.boolean(),
+    alertsEnabled: z.boolean().optional(),
+    alertHorizonMonths: z.coerce.number().int().min(1).max(12).optional(),
+    digestEnabled: z.boolean().optional(),
+    digestWeekday: z.coerce.number().int().min(1).max(7).optional(),
+    digestHourUtc: z.coerce.number().int().min(0).max(23).optional(),
   })
   .refine((v) => v.underThresholdPct < v.overThresholdPct, {
     path: ["underThresholdPct"],
@@ -28,6 +33,12 @@ type FilaSettings = {
   underThresholdPct: { toString(): string } | number;
   overThresholdPct: { toString(): string } | number;
   includeProbablesDefault: boolean;
+  alertsEnabled: boolean;
+  alertHorizonMonths: number;
+  digestEnabled: boolean;
+  digestWeekday: number;
+  digestHourUtc: number;
+  digestLastSentAt: Date | null;
   updatedBy: string | null;
   updatedAt: Date;
 };
@@ -37,6 +48,12 @@ function serializar(fila: FilaSettings) {
     underThresholdPct: Number(fila.underThresholdPct),
     overThresholdPct: Number(fila.overThresholdPct),
     includeProbablesDefault: fila.includeProbablesDefault,
+    alertsEnabled: fila.alertsEnabled,
+    alertHorizonMonths: fila.alertHorizonMonths,
+    digestEnabled: fila.digestEnabled,
+    digestWeekday: fila.digestWeekday,
+    digestHourUtc: fila.digestHourUtc,
+    digestLastSentAt: fila.digestLastSentAt,
     updatedBy: fila.updatedBy,
     updatedAt: fila.updatedAt,
   };
@@ -47,6 +64,12 @@ const POR_DEFECTO = {
   underThresholdPct: 70,
   overThresholdPct: 100,
   includeProbablesDefault: false,
+  alertsEnabled: true,
+  alertHorizonMonths: 3,
+  digestEnabled: true,
+  digestWeekday: 1,
+  digestHourUtc: 13,
+  digestLastSentAt: null,
   updatedBy: null,
   updatedAt: null,
 };

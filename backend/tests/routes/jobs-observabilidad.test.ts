@@ -76,6 +76,8 @@ describe("Registro persistente de ejecuciones (JobRun)", () => {
       // enviar. Ese rastro es justamente lo que permite detectar que dejó de
       // evaluarse, sin esperar a que falte un correo.
       "approval-digest",
+      "capacity-alerts",
+      "capacity-digest",
     ]);
     for (const fila of filas) {
       expect(fila.ok).toBe(true);

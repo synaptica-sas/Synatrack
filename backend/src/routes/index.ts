@@ -16,6 +16,7 @@ import { assignmentsRoutes } from "../modules/assignments/assignments.routes.js"
 import { capacityRoutes } from "../modules/capacity/capacity.routes.js";
 import { workdayRoutes } from "../modules/capacity/workday.routes.js";
 import { monthlyCapacityRoutes } from "../modules/capacity/monthly.routes.js";
+import { capacityReportsRoutes } from "../modules/capacity/reports.routes.js";
 import { capacitySettingsRoutes } from "../modules/capacity/settings.routes.js";
 import { snapshotsRoutes } from "../modules/snapshots/snapshots.routes.js";
 import { alertsRoutes } from "../modules/alerts/alerts.routes.js";
@@ -64,6 +65,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(workdayRoutes, { prefix: "/api/capacity" });
   await app.register(capacitySettingsRoutes, { prefix: "/api/capacity" });
   await app.register(monthlyCapacityRoutes, { prefix: "/api/capacity/monthly" });
+  await app.register(capacityReportsRoutes, { prefix: "/api/capacity/reports" });
   await app.register(snapshotsRoutes, { prefix: "/api/snapshots" });
   await app.register(alertsRoutes, { prefix: "/api/alerts" });
   await app.register(auditRoutes, { prefix: "/api/audit" });

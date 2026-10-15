@@ -49,6 +49,9 @@ describe("POST /api/jobs/run en modo demo (token compartido o sesión)", () => {
       // R-020 + R-022 sumaron un tercer trabajo al ciclo: el resumen semanal de
       // aprobaciones, que solo observa y por eso corre el último.
       "approval-digest",
+      // Capacity fase 2: alertas de sobre/subocupación y resumen semanal.
+      "capacity-alerts",
+      "capacity-digest",
     ]);
     expect(cuerpo.trabajos.every((t: { ok: boolean }) => t.ok)).toBe(true);
   });
@@ -74,7 +77,7 @@ describe("POST /api/jobs/run en modo demo (token compartido o sesión)", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.trabajos).toHaveLength(3);
+    expect(res.json().data.trabajos).toHaveLength(5);
   });
 
   it("responde 403 a un rol no autorizado (PM)", async () => {
