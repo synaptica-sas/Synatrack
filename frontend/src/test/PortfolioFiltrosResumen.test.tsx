@@ -119,7 +119,7 @@ function kpiValue(label: string) {
  * pegado al símbolo, no al número, así que no sirve de ancla).
  */
 function getByAmount(scope: ReturnType<typeof within>, n: number) {
-  return scope.getByText((content) => content.includes(num(Math.abs(n))));
+  return scope.getByText((content: string) => content.includes(num(Math.abs(n))));
 }
 
 describe("Portafolio: el resumen respeta los filtros (R-005/R-032)", () => {

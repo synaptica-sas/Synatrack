@@ -89,6 +89,8 @@ export type Project = {
   description: string | null;
   projectType: ProjectType;
   status: ProjectStatus;
+  /** Categoría de proyecto (R-010). `null`/`undefined` = sin categorizar. */
+  category?: string | null;
   sellPrice: string | null;
   sellCurrency: string;
   createdAt: string;
@@ -701,6 +703,21 @@ export async function listProjects(params?: { search?: string }): Promise<Projec
   return response.data;
 }
 
+/** Catálogo de categorías de proyecto (R-010). Solo activas. */
+export type ProjectCategory = {
+  id: string;
+  name: string;
+  active: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listProjectCategories(): Promise<ProjectCategory[]> {
+  const response = await request<ApiEnvelope<ProjectCategory[]>>("/api/project-categories");
+  return response.data;
+}
+
 export async function createProject(payload: {
   name: string;
   company: string;
@@ -712,6 +729,8 @@ export async function createProject(payload: {
   description?: string;
   projectType?: ProjectType;
   status?: ProjectStatus;
+  /** Categoría de proyecto (R-010). Cadena vacía = sin categorizar (`null`). */
+  category?: string | null;
   sellPrice?: number;
   sellCurrency?: string;
   allowExtraHours?: boolean;
@@ -747,6 +766,8 @@ export async function updateProject(
     description?: string;
     projectType?: ProjectType;
     status?: ProjectStatus;
+    /** Cadena vacía = desasignar la categoría. `undefined` = no tocar. */
+    category?: string | null;
     sellPrice?: number;
     sellCurrency?: string;
     allowExtraHours?: boolean;

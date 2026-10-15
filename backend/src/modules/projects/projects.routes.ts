@@ -69,6 +69,37 @@ const umbralNulableSchema = z
   .nullish()
   .transform((valor) => (valor === "" ? null : valor));
 
+/**
+ * Categoría de proyecto (R-010). Mismo patrón que `projectManagerEmailSchema`:
+ * `""` desasigna (se guarda `null`), `undefined` significa "no tocar" en el
+ * `PUT`. El valor se resuelve contra el catálogo (o se agrega solo) en
+ * `resolverOInsertarCategoria`, no aquí: Zod solo valida la forma.
+ */
+const categorySchema = z
+  .union([z.literal(""), z.string().trim().min(1).max(100)])
+  .nullish()
+  .transform((valor) => (valor === "" ? null : valor));
+
+/**
+ * Resuelve el nombre de categoría contra `ProjectCategory` sin distinguir
+ * mayúsculas (para no crear "Soporte" y "soporte" como filas distintas) y, si
+ * no existe, la agrega sola. Es lo que permite "personalizar" el desplegable
+ * sin una pantalla de administración aparte: la categoría que alguien escriba
+ * en el formulario de un proyecto queda disponible para los próximos.
+ */
+async function resolverOInsertarCategoria(
+  category: string | null | undefined,
+): Promise<string | null | undefined> {
+  if (category === undefined) return undefined;
+  if (category === null) return null;
+  const existente = await prisma.projectCategory.findFirst({
+    where: { name: { equals: category, mode: "insensitive" } },
+  });
+  if (existente) return existente.name;
+  const creada = await prisma.projectCategory.create({ data: { name: category } });
+  return creada.name;
+}
+
 
 const projectPayloadBaseSchema = z.object({
   name: z.string().trim().min(1),
@@ -85,6 +116,7 @@ const projectPayloadBaseSchema = z.object({
   description: z.string().trim().optional(),
   projectType: z.enum(["FIXED_PRICE", "TIME_AND_MATERIAL", "STAFFING"]).default("TIME_AND_MATERIAL"),
   status: z.enum(["ACTIVE", "PAUSED", "CLOSED"]).default("ACTIVE"),
+  category: categorySchema,
   sellPrice: z.coerce.number().positive().optional(),
   sellCurrency: z.string().trim().toUpperCase().length(3).default("USD"),
   projectManagerEmail: projectManagerEmailSchema,
@@ -168,6 +200,8 @@ export async function projectsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ message: (error as Error).message });
     }
 
+    const category = await resolverOInsertarCategoria(body.category);
+
     const project = await prisma.project.create({
       data: {
         name: body.name,
@@ -180,6 +214,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         description: body.description,
         projectType: body.projectType,
         status: body.status,
+        category,
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
         projectManagerEmail: body.projectManagerEmail,
@@ -239,6 +274,8 @@ export async function projectsRoutes(app: FastifyInstance) {
       return reply.status(404).send({ message: "Project not found" });
     }
 
+    const category = await resolverOInsertarCategoria(body.category);
+
     const project = await prisma.project.update({
       where: { id },
       data: {
@@ -252,6 +289,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         description: body.description,
         projectType: body.projectType,
         status: body.status,
+        category,
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
         projectManagerEmail: body.projectManagerEmail,

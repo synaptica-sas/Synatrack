@@ -164,6 +164,12 @@ model Project {
   description     String?
   projectType     ProjectType   @default(TIME_AND_MATERIAL)
   status          ProjectStatus @default(ACTIVE)
+  // Categoría de proyecto (R-010). Texto libre por nombre, no llave foránea —
+  // mismo criterio que `FinancialEntry.category` tras D-4: renombrar una
+  // categoría no debe dejar proyectos huérfanos, y una categoría nueva escrita
+  // aquí se agrega sola al catálogo (`ProjectCategory`) para quedar disponible
+  // en el desplegable de los próximos proyectos. Nulo = sin categorizar.
+  category        String?
   sellPrice       Decimal?      @db.Decimal(14, 2)
   sellCurrency    String        @default("USD")
   // Dos umbrales de margen bruto (decisión de negocio D-2). Nulos = "sin umbral
@@ -359,6 +365,26 @@ model FinancialCategory {
 
   @@unique([type, name])
   @@index([type, active])
+}
+
+/// Catálogo de categorías de proyecto (R-010). No es una llave foránea desde
+/// `Project.category`, por el mismo motivo que `FinancialCategory`: renombrar
+/// una categoría no debe dejar proyectos huérfanos. Se guarda en la base en
+/// vez de en una lista fija del código para poder agregar categorías nuevas
+/// sin desplegar — la trampa que ya documenta `PENDIENTES.md` §4 ("campos que
+/// el backend lee y que nadie puede escribir" / listas de opciones en el
+/// código). No necesita una pantalla de administración propia: una categoría
+/// nueva escrita en el formulario de un proyecto se agrega sola aquí.
+model ProjectCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  /// Orden de aparición en el desplegable; a igualdad, alfabético.
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
 }
 
 model Forecast {

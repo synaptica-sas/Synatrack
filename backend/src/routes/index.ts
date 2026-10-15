@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { healthRoutes } from "./health.routes.js";
 import { projectsRoutes } from "../modules/projects/projects.routes.js";
+import { projectCategoriesRoutes } from "../modules/project-categories/project-categories.routes.js";
 import { consultantsRoutes } from "../modules/consultants/consultants.routes.js";
 import { blocksRoutes } from "../modules/capacity/blocks.routes.js";
 import { timeEntriesRoutes } from "../modules/time-entries/time-entries.routes.js";
@@ -40,6 +41,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(healthRoutes);
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(projectsRoutes, { prefix: "/api/projects" });
+  await app.register(projectCategoriesRoutes, { prefix: "/api/project-categories" });
   await app.register(projectDetailRoutes, { prefix: "/api/projects" });
   await app.register(milestonesRoutes, { prefix: "/api/projects" });
   await app.register(risksRoutes, { prefix: "/api/projects" });

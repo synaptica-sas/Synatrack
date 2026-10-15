@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { FormEvent } from "react";
 import { PageHeader } from "../../components/PageHeader";
@@ -8,9 +8,11 @@ import {
   createProject,
   deleteProject,
   updateProject,
+  listProjectCategories,
   type Project,
   type ProjectStatus,
   type ProjectType,
+  type ProjectCategory,
   type HealthStatus,
   type StatsProjectRowEnriched,
   type NivelIndicador,
@@ -84,6 +86,61 @@ function BudgetBar({
 
 const currencyOptions = ["COP", "USD", "EUR", "MXN", "PEN", "CLP"];
 
+/**
+ * Categoría de proyecto (R-010): desplegable con opción de personalizar. El
+ * catálogo vive en la base (`ProjectCategory`), no en una lista fija aquí —
+ * una categoría nueva escrita en "Otra (especificar)" se agrega sola al
+ * guardar el proyecto y queda disponible para los próximos.
+ */
+const CATEGORY_CUSTOM = "__custom__";
+
+function CategoryField({
+  idPrefix,
+  value,
+  custom,
+  categories,
+  onChange,
+  onCustomToggle,
+}: {
+  idPrefix: string;
+  value: string;
+  custom: boolean;
+  categories: ProjectCategory[];
+  onChange: (value: string) => void;
+  onCustomToggle: (custom: boolean) => void;
+}) {
+  return (
+    <>
+      <select
+        id={`${idPrefix}-categoria`}
+        aria-label="Categoría del proyecto"
+        value={custom ? CATEGORY_CUSTOM : value}
+        onChange={(e) => {
+          if (e.target.value === CATEGORY_CUSTOM) {
+            onCustomToggle(true);
+            onChange("");
+          } else {
+            onCustomToggle(false);
+            onChange(e.target.value);
+          }
+        }}
+      >
+        <option value="">Sin categoría</option>
+        {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+        <option value={CATEGORY_CUSTOM}>Otra (especificar)…</option>
+      </select>
+      {custom && (
+        <input
+          aria-label="Nombre de la nueva categoría"
+          placeholder="Nombre de la nueva categoría"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </>
+  );
+}
+
 function money(value: number, currency = "USD") {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 }
@@ -110,6 +167,7 @@ type EditForm = {
   description: string;
   projectType: ProjectType;
   status: ProjectStatus;
+  category: string;
   sellPrice: string;
   sellCurrency: string;
   allowExtraHours: boolean;
@@ -130,6 +188,7 @@ const emptyForm = {
   description: "",
   projectType: "TIME_AND_MATERIAL" as ProjectType,
   status: "ACTIVE" as ProjectStatus,
+  category: "",
   sellPrice: "",
   sellCurrency: "USD",
   allowExtraHours: true,
@@ -190,6 +249,27 @@ export function ProjectsTab({
   const [editError, setEditError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
 
+  // R-010: catálogo de categorías de proyecto, para el desplegable de los dos
+  // formularios. `categoryCustom`/`editCategoryCustom` solo gobiernan si se
+  // muestra el desplegable o el campo de texto libre; el valor real siempre
+  // vive en `form.category`/`editForm.category`.
+  const [categories, setCategories] = useState<ProjectCategory[]>([]);
+  const [categoryCustom, setCategoryCustom] = useState(false);
+  const [editCategoryCustom, setEditCategoryCustom] = useState(false);
+
+  async function reloadCategories() {
+    try {
+      setCategories(await listProjectCategories());
+    } catch {
+      // El catálogo es una comodidad del desplegable, no un dato crítico: si
+      // falla, el formulario sigue funcionando con "Otra (especificar)".
+    }
+  }
+
+  useEffect(() => {
+    void reloadCategories();
+  }, []);
+
   const statsMap = new Map<string, StatsProjectRowEnriched>(
     (statsProjects ?? []).map((s) => [s.projectId, s]),
   );
@@ -225,7 +305,8 @@ export function ProjectsTab({
         sellPrice: form.sellPrice ? Number(form.sellPrice) : undefined,
       });
       setForm(emptyForm);
-      await onReload();
+      setCategoryCustom(false);
+      await Promise.all([onReload(), reloadCategories()]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo crear proyecto";
       if (isValidationError(msg)) {
@@ -255,6 +336,7 @@ export function ProjectsTab({
         description: editForm.description,
         projectType: editForm.projectType,
         status: editForm.status,
+        category: editForm.category,
         sellPrice: editForm.sellPrice ? Number(editForm.sellPrice) : undefined,
         sellCurrency: editForm.sellCurrency,
         allowExtraHours: editForm.allowExtraHours,
@@ -266,7 +348,8 @@ export function ProjectsTab({
         budgetAlertPct: editForm.budgetAlertPct,
       });
       setEditForm(null);
-      await onReload();
+      setEditCategoryCustom(false);
+      await Promise.all([onReload(), reloadCategories()]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "No se pudo actualizar proyecto";
       if (isValidationError(msg)) {
@@ -285,6 +368,7 @@ export function ProjectsTab({
         nombre: p.name,
         empresa: p.company,
         pais: p.country,
+        categoria: p.category ?? "",
         tipo: p.projectType,
         estado: p.status,
         moneda: p.currency,
@@ -299,6 +383,7 @@ export function ProjectsTab({
         { key: "nombre", label: "Nombre" },
         { key: "empresa", label: "Empresa" },
         { key: "pais", label: "País" },
+        { key: "categoria", label: "Categoría" },
         { key: "tipo", label: "Tipo" },
         { key: "estado", label: "Estado" },
         { key: "moneda", label: "Moneda" },
@@ -365,6 +450,14 @@ export function ProjectsTab({
               <option value="PAUSED">Pausado</option>
               <option value="CLOSED">Cerrado</option>
             </select>
+            <CategoryField
+              idPrefix="nuevo"
+              value={form.category}
+              custom={categoryCustom}
+              categories={categories}
+              onChange={(v) => setForm((p) => ({ ...p, category: v }))}
+              onCustomToggle={setCategoryCustom}
+            />
             <CurrencyInput
               currency={form.sellCurrency || "USD"}
               placeholder="Precio de venta (opcional)"
@@ -486,6 +579,7 @@ export function ProjectsTab({
                       <th>Nombre</th>
                       <th>Empresa</th>
                       <th>PM</th>
+                      <th>Categoría</th>
                       <th>Tipo</th>
                       <th>Estado</th>
                       <th>Presupuesto</th>
@@ -511,6 +605,7 @@ export function ProjectsTab({
                           <td className="cell-small" title={project.projectManagerEmail ?? "Sin PM asignado"}>
                             {project.projectManagerEmail ?? "—"}
                           </td>
+                          <td className="cell-small">{project.category ?? "—"}</td>
                           <td className="cell-small">
                             {project.projectType === "TIME_AND_MATERIAL" ? "T&M" :
                              project.projectType === "FIXED_PRICE" ? "FP" : "Staff"}
@@ -567,7 +662,12 @@ export function ProjectsTab({
                                   <button
                                     type="button"
                                     className="ghost"
-                                    onClick={() =>
+                                    onClick={() => {
+                                      const categoriaActual = project.category ?? "";
+                                      setEditCategoryCustom(
+                                        categoriaActual !== "" &&
+                                          !categories.some((c) => c.name === categoriaActual),
+                                      );
                                       setEditForm({
                                         id: project.id,
                                         name: project.name,
@@ -580,6 +680,7 @@ export function ProjectsTab({
                                         description: project.description || "",
                                         projectType: project.projectType ?? "TIME_AND_MATERIAL",
                                         status: project.status ?? "ACTIVE",
+                                        category: categoriaActual,
                                         sellPrice: project.sellPrice ? String(numberish(project.sellPrice)) : "",
                                         sellCurrency: project.sellCurrency ?? "USD",
                                         projectManagerEmail: project.projectManagerEmail ?? "",
@@ -594,8 +695,8 @@ export function ProjectsTab({
                                         budgetAlertPct:
                                           project.budgetAlertPct != null ? String(Number(project.budgetAlertPct)) : "",
                                         allowExtraHours: project.allowExtraHours !== false,
-                                      })
-                                    }
+                                      });
+                                    }}
                                   >
                                     Editar
                                   </button>
@@ -618,11 +719,11 @@ export function ProjectsTab({
       />
 
       {editForm && createPortal(
-        <div className="modal-overlay" onClick={() => { setEditForm(null); setEditError(""); }}>
+        <div className="modal-overlay" onClick={() => { setEditForm(null); setEditError(""); setEditCategoryCustom(false); }}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Editar proyecto</h3>
-              <button type="button" className="ghost" onClick={() => { setEditForm(null); setEditError(""); }}>Cerrar</button>
+              <button type="button" className="ghost" onClick={() => { setEditForm(null); setEditError(""); setEditCategoryCustom(false); }}>Cerrar</button>
             </div>
             <form className="form-grid" onSubmit={(e) => void handleUpdate(e)}>
               <ValidationErrorBox message={editError} />
@@ -650,6 +751,14 @@ export function ProjectsTab({
                 <option value="PAUSED">Pausado</option>
                 <option value="CLOSED">Cerrado</option>
               </select>
+              <CategoryField
+                idPrefix="editar"
+                value={editForm.category}
+                custom={editCategoryCustom}
+                categories={categories}
+                onChange={(v) => setEditForm((p) => p && { ...p, category: v })}
+                onCustomToggle={setEditCategoryCustom}
+              />
               <CurrencyInput
                 currency={editForm.sellCurrency || "USD"}
                 value={editForm.sellPrice}
@@ -719,7 +828,7 @@ export function ProjectsTab({
               </div>
               <div className="modal-actions">
                 <button type="submit" disabled={editSubmitting}>{editSubmitting ? "Guardando…" : "Guardar cambios"}</button>
-                <button type="button" className="ghost" onClick={() => { setEditForm(null); setEditError(""); }}>Cancelar</button>
+                <button type="button" className="ghost" onClick={() => { setEditForm(null); setEditError(""); setEditCategoryCustom(false); }}>Cancelar</button>
               </div>
             </form>
           </div>
