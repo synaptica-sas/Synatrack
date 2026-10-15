@@ -842,8 +842,11 @@ verificar el backlog completo, no hace falta inventar un formato nuevo.
 
 El MVP (fases 0 y 1 de [capacity/PLAN.md](capacity/PLAN.md)) está en `dev`. Queda:
 
-- **Fase 2 del plan**: exportar a Excel y PDF, reporte oficial congelado (`CapacityReport`) y alertas de
-  sub y sobreasignación (resumen semanal a ADMIN y Comercial, P7).
+- ~~**Fase 2 del plan**~~ — **HECHA el 2026-10-15**: exportación a Excel y PDF, reportes oficiales
+  (`CapacityReport`) y los jobs `capacity-alerts` y `capacity-digest`. Queda abierto:
+  - El enlace del correo semanal sale del primer origen de `CORS_ORIGIN`; conviene una variable `APP_URL`.
+  - `capacity-alerts` y `capacity-digest` no están en `TRABAJOS_VIGILADOS` (frescura en `/health`).
+  - El Excel no lleva colores (SheetJS CE no los escribe). Si gerencia los pide, hay que sumar `exceljs`.
 - **Fase 3 del plan**: Horas extra sobre la tabla `Holiday` (hoy sigue con el cálculo en código más
   `CustomHoliday`), Finanzas sobre capacity en lugar de forecasts, retiro de `CustomHoliday` y de la
   vista "Disponibilidad", informe real vs proyectado.
