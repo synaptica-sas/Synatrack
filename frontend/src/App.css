@@ -2441,6 +2441,23 @@ body.dark .section-header-title {
   border-color: #e5e7eb;
 }
 
+/* Alta rápida de feriados/decretos: destacada con el borde de acento. */
+.card.holiday-quick-add {
+  border-left: 4px solid var(--state-warning-solid);
+}
+
+/* Fila de jornada vigente hoy (historial de vigencias). */
+tr.row-current td {
+  background: var(--state-success-bg);
+}
+
+/* Comercial: usa los tokens de estado, que ya tienen su contraparte oscura. */
+.role-badge.role-commercial {
+  background: var(--state-info-bg);
+  color: var(--state-info-strong);
+  border-color: var(--state-info-border);
+}
+
 /* Dark Mode Role Badges */
 body.dark .role-badge.role-admin {
   background: #450a0a !important;
@@ -5451,10 +5468,13 @@ body.dark .card .capacity-util.capacity-util--danger  { color: var(--state-dange
 .capacity-field-pair {
   display: flex;
   gap: var(--space-3);
-  grid-column: span 1;
+  min-width: 0;
 }
+.capacity-field-pair > .capacity-field { min-width: 0; }
+.capacity-field-pair input, .capacity-field-pair select { width: 100%; min-width: 0; }
 
 .capacity-check {
+  white-space: nowrap;
   user-select: none;
   font-size: 0.82rem;
   font-weight: 600;
@@ -6632,7 +6652,7 @@ body.dark .card .est-reco.est-reco                             { color: var(--te
    La etiqueta iba en `--color-accent` a 0,7rem: 1,9:1 sobre blanco (§5.5).
    Pasa a `.field-label`, como ya se hizo en Capacidad. */
 .month-year-picker__row { display: flex; gap: var(--space-1); align-items: center; }
-.month-year-picker__month { flex: 1 1 auto; min-width: 0; }
+.month-year-picker__month { flex: 1 1 auto; min-width: 7.5rem; }
 
 /* ── Diálogo de confirmación ──────────────────────────────────────────────
    Se repite la clase para llegar a (0,2,0) y ganarle a `.modal-title`. */
@@ -7036,4 +7056,131 @@ body.dark .chip-button--warning.chip-button--warning:hover {
 .conversion-chip {
   margin-left: var(--space-2);
   vertical-align: middle;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CAPACITY MENSUAL (features/capacity/monthly)
+   Tokens de estado de utilización. El color nunca va solo: cada celda lleva su
+   porcentaje escrito y la leyenda nombra cada estado.
+   Contraste del texto sobre su fondo (AA, >= 4,5:1): claro 7,9 / 7,6 / 6,4;
+   oscuro 8,9 / 9,6 / 9,1.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  --cap-over-bg: #fbe3ec;
+  --cap-over-text: #7d1039;
+  --cap-ok-bg: #e4f3d3;
+  --cap-ok-text: #2c5410;
+  --cap-under-bg: #fdecc8;
+  --cap-under-text: #6e4200;
+  --cap-none-bg: var(--surface-subtle);
+  --cap-none-text: var(--text-muted);
+}
+body.dark {
+  --cap-over-bg: #4d1528;
+  --cap-over-text: #ffc2d6;
+  --cap-ok-bg: #1f3a12;
+  --cap-ok-text: #c3ee9a;
+  --cap-under-bg: #4a3510;
+  --cap-under-text: #ffdc9a;
+  /* Se redefinen aquí: un var() declarado en :root se resuelve allí y no sigue al tema oscuro. */
+  --cap-none-bg: var(--surface-subtle);
+  --cap-none-text: var(--text-muted);
+}
+
+.cap-period { display: flex; flex-direction: column; gap: var(--space-3); }
+.cap-period__row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.cap-period__nav { display: flex; gap: var(--space-1); }
+.cap-check { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 0.85rem; color: var(--text); min-height: 2rem; white-space: nowrap; cursor: pointer; }
+.cap-check input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--color-accent); cursor: pointer; }
+body.dark .cap-check input { color-scheme: dark; }
+
+/* Evita que el contenido ancho (tabla, gráfico, subpestañas) ensanche la página:
+   un hijo de grid/flex no se encoge por debajo de su contenido salvo con min-width: 0. */
+.cap-shell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.cap-shell > *, .cap-shell .section-stack, .cap-shell .panel, .cap-shell .notice, .cap-period, .cap-period__row > * { min-width: 0; }
+.cap-shell .panel { max-width: 100%; }
+.cap-shell .notice__text, .cap-shell .field-help { overflow-wrap: anywhere; }
+.cap-shell .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); }
+
+.cap-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-3); font-size: 0.8rem; color: var(--text-soft); }
+.cap-legend__item { display: inline-flex; align-items: center; gap: var(--space-2); }
+.cap-swatch { width: 14px; height: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: inline-block; }
+.cap-swatch--over { background: var(--cap-over-bg); }
+.cap-swatch--ok { background: var(--cap-ok-bg); }
+.cap-swatch--under { background: var(--cap-under-bg); }
+.cap-swatch--none { background: var(--cap-none-bg); }
+
+/* Mapa de calor */
+.cap-heatmap-wrap { overflow-x: auto; max-width: 100%; }
+.cap-heatmap, .cap-detail { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.82rem; }
+.cap-heatmap th, .cap-heatmap td, .cap-detail th, .cap-detail td { padding: var(--space-2); white-space: nowrap; }
+.cap-sticky { position: sticky; left: 0; z-index: 2; background: var(--card-bg); min-width: 10rem; text-align: left; box-shadow: 1px 0 0 var(--border-subtle); }
+body.dark .cap-heatmap th.cap-sticky, body.dark .cap-heatmap td.cap-sticky,
+body.dark .cap-detail th.cap-sticky, body.dark .cap-detail td.cap-sticky { background: var(--card-bg); }
+.cap-row { cursor: pointer; }
+.cap-row:hover > td { filter: brightness(0.97); }
+.cap-link { background: none; border: 0; padding: 0; color: var(--text-strong); font: inherit; font-weight: 600; cursor: pointer; text-align: left; box-shadow: none; transform: none; }
+.cap-link:hover { text-decoration: underline; background: none; transform: none; box-shadow: none; }
+.cap-sort { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 700; cursor: pointer; box-shadow: none; transform: none; }
+.cap-sort:hover { background: none; transform: none; box-shadow: none; text-decoration: underline; }
+.cap-info { white-space: nowrap; }
+/* Deja libre el borde derecho: el botón flotante del chat no tapa el texto de las tarjetas. */
+.cap-shell { padding-bottom: 5rem; }
+.cap-kpis .kpi-card__sub { overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .cap-kpis { padding-right: 4rem; } }
+.cap-period-col { border-left: 2px solid var(--border-subtle); }
+
+.cap-heatmap td.cap-cell, .cap-detail td.cap-cell, body.dark .cap-heatmap td.cap-cell, body.dark .cap-detail td.cap-cell {
+  text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 3.6rem;
+}
+.cap-heatmap td.cap-cell--over, body.dark .cap-heatmap td.cap-cell--over, .cap-detail td.cap-cell--over, body.dark .cap-detail td.cap-cell--over { background: var(--cap-over-bg); color: var(--cap-over-text); }
+.cap-heatmap td.cap-cell--ok, body.dark .cap-heatmap td.cap-cell--ok, .cap-detail td.cap-cell--ok, body.dark .cap-detail td.cap-cell--ok { background: var(--cap-ok-bg); color: var(--cap-ok-text); }
+.cap-heatmap td.cap-cell--under, body.dark .cap-heatmap td.cap-cell--under, .cap-detail td.cap-cell--under, body.dark .cap-detail td.cap-cell--under { background: var(--cap-under-bg); color: var(--cap-under-text); }
+.cap-heatmap td.cap-cell--none, body.dark .cap-heatmap td.cap-cell--none, .cap-detail td.cap-cell--none, body.dark .cap-detail td.cap-cell--none { background: var(--cap-none-bg); color: var(--cap-none-text); font-weight: 400; }
+.cap-team-row th, .cap-team-row td { border-top: 2px solid var(--border-subtle); font-weight: 700; }
+.cap-team-counts td, .cap-team-counts th { font-size: 0.78rem; color: var(--text-soft); }
+
+/* Gráfico */
+.cap-chart { width: 100%; height: auto; max-height: 320px; display: block; }
+.cap-chart .chart-axis { font-size: 10px; fill: var(--chart-axis); }
+/* Halo del color de la tarjeta: la etiqueta se lee aunque una línea de umbral pase por detrás. */
+.cap-chart .chart-label { font-size: 10px; font-weight: 700; fill: var(--text); paint-order: stroke; stroke: var(--card-bg); stroke-width: 3px; stroke-linejoin: round; }
+.cap-bar--over { fill: var(--state-danger-solid); }
+.cap-bar--ok { fill: var(--state-success-solid); }
+.cap-bar--under { fill: var(--state-warning-solid); }
+.cap-bar--none { fill: var(--chart-track); }
+.cap-threshold { stroke-width: 1.5; stroke-dasharray: 5 4; }
+.cap-threshold--over { stroke: var(--state-danger-strong); }
+.cap-threshold--under { stroke: var(--state-warning-strong); }
+.cap-threshold-label { font-size: 10px; font-weight: 700; paint-order: stroke; stroke: var(--card-bg); stroke-width: 3px; stroke-linejoin: round; }
+.cap-threshold-label--over { fill: var(--state-danger-strong); }
+.cap-threshold-label--under { fill: var(--state-warning-strong); }
+
+/* Detalle */
+.cap-drawer-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(18, 18, 40, 0.45); display: flex; justify-content: flex-end; }
+.cap-drawer { width: min(1040px, 100%); min-width: 0; max-width: 100%; height: 100dvh; max-height: 100dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--card-bg); color: var(--text); padding: var(--space-4); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: var(--space-3); }
+.cap-drawer .table-wrap { overflow-x: auto; max-width: 100%; }
+.cap-drawer__head { position: sticky; top: calc(var(--space-4) * -1); z-index: 3; display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); background: var(--card-bg); padding: var(--space-2) 0; margin-top: calc(var(--space-2) * -1); border-bottom: 1px solid var(--border-subtle); }
+.cap-drawer { flex-shrink: 0; }
+.cap-drawer__title { margin: 0; font-size: 1.1rem; }
+.cap-detail .cap-row--excluded td { opacity: 0.55; }
+.cap-chip-gap { margin-left: var(--space-1); }
+
+/* Cargando */
+.cap-busy { opacity: 0.6; transition: opacity 0.15s; }
+.cap-skeleton { display: flex; flex-direction: column; gap: var(--space-4); }
+.cap-skeleton__kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); }
+.cap-skeleton__box, .cap-skeleton__table { border-radius: var(--radius-lg); background: var(--surface-subtle); animation: cap-pulse 1.2s ease-in-out infinite; }
+.cap-skeleton__box { height: 84px; }
+.cap-skeleton__table { height: 280px; }
+@keyframes cap-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) { .cap-skeleton__box, .cap-skeleton__table { animation: none; } }
+
+@media (max-width: 560px) {
+  .cap-period__row { align-items: stretch; }
+    /* flex-basis solo en la columna del campo: en el select (hijo de una columna) estiraba la altura a 8rem. */
+  .cap-period__row > .field-stack { flex: 1 1 8rem; }
+  .cap-period__row > .field-stack .control-sm { flex: 0 0 auto; width: 100%; height: auto; }
+  .cap-drawer { padding: var(--space-3); }
+  .cap-sticky { min-width: 7.5rem; }
 }

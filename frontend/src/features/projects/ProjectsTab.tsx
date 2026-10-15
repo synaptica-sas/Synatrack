@@ -172,6 +172,7 @@ type EditForm = {
   sellPrice: string;
   sellCurrency: string;
   allowExtraHours: boolean;
+  isInternal: boolean;
   projectManagerEmail: string;
   marginWarningPct: string;
   marginCriticalPct: string;
@@ -193,6 +194,8 @@ const emptyForm = {
   sellPrice: "",
   sellCurrency: "USD",
   allowExtraHours: true,
+  // Proyecto interno (stand-by): sus horas no son facturables.
+  isInternal: false,
   // Correo del PM (DEP-37). Vacío = sin PM asignado; el backend lo guarda como null.
   projectManagerEmail: "",
   /**
@@ -242,6 +245,7 @@ export function ProjectsTab({
   const [companyFilter, setCompanyFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
   const [healthFilter, setHealthFilter] = useState<HealthStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<ProjectStatus | "">("");
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -300,7 +304,8 @@ export function ProjectsTab({
       p.company.toLowerCase().includes(companyFilter.toLowerCase());
     const matchesHealth =
       !healthFilter || statsMap.get(p.id)?.healthStatus === healthFilter;
-    return matchesProject && matchesCompany && matchesHealth;
+    const matchesStatus = !statusFilter || p.status === statusFilter;
+    return matchesProject && matchesCompany && matchesHealth && matchesStatus;
   });
 
   async function handleCreate(e: FormEvent) {
@@ -349,6 +354,7 @@ export function ProjectsTab({
         sellPrice: editForm.sellPrice ? Number(editForm.sellPrice) : undefined,
         sellCurrency: editForm.sellCurrency,
         allowExtraHours: editForm.allowExtraHours,
+        isInternal: editForm.isInternal,
         projectManagerEmail: editForm.projectManagerEmail,
         // Se envían tal cual (cadena incluida): la cadena vacía es significativa
         // y el backend le da a cada campo el tratamiento que le corresponde.
@@ -458,6 +464,7 @@ export function ProjectsTab({
               <option value="STAFFING">Staffing</option>
             </select>
             <select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value as ProjectStatus }))}>
+              <option value="PROSPECT">Oportunidad</option>
               <option value="ACTIVE">Activo</option>
               <option value="PAUSED">Pausado</option>
               <option value="CLOSED">Cerrado</option>
@@ -536,6 +543,15 @@ export function ProjectsTab({
               />
               HE Habilitadas
             </label>
+            <label className="proy-check-label">
+              <input
+                type="checkbox"
+                checked={form.isInternal}
+                onChange={(e) => setForm((p) => ({ ...p, isInternal: e.target.checked }))}
+                className="proy-check-input"
+              />
+              Proyecto interno (stand-by)
+            </label>
             <button type="submit" disabled={submitting}>{submitting ? "Creando…" : "Crear proyecto"}</button>
           </form>
         }
@@ -564,6 +580,20 @@ export function ProjectsTab({
                   emptyLabel="Todas las empresas"
                   allowFreeText={true}
                 />
+              </div>
+              <div>
+                <label className="field-label">Estado</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | "")}
+                  className="select-control"
+                >
+                  <option value="">Todos</option>
+                  <option value="PROSPECT">Oportunidad</option>
+                  <option value="ACTIVE">Activo</option>
+                  <option value="PAUSED">Pausado</option>
+                  <option value="CLOSED">Cerrado</option>
+                </select>
               </div>
               <div>
                 <label className="field-label">Salud</label>
@@ -622,7 +652,7 @@ export function ProjectsTab({
                             {project.projectType === "TIME_AND_MATERIAL" ? "T&M" :
                              project.projectType === "FIXED_PRICE" ? "FP" : "Staff"}
                           </td>
-                          <td><span className={`state-chip state-chip--${project.status === "ACTIVE" ? "success" : project.status === "PAUSED" ? "warning" : "neutral"}`}>{label(PROJECT_STATUS_LABELS, project.status)}</span></td>
+                          <td><span className={`state-chip state-chip--${project.status === "ACTIVE" ? "success" : project.status === "PAUSED" ? "warning" : project.status === "PROSPECT" ? "info" : "neutral"}`}>{label(PROJECT_STATUS_LABELS, project.status)}</span>{project.isInternal && <span className="state-chip state-chip--neutral">Interno</span>}</td>
                           <td className="cell-nowrap">
                             {stats
                               ? money(stats.budget, stats.displayCurrency)
@@ -707,6 +737,7 @@ export function ProjectsTab({
                                         budgetAlertPct:
                                           project.budgetAlertPct != null ? String(Number(project.budgetAlertPct)) : "",
                                         allowExtraHours: project.allowExtraHours !== false,
+                                        isInternal: project.isInternal === true,
                                       });
                                     }}
                                   >
@@ -762,6 +793,7 @@ export function ProjectsTab({
                 <option value="STAFFING">Staffing</option>
               </select>
               <select value={editForm.status} onChange={(e) => setEditForm((p) => p && { ...p, status: e.target.value as ProjectStatus })}>
+                <option value="PROSPECT">Oportunidad</option>
                 <option value="ACTIVE">Activo</option>
                 <option value="PAUSED">Pausado</option>
                 <option value="CLOSED">Cerrado</option>
@@ -839,6 +871,18 @@ export function ProjectsTab({
                 />
                 <label htmlFor="editAllowExtraHours" className="proy-check-text">
                   Habilitar Horas Extras para este proyecto
+                </label>
+              </div>
+              <div className="span-2 proy-check-row">
+                <input
+                  type="checkbox"
+                  id="editIsInternal"
+                  checked={editForm.isInternal}
+                  onChange={(e) => setEditForm((p) => p && { ...p, isInternal: e.target.checked })}
+                  className="proy-check-box"
+                />
+                <label htmlFor="editIsInternal" className="proy-check-text">
+                  Proyecto interno (stand-by)
                 </label>
               </div>
               <div className="modal-actions">

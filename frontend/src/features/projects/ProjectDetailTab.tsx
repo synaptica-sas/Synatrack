@@ -1172,6 +1172,7 @@ function HistorialTab({ projectId, onError }: { projectId: string; onError: (msg
 export function ProjectDetailTab({
   projectId,
   canWrite,
+  canSeeAssignments = false,
   onBack,
   onError,
   onIrATasasFx,
@@ -1179,6 +1180,12 @@ export function ProjectDetailTab({
 }: {
   projectId: string;
   canWrite: boolean;
+  /**
+   * Las asignaciones (quién está en el proyecto y con cuántas horas) son
+   * información de capacity, confidencial fuera de `capacity:read` (D8). El
+   * backend ya no las envía a esos roles; aquí además se oculta la pestaña.
+   */
+  canSeeAssignments?: boolean;
   onBack: () => void;
   onError: (msg: string) => void;
   /** Atajo a la pantalla de Tasas FX desde el aviso de conversión incompleta. */
@@ -1218,7 +1225,9 @@ export function ProjectDetailTab({
   const tabs: { key: SubTab; label: string }[] = [
     { key: "resumen", label: "Resumen" },
     { key: "hitos", label: `Hitos (${detail.milestones.length})` },
-    { key: "recursos", label: `Recursos (${detail.assignments.length})` },
+    ...(canSeeAssignments
+      ? [{ key: "recursos" as SubTab, label: `Recursos (${detail.assignments.length})` }]
+      : []),
     { key: "riesgos", label: `Riesgos (${detail.risks.length})` },
     { key: "issues", label: `Incidentes (${detail.issues.length})` },
     { key: "cambios", label: `Cambios (${detail.changeRequests.length})` },
@@ -1277,7 +1286,7 @@ export function ProjectDetailTab({
         {activeTab === "hitos" && (
           <HitosTab projectId={projectId} milestones={detail.milestones} canWrite={canWrite} onReload={() => void load()} />
         )}
-        {activeTab === "recursos" && (
+        {canSeeAssignments && activeTab === "recursos" && (
           <RecursosTab assignments={detail.assignments} />
         )}
         {activeTab === "riesgos" && (

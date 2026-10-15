@@ -42,7 +42,7 @@ type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 let accessToken: string | null = null;
 
-export type AppRole = "ADMIN" | "PM" | "CONSULTANT" | "FINANCE" | "VIEWER";
+export type AppRole = "ADMIN" | "PM" | "CONSULTANT" | "FINANCE" | "VIEWER" | "COMMERCIAL";
 
 export type AuthUser = {
   id: string;
@@ -75,7 +75,8 @@ export type HealthResponse = {
 };
 
 export type ProjectType = "FIXED_PRICE" | "TIME_AND_MATERIAL" | "STAFFING";
-export type ProjectStatus = "ACTIVE" | "PAUSED" | "CLOSED";
+/** `PROSPECT` = oportunidad: no cuenta en portafolio, dashboard ni alertas. */
+export type ProjectStatus = "PROSPECT" | "ACTIVE" | "PAUSED" | "CLOSED";
 
 export type Project = {
   id: string;
@@ -91,6 +92,8 @@ export type Project = {
   status: ProjectStatus;
   /** Categoría de proyecto (R-010). `null`/`undefined` = sin categorizar. */
   category?: string | null;
+  /** Proyecto interno (stand-by): sus horas no son facturables. */
+  isInternal?: boolean;
   sellPrice: string | null;
   sellCurrency: string;
   createdAt: string;
@@ -132,6 +135,12 @@ export type Consultant = {
   active: boolean;
   allowWeekendWork?: boolean;
   isInternal?: boolean;
+  /** Ciudad ("Quito"); `null` = solo aplican los feriados nacionales. */
+  city?: string | null;
+  /** Fecha de ingreso (`YYYY-MM-DD`). */
+  hireDate?: string | null;
+  /** Fecha de salida (`YYYY-MM-DD`). */
+  exitDate?: string | null;
   createdAt: string;
   updatedAt: string;
   identification?: string | null;
@@ -731,6 +740,8 @@ export async function createProject(payload: {
   status?: ProjectStatus;
   /** Categoría de proyecto (R-010). Cadena vacía = sin categorizar (`null`). */
   category?: string | null;
+  /** Proyecto interno (stand-by). */
+  isInternal?: boolean;
   sellPrice?: number;
   sellCurrency?: string;
   allowExtraHours?: boolean;
@@ -768,6 +779,7 @@ export async function updateProject(
     status?: ProjectStatus;
     /** Cadena vacía = desasignar la categoría. `undefined` = no tocar. */
     category?: string | null;
+    isInternal?: boolean;
     sellPrice?: number;
     sellCurrency?: string;
     allowExtraHours?: boolean;
@@ -807,6 +819,9 @@ export async function createConsultant(payload: {
   active: boolean;
   allowWeekendWork?: boolean;
   isInternal?: boolean;
+  city?: string | null;
+  hireDate?: string | null;
+  exitDate?: string | null;
 }): Promise<Consultant> {
   const response = await request<ApiEnvelope<Consultant>>("/api/consultants", "POST", payload);
   return response.data;
@@ -828,6 +843,9 @@ export async function updateConsultant(
     active: boolean;
     allowWeekendWork?: boolean;
     isInternal?: boolean;
+    city?: string | null;
+    hireDate?: string | null;
+    exitDate?: string | null;
   },
 ): Promise<Consultant> {
   const response = await request<ApiEnvelope<Consultant>>(`/api/consultants/${id}`, "PUT", payload);
@@ -1372,6 +1390,7 @@ export async function getCapacityReleasing(within = 30): Promise<ReleasingEntry[
 // ─── Assignments ───────────────────────────────────────────────────────────────
 
 export type AllocationMode = "PERCENTAGE" | "HOURS";
+export type AssignmentCertainty = "CONFIRMED" | "PROBABLE";
 export type AssignmentStatus = "PLANNED" | "ACTIVE" | "PARTIAL" | "COMPLETED" | "CANCELLED";
 export type BlockType = "VACATION" | "SICK_LEAVE" | "NATIONAL_HOLIDAY" | "INTERNAL_BENCH" | "TRAINING" | "OTHER";
 
@@ -1386,9 +1405,11 @@ export type Assignment = {
   hoursPerPeriod: number | null;
   periodUnit: string | null;
   status: AssignmentStatus;
+  /** Estado de certeza: confirmada o probable (oportunidad). */
+  certainty?: AssignmentCertainty;
   role: string | null;
   note: string | null;
-  project?: { id: string; name: string; company: string; currency: string };
+  project?: { id: string; name: string; company: string; currency: string; status?: ProjectStatus; isInternal?: boolean };
   consultant?: { id: string; fullName: string; role: string; country: string | null };
   createdAt: string;
   updatedAt: string;
@@ -1399,8 +1420,14 @@ export type ConsultantBlock = {
   consultantId: string;
   startDate: string;
   endDate: string;
-  blockType: BlockType;
+  /**
+   * `null` cuando el backend lo enmascara (`masked: true`): quien no puede
+   * escribir bloqueos solo sabe que el consultor no está disponible, no el
+   * motivo (una licencia médica es dato de salud).
+   */
+  blockType: BlockType | null;
   note: string | null;
+  masked?: boolean;
   createdAt: string;
 };
 
@@ -1456,9 +1483,15 @@ type AssignmentPayload = {
   allocationPct?: number;
   hoursPerPeriod?: number;
   periodUnit?: "week" | "month";
+  certainty?: AssignmentCertainty;
   role?: string;
   note?: string;
 };
+
+/** Aviso no bloqueante de la respuesta de crear o editar una asignación. */
+export type AssignmentWarning = { code: "OVERALLOCATED"; month: string; pct: number };
+
+export type AssignmentWithWarnings = { data: Assignment; warnings?: AssignmentWarning[] };
 
 export async function listAssignments(params?: {
   consultantId?: string;
@@ -1479,17 +1512,14 @@ export async function listAssignments(params?: {
 }
 
 /**
- * R-013: la asignación genera también su `Forecast` de horas (salvo que ya
- * nazca COMPLETED, o que el período no tenga horas que proyectar).
- * `forecastCreated` le dice al llamador si eso ocurrió, para poder avisarlo.
+ * Ya no crea `Forecast`. La sobreasignación no bloquea: llega en `warnings`.
  */
-export async function createAssignment(payload: AssignmentPayload): Promise<{ data: Assignment; forecastCreated: boolean }> {
-  return request<{ data: Assignment; forecastCreated: boolean }>("/api/assignments", "POST", payload);
+export async function createAssignment(payload: AssignmentPayload): Promise<AssignmentWithWarnings> {
+  return request<AssignmentWithWarnings>("/api/assignments", "POST", payload);
 }
 
-export async function updateAssignment(id: string, payload: AssignmentPayload): Promise<Assignment> {
-  const response = await request<ApiEnvelope<Assignment>>(`/api/assignments/${id}`, "PUT", payload);
-  return response.data;
+export async function updateAssignment(id: string, payload: AssignmentPayload): Promise<AssignmentWithWarnings> {
+  return request<AssignmentWithWarnings>(`/api/assignments/${id}`, "PUT", payload);
 }
 
 export async function cancelAssignment(id: string): Promise<Assignment> {
@@ -1824,6 +1854,8 @@ export type ProjectDetail = {
   issues: Issue[];
   changeRequests: ChangeRequest[];
   assignments: Assignment[];
+  /** `true` si el rol no tiene `capacity:read`: el backend omite las asignaciones (D8). */
+  assignmentsHidden?: boolean;
   summary: ProjectDetailSummary;
 };
 
@@ -2619,6 +2651,8 @@ export type JornadaFila = {
   id: string;
   consultantId: string | null;
   country: string | null;
+  /** Inicio de la vigencia, `YYYY-MM-DD`. */
+  validFrom: string;
   hoursPerDay: number;
   workDaysPerWeek: number;
   updatedAt: string;
@@ -2628,8 +2662,10 @@ export type JornadaDeConsultor = {
   consultantId: string;
   fullName: string;
   country: string | null;
-  /** Fila propia del consultor, o `null` si hereda la de su país. */
+  /** Fila propia vigente hoy, o `null` si hereda la de su país. */
   propia: JornadaFila | null;
+  /** Historial completo de filas propias (vigencias pasadas y futuras). */
+  filas?: JornadaFila[];
   efectiva: JornadaEfectiva;
 };
 
@@ -2647,15 +2683,16 @@ export type JornadasEfectivas = {
   consultants: ({ consultantId: string } & JornadaEfectiva)[];
 };
 
-export type JornadaPayload = { hoursPerDay: number; workDaysPerWeek: number };
+export type JornadaPayload = { hoursPerDay: number; workDaysPerWeek: number; validFrom?: string };
 
 export async function getWorkdayConfig(): Promise<JornadaConfig> {
   const response = await request<ApiEnvelope<JornadaConfig>>("/api/capacity/workday");
   return response.data;
 }
 
-export async function getEffectiveWorkdays(): Promise<JornadasEfectivas> {
-  const response = await request<ApiEnvelope<JornadasEfectivas>>("/api/capacity/workday/effective");
+export async function getEffectiveWorkdays(date?: string): Promise<JornadasEfectivas> {
+  const suffix = date ? `?date=${encodeURIComponent(date)}` : "";
+  const response = await request<ApiEnvelope<JornadasEfectivas>>(`/api/capacity/workday/effective${suffix}`);
   return response.data;
 }
 
@@ -2668,8 +2705,9 @@ export async function updateCountryWorkday(country: string, payload: JornadaPayl
   return response.data;
 }
 
-export async function deleteCountryWorkday(country: string): Promise<void> {
-  await request<void>(`/api/capacity/workday/country/${encodeURIComponent(country)}`, "DELETE");
+export async function deleteCountryWorkday(country: string, validFrom?: string): Promise<void> {
+  const suffix = validFrom ? `?validFrom=${encodeURIComponent(validFrom)}` : "";
+  await request<void>(`/api/capacity/workday/country/${encodeURIComponent(country)}${suffix}`, "DELETE");
 }
 
 export async function updateConsultantWorkday(consultantId: string, payload: JornadaPayload): Promise<JornadaFila> {
@@ -2681,6 +2719,251 @@ export async function updateConsultantWorkday(consultantId: string, payload: Jor
   return response.data;
 }
 
-export async function deleteConsultantWorkday(consultantId: string): Promise<void> {
-  await request<void>(`/api/capacity/workday/consultant/${encodeURIComponent(consultantId)}`, "DELETE");
+export async function deleteConsultantWorkday(consultantId: string, validFrom?: string): Promise<void> {
+  const suffix = validFrom ? `?validFrom=${encodeURIComponent(validFrom)}` : "";
+  await request<void>(`/api/capacity/workday/consultant/${encodeURIComponent(consultantId)}${suffix}`, "DELETE");
+}
+
+// ─── Parámetros de capacity (umbrales) ────────────────────────────────────────
+
+export type CapacitySettingsData = {
+  underThresholdPct: number;
+  overThresholdPct: number;
+  includeProbablesDefault: boolean;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
+};
+
+export type CapacitySettingsPayload = Pick<
+  CapacitySettingsData,
+  "underThresholdPct" | "overThresholdPct" | "includeProbablesDefault"
+>;
+
+export async function getCapacitySettings(): Promise<CapacitySettingsData> {
+  const response = await request<ApiEnvelope<CapacitySettingsData>>("/api/capacity/settings");
+  return response.data;
+}
+
+export async function updateCapacitySettings(payload: CapacitySettingsPayload): Promise<CapacitySettingsData> {
+  const response = await request<ApiEnvelope<CapacitySettingsData>>("/api/capacity/settings", "PUT", payload);
+  return response.data;
+}
+
+// ─── Feriados (calendario de capacity) ────────────────────────────────────────
+
+export type HolidaySource = "GENERATED" | "MANUAL" | "DECREE";
+
+export type Holiday = {
+  id: string;
+  country: string;
+  /** `""` = feriado nacional. */
+  city: string;
+  /** `YYYY-MM-DD`, sin pasar por hora local. */
+  date: string;
+  name: string;
+  source: HolidaySource;
+  createdBy: string | null;
+};
+
+export type HolidayPayload = {
+  country: string;
+  city?: string;
+  date: string;
+  name: string;
+  source?: HolidaySource;
+};
+
+export type HolidayCoverage = {
+  country: string;
+  year: number;
+  holidayCount: number;
+  confirmed: boolean;
+  confirmedBy: string | null;
+  confirmedAt: string | null;
+};
+
+export async function listHolidays(params: { country?: string; city?: string; year?: number }): Promise<Holiday[]> {
+  const query = new URLSearchParams();
+  if (params.country) query.set("country", params.country);
+  if (params.city) query.set("city", params.city);
+  if (params.year) query.set("year", String(params.year));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<ApiEnvelope<Holiday[]>>(`/api/holidays${suffix}`);
+  return response.data;
+}
+
+export async function createHoliday(payload: HolidayPayload): Promise<Holiday> {
+  const response = await request<ApiEnvelope<Holiday>>("/api/holidays", "POST", payload);
+  return response.data;
+}
+
+export async function updateHoliday(id: string, payload: Partial<HolidayPayload>): Promise<Holiday> {
+  const response = await request<ApiEnvelope<Holiday>>(`/api/holidays/${id}`, "PUT", payload);
+  return response.data;
+}
+
+export async function deleteHoliday(id: string): Promise<void> {
+  await request<void>(`/api/holidays/${id}`, "DELETE");
+}
+
+export async function generateHolidays(payload: { country: string; year: number }): Promise<{ created: Holiday[]; skipped: number }> {
+  const response = await request<ApiEnvelope<{ created: Holiday[]; skipped: number }>>("/api/holidays/generate", "POST", payload);
+  return response.data;
+}
+
+export async function getHolidayCoverage(from: number, to: number): Promise<HolidayCoverage[]> {
+  const response = await request<ApiEnvelope<HolidayCoverage[]>>(`/api/holidays/coverage?from=${from}&to=${to}`);
+  return response.data;
+}
+
+export async function confirmHolidayYear(country: string, year: number): Promise<void> {
+  await request<unknown>(`/api/holidays/calendar-years/${encodeURIComponent(country)}/${year}`, "PUT");
+}
+
+export async function unconfirmHolidayYear(country: string, year: number): Promise<void> {
+  await request<void>(`/api/holidays/calendar-years/${encodeURIComponent(country)}/${year}`, "DELETE");
+}
+
+export async function listHolidayCities(country?: string): Promise<string[]> {
+  const suffix = country ? `?country=${encodeURIComponent(country)}` : "";
+  const response = await request<ApiEnvelope<string[]>>(`/api/holidays/cities${suffix}`);
+  return response.data;
+}
+
+// ─── Capacity mensual ──────────────────────────────────────────────────────────
+// Contrato: documentacion/capacity/CONTRATO.md §2 y §3.1–3.3. Las horas y los
+// porcentajes llegan como número (ya redondeados a 1 decimal por la ruta).
+
+export type CapacityStatus = "OVER" | "OK" | "UNDER";
+
+export type MonthlyCapacityCell = {
+  month: string; // "YYYY-MM"
+  workdays: number;
+  capacityHours: number;
+  assignedHours: number;
+  billableHours: number;
+  internalHours: number;
+  probableHours: number;
+  /** Capacidad − asignadas; puede ser negativa. */
+  availableHours: number;
+  pct: number | null;
+  billablePct: number | null;
+  status: CapacityStatus | null;
+  billableStatus: CapacityStatus | null;
+};
+
+export type MonthlyCapacityPeriod = Omit<MonthlyCapacityCell, "month">;
+
+export type MonthlyCapacityTeamCell = MonthlyCapacityCell & { overCount: number; underCount: number };
+export type MonthlyCapacityTeamPeriod = Omit<MonthlyCapacityTeamCell, "month">;
+
+export type MonthlyCapacityConsultantRow = {
+  id: string;
+  fullName: string;
+  country: string | null;
+  city: string | null;
+  company: string | null;
+  isInternal: boolean;
+  role: string | null;
+  hireDate: string | null;
+  exitDate: string | null;
+  months: MonthlyCapacityCell[];
+  period: MonthlyCapacityPeriod;
+};
+
+export type MonthlyCapacityWarning =
+  | { code: "CONSULTANT_WITHOUT_COUNTRY"; consultantId: string; fullName?: string }
+  | { code: "HOLIDAYS_NOT_CONFIRMED"; country: string; year: number };
+
+export type MonthlyCapacityKpis = {
+  utilizationPct: number | null;
+  billablePct: number | null;
+  overCount: number;
+  underCount: number;
+  availableHours: number;
+  capacityHours: number;
+  assignedHours: number;
+  consultantCount: number;
+};
+
+export type MonthlyCapacitySettings = {
+  underThresholdPct: number;
+  overThresholdPct: number;
+};
+
+export type MonthlyCapacity = {
+  from: string;
+  to: string;
+  includeProbables: boolean;
+  internal: "include" | "exclude";
+  settings: MonthlyCapacitySettings;
+  months: string[];
+  consultants: MonthlyCapacityConsultantRow[];
+  team: { months: MonthlyCapacityTeamCell[]; period: MonthlyCapacityTeamPeriod };
+  kpis: MonthlyCapacityKpis;
+  warnings: MonthlyCapacityWarning[];
+};
+
+export type MonthlyCapacityParams = {
+  from?: string;
+  to?: string;
+  includeProbables?: boolean;
+  internal?: "include" | "exclude";
+  country?: string;
+  city?: string;
+  company?: string;
+  consultantId?: string;
+};
+
+export type MonthlyCapacityAssignment = {
+  assignmentId: string;
+  projectId: string;
+  projectName: string;
+  client: string | null;
+  projectStatus: string;
+  isInternal: boolean;
+  certainty: "CONFIRMED" | "PROBABLE";
+  status: string;
+  startDate: string;
+  endDate: string;
+  hoursPerWeek: number;
+  included: boolean;
+  totalHours: number;
+  months: { month: string; hours: number }[];
+};
+
+export type MonthlyCapacityConsultantDetail = {
+  consultant: Omit<MonthlyCapacityConsultantRow, "months" | "period">;
+  months: MonthlyCapacityCell[];
+  period: MonthlyCapacityPeriod;
+  assignments: MonthlyCapacityAssignment[];
+};
+
+function monthlyCapacityQuery(params?: MonthlyCapacityParams): string {
+  const query = new URLSearchParams();
+  if (params?.from) query.set("from", params.from);
+  if (params?.to) query.set("to", params.to);
+  if (params?.includeProbables !== undefined) query.set("includeProbables", String(params.includeProbables));
+  if (params?.internal) query.set("internal", params.internal);
+  if (params?.country) query.set("country", params.country);
+  if (params?.city) query.set("city", params.city);
+  if (params?.company) query.set("company", params.company);
+  if (params?.consultantId) query.set("consultantId", params.consultantId);
+  const text = query.toString();
+  return text ? `?${text}` : "";
+}
+
+export async function getCapacityMonthly(params?: MonthlyCapacityParams): Promise<MonthlyCapacity> {
+  const response = await request<ApiEnvelope<MonthlyCapacity>>(`/api/capacity/monthly${monthlyCapacityQuery(params)}`);
+  return response.data;
+}
+
+export async function getCapacityMonthlyConsultant(
+  id: string,
+  params?: Omit<MonthlyCapacityParams, "consultantId">,
+): Promise<MonthlyCapacityConsultantDetail> {
+  const response = await request<ApiEnvelope<MonthlyCapacityConsultantDetail>>(
+    `/api/capacity/monthly/consultant/${encodeURIComponent(id)}${monthlyCapacityQuery(params)}`,
+  );
+  return response.data;
 }

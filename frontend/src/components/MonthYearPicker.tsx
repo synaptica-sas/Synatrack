@@ -2,7 +2,6 @@ import type { MonthYear } from "../utils/periodUtils";
 import { MONTHS_LONG_ES } from "../utils/periodUtils";
 
 const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR + i);
 
 export function MonthYearPicker({
   label,
@@ -10,12 +9,15 @@ export function MonthYearPicker({
   onChange,
   min,
   id,
+  yearsBack = 0,
 }: {
   label: string;
   value: MonthYear;
   onChange: (v: MonthYear) => void;
   min?: MonthYear;
   id?: string;
+  /** Años anteriores al actual que se ofrecen (por defecto 0: solo desde el año en curso). */
+  yearsBack?: number;
 }) {
   function handleMonthChange(month: number) {
     onChange({ month, year: value.year });
@@ -28,8 +30,9 @@ export function MonthYearPicker({
     onChange({ month: newMonth, year });
   }
 
-  const minYear = min?.year ?? CURRENT_YEAR;
-  const availableYears = YEAR_OPTIONS.filter((y) => y >= minYear);
+  const yearOptions = Array.from({ length: 6 + yearsBack }, (_, i) => CURRENT_YEAR - yearsBack + i);
+  const minYear = min?.year ?? CURRENT_YEAR - yearsBack;
+  const availableYears = yearOptions.filter((y) => y >= minYear);
 
   return (
     <div className="field-stack month-year-picker">

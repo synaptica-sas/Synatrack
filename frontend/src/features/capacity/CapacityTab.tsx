@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useState, useMemo } from "react";
-import { createPortal } from "react-dom";
 import type { FormEvent } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import {
@@ -16,8 +15,8 @@ import {
   listConsultantBlocks,
   listRisks,
   updateAssignment,
-  type AllocationMode,
   type Assignment,
+  type AssignmentWarning,
   type AssignmentStatus,
   type AvailabilityStatus,
   type BlockType,
@@ -37,6 +36,15 @@ import { displayCountryWithFlag } from "../../utils/statusLabels";
 import { CountryFlag } from "../../components/CountryFlag";
 import { formatDate } from "../../utils/formatDate";
 import { useToast } from "../../hooks/useToast";
+import { MonthlyCapacityPanel } from "./monthly/MonthlyCapacityPanel";
+import { AssignmentFormModal } from "./AssignmentFormModal";
+import {
+  CERTAINTY_LABELS,
+  emptyAssignmentForm,
+  mensajeAdvertencias,
+  validarAsignacion,
+  type AssignmentFormState,
+} from "./assignmentForm";
 
 /**
  * Planificación de Capacidad, migrada al sistema de diseño
@@ -123,7 +131,7 @@ function lastDayOfMonth() {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
 }
 
-type SubTab = "overview" | "byProject" | "assignments" | "blocks";
+type SubTab = "monthly" | "overview" | "byProject" | "assignments" | "blocks";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -145,7 +153,7 @@ export function CapacityTab({
   /** Para ir al detalle del proyecto desde los riesgos por consultor (R-015). */
   onOpenProject?: (projectId: string) => void;
 }) {
-  const [subTab, setSubTab] = useState<SubTab>("overview");
+  const [subTab, setSubTab] = useState<SubTab>("monthly");
 
   const [prevPreselected, setPrevPreselected] = useState(preselectedConsultantId);
   if (preselectedConsultantId !== prevPreselected) {
@@ -162,10 +170,11 @@ export function CapacityTab({
         title="Planificación de Capacidad"
         description="Visualiza y gestiona la asignación de consultores, disponibilidad y ocupación a lo largo de los proyectos."
       />
-      <section className="grid">
+      <section className="grid cap-shell">
       <nav className="subtabs" aria-label="Secciones de capacidad">
         {([
-          ["overview", "Vista general"],
+          ["monthly", "Mensual"],
+          ["overview", "Disponibilidad"],
           ["byProject", "Por proyecto"],
           ["assignments", "Asignaciones"],
           ["blocks", "Bloqueos"],
@@ -182,6 +191,7 @@ export function CapacityTab({
         ))}
       </nav>
 
+      {subTab === "monthly" && <MonthlyCapacityPanel />}
       {subTab === "overview" && (
         <OverviewPanel projects={projects} consultants={consultants} onError={onError} />
       )}
@@ -773,20 +783,8 @@ function ByProjectPanel({ onError, onOpenProject }: { onError: (msg: string) => 
 
 // ─── Assignments Panel ────────────────────────────────────────────────────────
 
-const emptyAssignmentForm = {
-  projectId: "",
-  consultantId: "",
-  startDate: "",
-  endDate: "",
-  allocationMode: "PERCENTAGE" as AllocationMode,
-  allocationPct: "100",
-  hoursPerPeriod: "",
-  periodUnit: "week" as "week" | "month",
-  role: "",
-  note: "",
-};
-
-function AssignmentsPanel({
+/** Exportado solo para poder probarlo sin montar la pestaña entera. */
+export function AssignmentsPanel({
   projects,
   consultants,
   canWrite,
@@ -805,7 +803,7 @@ function AssignmentsPanel({
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState(emptyAssignmentForm);
+  const [form, setForm] = useState<AssignmentFormState>(emptyAssignmentForm);
   const [filterProject, setFilterProject] = useState("");
   const [filterConsultant, setFilterConsultant] = useState("");
   const [filterStatus, setFilterStatus] = useState<AssignmentStatus | "">("");
@@ -817,7 +815,6 @@ function AssignmentsPanel({
 
   const [multipleMode, setMultipleMode] = useState(false);
   const [selectedConsultantIds, setSelectedConsultantIds] = useState<string[]>([]);
-  const [consultantSearch, setConsultantSearch] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
@@ -873,76 +870,63 @@ function AssignmentsPanel({
       allocationPct: a.allocationPct != null ? String(a.allocationPct) : "100",
       hoursPerPeriod: a.hoursPerPeriod != null ? String(a.hoursPerPeriod) : "",
       periodUnit: (a.periodUnit as "week" | "month") || "week",
+      certainty: a.certainty ?? "CONFIRMED",
       role: a.role ?? "",
       note: a.note ?? "",
     });
     setIsModalOpen(true);
   }
 
+  /** Payload común de crear/editar: horas por semana por defecto; fechas `YYYY-MM-DD`. */
+  function buildPayload(consultantId: string) {
+    return {
+      projectId: form.projectId,
+      consultantId,
+      startDate: form.startDate,
+      endDate: form.endDate,
+      allocationMode: form.allocationMode,
+      allocationPct: form.allocationMode === "PERCENTAGE" ? Number(form.allocationPct) : undefined,
+      hoursPerPeriod: form.allocationMode === "HOURS" ? Number(form.hoursPerPeriod.replace(",", ".")) : undefined,
+      periodUnit: form.allocationMode === "HOURS" ? form.periodUnit : undefined,
+      certainty: form.certainty,
+      role: form.role || undefined,
+      note: form.note || undefined,
+    };
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    const problema = validarAsignacion(form);
+    if (problema) {
+      onError(problema);
+      return;
+    }
     setSubmitting(true);
     try {
+      let warnings: AssignmentWarning[] = [];
       if (editTarget) {
-        await updateAssignment(editTarget.id, {
-          projectId: form.projectId,
-          consultantId: form.consultantId,
-          startDate: form.startDate,
-          endDate: form.endDate,
-          allocationMode: form.allocationMode,
-          allocationPct: form.allocationMode === "PERCENTAGE" ? Number(form.allocationPct) : undefined,
-          hoursPerPeriod: form.allocationMode === "HOURS" ? Number(form.hoursPerPeriod) : undefined,
-          periodUnit: form.allocationMode === "HOURS" ? form.periodUnit : undefined,
-          role: form.role || undefined,
-          note: form.note || undefined,
-        });
+        const r = await updateAssignment(editTarget.id, buildPayload(form.consultantId));
+        warnings = r.warnings ?? [];
+        showToast("Asignación actualizada.", "success");
       } else if (multipleMode) {
         if (selectedConsultantIds.length === 0) {
           throw new Error("Selecciona al menos un consultor.");
         }
-        const results = await Promise.all(
-          selectedConsultantIds.map((cId) =>
-            createAssignment({
-              projectId: form.projectId,
-              consultantId: cId,
-              startDate: form.startDate,
-              endDate: form.endDate,
-              allocationMode: form.allocationMode,
-              allocationPct: form.allocationMode === "PERCENTAGE" ? Number(form.allocationPct) : undefined,
-              hoursPerPeriod: form.allocationMode === "HOURS" ? Number(form.hoursPerPeriod) : undefined,
-              periodUnit: form.allocationMode === "HOURS" ? form.periodUnit : undefined,
-              role: form.role || undefined,
-              note: form.note || undefined,
-            })
-          )
-        );
+        const results = await Promise.all(selectedConsultantIds.map((cId) => createAssignment(buildPayload(cId))));
+        warnings = results.flatMap((r) => r.warnings ?? []);
         setSelectedConsultantIds([]);
-        const forecastsCreadas = results.filter((r) => r.forecastCreated).length;
-        showToast(
-          `${results.length} asignaciones creadas${forecastsCreadas > 0 ? ` (${forecastsCreadas} con proyección de horas)` : ""}.`,
-          "success",
-        );
+        showToast(`${results.length} asignaciones creadas.`, "success");
       } else {
         if (!form.consultantId) {
           throw new Error("Selecciona un consultor.");
         }
-        const result = await createAssignment({
-          projectId: form.projectId,
-          consultantId: form.consultantId,
-          startDate: form.startDate,
-          endDate: form.endDate,
-          allocationMode: form.allocationMode,
-          allocationPct: form.allocationMode === "PERCENTAGE" ? Number(form.allocationPct) : undefined,
-          hoursPerPeriod: form.allocationMode === "HOURS" ? Number(form.hoursPerPeriod) : undefined,
-          periodUnit: form.allocationMode === "HOURS" ? form.periodUnit : undefined,
-          role: form.role || undefined,
-          note: form.note || undefined,
-        });
-        showToast(
-          result.forecastCreated ? "Asignación creada, con su proyección de horas." : "Asignación creada.",
-          "success",
-        );
+        const r = await createAssignment(buildPayload(form.consultantId));
+        warnings = r.warnings ?? [];
+        showToast("Asignación creada.", "success");
       }
+      // La sobreasignación avisa pero no bloquea: la asignación ya quedó guardada.
+      const aviso = mensajeAdvertencias(warnings);
+      if (aviso) showToast(aviso, "warning");
       closeModal();
       await reload();
     } catch (err) {
@@ -1038,6 +1022,7 @@ function AssignmentsPanel({
                   <th>Inicio</th>
                   <th>Fin</th>
                   <th>Asignación</th>
+                  <th>Certeza</th>
                   <th>Estado</th>
                   {canWrite && <th>Acciones</th>}
                 </tr>
@@ -1053,6 +1038,11 @@ function AssignmentsPanel({
                       {a.allocationMode === "PERCENTAGE"
                         ? `${a.allocationPct ?? 0}%`
                         : `${a.hoursPerPeriod ?? 0}h/${a.periodUnit ?? "semana"}`}
+                    </td>
+                    <td>
+                      <span className={`state-chip state-chip--${a.certainty === "PROBABLE" ? "warning" : "success"}`}>
+                        {CERTAINTY_LABELS[a.certainty ?? "CONFIRMED"]}
+                      </span>
                     </td>
                     <td><span className={`state-chip state-chip--${ASSIGNMENT_STATUS_CLASS[a.status]}`}>{ASSIGNMENT_STATUS_LABELS[a.status]}</span></td>
                     {canWrite && (
@@ -1074,7 +1064,7 @@ function AssignmentsPanel({
                   </tr>
                 ))}
                 {assignments.length === 0 && (
-                  <tr><td colSpan={canWrite ? 7 : 6} className="cell-empty cell-empty--roomy">No hay asignaciones con los filtros seleccionados.</td></tr>
+                  <tr><td colSpan={canWrite ? 8 : 7} className="cell-empty cell-empty--roomy">No hay asignaciones con los filtros seleccionados.</td></tr>
                 )}
               </tbody>
             </table>
@@ -1110,182 +1100,21 @@ function AssignmentsPanel({
       />
 
       {/* Modal para Crear/Editar Asignación */}
-      {canWrite && isModalOpen && createPortal(
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal-card capacity-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header capacity-modal-header">
-              <h2 className="capacity-modal-title">
-                {editTarget ? "Editar asignación" : "Nueva asignación"}
-              </h2>
-              <button
-                type="button"
-                className="ghost capacity-modal-close"
-                aria-label="Cerrar"
-                onClick={closeModal}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={(e) => void handleSubmit(e)} className="form-grid two-col capacity-form">
-
-              <div className="capacity-field capacity-field--full">
-                <label className="field-label" htmlFor="asignacion-proyecto">Proyecto *</label>
-                <select id="asignacion-proyecto" value={form.projectId} onChange={(e) => setForm((p) => ({ ...p, projectId: e.target.value }))} required>
-                  <option value="" disabled hidden>Selecciona proyecto...</option>
-                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-
-              {!editTarget && (
-                <div className="capacity-field capacity-field--full">
-                  <label className="check capacity-check">
-                    <input
-                      type="checkbox"
-                      checked={multipleMode}
-                      onChange={(e) => {
-                        setMultipleMode(e.target.checked);
-                        setSelectedConsultantIds([]);
-                      }}
-                    />
-                    Asignar múltiples consultores
-                  </label>
-                </div>
-              )}
-
-              <div className="capacity-field capacity-field--full">
-                <label className="field-label" htmlFor="asignacion-consultor">
-                  {multipleMode ? "Consultores *" : "Consultor *"}
-                </label>
-                {!multipleMode ? (
-                  <select id="asignacion-consultor" value={form.consultantId} onChange={(e) => setForm((p) => ({ ...p, consultantId: e.target.value }))} required={!multipleMode}>
-                    <option value="" disabled hidden>Selecciona consultor...</option>
-                    {consultants.filter((c) => c.active || c.id === form.consultantId).map((c) => <option key={c.id} value={c.id}>{c.fullName} — {c.role}</option>)}
-                  </select>
-                ) : (
-                  <div className="capacity-picker">
-                    <input
-                      id="asignacion-consultor"
-                      type="text"
-                      className="capacity-picker__search"
-                      placeholder="Buscar consultor por nombre/rol..."
-                      value={consultantSearch}
-                      onChange={(e) => setConsultantSearch(e.target.value)}
-                    />
-                    <div className="capacity-picker__actions">
-                      <button
-                        type="button"
-                        className="ghost capacity-btn-row"
-                        onClick={() => {
-                          const filtered = consultants.filter((c) => c.active && (c.fullName.toLowerCase().includes(consultantSearch.toLowerCase()) || c.role.toLowerCase().includes(consultantSearch.toLowerCase())));
-                          setSelectedConsultantIds(filtered.map((c) => c.id));
-                        }}
-                      >
-                        Seleccionar todos
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost capacity-btn-row"
-                        onClick={() => setSelectedConsultantIds([])}
-                      >
-                        Desmarcar todos
-                      </button>
-                    </div>
-                    <div className="capacity-picker__list">
-                      {consultants
-                        .filter((c) => c.active)
-                        .filter((c) => c.fullName.toLowerCase().includes(consultantSearch.toLowerCase()) || c.role.toLowerCase().includes(consultantSearch.toLowerCase()))
-                        .map((c) => {
-                          const isChecked = selectedConsultantIds.includes(c.id);
-                          return (
-                            <label key={c.id} className="check capacity-check">
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => {
-                                  setSelectedConsultantIds((prev) =>
-                                    isChecked ? prev.filter((id) => id !== c.id) : [...prev, c.id]
-                                  );
-                                }}
-                              />
-                              <span>{c.fullName} <span className="capacity-picker__role">({c.role})</span></span>
-                            </label>
-                          );
-                        })}
-                    </div>
-                    <span className="capacity-picker__count">
-                      {selectedConsultantIds.length} seleccionados
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="capacity-field">
-                <label className="field-label" htmlFor="asignacion-inicio">Fecha de inicio *</label>
-                <input id="asignacion-inicio" type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} required />
-              </div>
-
-              <div className="capacity-field">
-                <label className="field-label" htmlFor="asignacion-fin">Fecha de fin *</label>
-                <input id="asignacion-fin" type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} required />
-              </div>
-
-              <div className="capacity-field">
-                <label className="field-label" htmlFor="asignacion-modo">Modo de asignación *</label>
-                <select id="asignacion-modo" value={form.allocationMode} onChange={(e) => setForm((p) => ({ ...p, allocationMode: e.target.value as AllocationMode }))}>
-                  <option value="PERCENTAGE">Por porcentaje</option>
-                  <option value="HOURS">Por horas</option>
-                </select>
-              </div>
-
-              {form.allocationMode === "PERCENTAGE" ? (
-                <div className="capacity-field">
-                  <label className="field-label" htmlFor="asignacion-pct">Porcentaje de capacidad *</label>
-                  <input id="asignacion-pct" type="number" min="1" max="200" step="1" placeholder="% de capacidad (ej: 100)" value={form.allocationPct} onChange={(e) => setForm((p) => ({ ...p, allocationPct: e.target.value }))} required />
-                </div>
-              ) : (
-                <div className="capacity-field-pair">
-                  <div className="capacity-field capacity-field--grow">
-                    <label className="field-label" htmlFor="asignacion-horas">Horas *</label>
-                    <input id="asignacion-horas" type="number" min="1" step="0.5" placeholder="Horas" value={form.hoursPerPeriod} onChange={(e) => setForm((p) => ({ ...p, hoursPerPeriod: e.target.value }))} required />
-                  </div>
-                  <div className="capacity-field capacity-field--grow">
-                    <label className="field-label" htmlFor="asignacion-periodo">Período *</label>
-                    <select id="asignacion-periodo" value={form.periodUnit} onChange={(e) => setForm((p) => ({ ...p, periodUnit: e.target.value as "week" | "month" }))}>
-                      <option value="week">Por semana</option>
-                      <option value="month">Por mes</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div className="capacity-field capacity-field--full">
-                <label className="field-label" htmlFor="asignacion-rol">Rol en el proyecto (opcional)</label>
-                <input id="asignacion-rol" placeholder="Rol en el proyecto" value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))} />
-              </div>
-
-              <div className="capacity-field capacity-field--full">
-                <label className="field-label" htmlFor="asignacion-nota">Nota (opcional)</label>
-                <textarea id="asignacion-nota" placeholder="Nota" value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
-              </div>
-
-              <div className="modal-actions capacity-modal-actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={closeModal}
-                  disabled={submitting}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" disabled={submitting}>
-                  {submitting ? (editTarget ? "Guardando…" : "Creando…") : (editTarget ? "Guardar cambios" : "Crear asignación")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>,
-        document.body
+      {canWrite && isModalOpen && (
+        <AssignmentFormModal
+          editing={!!editTarget}
+          form={form}
+          setForm={setForm}
+          projects={projects}
+          consultants={consultants}
+          multipleMode={multipleMode}
+          onMultipleModeChange={setMultipleMode}
+          selectedConsultantIds={selectedConsultantIds}
+          setSelectedConsultantIds={setSelectedConsultantIds}
+          submitting={submitting}
+          onSubmit={(e) => void handleSubmit(e)}
+          onClose={closeModal}
+        />
       )}
     </div>
   );
@@ -1395,7 +1224,7 @@ function BlocksPanel({
           value={filterConsultant}
           onChange={(e) => setFilterConsultant(e.target.value)}
         >
-          <option value="">Selecciona un consultor para ver sus bloqueos</option>
+          <option value="">Elige un consultor</option>
           {consultants.map((c) => <option key={c.id} value={c.id}>{c.fullName}</option>)}
         </select>
         {loading ? <p className="loading">Cargando...</p> : !filterConsultant ? (
@@ -1420,7 +1249,7 @@ function BlocksPanel({
                   const days = Math.round((new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / 86_400_000) + 1;
                   return (
                     <tr key={b.id}>
-                      <td><span className="state-chip state-chip--neutral">{BLOCK_TYPE_LABELS[b.blockType]}</span></td>
+                      <td><span className="state-chip state-chip--neutral">{b.blockType ? BLOCK_TYPE_LABELS[b.blockType] : "No disponible"}</span></td>
                       <td>{formatDate(b.startDate)}</td>
                       <td>{formatDate(b.endDate)}</td>
                       <td>{days}d</td>
@@ -1442,7 +1271,7 @@ function BlocksPanel({
       <ConfirmDialog
         open={!!deleteTarget}
         title="Eliminar bloqueo"
-        message={`¿Eliminar el bloqueo de ${deleteTarget ? BLOCK_TYPE_LABELS[deleteTarget.blockType] : ""} para "${deleteTarget?.consultantName}"?`}
+        message={`¿Eliminar el bloqueo de ${deleteTarget?.blockType ? BLOCK_TYPE_LABELS[deleteTarget.blockType] : ""} para "${deleteTarget?.consultantName}"?`}
         confirmLabel="Eliminar"
         danger
         onConfirm={() => void handleDelete()}

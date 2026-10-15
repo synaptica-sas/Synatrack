@@ -176,7 +176,7 @@ export function HealthThresholdsTab({ onError, onSuccess }: Props) {
   return (
     <div className="page-stack page-stack--padded">
       <PageHeader
-        icon="◉"
+        icon="♡"
         title="Umbrales de salud"
         description="Cuándo un proyecto pasa a Advertencia o a Crítico"
       />

@@ -12,6 +12,7 @@ const roleLabels: Record<AppRole, string> = {
   CONSULTANT: "Consultor",
   FINANCE: "Financiero",
   VIEWER: "Lector",
+  COMMERCIAL: "Comercial",
 };
 
 /**

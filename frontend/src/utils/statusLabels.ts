@@ -6,6 +6,7 @@
 // ── Proyectos ─────────────────────────────────────────────────────────────────
 
 export const PROJECT_STATUS_LABELS: Record<string, string> = {
+  PROSPECT: "Oportunidad",
   ACTIVE:  "Activo",
   PAUSED:  "Pausado",
   CLOSED:  "Cerrado",

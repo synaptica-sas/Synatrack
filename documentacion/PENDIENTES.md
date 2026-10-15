@@ -837,3 +837,30 @@ Mismos comandos de siempre (§5 de este documento) y, si el cambio toca presenta
 de `DISENO.md`. Al cerrar algo de este plan, actualiza su fila en §6.1 de **Abierto/Parcial** a
 **Resuelto** con el archivo y línea que lo confirme — es la misma disciplina que ya se usó para
 verificar el backlog completo, no hace falta inventar un formato nuevo.
+
+## 8. Capacity mensual (2026-10-15) — lo que queda
+
+El MVP (fases 0 y 1 de [capacity/PLAN.md](capacity/PLAN.md)) está en `dev`. Queda:
+
+- **Fase 2 del plan**: exportar a Excel y PDF, reporte oficial congelado (`CapacityReport`) y alertas de
+  sub y sobreasignación (resumen semanal a ADMIN y Comercial, P7).
+- **Fase 3 del plan**: Horas extra sobre la tabla `Holiday` (hoy sigue con el cálculo en código más
+  `CustomHoliday`), Finanzas sobre capacity en lugar de forecasts, retiro de `CustomHoliday` y de la
+  vista "Disponibilidad", informe real vs proyectado.
+- **Al publicar la versión**:
+  - `prisma migrate deploy` (Render no lo corre solo). Las dos migraciones `20261016*` son idempotentes.
+  - Crear el app role `Commercial` en Entra ID y asignarlo.
+  - En la UI de Feriados: precargar 2026 para Ecuador y Colombia, revisar y **confirmar** cada año.
+- **Efecto en Horas extra de la corrección de feriados de Ecuador**: el 3-nov-2026 y el 30-abr-2027
+  pasan a ser festivos y reciben recargo.
+
+**Hallazgos de la revisión de seguridad y de UI, fuera del alcance de capacity** (sin corregir):
+
+- CONSULTANT recibe `budget` y `sellPrice` de todos los proyectos en `GET /api/projects` y
+  `GET /api/projects/:id` (`projects.routes.ts`), ahora también de las oportunidades (`PROSPECT`).
+- `GET /api/forecasts` admite FINANCE aunque la matriz no le da `forecasts:read`. Hay que decidir
+  si FINANCE lo lee y alinear la matriz con la ruta.
+- El pie de página ("Navegación rápida") no filtra por permisos: muestra Capacidad y Proyectos a
+  roles que no pueden entrar, y el enlace no hace nada.
+- Detalle de proyecto: el tooltip del semáforo dice "no informado por el API" mientras la tarjeta
+  Salud muestra 30/15 %. Además, "Tipo: FIXED_PRICE · Fase: EXECUTION" aparece sin traducir.

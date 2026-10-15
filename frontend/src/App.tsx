@@ -40,6 +40,8 @@ import { ProfileTab } from "./features/profile/ProfileTab";
 import { ExtraHoursTab } from "./features/extraHours/ExtraHoursTab";
 import { EstimationCalculatorTab } from "./features/estimations/EstimationCalculatorTab";
 import { ActivitiesTab } from "./features/activities/ActivitiesTab";
+import { visibleGroupsFor } from "./config/sidebar";
+import { HolidaysTab } from "./features/holidays/HolidaysTab";
 import { WorkdayConfigTab } from "./features/workday/WorkdayConfigTab";
 import { HealthThresholdsTab } from "./features/admin/HealthThresholdsTab";
 import { ApprovalDigestTab } from "./features/admin/ApprovalDigestTab";
@@ -53,55 +55,6 @@ import "./features/timesheet/timesheet.css";
 import "./features/reports/reports.css";
 
 
-
-// ── Sidebar config ──────────────────────────────────────────────────────────
-
-const SIDEBAR_GROUPS: {
-  label: string;
-  tabs: { id: TabId; label: string; icon: string; permission?: string | string[] }[];
-}[] = [
-  {
-    label: "Gobierno",
-    tabs: [
-      { id: "dashboard",  label: "Dashboard",   icon: "▦",  permission: "stats:read" },
-      { id: "portfolio",  label: "Portafolio",  icon: "◈",  permission: "stats:read" },
-      { id: "projects",   label: "Proyectos",   icon: "◻",  permission: "projects:read" },
-      { id: "capacity",   label: "Capacidad",   icon: "◉",  permission: "capacity:read" },
-    ],
-  },
-  {
-    label: "Operación",
-    tabs: [
-      { id: "consultants",  label: "Consultores",   icon: "◐", permission: "consultants:read" },
-      { id: "tracker",      label: "Rastreador",     icon: "⏱", permission: "time:read" },
-      { id: "timeEntries",  label: "Horas",          icon: "▥", permission: "time:read" },
-      { id: "reports",      label: "Informes",       icon: "▧", permission: "stats:read" },
-      { id: "activities",   label: "Actividades",   icon: "▤", permission: "activities:manage" },
-      { id: "extraHours",   label: "Horas Extra",    icon: "⧗", permission: "extrahours:read" },
-    ],
-  },
-  {
-    label: "Financiero",
-    tabs: [
-      { id: "financial",  label: "Ingresos/Gastos", icon: "⊕", permission: ["expenses:read", "revenue:read"] },
-      { id: "forecasts",  label: "Proyecciones",  icon: "◷", permission: "forecasts:read" },
-      { id: "estimations", label: "Estimaciones",  icon: "⚖", permission: "estimations:read" },
-      { id: "fx",         label: "Tasas FX",      icon: "⊗", permission: "fx:read" },
-    ],
-  },
-  {
-    label: "Administración",
-    tabs: [
-      { id: "admin", label: "Usuarios",  icon: "⧉", permission: "users:manage" },
-      { id: "extraHoursConfig", label: "Config. Horas Extra", icon: "⚙", permission: "extrahours:config" },
-      { id: "workdayConfig", label: "Jornada Laboral", icon: "⏱", permission: "capacity:config" },
-      { id: "healthThresholds", label: "Umbrales de Salud", icon: "◉", permission: "health:thresholds" },
-      { id: "approvalDigest", label: "Resumen de Aprobaciones", icon: "✉", permission: "notifications:digest" },
-      { id: "financialCategories", label: "Categorías Financieras", icon: "⊞", permission: "finance:categories" },
-      { id: "audit", label: "Auditoría", icon: "⊛", permission: "users:manage" },
-    ],
-  },
-];
 
 // ── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -257,6 +210,7 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   admin: "/admin",
   extraHoursConfig: "/extra-hours-config",
   workdayConfig: "/workday-config",
+  holidays: "/holidays",
   healthThresholds: "/health-thresholds",
   approvalDigest: "/approval-digest",
   financialCategories: "/financial-categories",
@@ -1041,7 +995,7 @@ function App() {
    * permisos reales: el backend sigue autorizando con los roles del token en el
    * `authorize([AppRole...])` de cada ruta.
    */
-  const handleSwitchRole = useCallback((role: "ADMIN" | "PM" | "CONSULTANT" | "FINANCE") => {
+  const handleSwitchRole = useCallback((role: "ADMIN" | "PM" | "CONSULTANT" | "FINANCE" | "COMMERCIAL" | "VIEWER") => {
     if (!originalUser || !rolePermissionsMap) return;
     setAuthUser({
       ...originalUser,
@@ -1218,15 +1172,7 @@ function App() {
 
   // Visible tabs per permission
   const visibleGroups = useMemo(() =>
-    SIDEBAR_GROUPS.map((g) => ({
-      ...g,
-      tabs: g.tabs.filter((t) =>
-        !t.permission ||
-        (Array.isArray(t.permission)
-          ? t.permission.some((p) => permissions.includes(p))
-          : permissions.includes(t.permission)),
-      ),
-    })).filter((g) => g.tabs.length > 0),
+    visibleGroupsFor(permissions),
   [permissions]);
 
   const allVisibleTabs = useMemo(() => visibleGroups.flatMap((g) => g.tabs), [visibleGroups]);
@@ -1579,7 +1525,7 @@ function App() {
               marginRight: "0.5rem"
             }}>
               <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--color-accent)", padding: "0 6px 0 10px" }}>VISTA:</span>
-              {(["ADMIN", "PM", "CONSULTANT", "FINANCE"] as const).map((r) => {
+              {(["ADMIN", "PM", "CONSULTANT", "FINANCE", "COMMERCIAL", "VIEWER"] as const).map((r) => {
                 const isActive = authUser.roles.includes(r) && authUser.roles.length === 1;
                 return (
                   <button
@@ -1603,7 +1549,7 @@ function App() {
                       transition: "all 0.2s ease"
                     }}
                   >
-                    {r === "ADMIN" ? "Admin" : r === "PM" ? "PM" : r === "CONSULTANT" ? "Consultor" : "Financiero"}
+                    {r === "ADMIN" ? "Admin" : r === "PM" ? "PM" : r === "CONSULTANT" ? "Consultor" : r === "COMMERCIAL" ? "Comercial" : r === "VIEWER" ? "Lector" : "Financiero"}
                   </button>
                 );
               })}
@@ -1885,6 +1831,7 @@ function App() {
                   <ProjectDetailTab
                     projectId={openProjectId}
                     canWrite={can("projects:write")}
+                    canSeeAssignments={can("capacity:read")}
                     onBack={() => setOpenProjectId(null)}
                     onError={handleError}
                     onIrATasasFx={irATasasFx}
@@ -2060,6 +2007,14 @@ function App() {
               {activeTab === "workdayConfig" && (
                 <WorkdayConfigTab
                   canWrite={can("capacity:config")}
+                  onError={handleError}
+                  onSuccess={(msg) => showToast(msg, "success")}
+                />
+              )}
+
+              {activeTab === "holidays" && (
+                <HolidaysTab
+                  canWrite={can("holidays:write")}
                   onError={handleError}
                   onSuccess={(msg) => showToast(msg, "success")}
                 />

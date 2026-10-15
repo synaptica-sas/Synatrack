@@ -17,6 +17,7 @@ import { isValidationError } from "../../utils/validation";
 import { CurrencyInput } from "../../components/CurrencyInput";
 import { displayCountryWithFlag } from "../../utils/statusLabels";
 import { CountryFlag } from "../../components/CountryFlag";
+import { ConsultantLocationFields } from "./ConsultantLocationFields";
 
 const currencyOptions = ["COP", "USD", "EUR", "MXN", "PEN", "CLP", "ARS"];
 const roleOptions = ["Analista", "Desarrollador", "QA", "Arquitecto", "PM", "Data Engineer"];
@@ -56,6 +57,9 @@ type EditForm = {
   active: boolean;
   allowWeekendWork: boolean;
   isInternal: boolean;
+  city: string;
+  hireDate: string;
+  exitDate: string;
 };
 
 const emptyForm = {
@@ -71,6 +75,9 @@ const emptyForm = {
   active: true,
   allowWeekendWork: false,
   isInternal: true,
+  city: "",
+  hireDate: "",
+  exitDate: "",
 };
 
 export function ConsultantsTab({
@@ -213,6 +220,9 @@ export function ConsultantsTab({
         active: form.active,
         allowWeekendWork: form.allowWeekendWork,
         isInternal: form.isInternal,
+        city: form.city.trim() || null,
+        hireDate: form.hireDate || null,
+        exitDate: form.exitDate || null,
       });
       setForm(emptyForm);
       await onReload();
@@ -247,6 +257,9 @@ export function ConsultantsTab({
         active: editForm.active,
         allowWeekendWork: editForm.allowWeekendWork,
         isInternal: editForm.isInternal,
+        city: editForm.city.trim() || null,
+        hireDate: editForm.hireDate || null,
+        exitDate: editForm.exitDate || null,
       });
       setEditForm(null);
       await onReload();
@@ -277,6 +290,9 @@ export function ConsultantsTab({
         active: !consultant.active,
         allowWeekendWork: consultant.allowWeekendWork || false,
         isInternal: consultant.isInternal ?? true,
+        city: consultant.city ?? null,
+        hireDate: consultant.hireDate ? consultant.hireDate.slice(0, 10) : null,
+        exitDate: consultant.exitDate ? consultant.exitDate.slice(0, 10) : null,
       });
       await onReload();
     } catch (err) {
@@ -367,6 +383,14 @@ export function ConsultantsTab({
               </label>
               <button type="submit" className="cons-btn-tall" disabled={submitting}>{submitting ? "Creando…" : "Crear consultor"}</button>
             </div>
+
+            <ConsultantLocationFields
+              country={form.country}
+              city={form.city}
+              hireDate={form.hireDate}
+              exitDate={form.exitDate}
+              onChange={(patch) => setForm((p) => ({ ...p, ...patch }))}
+            />
           </form>
         }
         table={
@@ -496,6 +520,9 @@ export function ConsultantsTab({
                                         active: c.active,
                                         allowWeekendWork: c.allowWeekendWork || false,
                                         isInternal: c.isInternal !== false,
+                                        city: c.city ?? "",
+                                        hireDate: c.hireDate ? c.hireDate.slice(0, 10) : "",
+                                        exitDate: c.exitDate ? c.exitDate.slice(0, 10) : "",
                                       })
                                     }
                                   >
@@ -612,6 +639,14 @@ export function ConsultantsTab({
                   Finde/Festivos
                 </label>
               </div>
+
+              <ConsultantLocationFields
+                country={editForm.country}
+                city={editForm.city}
+                hireDate={editForm.hireDate}
+                exitDate={editForm.exitDate}
+                onChange={(patch) => setEditForm((p) => p && { ...p, ...patch })}
+              />
 
               <div className="modal-actions modal-actions--spaced">
                 <button type="submit" disabled={editSubmitting}>{editSubmitting ? "Guardando…" : "Guardar cambios"}</button>
