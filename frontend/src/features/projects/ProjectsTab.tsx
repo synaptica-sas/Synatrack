@@ -3,12 +3,13 @@ import { createPortal } from "react-dom";
 import type { FormEvent } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { SearchableSelect } from "../../components/SearchableSelect";
-import { PROJECT_STATUS_LABELS, label } from "../../utils/statusLabels";
+import { PROJECT_STATUS_LABELS, label, displayCountryWithFlag } from "../../utils/statusLabels";
 import {
   createProject,
   deleteProject,
   updateProject,
   listProjectCategories,
+  listSupportedCountries,
   type Project,
   type ProjectStatus,
   type ProjectType,
@@ -270,6 +271,14 @@ export function ProjectsTab({
     void reloadCategories();
   }, []);
 
+  // R-007: país como lista desplegable, mismo catálogo y patrón que Consultores.
+  const [countryOptions, setCountryOptions] = useState<string[]>([]);
+  useEffect(() => {
+    void listSupportedCountries()
+      .then((countries) => setCountryOptions(countries.filter((c) => c !== "Default")))
+      .catch(() => {});
+  }, []);
+
   const statsMap = new Map<string, StatsProjectRowEnriched>(
     (statsProjects ?? []).map((s) => [s.projectId, s]),
   );
@@ -428,7 +437,10 @@ export function ProjectsTab({
             <ValidationErrorBox message={formError} />
             <input placeholder="Nombre" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
             <input placeholder="Empresa" value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))} required />
-            <input placeholder="País" value={form.country} onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))} required />
+            <select value={form.country} onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))} required>
+              <option value="" disabled hidden>País...</option>
+              {countryOptions.map((c) => <option key={c} value={c}>{displayCountryWithFlag(c)}</option>)}
+            </select>
             <select value={form.currency} onChange={(e) => setForm((p) => ({ ...p, currency: e.target.value }))} required>
               <option value="" disabled hidden>Selecciona moneda...</option>
               {currencyOptions.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -729,7 +741,10 @@ export function ProjectsTab({
               <ValidationErrorBox message={editError} />
               <input value={editForm.name} onChange={(e) => setEditForm((p) => p && { ...p, name: e.target.value })} placeholder="Nombre" required />
               <input value={editForm.company} onChange={(e) => setEditForm((p) => p && { ...p, company: e.target.value })} placeholder="Empresa" required />
-              <input value={editForm.country} onChange={(e) => setEditForm((p) => p && { ...p, country: e.target.value })} placeholder="País" required />
+              <select value={editForm.country} onChange={(e) => setEditForm((p) => p && { ...p, country: e.target.value })} required>
+                <option value="" disabled hidden>País...</option>
+                {countryOptions.map((c) => <option key={`edit-country-${c}`} value={c}>{displayCountryWithFlag(c)}</option>)}
+              </select>
               <select value={editForm.currency} onChange={(e) => setEditForm((p) => p && { ...p, currency: e.target.value })} required>
                 <option value="" disabled hidden>Selecciona moneda...</option>
                 {currencyOptions.map((c) => <option key={`edit-${c}`} value={c}>{c}</option>)}
