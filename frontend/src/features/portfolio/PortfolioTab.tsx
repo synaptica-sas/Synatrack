@@ -290,7 +290,7 @@ export function PortfolioTab({
   }
   if (!portfolio) return null;
 
-  const { summary, baseCurrency } = portfolio;
+  const { baseCurrency } = portfolio;
 
   // Filter & sort
   const filtered = projects.filter((p) => {
@@ -303,6 +303,34 @@ export function PortfolioTab({
     const matchStatus = !statusFilter || p.status === statusFilter;
     return matchCompany && matchProject && matchHealth && matchStatus;
   });
+
+  /**
+   * R-005 / R-032: el resumen de arriba (KPIs y distribución de salud) leía
+   * `portfolio.summary`, que el servidor calcula sobre TODO el portafolio —
+   * los filtros de esta pantalla nunca lo tocaban, solo afectaban a la tabla
+   * de abajo. Se recalcula aquí sobre `filtered`, con el mismo criterio que
+   * usa el servidor en `stats.routes.ts` (`/api/stats/portfolio`), para que
+   * ambos coincidan siempre que no haya filtro activo.
+   */
+  const summary = {
+    totalProjects: filtered.length,
+    byHealth: {
+      GREEN: filtered.filter((p) => p.healthStatus === "GREEN").length,
+      YELLOW: filtered.filter((p) => p.healthStatus === "YELLOW").length,
+      RED: filtered.filter((p) => p.healthStatus === "RED").length,
+    },
+    byStatus: {
+      ACTIVE: filtered.filter((p) => p.status === "ACTIVE").length,
+      PAUSED: filtered.filter((p) => p.status === "PAUSED").length,
+      CLOSED: filtered.filter((p) => p.status === "CLOSED").length,
+    },
+    totalBudget: filtered.reduce((s, p) => s + p.budget, 0),
+    totalSpent: filtered.reduce((s, p) => s + p.spent, 0),
+    totalRevenue: filtered.reduce((s, p) => s + p.revenueRecognized, 0),
+    totalGrossMargin: filtered.reduce((s, p) => s + p.grossMarginActual, 0),
+    criticalCount: filtered.filter((p) => p.healthStatus === "RED").length,
+    alertCount: filtered.filter((p) => p.alertLevel !== "ok").length,
+  };
 
   const healthOrder: Record<HealthStatus, number> = { RED: 0, YELLOW: 1, GREEN: 2 };
 
@@ -352,8 +380,9 @@ export function PortfolioTab({
     URL.revokeObjectURL(url);
   }
 
-  // Critical projects
-  const critical = projects.filter((p) => p.healthStatus === "RED").slice(0, 5);
+  // Critical projects — también sobre `filtered` (R-005), para que coincida
+  // con el conteo de "Proyectos críticos" del resumen de arriba.
+  const critical = filtered.filter((p) => p.healthStatus === "RED").slice(0, 5);
 
   return (
     <section className="page-stack">
