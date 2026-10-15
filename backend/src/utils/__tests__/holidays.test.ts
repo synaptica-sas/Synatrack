@@ -157,3 +157,32 @@ describe("Generador contra la hoja Feriados del Excel (2026-10 a 2027-12)", () =
     }
   });
 });
+
+describe("cache de feriados por país y año", () => {
+  it("devuelve copias: mutar el resultado no contamina las siguientes lecturas", () => {
+    const primera = getHolidaysForYear(2031, "Colombia");
+    const nombre = primera[0].name;
+    const tiempo = primera[0].date.getTime();
+    const total = primera.length;
+    primera[0].name = "MUTADO";
+    primera[0].date.setUTCFullYear(1999);
+    primera.pop();
+
+    const segunda = getHolidaysForYear(2031, "Colombia");
+    expect(segunda[0].name).toBe(nombre);
+    expect(segunda[0].date.getTime()).toBe(tiempo);
+    expect(segunda.length).toBe(total);
+  });
+
+  it("normaliza el país igual que antes (tildes y mayúsculas comparten resultado)", () => {
+    expect(getHolidaysForYear(2031, "PERÚ")).toEqual(getHolidaysForYear(2031, "peru"));
+  });
+
+  it("isPublicHoliday acierta con el cache y el año fuera de rango sigue lanzando/false", () => {
+    expect(isPublicHoliday(new Date(Date.UTC(2031, 11, 25)), "Colombia")).toBe(true);
+    expect(isPublicHoliday(new Date(Date.UTC(2031, 11, 25)), "Colombia")).toBe(true);
+    expect(isPublicHoliday(new Date(Date.UTC(2031, 11, 24)), "Colombia")).toBe(false);
+    expect(isPublicHoliday(new Date(Date.UTC(1500, 0, 1)), "Colombia")).toBe(false);
+    expect(() => getHolidaysForYear(3001, "Colombia")).toThrow();
+  });
+});

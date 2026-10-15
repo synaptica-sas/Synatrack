@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
 const isoDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "date must use format YYYY-MM-DD");
 
 const forecastPayloadSchema = z.object({
@@ -24,13 +25,19 @@ export async function forecastsRoutes(app: FastifyInstance) {
   app.get(
     "/",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])],
+      // D8: un forecast son horas planificadas por consultor, dato confidencial.
+      // VIEWER ya no lee (coherente con `forecasts:read` en auth/roles.ts).
+      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])],
     },
-    async () => {
+    async (request) => {
+    // Alcance por campo (DEP-38): sin tarifas el consultor sale sin remuneración
+    // ni documento, y los costos derivados (horas x tarifa) salen en cero para
+    // que no se pueda despejar la tarifa dividiendo.
+    const verTarifas = puedeVerTarifas(request.authUser!.roles);
     const forecasts = await prisma.forecast.findMany({
       include: {
         project: true,
-        consultant: true,
+        consultant: verTarifas ? true : { select: consultantSinDatosSensiblesSelect },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -45,8 +52,9 @@ export async function forecastsRoutes(app: FastifyInstance) {
     });
 
     const data = forecasts.map((item) => {
-      const effectiveRate = Number(item.hourlyRate ?? item.consultant.hourlyRate ?? 0);
-      const sellRate = item.sellRate ? Number(item.sellRate) : 0;
+      const consultantRate = (item.consultant as { hourlyRate?: unknown }).hourlyRate;
+      const effectiveRate = verTarifas ? Number(item.hourlyRate ?? consultantRate ?? 0) : 0;
+      const sellRate = verTarifas && item.sellRate ? Number(item.sellRate) : 0;
       const hoursProjected = Number(item.hoursProjected);
       const projectedCost = hoursProjected * effectiveRate;
 
@@ -70,6 +78,7 @@ export async function forecastsRoutes(app: FastifyInstance) {
 
       return {
         ...item,
+        ...(verTarifas ? {} : { hourlyRate: null, sellRate: null }),
         projectedCost,
         approvedHours: Math.round(approvedHours * 100) / 100,
         adjustedHoursProjected: Math.round(adjustedHoursProjected * 100) / 100,

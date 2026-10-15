@@ -64,10 +64,25 @@ La aplicación cuenta con las siguientes secciones agrupadas en la barra de nave
   - Configuración de fechas de inicio y fin, presupuesto total asignado, umbral de margen y porcentaje de alerta.
   - Asignación de Project Manager (PM) y tipo de proyecto (Precio Fijo, Horas/T&M, Staffing).
   - Selector de moneda base (COP, USD, EUR, etc.) y flag para habilitar/deshabilitar horas extra.
-- **Capacidad**:
-  - Matriz de planificación para ver el porcentaje de ocupación o asignación de cada consultor en los proyectos a lo largo del tiempo.
-  - Detección visual de sobrecargas de capacidad (>100% de la jornada laboral) para mitigar el agotamiento laboral.
-  - Panel para asignaciones masivas de recursos a proyectos por periodo.
+- **Capacidad** (la ven Administrador, PM, Finanzas y Comercial; el consultor no):
+  - **Mensual** (vista por defecto): % de asignación de cada consultor por mes calendario, con la misma
+    lógica del Excel `documentacion/capacity/Capacity_Synaptica_v2.xlsx`. Capacidad = días hábiles del mes
+    (lunes a viernes menos los feriados de su país y ciudad) × su jornada diaria vigente; horas asignadas =
+    días hábiles de cada asignación × horas semanales ÷ 5. No descuenta ausencias (es una proyección).
+    - Mapa de calor consultor × mes: rojo sobreasignado, verde sano, ámbar subutilizado (umbrales
+      configurables, por defecto 70 % y 100 %), con columna del periodo y fila del equipo.
+    - KPIs del periodo (utilización ponderada del equipo, % facturable, # sobreasignados, # subutilizados,
+      horas disponibles) y gráfico de utilización mensual.
+    - Periodo libre (por defecto el año en curso, hasta 24 meses), desplazable mes a mes; filtro
+      "Incluir probables" y "Excluir internos"; detalle por consultor con el desglose de sus proyectos.
+    - Aviso cuando un país del equipo no tiene confirmado el calendario de feriados de algún año del periodo.
+  - **Disponibilidad**: la vista anterior por rango de fechas (esta sí descuenta ausencias).
+  - **Asignaciones**: consultor, proyecto, fechas, horas semanales y certeza (Confirmado / Probable).
+    Solo el Administrador las crea o edita; una sobreasignación se avisa pero no se bloquea.
+  - **Por proyecto** y **Bloqueos** (ausencias por consultor).
+- **Proyectos**: además de los estados Activo, Pausado y Cerrado existe **Oportunidad** (pipeline, no
+  cuenta en portafolio ni KPIs) y la marca **Proyecto interno** (stand-by), que el capacity separa como
+  horas no facturables.
 
 ### 3.2 Operación
 - **Consultores**:
@@ -101,6 +116,10 @@ La aplicación cuenta con las siguientes secciones agrupadas en la barra de nave
   - Panel para gestionar los usuarios locales de la aplicación y visualizar sus roles.
 - **Config. Horas Extra**:
   - Ajuste de los recargos y límites semanales de horas extra por país (por ejemplo, definir las horas de inicio de jornada nocturna y multiplicadores en Colombia, Perú, etc.).
+- **Feriados**: calendario por país y ciudad (p. ej. Quito, Guayaquil). Permite precargar un año con el
+  calendario oficial calculado, agregar al instante feriados por decreto y confirmar cada año revisado.
+- **Parámetros y Jornada**: umbrales del capacity y jornada diaria con vigencia por país o consultor
+  (cuando cambia la ley se agrega una nueva vigencia y los meses anteriores no cambian).
 - **Auditoría**:
   - Bitácora detallada de auditoría para registrar cada cambio efectuado en la base de datos (acción realizada, entidad afectada, estado antes y después, IP del usuario y navegador).
 
@@ -125,7 +144,7 @@ La aplicación cuenta con las siguientes secciones agrupadas en la barra de nave
 El backend procesa la claim `roles` enviada en el token de Azure AD durante el inicio de sesión. La lógica del archivo `backend/src/auth/guard.ts` realiza el siguiente procedimiento:
 1. Toma el arreglo de roles en `claims.roles`.
 2. Convierte cada valor a mayúsculas (`.toUpperCase()`).
-3. Valida si coincide exactamente con el enum de Prisma `AppRole` (`ADMIN`, `PM`, `CONSULTANT`, `FINANCE`, `VIEWER`).
+3. Valida si coincide exactamente con el enum de Prisma `AppRole` (`ADMIN`, `PM`, `CONSULTANT`, `FINANCE`, `VIEWER`, `COMMERCIAL`). `NOMINA` se acepta como `FINANCE` y `COMERCIAL` como `COMMERCIAL`.
 
 > [!WARNING]
 > **Advertencia de Mapeo de Roles en Azure AD**:
@@ -138,6 +157,7 @@ El backend procesa la claim `roles` enviada en el token de Azure AD durante el i
 > - Rol de Consultor: **Value** = `CONSULTANT` o `consultant`
 > - Rol Financiero: **Value** = `FINANCE` o `finance`
 > - Rol de Lector (Viewer): **Value** = `VIEWER` o `viewer`
+> - Rol Comercial: **Value** = `COMMERCIAL` o `Commercial` (hay que crearlo en el registro de la aplicación; ve el capacity en solo lectura)
 
 ### 4.2 Aprovisionamiento JIT (Just-In-Time) de Usuarios y Consultores
 Para facilitar el ingreso de usuarios sin necesidad de crearlos manualmente uno por uno en la base de datos:

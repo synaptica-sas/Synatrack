@@ -2,6 +2,7 @@ import { AppRole, HealthStatus, ProjectPhase } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
+import { hasPermission } from "../../auth/roles.js";
 import { prisma } from "../../infra/prisma.js";
 import {
   conversionStatus,
@@ -30,6 +31,11 @@ export async function projectDetailRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { id } = idSchema.parse(request.params);
 
+      // D8: las asignaciones (quién, cuántas horas, con qué certeza) son
+      // confidenciales; solo quien tiene `capacity:read` las recibe. Para el resto
+      // ni siquiera se consultan.
+      const verAsignaciones = hasPermission(request.authUser!.roles, "capacity:read");
+
       const project = await prisma.project.findUnique({
         where: { id },
         include: {
@@ -37,10 +43,14 @@ export async function projectDetailRoutes(app: FastifyInstance) {
           risks: { orderBy: [{ riskScore: "desc" }, { createdBy: "asc" }], include: riskInclude },
           issues: { orderBy: [{ severity: "desc" }, { createdAt: "desc" }] },
           changeRequests: { orderBy: { createdAt: "desc" } },
-          assignments: {
-            where: { status: { in: ["ACTIVE", "PARTIAL", "PLANNED"] } },
-            include: { consultant: { select: { id: true, fullName: true, role: true, country: true } } },
-          },
+          ...(verAsignaciones
+            ? {
+                assignments: {
+                  where: { status: { in: ["ACTIVE", "PARTIAL", "PLANNED"] } },
+                  include: { consultant: { select: { id: true, fullName: true, role: true, country: true } } },
+                },
+              }
+            : {}),
           timeEntries: {
             where: { status: "APPROVED" },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
@@ -181,7 +191,8 @@ export async function projectDetailRoutes(app: FastifyInstance) {
           risks: project.risks,
           issues: project.issues,
           changeRequests: project.changeRequests,
-          assignments: project.assignments,
+          assignments: verAsignaciones ? (project.assignments ?? []) : [],
+          assignmentsHidden: !verAsignaciones,
           summary: {
             totalMilestones: project.milestones.length,
             completedMilestones: project.milestones.filter((m) => m.status === "COMPLETED").length,

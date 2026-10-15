@@ -122,7 +122,45 @@ function placeEcuadorHolidays(
   return placed;
 }
 
+function normalizarPais(country: string): string {
+  return country.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+type FeriadoCalculado = { date: Date; name: string };
+
+/**
+ * Memo por país normalizado y año. `isPublicHoliday` se llama una vez por día
+ * dentro de bucles de capacidad; sin esto regeneraba el año entero en cada día.
+ * Guarda el arreglo y los días (UTC, ms) ya listos, ambos congelados; quien
+ * consume desde fuera recibe copias (ver `getHolidaysForYear`).
+ */
+const MAX_ENTRADAS_CACHE = 2000;
+const cacheFeriados =new Map<string, { lista: readonly FeriadoCalculado[]; dias: ReadonlySet<number> }>();
+
+function feriadosEnCache(year: number, country: string) {
+  const clave = `${normalizarPais(country)}|${year}`;
+  let entrada = cacheFeriados.get(clave);
+  if (!entrada) {
+    const lista = Object.freeze(
+      calcularFeriadosDelAnio(year, country).map((h) => Object.freeze({ date: h.date, name: h.name })),
+    );
+    const dias = new Set(
+      lista.map((h) => Date.UTC(h.date.getUTCFullYear(), h.date.getUTCMonth(), h.date.getUTCDate())),
+    );
+    entrada = { lista, dias };
+    // El país llega de texto libre: se acota el cache para que no crezca sin fin.
+    if (cacheFeriados.size >= MAX_ENTRADAS_CACHE) cacheFeriados.clear();
+    cacheFeriados.set(clave, entrada);
+  }
+  return entrada;
+}
+
+/** Devuelve copias: mutar el resultado no contamina el cache. */
 export function getHolidaysForYear(year: number, country: string): { date: Date; name: string }[] {
+  return feriadosEnCache(year, country).lista.map((h) => ({ date: new Date(h.date.getTime()), name: h.name }));
+}
+
+function calcularFeriadosDelAnio(year: number, country: string): { date: Date; name: string }[] {
   if (year < 1900 || year > 3000) {
     throw new Error(`Año ${year} fuera de rango`);
   }
@@ -410,13 +448,8 @@ export function isPublicHoliday(date: Date, country: string): boolean {
   const year = date.getUTCFullYear();
 
   try {
-    const holidays = getHolidaysForYear(year, country);
     const targetTime = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-
-    return holidays.some((h) => {
-      const holidayTime = Date.UTC(h.date.getUTCFullYear(), h.date.getUTCMonth(), h.date.getUTCDate());
-      return holidayTime === targetTime;
-    });
+    return feriadosEnCache(year, country).dias.has(targetTime);
   } catch {
     return false;
   }

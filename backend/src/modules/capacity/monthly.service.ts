@@ -127,7 +127,10 @@ export async function cargarYCalcular(opts: OpcionesCalculo): Promise<CalculoMen
       id: c.id,
       fullName: c.fullName,
       role: c.role,
-      country: c.country,
+      // El alta de consultores guarda "Default" cuando no se elige país (y también
+      // para USA). "Default" es la fila de respaldo de la jornada, no un país con
+      // calendario: para capacity cuenta como "sin país" y dispara su aviso.
+      country: c.country && c.country !== "Default" ? c.country : null,
       city: c.city,
       company: c.company,
       isInternal: c.isInternal,

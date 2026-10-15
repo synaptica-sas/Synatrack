@@ -16,7 +16,9 @@ const fechaOpcional = z
   .transform((valor) => (valor === "" ? null : valor));
 
 /** Cambia las fechas @db.Date a "YYYY-MM-DD" para que la respuesta no dependa de la zona horaria. */
-function conFechas<T extends { hireDate?: Date | null; exitDate?: Date | null }>(fila: T) {
+function conFechas<T extends object>(entrada: T) {
+  // Quien no ve datos sensibles recibe la fila sin estas claves: solo se convierten si están.
+  const fila = entrada as T & { hireDate?: Date | null; exitDate?: Date | null };
   return {
     ...fila,
     ...("hireDate" in fila ? { hireDate: fila.hireDate ? toIsoDate(fila.hireDate) : null } : {}),

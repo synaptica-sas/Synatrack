@@ -2,6 +2,7 @@ import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
+import { hasPermission } from "../../auth/roles.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { runAlertEngine } from "./alerts.service.js";
@@ -17,6 +18,17 @@ const listQuerySchema = z.object({
 
 const idSchema = z.object({ id: z.string().min(1) });
 
+/**
+ * D8: las alertas de asignaciones por vencer y de sobrecarga revelan la carga
+ * del equipo; solo las ve quien tiene `capacity:read`. Para el resto se
+ * excluyen en la consulta, no después.
+ */
+const TIPOS_DE_CAPACITY = ["ASSIGNMENT_ENDING", "CONSULTANT_OVERLOADED"] as const;
+
+function filtroSinCapacity(roles: AppRole[]) {
+  return hasPermission(roles, "capacity:read") ? {} : { type: { notIn: [...TIPOS_DE_CAPACITY] } };
+}
+
 export async function alertsRoutes(app: FastifyInstance) {
   // GET /api/alerts
   app.get(
@@ -30,6 +42,7 @@ export async function alertsRoutes(app: FastifyInstance) {
           projectId: query.projectId,
           consultantId: query.consultantId,
           resolvedAt: query.resolved ? { not: null } : null,
+          ...filtroSinCapacity(request.authUser!.roles),
         },
         include: {
           project: { select: { id: true, name: true, company: true } },
@@ -76,9 +89,9 @@ export async function alertsRoutes(app: FastifyInstance) {
   app.get(
     "/unread-count",
     { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
-    async () => {
+    async (request) => {
       const count = await prisma.alert.count({
-        where: { resolvedAt: null },
+        where: { resolvedAt: null, ...filtroSinCapacity(request.authUser!.roles) },
       });
       return { data: { count } };
     },

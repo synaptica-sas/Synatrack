@@ -3,7 +3,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, requirePermission } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { hasPermission } from "../../auth/roles.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { enmascararBloqueo } from "../../utils/consultant-scope.js";
 
 const blockPayloadSchema = z
   .object({
@@ -35,7 +37,9 @@ export async function blocksRoutes(app: FastifyInstance) {
         where: { consultantId },
         orderBy: { startDate: "asc" },
       });
-      return { data: blocks };
+      // El motivo de la ausencia solo lo ve quien puede gestionar bloqueos.
+      const verMotivo = hasPermission(request.authUser!.roles, "assignments:write");
+      return { data: blocks.map((b) => enmascararBloqueo(b, verMotivo)) };
     },
   );
 

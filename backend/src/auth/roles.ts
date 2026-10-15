@@ -17,7 +17,6 @@ export type Permission =
   | "fx:read"
   | "fx:write"
   | "stats:read"
-  | "assignments:read"
   | "assignments:write"
   | "capacity:read"
   | "capacity:config"
@@ -62,7 +61,6 @@ const allPermissions: Permission[] = [
   "fx:read",
   "fx:write",
   "stats:read",
-  "assignments:read",
   "assignments:write",
   "capacity:read",
   // Solo ADMIN: la jornada laboral (D-5) mueve las ocupaciones de todo el
@@ -118,7 +116,6 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "revenue:write",
     "fx:read",
     "stats:read",
-    "assignments:read",
     // Sin `assignments:write` (P5): solo ADMIN crea y mueve asignaciones.
     "capacity:read",
     "holidays:read",
@@ -142,17 +139,15 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
   FINANCE: [
     "extrahours:read",
     "extrahours:review",
-    "assignments:read",
     "capacity:read",
     "holidays:read",
   ],
   // Comercial: ve la ocupación y los feriados para saber a quién puede vender.
-  // `assignments:read` es lo único extra: la pantalla de Capacidad lo usa para
-  // mostrar el detalle de asignaciones en solo lectura (`canWrite` sale de
-  // `assignments:write`, que no tiene). No recibe proyectos, tarifas ni dinero.
+  // El detalle de asignaciones en solo lectura sale de `capacity:read`
+  // (`canWrite` sale de `assignments:write`, que no tiene). No recibe proyectos,
+  // tarifas ni dinero. El permiso `assignments:read` se eliminó: nadie lo exigía.
   COMMERCIAL: [
     "capacity:read",
-    "assignments:read",
     "holidays:read",
   ],
   VIEWER: [
@@ -160,17 +155,21 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "consultants:read",
     "time:read",
     "expenses:read",
-    "forecasts:read",
     "revenue:read",
     "fx:read",
     "stats:read",
-    "assignments:read",
-    // Sin `capacity:read` (P3): la ocupación del equipo dejó de ser pública.
+    // Sin `capacity:read` (P3) ni `forecasts:read`: la ocupación y las horas
+    // planificadas por consultor son confidenciales (D8).
     "holidays:read",
     "alerts:read",
     "extrahours:read",
   ],
 };
+
+/** ¿Alguno de los roles tiene el permiso? Misma fuente que `requirePermission`. */
+export function hasPermission(roles: AppRole[], permission: Permission): boolean {
+  return roles.some((role) => rolePermissions[role].includes(permission));
+}
 
 export function resolvePermissions(roles: AppRole[]): Permission[] {
   const permissions = new Set<Permission>();

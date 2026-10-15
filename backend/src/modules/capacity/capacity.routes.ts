@@ -2,7 +2,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, requirePermission } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
-import { puedeVerTarifas } from "../../utils/consultant-scope.js";
+import { hasPermission } from "../../auth/roles.js";
+import { enmascararBloqueo, puedeVerTarifas } from "../../utils/consultant-scope.js";
 import {
   computeAvailability,
   calculateCommittedHours,
@@ -12,9 +13,35 @@ import {
 } from "../../utils/capacity.js";
 import { cargarJornadasPorPais, hoyUtc, jornadaVigenteDe } from "./workday.routes.js";
 
+/** Tope de meses por consulta: cada día del rango recorre feriados, bloqueos y asignaciones. */
+const MAX_MESES_PERIODO = 24;
+
+const fechaRazonable = z.coerce
+  .date()
+  .refine((d) => d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 3000, {
+    message: "El año debe estar entre 1900 y 3000",
+  });
+
+/** 400 con mensaje claro; el error handler global respeta el statusCode. */
+function periodoInvalido(message: string): never {
+  throw Object.assign(new Error(message), { statusCode: 400 });
+}
+
+/** Valida un periodo ya resuelto: from <= to y a lo sumo MAX_MESES_PERIODO meses. */
+function validarPeriodo(period: { from: Date; to: Date }): { from: Date; to: Date } {
+  if (period.from > period.to) periodoInvalido("El parámetro \"from\" no puede ser posterior a \"to\"");
+  const meses =
+    (period.to.getUTCFullYear() - period.from.getUTCFullYear()) * 12 +
+    (period.to.getUTCMonth() - period.from.getUTCMonth()) + 1;
+  if (meses > MAX_MESES_PERIODO) {
+    periodoInvalido(`El periodo consultado no puede superar ${MAX_MESES_PERIODO} meses`);
+  }
+  return period;
+}
+
 const periodQuerySchema = z.object({
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  from: fechaRazonable.optional(),
+  to: fechaRazonable.optional(),
   country: z.string().trim().optional(),
   skill: z.string().trim().optional(),
   seniority: z.string().trim().optional(),
@@ -22,7 +49,7 @@ const periodQuerySchema = z.object({
   status: z.enum(["FREE", "PARTIAL", "FULL", "OVERLOADED"]).optional(),
 });
 
-const withinSchema = z.object({ within: z.coerce.number().int().positive().default(30) });
+const withinSchema = z.object({ within: z.coerce.number().int().positive().max(730).default(30) });
 const consultantIdSchema = z.object({ consultantId: z.string().min(1) });
 
 /** Periodo por defecto: el mes en curso, en UTC (nunca hora local). */
@@ -162,10 +189,10 @@ export async function capacityRoutes(app: FastifyInstance) {
     { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
-      const period = {
+      const period = validarPeriodo({
         from: query.from ?? defaultPeriod().from,
         to: query.to ?? defaultPeriod().to,
-      };
+      });
 
       const verTarifas = puedeVerTarifas(request.authUser!.roles);
 
@@ -215,10 +242,10 @@ export async function capacityRoutes(app: FastifyInstance) {
     { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
-      const period = {
+      const period = validarPeriodo({
         from: query.from ?? defaultPeriod().from,
         to: query.to ?? defaultPeriod().to,
-      };
+      });
 
       let rows = await buildCapacityRows(period, {
         country: query.country,
@@ -247,7 +274,7 @@ export async function capacityRoutes(app: FastifyInstance) {
       const asOf = query.from ?? hoyUtc();
 
       const rows = await buildCapacityRows(
-        { from: asOf, to: query.to ?? addDays(asOf, 30) },
+        validarPeriodo({ from: asOf, to: query.to ?? addDays(asOf, 30) }),
         { country: query.country, skill: query.skill, seniority: query.seniority },
         puedeVerTarifas(request.authUser!.roles),
       );
@@ -302,10 +329,10 @@ export async function capacityRoutes(app: FastifyInstance) {
     { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
-      const period = {
+      const period = validarPeriodo({
         from: query.from ?? defaultPeriod().from,
         to: query.to ?? defaultPeriod().to,
-      };
+      });
 
       const rows = await buildCapacityRows(period, {}, puedeVerTarifas(request.authUser!.roles));
       const overloaded = rows.filter((r) => r.availabilityStatus === "OVERLOADED");
@@ -321,7 +348,7 @@ export async function capacityRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const { consultantId } = consultantIdSchema.parse(request.params);
       const query = z
-        .object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() })
+        .object({ from: fechaRazonable.optional(), to: fechaRazonable.optional() })
         .parse(request.query);
 
       const consultant = await prisma.consultant.findUnique({
@@ -351,6 +378,7 @@ export async function capacityRoutes(app: FastifyInstance) {
         query.from ?? new Date(Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), 1));
       const to =
         query.to ?? new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 6, 0));
+      validarPeriodo({ from, to });
 
       // Calcular disponibilidad mes a mes
       const months: { year: number; month: number; from: Date; to: Date }[] = [];
@@ -385,7 +413,9 @@ export async function capacityRoutes(app: FastifyInstance) {
           },
           timeline,
           assignments: consultant.assignments,
-          blocks: consultant.blocks,
+          blocks: consultant.blocks.map((b) =>
+            enmascararBloqueo(b, hasPermission(request.authUser!.roles, "assignments:write")),
+          ),
         },
       };
     },
@@ -397,7 +427,7 @@ export async function capacityRoutes(app: FastifyInstance) {
     { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request, reply) => {
       const { projectId } = z.object({ projectId: z.string().min(1) }).parse(request.params);
-      const query = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() }).parse(request.query);
+      const query = z.object({ from: fechaRazonable.optional(), to: fechaRazonable.optional() }).parse(request.query);
 
       const project = await prisma.project.findUnique({ where: { id: projectId } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
@@ -406,6 +436,9 @@ export async function capacityRoutes(app: FastifyInstance) {
         from: query.from ?? project.startDate,
         to: query.to ?? project.endDate,
       };
+      // Sin from/to se usan las fechas del proyecto (pueden pasar de 24 meses y
+      // no las controla el cliente); con parámetros explícitos sí se limita.
+      if (query.from || query.to) validarPeriodo(period);
 
       // Alcance por campo (DEP-38): `estimatedCost` es `committedHours *
       // hourlyRate`, y ambas cifras viajan en la respuesta, así que dividir una
@@ -498,7 +531,7 @@ export async function capacityRoutes(app: FastifyInstance) {
     { preHandler: [authenticate, requirePermission("capacity:read")] },
     async (request) => {
       const query = periodQuerySchema.parse(request.query);
-      const period = { from: query.from ?? defaultPeriod().from, to: query.to ?? defaultPeriod().to };
+      const period = validarPeriodo({ from: query.from ?? defaultPeriod().from, to: query.to ?? defaultPeriod().to });
 
       // Mismo criterio que en `/capacity/project/:projectId` (DEP-38).
       const verTarifas = puedeVerTarifas(request.authUser!.roles);

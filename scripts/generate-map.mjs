@@ -50,11 +50,37 @@ function readPrefixes() {
   return prefixes;
 }
 
+/**
+ * Lee auth/roles.ts y devuelve { permiso: [roles] } a partir de
+ * `rolePermissions`. ADMIN apunta a `allPermissions`, que se lee aparte.
+ */
+function readPermissionRoles() {
+  const src = readFileSync(join(BACKEND_SRC, "auth", "roles.ts"), "utf8").replace(/\/\/.*$/gm, "");
+  const listOf = (body) => [...body.matchAll(/"(\w+:\w+)"/g)].map((m) => m[1]);
+  const all = src.match(/const allPermissions[^=]*=\s*\[([\s\S]*?)\n\];/);
+  const allPerms = all ? listOf(all[1]) : [];
+  const block = src.match(/rolePermissions[^=]*=\s*\{([\s\S]*?)\n\};/);
+  const byPermission = {};
+  if (!block) return byPermission;
+  const roleRe = /(\w+):\s*(?:allPermissions|\[([\s\S]*?)\])\s*,/g;
+  let m;
+  while ((m = roleRe.exec(block[1]))) {
+    const perms = m[2] === undefined ? allPerms : listOf(m[2]);
+    for (const perm of perms) (byPermission[perm] ??= []).push(m[1]);
+  }
+  return byPermission;
+}
+
+const PERMISSION_ROLES = readPermissionRoles();
+
 /** Extrae los endpoints declarados en un archivo *.routes.ts. */
-function readEndpoints(file) {
+function readEndpoints(file, prefixes = {}) {
   const src = readFileSync(file, "utf8");
-  const fnMatch = src.match(/export async function (\w+)\(/);
-  const fnName = fnMatch ? fnMatch[1] : null;
+  // Algunos archivos exportan helpers async antes del plugin (cargarSettings,
+  // cargarJornadasPorPais...): el plugin es el que recibe `app` o el que
+  // routes/index.ts registra.
+  const plugins = [...src.matchAll(/export async function (\w+)\(\s*app\b/g)].map((m) => m[1]);
+  const fnName = plugins.find((n) => n in prefixes) ?? plugins[0] ?? null;
 
   const endpoints = [];
   // El cuerpo se captura con lookahead para NO consumirlo: si se consumiera,
@@ -64,8 +90,13 @@ function readEndpoints(file) {
   while ((m = re.exec(src))) {
     const [, method, path, between, body] = m;
     const rolesMatch = between.match(/authorize\(\[([^\]]*)\]/);
+    const permMatch = between.match(/requirePermission\(\s*"([^"]+)"\s*\)/);
     let roles;
-    if (rolesMatch) {
+    if (permMatch) {
+      // Roles reales: los que tienen ese permiso en rolePermissions (auth/roles.ts).
+      const holders = PERMISSION_ROLES[permMatch[1]] ?? [];
+      roles = [(holders.length ? holders.join(", ") : "(nadie)") + " — permiso `" + permMatch[1] + "`"];
+    } else if (rolesMatch) {
       roles = rolesMatch[1]
         .split(",")
         .map((r) => r.trim().replace("AppRole.", ""))
@@ -94,7 +125,7 @@ function buildApiTable() {
   const rows = [];
 
   for (const file of files.sort()) {
-    const { fnName, endpoints } = readEndpoints(file);
+    const { fnName, endpoints } = readEndpoints(file, prefixes);
     const prefix = fnName && fnName in prefixes ? prefixes[fnName] : "?";
     const rel = posix(relative(ROOT, file));
     for (const ep of endpoints) {
@@ -116,7 +147,7 @@ function buildApiTable() {
 // ─── 2. Pantallas del frontend ───────────────────────────────────────────────
 
 function buildTabsTable() {
-  const app = readFileSync(join(FRONTEND_SRC, "App.tsx"), "utf8");
+  const app = readFileSync(join(FRONTEND_SRC, "config", "sidebar.ts"), "utf8");
 
   const groups = [];
   const groupRe = /label:\s*"([^"]+)",\s*\n\s*tabs:\s*\[([\s\S]*?)\n\s*\],/g;
@@ -217,8 +248,9 @@ Resumen: **${api.count} endpoints**, **${tabs.count} pantallas**,
 
 ## 1. Endpoints del backend
 
-Los roles salen del \`authorize([...])\` real de cada ruta, que es lo que de verdad
-protege el endpoint (el mapa de \`Permission\` en \`auth/roles.ts\` solo gobierna la UI).
+Los roles salen del \`authorize([...])\` real de cada ruta. Las rutas que usan
+\`requirePermission("x")\` se resuelven a los roles que tienen ese permiso en
+\`rolePermissions\` (\`auth/roles.ts\`), que se parsea al generar el mapa.
 
 ${api.table}
 

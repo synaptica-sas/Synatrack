@@ -75,7 +75,9 @@ describe("GET /api/capacity/monthly (fixture del Excel)", () => {
     await crearConsultor("C2", { country: CO, company, horas: 8 });
     await crearConsultor("C3", { country: EC, company, horas: 4 });
     await crearConsultor("C4", { country: CO, company: companyInterna, horas: 8 });
-    await crearConsultor("SIN_PAIS", { country: null, company, horas: 8 });
+    // "Default" es lo que guarda el alta de consultores cuando no se elige país;
+    // el caso con `null` ya lo cubren las pruebas unitarias de capacityMonthly.
+    await crearConsultor("SIN_PAIS", { country: "Default", company, horas: 8 });
 
     const crearProyecto = async (nombre: string, isInternal: boolean) => {
       const p = await prisma.project.create({

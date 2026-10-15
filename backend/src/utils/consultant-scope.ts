@@ -6,7 +6,8 @@ import { AppRole } from "@prisma/client";
  *
  * Se omiten a propósito: `hourlyRate` y `costPerMonth` (remuneración) e
  * `identification` (documento de identidad, dato personal que ninguna de las
- * pantallas operativas necesita para nada).
+ * pantallas operativas necesita para nada), y `hireDate`/`exitDate` (fechas de
+ * vínculo laboral, que solo ve quien puede ver tarifas).
  *
  * Nació en `time-entries` con R5; aquí vive compartido porque R7 lo aplica
  * también a `extra-hours`, `consultants` y `activities`, y tener cuatro copias
@@ -22,8 +23,6 @@ export const consultantSinDatosSensiblesSelect = {
   rateCurrency: true,
   country: true,
   city: true,
-  hireDate: true,
-  exitDate: true,
   skills: true,
   seniority: true,
   maxHoursPerDay: true,
@@ -48,4 +47,21 @@ export function puedeVerTarifas(roles: AppRole[]): boolean {
     roles.includes(AppRole.PM) ||
     roles.includes(AppRole.FINANCE)
   );
+}
+
+type BloqueConMotivo = { blockType: unknown; note: string | null };
+
+/**
+ * Los bloqueos (vacaciones, incapacidad, permiso) revelan el motivo de una
+ * ausencia, un dato personal. Quien solo lee capacity ve el rango de fechas (lo
+ * necesita para entender la disponibilidad) pero no el tipo ni la nota: salen
+ * `null` con `masked: true`. Quien puede escribir bloqueos (`assignments:write`)
+ * los recibe completos.
+ */
+export function enmascararBloqueo<T extends BloqueConMotivo>(
+  bloque: T,
+  puedeVerMotivo: boolean,
+): T | (Omit<T, "blockType" | "note"> & { blockType: null; note: null; masked: true }) {
+  if (puedeVerMotivo) return bloque;
+  return { ...bloque, blockType: null, note: null, masked: true };
 }

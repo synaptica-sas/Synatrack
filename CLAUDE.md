@@ -93,7 +93,8 @@ node scripts/generate-map.mjs         # regenera documentacion/MAPA_PROYECTO.md
 ```bash
 cd backend
 npm run dev                           # tsx watch -> http://localhost:4000
-npm test                              # 195 tests (cálculo puro, sin base de datos)
+npm test                              # ~400 tests unitarios (cálculo puro, sin base de datos)
+npm run test:routes                   # ~355 pruebas de ruta contra Postgres real (crea synatrack_test en :5433)
 npm run prisma:deploy                 # migrate deploy
 npm run prisma:seed                   # solo roles + usuario admin, NO datos demo
 npm run smoke                         # smoke test manual contra un deploy
@@ -101,12 +102,13 @@ npm run smoke                         # smoke test manual contra un deploy
 cd frontend
 npm run dev                           # http://localhost:5173
 npm run build                         # tsc -b && vite build -> dist/
-npm test                              # 156 tests, pasan
+npm test                              # ~305 tests, pasan
 npm run lint
 ```
 
 El backend local corre en modo demo: entra como `ADMIN` sin pasar por Microsoft.
-`docker-compose.yml` sigue en el repo y es válido en máquinas que sí tengan Docker.
+`docker-compose.yml` sigue en el repo y es válido en máquinas que sí tengan Docker (Postgres en
+`localhost:5433`, el mismo puerto que esperan las pruebas de ruta).
 
 ---
 
@@ -137,7 +139,12 @@ hook `use<Dominio>(enabled)` -> `features/<dominio>/<Dominio>Tab.tsx` -> registr
 
 **Lógica de negocio**: cálculo puro -> `backend/src/utils/` con test en `utils/__tests__/`.
 Proceso que reacciona solo -> `*.service.ts` dentro del módulo (patrón `alerts.service.ts`).
-**No existe scheduler**: si algo debe correr periódicamente hay que implementarlo explícitamente.
+**Trabajos periódicos**: se agregan a la lista `TRABAJOS` de `modules/jobs/jobs.service.ts` (candado
+anti-solapamiento e historial en `JobRun`). Corren con `JOBS_INTERVAL_MINUTES` o con el cron de Render
+(`POST /api/jobs/run`).
+
+**Fechas de calendario** (asignaciones, feriados, vigencias): columnas `@db.Date` y `IsoDate`
+(`"YYYY-MM-DD"`) de `utils/isoDate.ts`; nada de hora local.
 
 ---
 
@@ -149,18 +156,19 @@ Dos modos por variables de entorno:
   sin validar nada. Frontend: `VITE_FORCE_LOCAL_AUTH=true`.
 - **Entra ID**: valida el JWT contra JWKS del tenant, con issuer v1 y v2 y audiencia `AZURE_AD_AUDIENCE`.
 
-Roles (`AppRole`): `ADMIN`, `PM`, `CONSULTANT`, `FINANCE`, `VIEWER`. La claim `roles` del token se
-pasa a mayúsculas y debe coincidir con el enum (`NOMINA` se mapea a `FINANCE`). Azure AD es la
+Roles (`AppRole`): `ADMIN`, `PM`, `CONSULTANT`, `FINANCE`, `VIEWER`, `COMMERCIAL`. La claim `roles` del
+token se pasa a mayúsculas y debe coincidir con el enum (`NOMINA` → `FINANCE`, `COMERCIAL` → `COMMERCIAL`). Azure AD es la
 fuente de verdad: si el token trae roles, se reemplazan los locales.
 
 **JIT provisioning** en cada login: crea el `User` si no existe; si no hay roles asigna `CONSULTANT`;
 si es `CONSULTANT` crea su `Consultant` con `hourlyRate = 0` (hay que editarlo a mano después);
 el correo de `ADMIN_EMAIL` siempre recibe `ADMIN`.
 
-**Punto clave**: los endpoints protegen con `authorize([AppRole...])` (roles crudos). El mapa
-`Permission`/`rolePermissions` de `auth/roles.ts` **solo gobierna qué ve el frontend**. Son dos
-sistemas paralelos que pueden desincronizarse. Existe además una **tercera copia** de la matriz de
-permisos hardcodeada en `App.tsx` (`handleSwitchRole`, el simulador de rol para admins).
+**Punto clave**: la mayoría de los endpoints protegen con `authorize([AppRole...])` (roles crudos) y el
+mapa `Permission`/`rolePermissions` de `auth/roles.ts` gobierna qué ve el frontend: son dos sistemas
+que pueden desincronizarse. Capacity, asignaciones y feriados ya usan `requirePermission(perm)`, que
+lee la matriz; es el patrón a seguir en código nuevo. El simulador de rol de `App.tsx` lee la matriz
+de `GET /api/auth/permissions` (ya no es una copia).
 
 ---
 
@@ -169,9 +177,10 @@ permisos hardcodeada en `App.tsx` (`handleSwitchRole`, el simulador de rol para 
 - `render.yaml`: backend como Web Service (`app-gestion-backend`) + cron job diario de FX.
 - `frontend/vercel.json`: rewrite de `/api` a **`app-gestion-demo.onrender.com`** (nombre distinto
   al de `render.yaml`), hardcodeado.
-- `.github/workflows/azure-static-web-apps-*.yml`: despliega el frontend a Azure Static Web Apps en
-  cada push a `main`, con `output_location: "build"` cuando Vite emite `dist` -> **probablemente roto**.
-  No corre tests ni type-check.
+- `.github/workflows/azure-static-web-apps-*.yml`: en cada push a `main` corre type-check, tests y build
+  del frontend y lo despliega a Azure Static Web Apps (`output_location: "dist"`).
+- `.github/workflows/backend-ci.yml`: type-check, tests unitarios y de ruta del backend (Postgres de
+  servicio) en `main` y `dev`. No despliega.
 - `frontend/server.mjs`: servidor estático propio que inyecta `/env.js` con `window.__APP_CONFIG__`
   (config en runtime, usado por Docker/Render; Vercel usa las `VITE_*` de build).
 - Ramas: `main` (activa, la de este checkout) y `origin/dev`. Los docs hablan de `develop`/`deploy`,
@@ -185,16 +194,16 @@ permisos hardcodeada en `App.tsx` (`handleSwitchRole`, el simulador de rol para 
 **Sigue todo abierto.** Los que más condicionan cualquier desarrollo nuevo:
 
 1. ~~**Drift de migraciones**~~ — **RESUELTO el 2026-09-18**. La migración
-   `20260918120000_fix_schema_drift` incorpora `CustomHoliday`, `ApprovalDelegation`,
+   `20260915164644_sync_schema_drift` (más `20260918130000_fix_extra_hours_monthly_divisor`) incorpora `CustomHoliday`, `ApprovalDelegation`,
    `Consultant.allowWeekendWork`/`isInternal`/`company`, `ExtraHoursConfig.country`/`monthlyDivisor`
    y `User.country`. Es **idempotente** (`IF NOT EXISTS`), así que se puede aplicar tal cual sobre
    una base que ya los tenga por `db push`.
    ⚠ **Pendiente en Supabase/producción**: aún no se ha aplicado allá. Ejecutar `prisma migrate deploy`
    contra esa base (seguro por ser idempotente) o, si se prefiere no tocarla,
-   `prisma migrate resolve --applied 20260918120000_fix_schema_drift` para registrarla como aplicada.
+   `prisma migrate resolve --applied 20260915164644_sync_schema_drift` para registrarla como aplicada.
    Sigue en pie la regla: nunca `prisma db push` fuera de un prototipo local.
-2. **El error handler global devuelve `detail` y `stack` al cliente en producción** (`src/app.ts`).
-3. **No hay scheduler**: `runAssignmentMaintenance` y `runAlertEngine` corren una sola vez al arrancar.
+2. ~~**El error handler devuelve `stack` en producción**~~ — **RESUELTO** (`app.ts`, test `error-handler-fuga`).
+3. ~~**No hay scheduler**~~ — **RESUELTO**: `modules/jobs` (ver §4).
 4. ~~**Bug de FX en `GET /api/projects/:id/profitability`**~~ — **RESUELTO**. La ruta ya pasa los
    `FxConfig` crudos a `calculateProfitability`, que construye el mapa con `buildRateMap`; del
    `key.split("_")` solo queda un comentario histórico en `projects.routes.ts:348`.
@@ -229,13 +238,19 @@ sugerido. Es la lista que hay que ir vaciando; no repite los §10 ni los de abaj
 - Las instrucciones de arranque local de `DOCUMENTACION_APLICACION.md` §7.3 apuntan a
   `.env.local.5433.example`, que no existe.
 
+**Capacity mensual (2026-10)**: réplica de `documentacion/capacity/Capacity_Synaptica_v2.xlsx`. Antes de
+tocarlo lee `documentacion/capacity/CONTRATO.md` (fuente de verdad) y `PLAN.md`. Cálculo en
+`utils/capacityMonthly.ts`; feriados en la tabla `Holiday` (país + ciudad); `CustomHoliday` sigue
+viva solo para horas extra, actividades y estimaciones hasta la fase 3 del plan.
+
 ---
 
 ## 8. Convenciones
 
 - Comentarios y textos de UI en español; nombres de código en inglés.
 - Prisma devuelve `Decimal` -> en el frontend los montos llegan como **string**; convertir con `Number()`.
-- Fechas: el backend calcula en **UTC** (`Date.UTC`) salvo `assignments.job.ts`, que usa hora local.
+- Fechas: el backend calcula en **UTC** (`Date.UTC`). Las fechas de calendario nuevas son `@db.Date`
+  (`Assignment`, `Holiday`, vigencias de jornada) y viajan como `"YYYY-MM-DD"`.
 - Los `Forecast.startDate/endDate` son **strings** `"YYYY-MM-DD"`, no `DateTime`.
 - Sin librería de gráficos: las visualizaciones son SVG/CSS a mano.
 - Exportaciones: `xlsx` y `jspdf` + `jspdf-autotable` (chunks separados en `vite.config.ts`).
