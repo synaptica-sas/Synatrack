@@ -2730,13 +2730,31 @@ export type CapacitySettingsData = {
   underThresholdPct: number;
   overThresholdPct: number;
   includeProbablesDefault: boolean;
+  /** Alertas de consultores sobreasignados / subutilizados (CONTRATO §5.3). */
+  alertsEnabled: boolean;
+  /** Meses que mira el motor de alertas: el mes en curso + (n-1) siguientes. 1..12. */
+  alertHorizonMonths: number;
+  /** Resumen semanal por correo (CONTRATO §5.4). */
+  digestEnabled: boolean;
+  /** ISO: 1 = lunes … 7 = domingo. */
+  digestWeekday: number;
+  /** Hora del envío en UTC, 0..23. 13 UTC = 08:00 en Bogotá/Quito. */
+  digestHourUtc: number;
+  digestLastSentAt: string | null;
   updatedBy?: string | null;
   updatedAt?: string | null;
 };
 
 export type CapacitySettingsPayload = Pick<
   CapacitySettingsData,
-  "underThresholdPct" | "overThresholdPct" | "includeProbablesDefault"
+  | "underThresholdPct"
+  | "overThresholdPct"
+  | "includeProbablesDefault"
+  | "alertsEnabled"
+  | "alertHorizonMonths"
+  | "digestEnabled"
+  | "digestWeekday"
+  | "digestHourUtc"
 >;
 
 export async function getCapacitySettings(): Promise<CapacitySettingsData> {
@@ -2869,6 +2887,8 @@ export type MonthlyCapacityConsultantRow = {
   exitDate: string | null;
   months: MonthlyCapacityCell[];
   period: MonthlyCapacityPeriod;
+  /** Solo viene con `includeAssignments=true` (exportación y reportes oficiales). */
+  assignments?: AssignmentDetail[];
 };
 
 export type MonthlyCapacityWarning =
@@ -2913,6 +2933,8 @@ export type MonthlyCapacityParams = {
   city?: string;
   company?: string;
   consultantId?: string;
+  /** Agrega `assignments` a cada consultor (para exportar y congelar reportes). */
+  includeAssignments?: boolean;
 };
 
 export type MonthlyCapacityAssignment = {
@@ -2932,6 +2954,9 @@ export type MonthlyCapacityAssignment = {
   months: { month: string; hours: number }[];
 };
 
+/** Detalle de una asignación en el periodo (misma forma que CONTRATO §3.2). */
+export type AssignmentDetail = MonthlyCapacityAssignment;
+
 export type MonthlyCapacityConsultantDetail = {
   consultant: Omit<MonthlyCapacityConsultantRow, "months" | "period">;
   months: MonthlyCapacityCell[];
@@ -2949,6 +2974,7 @@ function monthlyCapacityQuery(params?: MonthlyCapacityParams): string {
   if (params?.city) query.set("city", params.city);
   if (params?.company) query.set("company", params.company);
   if (params?.consultantId) query.set("consultantId", params.consultantId);
+  if (params?.includeAssignments) query.set("includeAssignments", "true");
   const text = query.toString();
   return text ? `?${text}` : "";
 }
@@ -2964,6 +2990,70 @@ export async function getCapacityMonthlyConsultant(
 ): Promise<MonthlyCapacityConsultantDetail> {
   const response = await request<ApiEnvelope<MonthlyCapacityConsultantDetail>>(
     `/api/capacity/monthly/consultant/${encodeURIComponent(id)}${monthlyCapacityQuery(params)}`,
+  );
+  return response.data;
+}
+
+// ─── Reportes oficiales de capacity ───────────────────────────────────────────
+// Contrato: documentacion/capacity/CONTRATO.md §5.2. Un reporte publicado es
+// inmutable: no hay actualización ni borrado, solo anulación.
+
+export type CapacityReportFilters = { country?: string; city?: string; company?: string };
+
+export type CapacityReportSummary = {
+  id: string;
+  title: string;
+  note: string | null;
+  /** "YYYY-MM" */
+  fromMonth: string;
+  toMonth: string;
+  includeProbables: boolean;
+  internal: "include" | "exclude";
+  filters: CapacityReportFilters;
+  /** Umbrales vigentes al publicar. */
+  settings: MonthlyCapacitySettings;
+  publishedBy: string;
+  publishedAt: string;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  revokeReason: string | null;
+};
+
+/** Reporte completo: el payload es la respuesta de `/monthly` con asignaciones, congelada. */
+export type CapacityReport = CapacityReportSummary & { payload: MonthlyCapacity };
+
+export type PublishCapacityReportBody = {
+  title: string;
+  note?: string;
+  from: string;
+  to: string;
+  includeProbables: boolean;
+  internal?: "include" | "exclude";
+  country?: string;
+  city?: string;
+  company?: string;
+};
+
+export async function listCapacityReports(page = 1, pageSize = 20): Promise<ApiPage<CapacityReportSummary>> {
+  const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  return request<ApiPage<CapacityReportSummary>>(`/api/capacity/reports?${query.toString()}`);
+}
+
+export async function getCapacityReport(id: string): Promise<CapacityReport> {
+  const response = await request<ApiEnvelope<CapacityReport>>(`/api/capacity/reports/${encodeURIComponent(id)}`);
+  return response.data;
+}
+
+export async function publishCapacityReport(body: PublishCapacityReportBody): Promise<CapacityReport> {
+  const response = await request<ApiEnvelope<CapacityReport>>("/api/capacity/reports", "POST", body);
+  return response.data;
+}
+
+export async function revokeCapacityReport(id: string, reason: string): Promise<CapacityReportSummary> {
+  const response = await request<ApiEnvelope<CapacityReportSummary>>(
+    `/api/capacity/reports/${encodeURIComponent(id)}/revoke`,
+    "POST",
+    { reason },
   );
   return response.data;
 }

@@ -7184,3 +7184,19 @@ body.dark .cap-detail th.cap-sticky, body.dark .cap-detail td.cap-sticky { backg
   .cap-drawer { padding: var(--space-3); }
   .cap-sticky { min-width: 7.5rem; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CAPACITY: exportar, reportes oficiales y resumen semanal (fase 2)
+   ══════════════════════════════════════════════════════════════════════════ */
+.cap-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.cap-toolbar--between { justify-content: space-between; }
+.cap-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); }
+.cap-publish-summary { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); margin: var(--space-3) 0; font-size: 0.85rem; }
+.cap-publish-summary dt { color: var(--text-soft); }
+.cap-publish-summary dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.cap-digest-time { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+@media (max-width: 640px) {
+  .cap-toolbar { justify-content: flex-start; }
+  .cap-publish-summary { grid-template-columns: 1fr; }
+  .cap-publish-summary dd { margin-bottom: var(--space-2); }
+}

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { resolveAlert, runAlertEngine, type AppAlert } from "../../services/api";
+import { CAPACITY_ALERT_TYPES, alertTypeLabel } from "../../utils/alertLabels";
 
 /**
  * Centro de Alertas, migrado al sistema de diseño (ver `documentacion/DISENO.md`).
@@ -24,7 +25,7 @@ const TYPE_GROUPS: { types: string[]; key: string; label: string; icon: string }
   { key: "cpi",      types: ["FORECAST_DEVIATION"],                     label: "CPI / Desviación",     icon: "📉" },
   { key: "margin",   types: ["MARGIN_BELOW_THRESHOLD"],                 label: "Margen bajo umbral",   icon: "⚠️" },
   { key: "assign",   types: ["ASSIGNMENT_ENDING"],                      label: "Asignaciones",         icon: "👤" },
-  { key: "capacity", types: ["CONSULTANT_OVERLOADED"],                  label: "Capacidad",            icon: "🔴" },
+  { key: "capacity", types: CAPACITY_ALERT_TYPES,                         label: "Capacidad",            icon: "🔴" },
   { key: "other",    types: [],                                          label: "Otras alertas",        icon: "🔔" },
 ];
 
@@ -217,6 +218,9 @@ export function AlertsTab({
                           <span className={`status-badge status-badge--${sev.modificador}`}>{sev.etiqueta}</span>
                           {alert.project && (
                             <span className="alert-item__project">{alert.project.name}</span>
+                          )}
+                          {!alert.project && alertTypeLabel(alert.type) && (
+                            <span className="alert-item__project">{alertTypeLabel(alert.type)}</span>
                           )}
                           <span className="alert-item__time">
                             {new Date(alert.createdAt).toLocaleString("es-CO", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}

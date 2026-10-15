@@ -37,6 +37,7 @@ import { CountryFlag } from "../../components/CountryFlag";
 import { formatDate } from "../../utils/formatDate";
 import { useToast } from "../../hooks/useToast";
 import { MonthlyCapacityPanel } from "./monthly/MonthlyCapacityPanel";
+import { ReportsPanel } from "./reports/ReportsPanel";
 import { AssignmentFormModal } from "./AssignmentFormModal";
 import {
   CERTAINTY_LABELS,
@@ -131,7 +132,7 @@ function lastDayOfMonth() {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
 }
 
-type SubTab = "monthly" | "overview" | "byProject" | "assignments" | "blocks";
+type SubTab = "monthly" | "reports" | "overview" | "byProject" | "assignments" | "blocks";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -143,10 +144,13 @@ export function CapacityTab({
   preselectedConsultantId,
   onClearPreselectedConsultant,
   onOpenProject,
+  canPublish = false,
 }: {
   projects: Project[];
   consultants: Consultant[];
   canWrite: boolean;
+  /** `capacity:publish` (ADMIN): publicar y anular reportes oficiales. */
+  canPublish?: boolean;
   onError: (msg: string) => void;
   preselectedConsultantId?: string | null;
   onClearPreselectedConsultant?: () => void;
@@ -154,6 +158,7 @@ export function CapacityTab({
   onOpenProject?: (projectId: string) => void;
 }) {
   const [subTab, setSubTab] = useState<SubTab>("monthly");
+  const [reportId, setReportId] = useState<string | null>(null);
 
   const [prevPreselected, setPrevPreselected] = useState(preselectedConsultantId);
   if (preselectedConsultantId !== prevPreselected) {
@@ -174,6 +179,7 @@ export function CapacityTab({
       <nav className="subtabs" aria-label="Secciones de capacidad">
         {([
           ["monthly", "Mensual"],
+          ["reports", "Reportes oficiales"],
           ["overview", "Disponibilidad"],
           ["byProject", "Por proyecto"],
           ["assignments", "Asignaciones"],
@@ -191,7 +197,18 @@ export function CapacityTab({
         ))}
       </nav>
 
-      {subTab === "monthly" && <MonthlyCapacityPanel />}
+      {subTab === "monthly" && (
+        <MonthlyCapacityPanel
+          canPublish={canPublish}
+          onOpenReport={(id) => {
+            setReportId(id);
+            setSubTab("reports");
+          }}
+        />
+      )}
+      {subTab === "reports" && (
+        <ReportsPanel canPublish={canPublish} selectedId={reportId} onSelect={setReportId} />
+      )}
       {subTab === "overview" && (
         <OverviewPanel projects={projects} consultants={consultants} onError={onError} />
       )}

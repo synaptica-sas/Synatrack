@@ -1933,6 +1933,7 @@ function App() {
                   projects={projectsHook.projects}
                   consultants={consultantsHook.consultants}
                   canWrite={can("assignments:write")}
+                  canPublish={can("capacity:publish")}
                   onError={handleError}
                   preselectedConsultantId={preselectedCapacityConsultantId}
                   onClearPreselectedConsultant={() => setPreselectedCapacityConsultantId(null)}

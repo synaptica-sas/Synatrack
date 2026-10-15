@@ -7,7 +7,7 @@ import { visibleGroupsFor } from '../config/sidebar';
  * un cambio del menú que contradiga el contrato rompa la prueba.
  */
 const PERMISOS = {
-  ADMIN: ['capacity:read', 'capacity:config', 'assignments:write', 'holidays:read', 'holidays:write', 'stats:read', 'projects:read'],
+  ADMIN: ['capacity:read', 'capacity:config', 'capacity:publish', 'assignments:write', 'holidays:read', 'holidays:write', 'stats:read', 'projects:read'],
   PM: ['capacity:read', 'holidays:read', 'stats:read', 'projects:read'],
   FINANCE: ['capacity:read', 'holidays:read', 'stats:read'],
   COMMERCIAL: ['capacity:read', 'holidays:read'],

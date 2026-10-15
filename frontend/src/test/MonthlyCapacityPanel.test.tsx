@@ -39,7 +39,10 @@ function sample(consultantMonths: MonthlyCapacityCell[]): MonthlyCapacity {
 beforeEach(() => {
   sessionStorage.clear();
   vi.mocked(api.getCapacityMonthly).mockReset();
-  vi.mocked(api.getCapacitySettings).mockResolvedValue({ underThresholdPct: 70, overThresholdPct: 100, includeProbablesDefault: false });
+  vi.mocked(api.getCapacitySettings).mockResolvedValue({
+    underThresholdPct: 70, overThresholdPct: 100, includeProbablesDefault: false,
+    alertsEnabled: true, alertHorizonMonths: 3, digestEnabled: true, digestWeekday: 1, digestHourUtc: 13, digestLastSentAt: null,
+  });
 });
 
 describe("MonthlyCapacityPanel", () => {

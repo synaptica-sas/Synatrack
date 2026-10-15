@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "../../../components/EmptyState";
 import { useCapacityMonthly } from "../../../hooks/useCapacityMonthly";
+import { useToast } from "../../../hooks/useToast";
 import {
+  getCapacityMonthly,
   getCapacitySettings,
+  type CapacityReport,
   type CapacitySettingsData,
   type MonthlyCapacity,
 } from "../../../services/api";
+import { ExportMenu, type ExportKind } from "../export/ExportMenu";
+import { exportCapacityExcel, exportCapacityPdf } from "../export/exportRenderers";
+import { PublishReportDialog, type PublishRequest } from "../reports/PublishReportDialog";
 import { CapacityHeatmap } from "./CapacityHeatmap";
 import { ConsultantCapacityDrawer } from "./ConsultantCapacityDrawer";
 import { KpiRow } from "./KpiRow";
@@ -31,7 +37,21 @@ function SkeletonBlock() {
   );
 }
 
-export function MonthlyCapacityPanel({ enabled = true }: { enabled?: boolean }) {
+export function MonthlyCapacityPanel({
+  enabled = true,
+  canPublish = false,
+  onOpenReport,
+}: {
+  enabled?: boolean;
+  /** `capacity:publish` (solo ADMIN). Ocultar el botón no protege nada: el servidor decide. */
+  canPublish?: boolean;
+  /** Abre un reporte oficial en la sub-pestaña "Reportes oficiales". */
+  onOpenReport?: (reportId: string) => void;
+}) {
+  const { showToast } = useToast();
+  const [exporting, setExporting] = useState<ExportKind | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<CapacityReport | null>(null);
   const [filters, setFilters] = useState<CapacityFilters>(
     () =>
       loadStoredFilters() ?? {
@@ -92,6 +112,37 @@ export function MonthlyCapacityPanel({ enabled = true }: { enabled?: boolean }) 
   const messages = data ? warningMessages(data.warnings, data) : [];
   const showResults = rangeError === null && data !== null;
 
+  /** Exporta la vista actual: pide aparte las asignaciones (la pantalla no las trae). */
+  async function handleExport(kind: ExportKind) {
+    if (!data) return;
+    setExporting(kind);
+    try {
+      const full = await getCapacityMonthly({ ...params, includeProbables: data.includeProbables, includeAssignments: true });
+      const meta = {
+        generatedAt: new Date().toISOString(),
+        filters: { country: filters.country || undefined, city: filters.city || undefined },
+      };
+      const fileName = kind === "excel" ? await exportCapacityExcel(full, meta) : await exportCapacityPdf(full, meta);
+      showToast(`Archivo generado: ${fileName}`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "No se pudo generar el archivo", "error");
+    } finally {
+      setExporting(null);
+    }
+  }
+
+  /** Lo que se publica es exactamente la vista actual; el servidor calcula el contenido. */
+  const publishRequest: PublishRequest | null = data
+    ? {
+        from: data.from,
+        to: data.to,
+        includeProbables: data.includeProbables,
+        internal: data.internal,
+        ...(filters.country ? { country: filters.country } : {}),
+        ...(filters.city ? { city: filters.city } : {}),
+      }
+    : null;
+
   return (
     <div className="section-stack">
       <PeriodSelector
@@ -101,6 +152,29 @@ export function MonthlyCapacityPanel({ enabled = true }: { enabled?: boolean }) 
         cities={known.cities}
         onChange={setFilters}
       />
+
+      {showResults && data && data.consultants.length > 0 && (
+        <div className="cap-toolbar">
+          <ExportMenu busy={exporting} onExport={(k) => void handleExport(k)} />
+          {canPublish && (
+            <button type="button" className="toolbar-btn" onClick={() => setPublishing(true)}>
+              Publicar reporte oficial
+            </button>
+          )}
+        </div>
+      )}
+
+      {published && (
+        <div className="notice notice--info" role="status">
+          <p className="notice__title">Reporte oficial publicado</p>
+          <p className="notice__text">«{published.title}» ya está disponible para quienes consultan capacity.</p>
+          {onOpenReport && (
+            <button type="button" className="btn-sm" onClick={() => onOpenReport(published.id)}>
+              Ver reporte
+            </button>
+          )}
+        </div>
+      )}
 
       {rangeError === null && loading && !data && <SkeletonBlock />}
 
@@ -139,6 +213,18 @@ export function MonthlyCapacityPanel({ enabled = true }: { enabled?: boolean }) 
             </>
           )}
         </div>
+      )}
+
+      {publishing && publishRequest && (
+        <PublishReportDialog
+          request={publishRequest}
+          onClose={() => setPublishing(false)}
+          onPublished={(report) => {
+            setPublishing(false);
+            setPublished(report);
+            showToast(`Reporte oficial «${report.title}» publicado.`, "success");
+          }}
+        />
       )}
 
       {selectedId && (

@@ -23,24 +23,30 @@ function kindChips(a: MonthlyCapacityAssignment) {
 /**
  * Panel lateral con el detalle de un consultor: proyectos × meses.
  * Las probables que el filtro no incluye se muestran atenuadas ("no incluida").
+ *
+ * Con `frozenDetail` (reporte oficial) es de solo lectura: muestra los datos congelados y NO
+ * llama a la API.
  */
 export function ConsultantCapacityDrawer({
   consultantId,
-  params,
+  params = {},
+  frozenDetail,
   onClose,
 }: {
   consultantId: string;
-  params: Omit<MonthlyCapacityParams, "consultantId">;
+  params?: Omit<MonthlyCapacityParams, "consultantId">;
+  frozenDetail?: MonthlyCapacityConsultantDetail;
   onClose: () => void;
 }) {
-  const [detail, setDetail] = useState<MonthlyCapacityConsultantDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [detail, setDetail] = useState<MonthlyCapacityConsultantDetail | null>(frozenDetail ?? null);
+  const [loading, setLoading] = useState(!frozenDetail);
   const [error, setError] = useState<string | null>(null);
   /** Identifica la petición vigente; una respuesta de otra consulta se descarta. */
   const latest = useRef("");
   const key = JSON.stringify(params);
 
   const load = useCallback(async () => {
+    if (frozenDetail) return;
     setLoading(true);
     try {
       const d = await getCapacityMonthlyConsultant(consultantId, JSON.parse(key) as MonthlyCapacityParams);
@@ -54,7 +60,7 @@ export function ConsultantCapacityDrawer({
     } finally {
       if (latest.current === consultantId + key) setLoading(false);
     }
-  }, [consultantId, key]);
+  }, [consultantId, key, frozenDetail]);
 
   useEffect(() => {
     latest.current = consultantId + key;

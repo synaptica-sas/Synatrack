@@ -18,7 +18,10 @@ vi.mock('../services/api', async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getCapacitySettings.mockResolvedValue({ underThresholdPct: 70, overThresholdPct: 100, includeProbablesDefault: false });
+  getCapacitySettings.mockResolvedValue({
+    underThresholdPct: 70, overThresholdPct: 100, includeProbablesDefault: false,
+    alertsEnabled: true, alertHorizonMonths: 3, digestEnabled: true, digestWeekday: 1, digestHourUtc: 13, digestLastSentAt: null,
+  });
   updateCapacitySettings.mockImplementation(async (p: object) => p);
 });
 
@@ -56,6 +59,11 @@ describe('CapacityThresholdsSection', () => {
         underThresholdPct: 60,
         overThresholdPct: 100,
         includeProbablesDefault: true,
+        alertsEnabled: true,
+        alertHorizonMonths: 3,
+        digestEnabled: true,
+        digestWeekday: 1,
+        digestHourUtc: 13,
       }),
     );
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
