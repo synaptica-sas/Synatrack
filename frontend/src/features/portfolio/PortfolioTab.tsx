@@ -480,6 +480,21 @@ export function PortfolioTab({
 
       {/* Filtros */}
       <div className="panel">
+        <div className="panel__head">
+          <span className="panel__title">Filtros</span>
+          <button
+            type="button"
+            className="ghost toolbar-btn"
+            onClick={() => {
+              setCompanyFilter("");
+              setProjectFilter("");
+              setHealthFilter("");
+              setStatusFilter("");
+            }}
+          >
+            🧹 Limpiar filtros
+          </button>
+        </div>
         <div className="panel__body">
           <div className="field-grid">
             <div>

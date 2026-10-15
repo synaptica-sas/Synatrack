@@ -156,3 +156,21 @@ describe("Portafolio: el resumen respeta los filtros (R-005/R-032)", () => {
     expect(within(criticos as HTMLElement).queryByText("Proyecto Verde")).not.toBeInTheDocument();
   });
 });
+
+describe("Portafolio: botón Limpiar filtros (R-006)", () => {
+  it("restablece los cuatro filtros y el resumen vuelve al total global", async () => {
+    vi.mocked(api.getPortfolio).mockResolvedValue(PORTFOLIO);
+    render(<PortfolioTab />);
+
+    expect(await screen.findByText("Proyecto Verde")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Salud"), { target: { value: "RED" } });
+    expect(screen.queryByText("Proyecto Verde")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /limpiar filtros/i }));
+
+    expect(await screen.findByText("Proyecto Verde")).toBeInTheDocument();
+    expect(screen.getByLabelText("Salud")).toHaveValue("");
+    expect(kpiValue("Total proyectos").getByText("2")).toBeInTheDocument();
+  });
+});
