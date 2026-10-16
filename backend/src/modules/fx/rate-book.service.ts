@@ -1,5 +1,5 @@
-import type { PrismaClient } from "@prisma/client";
 import { buildRateBook, type RateBook } from "../../utils/currency.js";
+import type { DbClient } from "../../infra/prisma.js";
 
 /**
  * Carga de un tirón las tasas actuales y todo el histórico, y arma el libro
@@ -17,7 +17,7 @@ import { buildRateBook, type RateBook } from "../../utils/currency.js";
  * encuentre las series casi ordenadas y su `sort` sea barato.
  */
 export async function cargarLibroDeTasas(
-  prisma: Pick<PrismaClient, "fxConfig" | "fxRateHistory">,
+  prisma: Pick<DbClient, "fxConfig" | "fxRateHistory">,
 ): Promise<{ rateBook: RateBook; baseCurrency: string }> {
   const [fxConfigs, fxHistory] = await Promise.all([
     prisma.fxConfig.findMany(),

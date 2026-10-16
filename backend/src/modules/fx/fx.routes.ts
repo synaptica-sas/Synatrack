@@ -5,6 +5,7 @@ import { authenticate, authorize } from "../../auth/guard.js";
 import { permitirTokenCompartidoOSesion } from "../../auth/shared-token.js";
 import { env } from "../../config/env.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { registrarEjecucion } from "../jobs/job-runs.service.js";
 import { runFxSync } from "./fx-sync.service.js";
 
@@ -79,6 +80,16 @@ export async function fxRoutes(app: FastifyInstance) {
         }),
       ]);
 
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.fxConfig,
+        entityId: config.id,
+        action: existing ? "UPDATE" : "CREATE",
+        changedBy: performedBy,
+        before: existing as unknown as Record<string, unknown> | null,
+        after: config as unknown as Record<string, unknown>,
+        request,
+      });
+
       return existing
         ? { data: config }
         : reply.status(201).send({ data: config });
@@ -101,6 +112,14 @@ export async function fxRoutes(app: FastifyInstance) {
 
       try {
         await prisma.fxConfig.delete({ where: { id } });
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.fxConfig,
+          entityId: id,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          request,
+        });
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
@@ -200,7 +219,9 @@ export async function fxRoutes(app: FastifyInstance) {
     // que el cron diario deje de dispararse volvería a pasar inadvertido.
     const inicio = new Date();
     try {
-      const result = await runFxSync(prisma);
+      // Con sesión de usuario el actor es su correo; con el token compartido del
+      // cron no hay `authUser` y se registra como `sistema:fx-sync`.
+      const result = await runFxSync(prisma, request.authUser?.email);
       await registrarEjecucion(prisma, {
         jobName: "fx-sync",
         origin: "http",

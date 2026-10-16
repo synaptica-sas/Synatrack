@@ -1619,15 +1619,33 @@ export async function runAlertEngine(): Promise<void> {
 
 // ─── Audit ─────────────────────────────────────────────────────────────────────
 
+/** Entidades auditadas hoy (espejo de `AUDIT_ENTITIES` del backend). */
+export type AuditEntity =
+  | "project" | "consultant" | "timeEntry" | "extraHourEntry" | "expense"
+  | "revenueEntry" | "financialEntry" | "forecast" | "assignment" | "changeRequest"
+  | "monthlySnapshot" | "approvalDelegation" | "user" | "activity" | "estimation"
+  | "alert" | "consultantBlock" | "capacityConfig" | "capacitySettings"
+  | "capacityReport" | "holiday" | "holidayCalendarYear" | "customHoliday"
+  | "financialCategory" | "healthThresholdConfig" | "approvalDigestConfig"
+  | "extraHoursConfig" | "fxConfig" | "milestone" | "risk" | "issue";
+
+export type AuditAction =
+  | "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REJECT"
+  | "CLOSE" | "CANCEL" | "COMPLETE" | "LOGIN";
+
 export type AuditLog = {
   id: string;
-  entity: string;
+  /** `(string & {})` conserva el autocompletado y tolera valores históricos ("Project"). */
+  entity: AuditEntity | (string & {});
   entityId: string;
-  action: string;
+  action: AuditAction | (string & {});
   changedBy: string;
   before: unknown;
   after: unknown;
   diff?: unknown;
+  /** Solo los ADMIN las reciben; para el resto llegan ausentes o null. */
+  ipAddress?: string | null;
+  userAgent?: string | null;
   createdAt: string;
 };
 
@@ -1635,6 +1653,8 @@ export type AuditLogPage = ApiPage<AuditLog>;
 
 export async function listAuditLogs(params?: {
   entity?: string;
+  /** Una acción o varias separadas por coma (`CREATE,UPDATE`). */
+  action?: string;
   entityId?: string;
   changedBy?: string;
   from?: string;
@@ -1644,6 +1664,7 @@ export async function listAuditLogs(params?: {
 }): Promise<AuditLogPage> {
   const query = new URLSearchParams();
   if (params?.entity) query.set("entity", params.entity);
+  if (params?.action) query.set("action", params.action);
   if (params?.entityId) query.set("entityId", params.entityId);
   if (params?.changedBy) query.set("changedBy", params.changedBy);
   if (params?.from) query.set("from", params.from);

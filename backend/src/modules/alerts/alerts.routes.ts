@@ -101,8 +101,20 @@ export async function alertsRoutes(app: FastifyInstance) {
   app.post(
     "/run",
     { preHandler: [authenticate, authorize([AppRole.ADMIN])] },
-    async (_request, reply) => {
+    async (request, reply) => {
       await runAlertEngine(prisma);
+      // Las alertas que el motor crea o cierra solas NO se auditan una a una
+      // (serían decenas por ejecución, sin un actor legítimo, y cada alerta ya
+      // lleva su propio createdAt/resolvedAt). Sí queda constancia de QUIÉN
+      // forzó una ejecución manual.
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.alert,
+        entityId: "motor-alertas",
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        after: { accion: "ejecución manual del motor de alertas" },
+        request,
+      });
       return reply.status(200).send({ message: "Motor de alertas ejecutado correctamente" });
     },
   );

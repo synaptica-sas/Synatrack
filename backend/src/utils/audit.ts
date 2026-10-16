@@ -1,7 +1,7 @@
-import type { PrismaClient } from "@prisma/client";
 import type { FastifyRequest } from "fastify";
+import type { DbClient } from "../infra/prisma.js";
 
-type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REJECT" | "CLOSE" | "CANCEL" | "COMPLETE";
+type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REJECT" | "CLOSE" | "CANCEL" | "COMPLETE" | "LOGIN";
 
 /**
  * Catálogo único de entidades auditables (R9).
@@ -48,6 +48,11 @@ export const AUDIT_ENTITIES = {
   financialCategory: "financialCategory",
   healthThresholdConfig: "healthThresholdConfig",
   approvalDigestConfig: "approvalDigestConfig",
+  extraHoursConfig: "extraHoursConfig",
+  fxConfig: "fxConfig",
+  milestone: "milestone",
+  risk: "risk",
+  issue: "issue",
 } as const;
 
 export type AuditEntity = (typeof AUDIT_ENTITIES)[keyof typeof AUDIT_ENTITIES];
@@ -110,7 +115,7 @@ function computeDiff(
  * `documentacion/cambios/R9-auditoria.md`.
  */
 export async function writeAudit(
-  prisma: PrismaClient,
+  prisma: DbClient,
   options: {
     entity: AuditEntity;
     entityId: string;
@@ -154,5 +159,67 @@ export async function writeAudit(
     } else {
       console.error("No se pudo escribir en la bitácora de auditoría", detalle);
     }
+  }
+}
+
+/**
+ * Ventana mínima entre dos LOGIN del mismo usuario. Una jornada: recargar la
+ * pestaña o abrir otra no cuenta como un inicio de sesión nuevo.
+ */
+export const UMBRAL_LOGIN_HORAS = 8;
+
+/**
+ * Registra el inicio de sesión de un usuario en `AuditLog` (action `LOGIN`).
+ *
+ * No existe un endpoint de login propio: la sesión la emite Entra ID y el
+ * backend solo ve un token en cada petición. El único punto que ocurre una vez
+ * al arrancar la app es `GET /api/auth/me` (el frontend lo llama al cargar,
+ * ver `App.tsx`), así que se invoca desde ahí y NO desde `authenticate`, que
+ * corre en cada request y ya hace varias consultas.
+ *
+ * Aun así `/me` se vuelve a llamar en cada recarga de página, por eso se aplica
+ * un umbral: si ya hay un LOGIN del mismo usuario, con la misma IP y el mismo
+ * user-agent, dentro de las últimas `UMBRAL_LOGIN_HORAS`, no se escribe otro. Se apoya en el índice
+ * (entity, entityId) y no necesita columnas nuevas.
+ *
+ * Devuelve `true` si escribió el registro. Nunca lanza.
+ */
+export async function registrarLogin(
+  prisma: DbClient,
+  options: { userId: string; email: string; request?: FastifyRequest; ahora?: Date },
+): Promise<boolean> {
+  try {
+    const ahora = options.ahora ?? new Date();
+    const desde = new Date(ahora.getTime() - UMBRAL_LOGIN_HORAS * 3_600_000);
+
+    // La llave del umbral es (usuario, IP, user-agent): un token usado desde
+    // otro equipo o navegador dentro de la ventana SÍ deja rastro. Los filtros
+    // extra se evalúan sobre las filas que ya acota el índice (entity, entityId).
+    const ipAddress = options.request?.ip ?? null;
+    const userAgent = options.request?.headers["user-agent"] ?? null;
+    const reciente = await prisma.auditLog.findFirst({
+      where: {
+        entity: AUDIT_ENTITIES.user,
+        entityId: options.userId,
+        action: "LOGIN",
+        ipAddress,
+        userAgent,
+        createdAt: { gte: desde },
+      },
+      select: { id: true },
+    });
+    if (reciente) return false;
+
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.user,
+      entityId: options.userId,
+      action: "LOGIN",
+      changedBy: options.email,
+      request: options.request,
+    });
+    return true;
+  } catch (err) {
+    options.request?.log.error({ err }, "No se pudo registrar el inicio de sesión");
+    return false;
   }
 }

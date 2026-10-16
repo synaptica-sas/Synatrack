@@ -1,5 +1,6 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
+import { runWithActor } from "./infra/actorContext.js";
 import { prisma } from "./infra/prisma.js";
 import { runMaintenanceCycle, startJobsScheduler, stopJobsScheduler } from "./modules/jobs/jobs.service.js";
 import { ensureDefaultConfigs } from "./modules/extra-hours/extra-hours.routes.js";
@@ -35,7 +36,7 @@ async function main() {
 
     // Siembra de configuraciones de horas extra: una sola vez por proceso.
     // Antes se ejecutaba en cada petición del módulo de horas extra (DEP-10).
-    void ensureDefaultConfigs().catch((e) => app.log.error(e, "[ExtraHoursConfig]"));
+    void runWithActor("sistema:arranque", () => ensureDefaultConfigs()).catch((e) => app.log.error(e, "[ExtraHoursConfig]"));
 
     // Apagado ordenado: sin esto, el temporizador mantiene vivo el proceso y
     // Render/Docker terminan matándolo a la fuerza en cada redespliegue.

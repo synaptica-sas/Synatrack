@@ -129,6 +129,8 @@ export async function xRoutes(app: FastifyInstance) {
 }
 ```
 
+`createdBy`/`updatedBy` se llenan solos con el email del actor (extensión de Prisma en `infra/prisma.ts` + contexto en `infra/actorContext.ts`): **no los pongas a mano**. Los helpers reciben `DbClient`, no `PrismaClient`. Detalle y límites (escrituras anidadas) en `documentacion/cambios/R9-auditoria.md`.
+
 Reglas: siempre `{ data: ... }` (o `204` sin cuerpo en deletes); registrar el módulo en
 `src/routes/index.ts`; si escribe horas/dinero, respetar el candado de `MonthlySnapshot`
 (ver `time-entries` y `extra-hours` como referencia); llamar `writeAudit(...)` en escrituras.
@@ -209,7 +211,7 @@ de `GET /api/auth/permissions` (ya no es una copia).
    `key.split("_")` solo queda un comentario histórico en `projects.routes.ts:348`.
 5. **Tres cálculos de rentabilidad distintos** (`financial.ts`, `/stats/overview`, `/portfolio`,
    `project-detail`) y `marginThreshold` hardcodeado a 15 en stats y alerts.
-6. **Auditoría parcial**: horas, horas extra, gastos, ingresos, consultores y usuarios no dejan rastro.
+6. ~~**Auditoría parcial**~~ — **RESUELTO**: las escrituras dejan rastro en `AuditLog` y los modelos llevan `createdBy`/`updatedBy` automáticos. Ver `documentacion/cambios/R9-auditoria.md`.
 7. Sin paginación en casi ningún `GET /` (excepto `/api/audit`).
 
 **Lo que falta está en `documentacion/PENDIENTES.md`** (lista viva, con las decisiones de
@@ -224,10 +226,11 @@ sugerido. Es la lista que hay que ir vaciando; no repite los §10 ni los de abaj
 - **`GET /api/time-entries` no filtra por rol**: devuelve todas las horas de todos con el objeto
   `consultant` incluido -> expone `hourlyRate` de toda la plantilla a cualquier `CONSULTANT`/`VIEWER`.
   `extra-hours` y `activities` sí filtran por email; time-entries es la excepción.
-- **`POST /api/time-entries` acepta cualquier `consultantId`**: un consultor puede registrar horas
-  a nombre de otro.
-- **`approve`/`reject` de horas toman `approvedBy` del body**, no de `request.authUser` -> el rastro
-  de quién aprobó es falsificable.
+- ~~**`POST /api/time-entries` acepta cualquier `consultantId`**~~ — **RESUELTO**. Usa
+  `resolveTargetConsultantId` (`utils/currentConsultant.ts`): solo ADMIN/PM imputan a otro consultor;
+  el resto solo a sí mismo (403 si pide otro).
+- ~~**`approve`/`reject` de horas toman `approvedBy` del body**~~ — **RESUELTO**. Ambas toman el
+  revisor de `request.authUser` (`time-entries.routes.ts` ~573 y ~617), no del cuerpo.
 - **`nodemailer` con `rejectUnauthorized: false` y `ciphers: "SSLv3"`** en `utils/notifications.ts`.
 - **Los correos HTML interpolan texto del usuario sin escapar** (notas de feedback, nombres).
 - **Los hooks de datos se tragan los errores**: `useProjects` y compañía no exponen estado de error y

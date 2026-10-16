@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AppRole, ExtraHourStatus, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
@@ -296,6 +296,23 @@ const listQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(50),
 });
+
+/** Registra el cambio de la configuración de recargos de un país (CREATE si no existía). */
+async function auditarConfigHorasExtra(
+  request: FastifyRequest,
+  antes: { id: string } | null,
+  despues: { id: string },
+) {
+  await writeAudit(prisma, {
+    entity: AUDIT_ENTITIES.extraHoursConfig,
+    entityId: despues.id,
+    action: antes ? "UPDATE" : "CREATE",
+    changedBy: request.authUser!.email,
+    before: antes as unknown as Record<string, unknown> | null,
+    after: despues as unknown as Record<string, unknown>,
+    request,
+  });
+}
 
 export async function extraHoursRoutes(app: FastifyInstance) {
   // 0. Obtener países soportados dinámicamente
@@ -723,6 +740,8 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const formattedStart = payload.diurnalStart.split(":").length === 2 ? `${payload.diurnalStart}:00` : payload.diurnalStart;
       const formattedEnd = payload.diurnalEnd.split(":").length === 2 ? `${payload.diurnalEnd}:00` : payload.diurnalEnd;
 
+      const antes = await prisma.extraHoursConfig.findUnique({ where: { country } });
+
       const updated = await prisma.extraHoursConfig.upsert({
         where: { country },
         update: {
@@ -748,6 +767,10 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         },
       });
 
+      // Los multiplicadores y el divisor mensual determinan el monto de nómina
+      // de toda solicitud futura de ese país.
+      await auditarConfigHorasExtra(request, antes, updated);
+
       return { data: updated };
     },
   );
@@ -763,6 +786,8 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       
       const defaultConfig = defaultConfigs.find(c => c.country.toLowerCase() === country.toLowerCase()) || defaultConfigs[0];
       
+      const antes = await prisma.extraHoursConfig.findUnique({ where: { country: defaultConfig.country } });
+
       const updated = await prisma.extraHoursConfig.upsert({
         where: { country: defaultConfig.country },
         update: {
@@ -787,6 +812,8 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           monthlyDivisor: defaultConfig.monthlyDivisor,
         },
       });
+
+      await auditarConfigHorasExtra(request, antes, updated);
 
       return { data: updated };
     },

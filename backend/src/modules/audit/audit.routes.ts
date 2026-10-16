@@ -9,6 +9,11 @@ const querySchema = z.object({
   entity: z.string().optional(),
   entityId: z.string().optional(),
   changedBy: z.string().optional(),
+  // Una acción o varias separadas por coma: `?action=LOGIN`, `?action=CREATE,UPDATE`.
+  action: z
+    .string()
+    .optional()
+    .transform((v) => (v ? v.split(",").map((a) => a.trim()).filter(Boolean) : undefined)),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   page: z.coerce.number().int().positive().default(1),
@@ -21,6 +26,7 @@ export async function auditRoutes(app: FastifyInstance) {
     { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.FINANCE, AppRole.PM])] },
     async (request) => {
       const query = querySchema.parse(request.query);
+      const esAdmin = request.authUser?.roles.includes(AppRole.ADMIN) ?? false;
       const skip = (query.page - 1) * query.pageSize;
 
       // Filtrar por entidad incluye las variantes históricas (`Project`,
@@ -31,6 +37,12 @@ export async function auditRoutes(app: FastifyInstance) {
         entity: query.entity ? { in: variantesDeEntidad(query.entity) } : undefined,
         entityId: query.entityId,
         changedBy: query.changedBy,
+        // Los LOGIN (con IP y navegador) son datos de seguridad: solo ADMIN. Para el
+        // resto se excluyen siempre, así `action=LOGIN` les devuelve vacío.
+        action: {
+          in: query.action?.length ? query.action : undefined,
+          notIn: esAdmin ? undefined : ["LOGIN"],
+        },
         createdAt: {
           gte: query.from,
           lte: query.to,
@@ -48,7 +60,8 @@ export async function auditRoutes(app: FastifyInstance) {
       ]);
 
       return {
-        data: logs,
+        // IP y user-agent identifican el equipo de la persona: solo ADMIN.
+        data: esAdmin ? logs : logs.map(({ ipAddress: _ip, userAgent: _ua, ...resto }) => resto),
         meta: {
           total,
           page: query.page,

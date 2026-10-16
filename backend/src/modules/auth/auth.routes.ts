@@ -1,6 +1,7 @@
 import { resolvePermissions, rolePermissions } from "../../auth/roles.js";
 import { authenticate } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { registrarLogin } from "../../utils/audit.js";
 import type { FastifyInstance } from "fastify";
 
 export async function authRoutes(app: FastifyInstance) {
@@ -14,6 +15,17 @@ export async function authRoutes(app: FastifyInstance) {
       const dbUser = await prisma.user.findUnique({
         where: { email: user.email },
       });
+
+      // Aquí arranca la sesión del frontend; ver `registrarLogin` para el
+      // umbral que evita un registro por cada recarga. En modo demo también se
+      // registra (con la identidad simulada): el umbral lo mantiene sin ruido.
+      // Es una escritura de bitácora, no de datos de negocio.
+      await registrarLogin(prisma, {
+        userId: dbUser?.id || user.id,
+        email: user.email,
+        request,
+      });
+
       return {
         data: {
           id: dbUser?.id || user.id,

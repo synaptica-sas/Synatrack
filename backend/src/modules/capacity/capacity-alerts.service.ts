@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { getLogger } from "../../infra/logger.js";
 import {
   TIPOS_ALERTA_CAPACITY,
@@ -8,6 +8,7 @@ import {
 } from "../../utils/capacityAlerts.js";
 import { addMonthsKey, monthKeyOf, toIsoDate } from "../../utils/isoDate.js";
 import { cargarYCalcular } from "./monthly.service.js";
+import type { DbClient } from "../../infra/prisma.js";
 
 /**
  * Trabajo `capacity-alerts` (CONTRATO §5.3): mantiene al día las alertas CONSULTANT_OVERLOADED y
@@ -34,7 +35,7 @@ export interface ResultadoAlertasCapacity {
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 
 export async function runCapacityAlerts(
-  prisma: PrismaClient,
+  prisma: DbClient,
   ahora: Date = new Date(),
 ): Promise<ResultadoAlertasCapacity> {
   const fila = await prisma.capacitySettings.findUnique({ where: { scope: "GENERAL" } });

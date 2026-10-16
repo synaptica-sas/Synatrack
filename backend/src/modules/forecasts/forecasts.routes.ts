@@ -191,6 +191,14 @@ export async function forecastsRoutes(app: FastifyInstance) {
 
       try {
         await prisma.forecast.delete({ where: { id } });
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.forecast,
+          entityId: id,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          request,
+        });
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;

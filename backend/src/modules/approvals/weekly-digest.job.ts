@@ -1,4 +1,4 @@
-import { ExtraHourStatus, TimeEntryStatus, type PrismaClient } from "@prisma/client";
+import { ExtraHourStatus, TimeEntryStatus } from "@prisma/client";
 import { getLogger } from "../../infra/logger.js";
 import {
   AMBITO_GENERAL,
@@ -10,6 +10,7 @@ import {
   type PendienteCrudo,
 } from "../../utils/approval-digest.js";
 import { notifyWeeklyApprovalDigest } from "../../utils/notifications.js";
+import type { DbClient } from "../../infra/prisma.js";
 
 /**
  * Trabajo `approval-digest`: el resumen semanal de aprobaciones pendientes que
@@ -42,7 +43,7 @@ import { notifyWeeklyApprovalDigest } from "../../utils/notifications.js";
  * @returns `true` si esta ejecución se quedó con la semana.
  */
 async function reclamarSemana(
-  prisma: PrismaClient,
+  prisma: DbClient,
   inicioSemana: Date,
   ahora: Date,
 ): Promise<boolean> {
@@ -69,7 +70,7 @@ function aFechaUtc(fecha: Date): string {
  * recordatorio de que hay trabajo que aprobar, no un documento de nómina, y
  * `Consultant.hourlyRate` no tiene por qué viajar a un buzón.
  */
-async function pendientesDeHoras(prisma: PrismaClient): Promise<PendienteCrudo[]> {
+async function pendientesDeHoras(prisma: DbClient): Promise<PendienteCrudo[]> {
   const filas = await prisma.timeEntry.findMany({
     where: { status: TimeEntryStatus.PENDING },
     select: {
@@ -90,7 +91,7 @@ async function pendientesDeHoras(prisma: PrismaClient): Promise<PendienteCrudo[]
 }
 
 /** Horas extra esperando la aprobación del PM (el único nivel que queda). */
-async function pendientesDeHorasExtra(prisma: PrismaClient): Promise<PendienteCrudo[]> {
+async function pendientesDeHorasExtra(prisma: DbClient): Promise<PendienteCrudo[]> {
   const filas = await prisma.extraHourEntry.findMany({
     where: { status: ExtraHourStatus.PENDING_PM },
     select: {
@@ -112,7 +113,7 @@ async function pendientesDeHorasExtra(prisma: PrismaClient): Promise<PendienteCr
 
 /** Nombre para el saludo, por correo. Lo que falte caerá al propio correo. */
 async function nombresDePm(
-  prisma: PrismaClient,
+  prisma: DbClient,
   correos: string[],
 ): Promise<Map<string, string>> {
   if (correos.length === 0) return new Map();
@@ -143,7 +144,7 @@ export interface ResultadoResumenSemanal {
  * demás PM reciban el suyo ni tumbar el ciclo de trabajos.
  */
 export async function runWeeklyApprovalDigest(
-  prisma: PrismaClient,
+  prisma: DbClient,
   ahora: Date = new Date(),
 ): Promise<ResultadoResumenSemanal> {
   const log = getLogger();

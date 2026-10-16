@@ -3,6 +3,7 @@ import { AppRole, Prisma, TimeEntrySource, TimeEntryStatus } from "@prisma/clien
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import {
   isMonthClosed,
   resolveActivityId,
@@ -248,6 +249,20 @@ export async function timerRoutes(app: FastifyInstance) {
         await tx.runningTimer.delete({ where: { id: timer.id } });
 
         return created;
+      });
+
+      // El cronómetro en sí (RunningTimer) no se audita: es estado efímero que
+      // se crea, edita y descarta decenas de veces al día. Lo que importa es el
+      // TimeEntry que nace aquí, que entra al flujo de aprobación y mueve costos.
+      // Quién lo registró sale del token, aunque un ADMIN/PM pueda detener el
+      // cronómetro de otra persona (entonces el consultor del registro es otro).
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.timeEntry,
+        entityId: entry.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: { ...(entry as unknown as Record<string, unknown>), origen: "cronometro" },
+        request,
       });
 
       return reply.status(201).send({ data: entry });

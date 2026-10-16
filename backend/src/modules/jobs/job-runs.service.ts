@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { getLogger } from "../../infra/logger.js";
 import {
   type EjecucionRegistrada,
@@ -7,6 +7,7 @@ import {
   type TrabajoVigilado,
   evaluarFrescura,
 } from "../../utils/job-freshness.js";
+import type { DbClient } from "../../infra/prisma.js";
 
 /**
  * Registro persistente de las ejecuciones de los trabajos periódicos.
@@ -109,7 +110,7 @@ const LARGO_MAXIMO_ERROR = 1000;
  * @returns `true` si la fila quedó escrita.
  */
 export async function registrarEjecucion(
-  prisma: PrismaClient,
+  prisma: DbClient,
   ejecucion: EjecucionARegistrar,
 ): Promise<boolean> {
   try {
@@ -141,7 +142,7 @@ export async function registrarEjecucion(
  * Borra las ejecuciones de un trabajo que excedan `RETENCION_POR_TRABAJO`.
  * Tolerante a fallos por la misma razón que `registrarEjecucion`.
  */
-export async function purgarHistorial(prisma: PrismaClient, jobName: string): Promise<void> {
+export async function purgarHistorial(prisma: DbClient, jobName: string): Promise<void> {
   try {
     await prisma.$executeRaw`
       DELETE FROM "JobRun"
@@ -176,7 +177,7 @@ type FilaHistorial = {
  * a lo sumo una fila por trabajo y clase, nunca recorre el historial completo.
  */
 export async function obtenerHistoriales(
-  prisma: PrismaClient,
+  prisma: DbClient,
 ): Promise<Map<string, HistorialTrabajo>> {
   const filas = await prisma.$queryRaw<FilaHistorial[]>(Prisma.sql`
     SELECT 'intento' AS "clase", i.*
@@ -237,7 +238,7 @@ export function invalidarCacheFrescura(): void {
  * `ahora` explícito la caché se ignora por completo.
  */
 export async function obtenerFrescura(
-  prisma: PrismaClient,
+  prisma: DbClient,
   ahora?: Date,
 ): Promise<FrescuraTrabajos> {
   const usarCache = ahora === undefined;

@@ -144,14 +144,58 @@ que el histórico está partido, porque desde la API ya no lo está.
 
 ## 5. Lo que NO se hizo, y los riesgos que quedan
 
-- **No se audita `fx`, `holidays`, `extra-hours/config`, `feedback`, `profile` ni `capacity/config`.**
-  Son configuración y preferencias, no hechos de negocio con consecuencia económica directa. La
-  excepción discutible es `extra-hours/config` (los multiplicadores de recargo por país **sí**
-  afectan los montos de nómina de todas las solicitudes futuras): queda como el primer candidato de
-  una siguiente pasada.
-- **No se audita `alerts.service.ts`.** El motor de alertas crea y cierra alertas solo, sin usuario
-  autenticado: no hay `changedBy` legítimo que poner y llenar la bitácora de filas de un proceso
-  automático le quitaría señal. Solo se audita la resolución **manual** desde la ruta.
+### Segunda pasada: huecos cerrados (2026-10-15)
+
+Lo que arriba figuraba como "no auditado" ahora sí lo está, salvo lo indicado en "Sigue sin auditarse".
+
+| Área | Entidad | Qué queda registrado |
+|---|---|---|
+| `timer` POST /stop | `timeEntry` | CREATE de las horas que nacen del cronómetro (`after.origen = "cronometro"`), con el correo del token |
+| `extra-hours` PUT /config/:country y POST /config/:country/reset | `extraHoursConfig` | CREATE/UPDATE con before/after de multiplicadores y divisor mensual |
+| `fx` PUT, DELETE, POST /sync | `fxConfig` | CREATE/UPDATE/DELETE. La sincronización solo escribe si la tasa cambió; actor = correo si la dispara un usuario, `sistema:fx-sync` si es el cron con token |
+| `milestones` (5 escrituras) | `milestone` | CREATE, UPDATE (editar/estado), COMPLETE, DELETE |
+| `risks` (4) | `risk` | CREATE, UPDATE (editar/estado), DELETE |
+| `issues` (4) | `issue` | CREATE, UPDATE (editar/resolver), DELETE |
+| `project-detail` PATCH health / completion / phase | `project` | UPDATE con before/after del campo |
+| `forecasts` DELETE | `forecast` | DELETE |
+| `change-requests` POST y DELETE | `changeRequest` | CREATE, DELETE |
+| `alerts` POST /run | `alert` | quién forzó la ejecución manual (`entityId = "motor-alertas"`) |
+| Login / aprovisionamiento JIT (`auth/guard.ts`) | `user`, `consultant` | CREATE al crear el usuario/consultor; UPDATE de roles solo si cambiaron (before/after); actor `sistema:entra-id` |
+| Inicio de sesión | `user` | action `LOGIN`, ver abajo |
+
+**LOGIN.** No hay endpoint de login (la sesión la emite Entra ID) y `authenticate` corre en cada
+petición, así que no se registra ahí. El frontend llama a `GET /api/auth/me` al arrancar
+(`App.tsx`), y ese es el punto elegido (`registrarLogin` en `utils/audit.ts`). Como `/me` también se
+llama en cada recarga de página, hay un umbral de **8 horas** (`UMBRAL_LOGIN_HORAS`): si ya existe un
+LOGIN del mismo usuario **con la misma IP y el mismo user-agent** en esa ventana no se escribe otro; si
+el origen cambia (otro equipo o navegador con el mismo token) sí queda un LOGIN nuevo. Usa el índice
+`(entity, entityId)` y ninguna columna nueva. `changedBy` es el correo del usuario. En modo demo también
+se registra (con la identidad simulada) y el umbral evita el ruido.
+
+**Alcance de LOGIN:** significa "arranque de sesión en la UI" (la llamada a `GET /api/auth/me`), no
+control de acceso al API. Quien use un token directamente contra otros endpoints sin pasar por `/me` no
+genera LOGIN; esta marca no sirve para reconstruir accesos al API.
+
+**Visibilidad en `GET /api/audit`:** `ipAddress`, `userAgent` y los registros `LOGIN` solo los ve ADMIN;
+PM y FINANCE reciben la bitácora sin esos datos. Los cambios de rol (`entity=user`) siguen visibles para
+PM/FINANCE (decisión por defecto). Filtro opcional `action` (una o varias, separadas por coma); para
+no-ADMIN, `action=LOGIN` devuelve vacío.
+
+**Actor de procesos sin usuario:** `sistema:<nombre>` (`sistema:entra-id`, `sistema:fx-sync`).
+
+### Sigue sin auditarse, a propósito
+
+- **`RunningTimer` (start / patch / delete del cronómetro):** estado efímero que cambia decenas de
+  veces al día. Lo que tiene consecuencia económica es el `TimeEntry` del stop, y ese sí queda.
+- **`POST /extra-hours/calculate`:** verificado, es solo cálculo; no escribe.
+- **Alertas auto-generadas por `alerts.service.ts`:** serían decenas por ejecución sin un actor
+  legítimo; cada alerta ya lleva `createdAt`/`resolvedAt`. Solo se audita la resolución manual y la
+  ejecución manual del motor.
+- **`feedback`, `profile` (preferencias del propio usuario), `jobs/run` (ya deja `JobRun`) y
+  `holidays`, `capacity/config`:** fuera de alcance de esta pasada.
+- Observación: `GET /extra-hours/config/:country` puede crear la configuración por defecto dentro de un
+  GET; es una escritura en lectura que se deja anotada, no se tocó.
+
 - **Una fila de auditoría puede perderse en silencio** si el `INSERT` falla (§2). Solo queda
   constancia en el log del servidor. Mitigación pendiente: una alerta de operación sobre esa línea
   de log, o un contador de fallos expuesto en `/health`.
@@ -220,3 +264,41 @@ backend/src/modules/snapshots/snapshots.routes.ts       constantes del catálogo
 backend/tests/routes/auditoria-escrituras.test.ts       nuevo, 6 pruebas
 documentacion/cambios/R9-auditoria.md                   este documento
 ```
+
+## Columnas de trazabilidad: `createdBy` / `updatedBy`
+
+Además de la bitácora (`AuditLog`), 32 modelos llevan `createdAt`, `updatedAt`,
+`createdBy` y `updatedBy` (email del actor). **Los handlers no las escriben**: se
+llenan solas.
+
+**Cómo funciona**
+
+1. `src/infra/actorContext.ts`: un `AsyncLocalStorage` con un almacén mutable
+   `{ actor }`. Un hook global `preHandler` (`app.ts`) abre un almacén por petición con
+   `als.run(..., done)`; `authenticate` lo rellena con el email validado (también en modo
+   demo, con la identidad simulada). Se usa `preHandler` y no `onRequest` porque tras leer
+   el cuerpo de la petición el contexto asíncrono puede perderse.
+2. `src/infra/prisma.ts`: el cliente exportado es `PrismaClient.$extends({ query })`. La
+   extensión consulta `Prisma.dmmf` para saber qué modelos tienen las columnas (no hay
+   lista a mano) y, vía `src/infra/actorStamp.ts` (lógica pura, con test), aplica:
+   `create`/`createMany`/`createManyAndReturn` -> `createdBy` y `updatedBy`;
+   `update`/`updateMany`/`updateManyAndReturn` -> `updatedBy`; `upsert` -> `create` con
+   ambos y `update` con `updatedBy`. Nunca pisa un valor explícito (por eso `Milestone`,
+   `Issue` y `Risk`, con `createdBy` obligatorio, siguen funcionando) y sin actor no toca nada.
+3. Tipos: el cliente extendido no es un `PrismaClient`. Se exporta `DbClient = typeof prisma`
+   y los helpers (`writeAudit`, jobs, servicios) lo usan en lugar de `PrismaClient`.
+4. Trabajos periódicos: `jobs.service.ts` ejecuta cada trabajo con
+   `runWithActor("sistema:<nombre>")`; si un usuario dispara el ciclo con
+   `POST /api/jobs/run` se conserva su correo. `runFxSync` usa su propio actor
+   (`sistema:fx-sync` o el usuario) y el arranque de `server.ts` usa `sistema:arranque`.
+   El aprovisionamiento JIT de `authenticate` escribe como `sistema:entra-id`.
+
+**Qué no cubre**
+
+- Escrituras **anidadas** (`data: { hijos: { create: ... } }`): la extensión solo ve la
+  operación de nivel superior. Se revisó el código y hoy no existe ninguna sobre tablas con
+  estas columnas; si aparece una, hay que poner `createdBy`/`updatedBy` a mano en el anidado.
+- Escrituras en SQL crudo (`$executeRaw`) y desde scripts o seed (sin actor: quedan en `null`).
+- Borrados: no hay columna; los cubre `AuditLog`.
+- `$transaction` (interactiva o en arreglo) sobre el cliente extendido sí aplica la extensión
+  (comprobado con el cronómetro en `tests/routes/trazabilidad-actor.test.ts`).

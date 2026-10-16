@@ -1,8 +1,9 @@
 import { AppRole, IssueSeverity, IssueStatus } from "@prisma/client";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const projectIdSchema = z.object({ projectId: z.string().min(1) });
 const idSchema = z.object({ projectId: z.string().min(1), id: z.string().min(1) });
@@ -13,6 +14,24 @@ const issuePayloadSchema = z.object({
   severity: z.nativeEnum(IssueSeverity).default("MEDIUM"),
   owner: z.string().optional(),
 });
+
+async function auditarIssue(
+  request: FastifyRequest,
+  action: "CREATE" | "UPDATE" | "DELETE",
+  id: string,
+  before: object | null,
+  after: object | null,
+) {
+  await writeAudit(prisma, {
+    entity: AUDIT_ENTITIES.issue,
+    entityId: id,
+    action,
+    changedBy: request.authUser!.email,
+    before: before as Record<string, unknown> | null,
+    after: after as Record<string, unknown> | null,
+    request,
+  });
+}
 
 export async function issuesRoutes(app: FastifyInstance) {
   app.get(
@@ -38,6 +57,7 @@ export async function issuesRoutes(app: FastifyInstance) {
       const issue = await prisma.issue.create({
         data: { projectId, ...payload, createdBy: request.authUser!.email },
       });
+      await auditarIssue(request, "CREATE", issue.id, null, issue);
       return reply.status(201).send({ data: issue });
     },
   );
@@ -51,6 +71,7 @@ export async function issuesRoutes(app: FastifyInstance) {
       const existing = await prisma.issue.findFirst({ where: { id, projectId } });
       if (!existing) return reply.status(404).send({ message: "Issue no encontrado" });
       const issue = await prisma.issue.update({ where: { id }, data: payload });
+      await auditarIssue(request, "UPDATE", id, existing, issue);
       return { data: issue };
     },
   );
@@ -70,6 +91,7 @@ export async function issuesRoutes(app: FastifyInstance) {
         where: { id },
         data: { status, resolution, resolvedAt: new Date() },
       });
+      await auditarIssue(request, "UPDATE", id, existing, issue);
       return { data: issue };
     },
   );
@@ -84,6 +106,7 @@ export async function issuesRoutes(app: FastifyInstance) {
       
       try {
         await prisma.issue.delete({ where: { id } });
+        await auditarIssue(request, "DELETE", id, existing, null);
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;

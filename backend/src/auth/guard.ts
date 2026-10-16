@@ -2,8 +2,18 @@ import { AppRole, Prisma } from "@prisma/client";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { env } from "../config/env.js";
+import { setActor } from "../infra/actorContext.js";
 import { prisma } from "../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../utils/audit.js";
 import { resolvePermissions, type Permission } from "./roles.js";
+
+/**
+ * Actor de la bitácora para lo que ocurre sin que nadie lo pida en la app:
+ * el alta automática (JIT) y la sincronización de roles vienen de Entra ID, no
+ * de una acción del usuario. Su correo queda en `after`; `changedBy` deja claro
+ * que fue el sistema y no un administrador quien tocó la cuenta.
+ */
+const ACTOR_ENTRA_ID = "sistema:entra-id";
 
 /**
  * Crea la relación usuario-rol si no existe. El frontend dispara varias
@@ -190,6 +200,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     }
 
     request.authUser = resolved.identity;
+    setActor(resolved.identity.email);
     return;
   }
 
@@ -214,6 +225,12 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     return reply.status(401).send({ message: "Token does not include a valid email" });
   }
 
+  // Todo lo que se escribe en este bloque (alta del usuario, roles, consultor)
+  // lo origina Entra ID, no una acción del usuario: createdBy/updatedBy quedan
+  // como `sistema:entra-id`, igual que la bitácora. Al final se reemplaza por el
+  // correo real para que las escrituras del handler lleven al usuario.
+  setActor(ACTOR_ENTRA_ID);
+
   // JIT Provisioning: Buscar o crear dinámicamente al usuario
   let user = await prisma.user.findUnique({
     where: { email },
@@ -226,7 +243,12 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     },
   });
 
+  // Para auditar al final, con los roles ya definitivos.
+  let usuarioCreadoAhora = false;
+  const rolesAntes = user ? user.roles.map((entry) => entry.role.name).sort() : [];
+
   if (!user) {
+    usuarioCreadoAhora = true;
     const countryMap: Record<string, string> = {
       CO: "Colombia",
       PE: "Peru",
@@ -367,7 +389,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
         where: { email: { equals: userWithRoles.email, mode: "insensitive" } },
       });
       if (!existingConsultant) {
-        await prisma.consultant.create({
+        const createdConsultant = await prisma.consultant.create({
           data: {
             fullName: userWithRoles.displayName,
             email: userWithRoles.email,
@@ -379,10 +401,50 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
             allowWeekendWork: false,
           },
         });
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.consultant,
+          entityId: createdConsultant.id,
+          action: "CREATE",
+          changedBy: ACTOR_ENTRA_ID,
+          after: createdConsultant as unknown as Record<string, unknown>,
+          request,
+        });
       }
     } catch (err) {
       request.log.error({ err }, "Falló la sincronización JIT de consultor en el login");
     }
+  }
+
+  // Auditoría del aprovisionamiento. Se compara el estado final contra el
+  // inicial, así un solo registro cubre las tres vías de cambio de roles
+  // (claim de Azure, CONSULTANT por defecto, ADMIN_EMAIL) y no se escribe nada
+  // cuando el login no cambió nada, que es la inmensa mayoría de las peticiones.
+  const rolesDespues = [...roles].sort();
+  if (usuarioCreadoAhora) {
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.user,
+      entityId: user.id,
+      action: "CREATE",
+      changedBy: ACTOR_ENTRA_ID,
+      after: {
+        email: userWithRoles.email,
+        displayName: userWithRoles.displayName,
+        country: userWithRoles.country,
+        roles: rolesDespues,
+        origen: "aprovisionamiento JIT",
+      },
+      request,
+    });
+  } else if (JSON.stringify(rolesAntes) !== JSON.stringify(rolesDespues)) {
+    await writeAudit(prisma, {
+      entity: AUDIT_ENTITIES.user,
+      entityId: user.id,
+      action: "UPDATE",
+      changedBy: ACTOR_ENTRA_ID,
+      before: { email: userWithRoles.email, roles: rolesAntes },
+      after: { email: userWithRoles.email, roles: rolesDespues },
+      request,
+    });
   }
 
   request.authUser = {
@@ -391,6 +453,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     displayName: user.displayName,
     roles,
   };
+  setActor(user.email);
 }
 
 /**

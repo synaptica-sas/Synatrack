@@ -219,6 +219,15 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
       const updated = await prisma.project.update({ where: { id }, data: { healthStatus } });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.project,
+        entityId: id,
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        before: { healthStatus: project.healthStatus },
+        after: { healthStatus: updated.healthStatus },
+        request,
+      });
       return { data: updated };
     },
   );
@@ -233,6 +242,15 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
       const updated = await prisma.project.update({ where: { id }, data: { completionPct } });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.project,
+        entityId: id,
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        before: { completionPct: Number(project.completionPct) },
+        after: { completionPct: Number(updated.completionPct) },
+        request,
+      });
       return { data: updated };
     },
   );
@@ -406,6 +424,15 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
       const updated = await prisma.project.update({ where: { id }, data: { phase } });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.project,
+        entityId: id,
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        before: { phase: project.phase },
+        after: { phase: updated.phase },
+        request,
+      });
       return { data: updated };
     },
   );

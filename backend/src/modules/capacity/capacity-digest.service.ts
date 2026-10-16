@@ -1,4 +1,4 @@
-import { AppRole, type PrismaClient } from "@prisma/client";
+import { AppRole } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { getLogger } from "../../infra/logger.js";
 import { decidirEnvio, inicioSemanaIsoUtc } from "../../utils/approval-digest.js";
@@ -8,6 +8,7 @@ import { addMonthsKey, monthKeyOf, toIsoDate } from "../../utils/isoDate.js";
 import { sendEmail } from "../../utils/notifications.js";
 import { AJUSTES_ALERTAS_POR_DEFECTO } from "./capacity-alerts.service.js";
 import { cargarYCalcular } from "./monthly.service.js";
+import type { DbClient } from "../../infra/prisma.js";
 
 /**
  * Trabajo `capacity-digest` (CONTRATO §5.4): resumen semanal de capacity por correo a ADMIN y
@@ -42,7 +43,7 @@ function urlDeLaApp(): string {
 }
 
 export async function runCapacityDigest(
-  prisma: PrismaClient,
+  prisma: DbClient,
   ahora: Date = new Date(),
 ): Promise<ResultadoResumenCapacity> {
   const log = getLogger();

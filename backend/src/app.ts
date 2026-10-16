@@ -5,6 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import { ZodError } from "zod";
 import { env } from "./config/env.js";
 import { registerRoutes } from "./routes/index.js";
+import { abrirContextoDeActor } from "./infra/actorContext.js";
 import { setAppLogger } from "./infra/logger.js";
 
 function normalizeOrigin(value: string) {
@@ -33,6 +34,16 @@ export async function buildApp() {
       // JSON mal formado es un error del cliente (400), no del servidor.
       done(Object.assign(new Error("El cuerpo de la petición no es un JSON válido."), { statusCode: 400 }));
     }
+  });
+
+  // Contexto del actor (createdBy/updatedBy automáticos). Se abre en `preHandler`
+  // y no en `onRequest` a propósito: tras leer el cuerpo de la petición (stream)
+  // el contexto asíncrono de Node puede perderse, y `preHandler` ya corre después
+  // del parseo. Al ser global, se ejecuta antes que el `preHandler` de cada ruta
+  // (donde vive `authenticate`, que rellena el actor). `als.run` + `done` mantiene
+  // el contexto aislado por petición, sin filtraciones entre peticiones concurrentes.
+  app.addHook("preHandler", (_request, _reply, done) => {
+    abrirContextoDeActor(done);
   });
 
   // Cabeceras de seguridad. `contentSecurityPolicy` va desactivado porque esto

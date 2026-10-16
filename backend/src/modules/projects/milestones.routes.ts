@@ -1,8 +1,9 @@
 import { AppRole, MilestoneStatus } from "@prisma/client";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const projectIdSchema = z.object({ projectId: z.string().min(1) });
 const idSchema = z.object({ projectId: z.string().min(1), id: z.string().min(1) });
@@ -15,6 +16,25 @@ const milestonePayloadSchema = z.object({
   deliverable: z.string().optional(),
   note: z.string().optional(),
 });
+
+/** Auditoría de hitos: mover un hito cambia el avance ponderado del proyecto. */
+async function auditarHito(
+  request: FastifyRequest,
+  action: "CREATE" | "UPDATE" | "DELETE" | "COMPLETE",
+  id: string,
+  before: object | null,
+  after: object | null,
+) {
+  await writeAudit(prisma, {
+    entity: AUDIT_ENTITIES.milestone,
+    entityId: id,
+    action,
+    changedBy: request.authUser!.email,
+    before: before as Record<string, unknown> | null,
+    after: after as Record<string, unknown> | null,
+    request,
+  });
+}
 
 export async function milestonesRoutes(app: FastifyInstance) {
   // GET /api/projects/:projectId/milestones
@@ -42,6 +62,7 @@ export async function milestonesRoutes(app: FastifyInstance) {
       const milestone = await prisma.milestone.create({
         data: { projectId, ...payload, createdBy: request.authUser!.email },
       });
+      await auditarHito(request, "CREATE", milestone.id, null, milestone);
       return reply.status(201).send({ data: milestone });
     },
   );
@@ -71,6 +92,7 @@ export async function milestonesRoutes(app: FastifyInstance) {
           await prisma.project.update({ where: { id: projectId }, data: { completionPct: 0 } });
         }
 
+        await auditarHito(request, "UPDATE", id, existing, milestone);
         return { data: milestone };
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
@@ -95,6 +117,7 @@ export async function milestonesRoutes(app: FastifyInstance) {
         where: { id },
         data: { status: "COMPLETED", actualDate: new Date(), acceptedBy: acceptedBy ?? request.authUser!.email },
       });
+      await auditarHito(request, "COMPLETE", id, existing, milestone);
 
       // Recalculate project completionPct from weighted milestones
       const allMilestones = await prisma.milestone.findMany({ where: { projectId } });
@@ -121,6 +144,7 @@ export async function milestonesRoutes(app: FastifyInstance) {
       const existing = await prisma.milestone.findFirst({ where: { id, projectId } });
       if (!existing) return reply.status(404).send({ message: "Hito no encontrado" });
       const milestone = await prisma.milestone.update({ where: { id }, data: { status } });
+      await auditarHito(request, "UPDATE", id, existing, milestone);
 
       // Recalculate completionPct whenever a milestone status changes
       const allMilestones = await prisma.milestone.findMany({ where: { projectId } });
@@ -147,6 +171,7 @@ export async function milestonesRoutes(app: FastifyInstance) {
       
       try {
         await prisma.milestone.delete({ where: { id } });
+        await auditarHito(request, "DELETE", id, existing, null);
 
         // Recalculate completionPct after deletion
         const remaining = await prisma.milestone.findMany({ where: { projectId } });

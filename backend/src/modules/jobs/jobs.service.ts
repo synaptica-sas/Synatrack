@@ -1,5 +1,5 @@
-import type { PrismaClient } from "@prisma/client";
 import { env } from "../../config/env.js";
+import { getActor, runWithActor } from "../../infra/actorContext.js";
 import { getLogger } from "../../infra/logger.js";
 import { runAlertEngine } from "../alerts/alerts.service.js";
 import { runWeeklyApprovalDigest } from "../approvals/weekly-digest.job.js";
@@ -7,6 +7,7 @@ import { runAssignmentMaintenance } from "../assignments/assignments.job.js";
 import { runCapacityAlerts } from "../capacity/capacity-alerts.service.js";
 import { runCapacityDigest } from "../capacity/capacity-digest.service.js";
 import { registrarEjecucion } from "./job-runs.service.js";
+import type { DbClient } from "../../infra/prisma.js";
 
 /** De dónde salió la ejecución. Solo sirve para el log y la respuesta HTTP. */
 export type OrigenCiclo = "arranque" | "intervalo" | "http";
@@ -29,7 +30,7 @@ export interface ResultadoCiclo {
 
 interface Trabajo {
   nombre: string;
-  ejecutar: (prisma: PrismaClient) => Promise<void>;
+  ejecutar: (prisma: DbClient) => Promise<void>;
 }
 
 /**
@@ -96,7 +97,7 @@ export function hayCicloEnCurso(): boolean {
  *  - Cada ciclo y cada trabajo dejan su resultado y su duración en el log.
  */
 export async function runMaintenanceCycle(
-  prisma: PrismaClient,
+  prisma: DbClient,
   origen: OrigenCiclo,
 ): Promise<ResultadoCiclo> {
   const log = getLogger();
@@ -123,7 +124,10 @@ export async function runMaintenanceCycle(
       let resultado: ResultadoTrabajo;
 
       try {
-        await trabajo.ejecutar(prisma);
+        // Actor de createdBy/updatedBy: si un usuario disparó el ciclo a mano
+        // (POST /api/jobs/run con sesión) se conserva su correo; en el arranque,
+        // el intervalo o el cron con token compartido es `sistema:<trabajo>`.
+        await runWithActor(getActor() ?? `sistema:${trabajo.nombre}`, () => trabajo.ejecutar(prisma));
         const duracionMs = Date.now() - inicioTrabajo.getTime();
         resultado = { nombre: trabajo.nombre, ok: true, duracionMs };
         trabajos.push(resultado);
@@ -205,7 +209,7 @@ let temporizador: NodeJS.Timeout | null = null;
  * @returns `true` si quedó un temporizador activo.
  */
 export function startJobsScheduler(
-  prisma: PrismaClient,
+  prisma: DbClient,
   minutos: number = env.JOBS_INTERVAL_MINUTES,
 ): boolean {
   const log = getLogger();

@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
 import { listAuditLogs, type AuditLog } from "../../services/api";
+import {
+  AUDIT_ACTION_OPTIONS,
+  AUDIT_ENTITY_OPTIONS,
+  auditActionLabel,
+  auditActionTone,
+  auditEntityLabel,
+} from "./auditLabels";
 
 export function AuditTab({ onError }: { onError: (msg: string) => void }) {
   const [filters, setFilters] = useState({
     entity: "",
+    action: "",
     changedBy: "",
     from: "",
     to: "",
@@ -19,6 +27,7 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
     try {
       const result = await listAuditLogs({
         entity: filters.entity || undefined,
+        action: filters.action || undefined,
         changedBy: filters.changedBy || undefined,
         from: filters.from || undefined,
         to: filters.to || undefined,
@@ -34,16 +43,6 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
     }
   }
 
-  /**
-   * Tono de estado de la acción. Devuelve el modificador de `.state-chip`, no
-   * un color: el sistema de diseño decide el matiz y su contraparte oscura.
-   */
-  const actionTone = (action: AuditLog["action"]) => {
-    if (action === "CREATE") return "success";
-    if (action === "DELETE") return "danger";
-    return "warning";
-  };
-
   return (
     <div className="page-stack">
       <PageHeader
@@ -55,11 +54,26 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
       <article className="card">
         <h3>Log de Auditoría</h3>
         <div className="form-grid filters-grid filters-grid--spaced">
-          <input
-            placeholder="Entidad (ej. Project, Forecast)"
+          <select
+            aria-label="Entidad"
             value={filters.entity}
             onChange={(e) => setFilters((p) => ({ ...p, entity: e.target.value }))}
-          />
+          >
+            <option value="">Todas las entidades</option>
+            {AUDIT_ENTITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Acción"
+            value={filters.action}
+            onChange={(e) => setFilters((p) => ({ ...p, action: e.target.value }))}
+          >
+            <option value="">Todas las acciones</option>
+            {AUDIT_ACTION_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
           <input
             placeholder="Modificado por"
             value={filters.changedBy}
@@ -74,7 +88,7 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
             type="button"
             className="ghost"
             onClick={() => {
-              setFilters({ entity: "", changedBy: "", from: "", to: "", page: 1 });
+              setFilters({ entity: "", action: "", changedBy: "", from: "", to: "", page: 1 });
               setLogs([]);
             }}
           >
@@ -99,8 +113,8 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
                 <tbody>
                   {logs.map((log) => (
                     <tr key={log.id}>
-                      <td><span className="state-chip state-chip--neutral">{log.entity}</span></td>
-                      <td><span className={`state-chip state-chip--${actionTone(log.action)}`}>{log.action}</span></td>
+                      <td><span className="state-chip state-chip--neutral">{auditEntityLabel(log.entity)}</span></td>
+                      <td><span className={`state-chip state-chip--${auditActionTone(log.action)}`}>{auditActionLabel(log.action)}</span></td>
                       <td className="cell-mono">{log.entityId.slice(0, 8)}…</td>
                       <td>{log.changedBy}</td>
                       <td>{new Date(log.createdAt).toLocaleString()}</td>

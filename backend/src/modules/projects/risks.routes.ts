@@ -1,8 +1,9 @@
 import { AppRole, RiskStatus } from "@prisma/client";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
+import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 
 const projectIdSchema = z.object({ projectId: z.string().min(1) });
 const idSchema = z.object({ projectId: z.string().min(1), id: z.string().min(1) });
@@ -30,6 +31,24 @@ const riskPayloadSchema = z.object({
 });
 
 export const riskInclude = { consultant: { select: { id: true, fullName: true } } } as const;
+
+async function auditarRiesgo(
+  request: FastifyRequest,
+  action: "CREATE" | "UPDATE" | "DELETE",
+  id: string,
+  before: object | null,
+  after: object | null,
+) {
+  await writeAudit(prisma, {
+    entity: AUDIT_ENTITIES.risk,
+    entityId: id,
+    action,
+    changedBy: request.authUser!.email,
+    before: before as Record<string, unknown> | null,
+    after: after as Record<string, unknown> | null,
+    request,
+  });
+}
 
 export async function risksRoutes(app: FastifyInstance) {
   app.get(
@@ -64,6 +83,7 @@ export async function risksRoutes(app: FastifyInstance) {
         data: { projectId, ...payload, riskScore: payload.probability * payload.impact, createdBy: request.authUser!.email },
         include: riskInclude,
       });
+      await auditarRiesgo(request, "CREATE", risk.id, null, risk);
       return reply.status(201).send({ data: risk });
     },
   );
@@ -85,6 +105,7 @@ export async function risksRoutes(app: FastifyInstance) {
         data: { ...payload, riskScore: payload.probability * payload.impact },
         include: riskInclude,
       });
+      await auditarRiesgo(request, "UPDATE", id, existing, risk);
       return { data: risk };
     },
   );
@@ -99,6 +120,7 @@ export async function risksRoutes(app: FastifyInstance) {
       if (!existing) return reply.status(404).send({ message: "Riesgo no encontrado" });
       const resolvedAt = ["MITIGATED", "ACCEPTED", "CLOSED"].includes(status) ? new Date() : null;
       const risk = await prisma.risk.update({ where: { id }, data: { status, resolvedAt } });
+      await auditarRiesgo(request, "UPDATE", id, existing, risk);
       return { data: risk };
     },
   );
@@ -113,6 +135,7 @@ export async function risksRoutes(app: FastifyInstance) {
       
       try {
         await prisma.risk.delete({ where: { id } });
+        await auditarRiesgo(request, "DELETE", id, existing, null);
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;

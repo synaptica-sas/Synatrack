@@ -1,4 +1,3 @@
-import type { PrismaClient } from "@prisma/client";
 import {
 
   conversionStatus,
@@ -14,9 +13,10 @@ import { clasificarIndiceEvm, clasificarUsoPresupuesto } from "../../utils/healt
 import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 import { getLogger } from "../../infra/logger.js";
 import { cargarLibroDeTasas } from "../fx/rate-book.service.js";
+import type { DbClient } from "../../infra/prisma.js";
 
 async function upsertAlert(
-  prisma: PrismaClient,
+  prisma: DbClient,
   options: {
     type: "BUDGET_WARNING" | "BUDGET_EXCEEDED" | "ASSIGNMENT_ENDING" | "CONSULTANT_OVERLOADED" | "MARGIN_BELOW_THRESHOLD" | "FORECAST_DEVIATION";
     severity: "INFO" | "WARNING" | "CRITICAL";
@@ -58,7 +58,7 @@ async function upsertAlert(
 }
 
 async function resolveAlert(
-  prisma: PrismaClient,
+  prisma: DbClient,
   type: string,
   projectId?: string,
   consultantId?: string,
@@ -85,7 +85,7 @@ function sufijoConversion(estado: ConversionStatus): string {
   return ` ⚠ Cifras aproximadas: faltan tasas de cambio (${estado.missingPairs.join(", ")}).`;
 }
 
-export async function runAlertEngine(prisma: PrismaClient): Promise<void> {
+export async function runAlertEngine(prisma: DbClient): Promise<void> {
   // R-008/R-012: libro de tasas CON fecha, una sola carga para toda la pasada.
   const { rateBook, baseCurrency } = await cargarLibroDeTasas(prisma);
   // Un solo "ahora" para toda la pasada; las utilidades no leen el reloj.

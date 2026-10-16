@@ -215,6 +215,8 @@ model Project {
   baselineSetBy       String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
+  createdBy           String? // email de quien creó el registro
+  updatedBy           String? // email de quien lo modificó por última vez
 
   timeEntries      TimeEntry[]
   financialEntries FinancialEntry[]
@@ -260,6 +262,8 @@ model Consultant {
   isInternal       Boolean   @default(true)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+  createdBy        String? // email de quien creó el registro
+  updatedBy        String? // email de quien lo modificó por última vez
 
   timeEntries      TimeEntry[]
   forecasts        Forecast[]
@@ -299,6 +303,8 @@ model TimeEntry {
   endedAt       DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+  createdBy     String? // email de quien creó el registro
+  updatedBy     String? // email de quien lo modificó por última vez
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
@@ -358,6 +364,8 @@ model FinancialEntry {
   description String?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
+  createdBy   String? // email de quien creó el registro
+  updatedBy   String? // email de quien lo modificó por última vez
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -387,6 +395,8 @@ model FinancialCategory {
   sortOrder Int                @default(0)
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
+  createdBy String? // email de quien creó el registro
+  updatedBy String? // email de quien lo modificó por última vez
 
   @@unique([type, name])
   @@index([type, active])
@@ -408,6 +418,8 @@ model ProjectCategory {
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String? // email de quien creó el registro
+  updatedBy String? // email de quien lo modificó por última vez
 
   @@index([active])
 }
@@ -425,6 +437,8 @@ model Forecast {
   note           String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  createdBy      String? // email de quien creó el registro
+  updatedBy      String? // email de quien lo modificó por última vez
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
@@ -442,6 +456,8 @@ model FxConfig {
   rate      Decimal  @db.Decimal(18, 6)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String? // email de quien creó el registro
+  updatedBy String? // email de quien lo modificó por última vez
 }
 
 // Historial de tasas con fecha efectiva — evita recalcular el pasado con tasa actual
@@ -455,6 +471,8 @@ model FxRateHistory {
   source        String? // "manual", "ecb", "banrep", etc.
   createdBy     String? // email del usuario que registró la tasa
   createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  updatedBy     String? // email de quien lo modificó por última vez
 
   @@index([baseCode, quoteCode, effectiveDate])
   @@index([rateType])
@@ -470,6 +488,8 @@ model User {
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  createdBy    String? // email de quien creó el registro
+  updatedBy    String? // email de quien lo modificó por última vez
 
   photoUrl String?
   bio      String?
@@ -484,6 +504,8 @@ model Role {
   name      AppRole  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String? // email de quien creó el registro
+  updatedBy String? // email de quien lo modificó por última vez
 
   users UserRole[]
 }
@@ -519,6 +541,8 @@ model Assignment {
   note           String?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
+  createdBy      String? // email de quien creó el registro
+  updatedBy      String? // email de quien lo modificó por última vez
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Restrict) // no borrar el historial de asignaciones junto con el proyecto
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
@@ -538,6 +562,9 @@ model ConsultantBlock {
   blockType    BlockType @default(OTHER)
   note         String?
   createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  createdBy    String? // email de quien creó el registro
+  updatedBy    String? // email de quien lo modificó por última vez
 
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
 
@@ -562,6 +589,8 @@ model CapacityConfig {
   workDaysPerWeek Int      @default(5)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  createdBy       String? // email de quien creó el registro
+  updatedBy       String? // email de quien lo modificó por última vez
 
   consultant Consultant? @relation(fields: [consultantId], references: [id], onDelete: Cascade)
 
@@ -589,6 +618,9 @@ model MonthlySnapshot {
   closedBy          String
   closedAt          DateTime @default(now())
   createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdBy         String? // email de quien creó el registro
+  updatedBy         String? // email de quien lo modificó por última vez
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -609,6 +641,9 @@ model Alert {
   resolvedAt   DateTime?
   resolvedBy   String?
   createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdBy    String? // email de quien creó el registro
+  updatedBy    String? // email de quien lo modificó por última vez
 
   project    Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   consultant Consultant? @relation(fields: [consultantId], references: [id], onDelete: Cascade)
@@ -655,6 +690,7 @@ model Milestone {
   createdBy   String
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
+  updatedBy   String? // email de quien lo modificó por última vez
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -690,6 +726,8 @@ model Risk {
   resolvedAt      DateTime?
   createdBy       String
   updatedAt       DateTime   @updatedAt
+  createdAt       DateTime   @default(now())
+  updatedBy       String? // email de quien lo modificó por última vez
 
   project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   consultant Consultant? @relation(fields: [consultantId], references: [id], onDelete: SetNull)
@@ -712,6 +750,7 @@ model Issue {
   createdBy   String
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  updatedBy   String? // email de quien lo modificó por última vez
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -734,6 +773,8 @@ model ChangeRequest {
   resolution   String?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
+  createdBy    String? // email de quien creó el registro
+  updatedBy    String? // email de quien lo modificó por última vez
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -765,6 +806,8 @@ model ExtraHoursConfig {
   monthlyDivisor             Decimal  @default(220) @db.Decimal(5, 2)
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
+  createdBy                  String? // email de quien creó el registro
+  updatedBy                  String? // email de quien lo modificó por última vez
 }
 
 /// Umbrales del semáforo de salud (decisión de negocio D-7).
@@ -793,6 +836,8 @@ model HealthThresholdConfig {
   budgetCriticalPct Decimal  @default(100) @db.Decimal(5, 2)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  createdBy         String? // email de quien creó el registro
+  updatedBy         String? // email de quien lo modificó por última vez
 }
 
 model ExtraHourEntry {
@@ -819,6 +864,8 @@ model ExtraHourEntry {
   rejectionNote          String?
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
+  createdBy              String? // email de quien creó el registro
+  updatedBy              String? // email de quien lo modificó por última vez
 
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
   project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -833,6 +880,9 @@ model Estimation {
   projectId          String?
   projectName        String
   createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdBy          String? // email de quien creó el registro
+  updatedBy          String? // email de quien lo modificó por última vez
   totalIdealHours    Decimal  @db.Decimal(10, 2)
   totalAdjustedHours Decimal  @db.Decimal(10, 2)
   bufferPercentage   Decimal  @db.Decimal(5, 2)
@@ -862,6 +912,8 @@ model Activity {
   comments       String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  createdBy      String? // email de quien creó el registro
+  updatedBy      String? // email de quien lo modificó por última vez
 
   consultant    Consultant     @relation(fields: [consultantId], references: [id], onDelete: Cascade)
   project       Project?       @relation(fields: [projectId], references: [id], onDelete: SetNull)
@@ -880,6 +932,8 @@ model CustomHoliday {
   country   String   @default("All") // "All" indica global/corporativo, o un país específico ("Colombia", "Peru", etc.)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String? // email de quien creó el registro
+  updatedBy String? // email de quien lo modificó por última vez
 
   @@unique([date, country])
 }
@@ -897,6 +951,7 @@ model Holiday {
   createdBy String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+  updatedBy String? // email de quien lo modificó por última vez
 
   @@unique([country, city, date])
   @@index([country, date])
@@ -909,16 +964,20 @@ model HolidayCalendarYear {
   year        Int
   confirmedBy String
   confirmedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String? // email de quien creó el registro
+  updatedBy   String? // email de quien lo modificó por última vez
 
   @@id([country, year])
 }
 
 /// Umbrales de capacity. Fila unica (patron HealthThresholdConfig).
 model CapacitySettings {
-  scope                   String   @id @default("GENERAL")
-  underThresholdPct       Decimal  @default(70) @db.Decimal(5, 2)
-  overThresholdPct        Decimal  @default(100) @db.Decimal(5, 2)
-  includeProbablesDefault Boolean  @default(false)
+  scope                   String    @id @default("GENERAL")
+  underThresholdPct       Decimal   @default(70) @db.Decimal(5, 2)
+  overThresholdPct        Decimal   @default(100) @db.Decimal(5, 2)
+  includeProbablesDefault Boolean   @default(false)
   // Alertas de capacity: horizonte = mes en curso + (n-1) siguientes (1..12)
   alertsEnabled           Boolean   @default(true)
   alertHorizonMonths      Int       @default(3)
@@ -929,7 +988,9 @@ model CapacitySettings {
   digestHourUtc           Int       @default(13)
   digestLastSentAt        DateTime?
   updatedBy               String?
-  updatedAt               DateTime @updatedAt
+  updatedAt               DateTime  @updatedAt
+  createdAt               DateTime  @default(now())
+  createdBy               String? // email de quien creó el registro
 }
 
 // Reporte oficial de capacity: foto inmutable calculada por el servidor al publicar.
@@ -950,6 +1011,10 @@ model CapacityReport {
   revokedAt        DateTime?
   revokedBy        String?
   revokeReason     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdBy        String? // email de quien creó el registro
+  updatedBy        String? // email de quien lo modificó por última vez
 
   @@index([publishedAt])
 }
@@ -962,6 +1027,9 @@ model ApprovalDelegation {
   startDate     DateTime
   endDate       DateTime
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String? // email de quien creó el registro
+  updatedBy     String? // email de quien lo modificó por última vez
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -1036,4 +1104,6 @@ model ApprovalDigestConfig {
   lastSentAt         DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+  createdBy          String? // email de quien creó el registro
+  updatedBy          String? // email de quien lo modificó por última vez
 }

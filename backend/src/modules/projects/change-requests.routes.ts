@@ -41,6 +41,14 @@ export async function changeRequestsRoutes(app: FastifyInstance) {
       const change = await prisma.changeRequest.create({
         data: { projectId, ...payload, requestedBy: request.authUser!.email },
       });
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.changeRequest,
+        entityId: change.id,
+        action: "CREATE",
+        changedBy: request.authUser!.email,
+        after: change as unknown as Record<string, unknown>,
+        request,
+      });
       return reply.status(201).send({ data: change });
     },
   );
@@ -132,6 +140,14 @@ export async function changeRequestsRoutes(app: FastifyInstance) {
       
       try {
         await prisma.changeRequest.delete({ where: { id } });
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.changeRequest,
+          entityId: id,
+          action: "DELETE",
+          changedBy: request.authUser!.email,
+          before: existing as unknown as Record<string, unknown>,
+          request,
+        });
         return reply.status(204).send();
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
