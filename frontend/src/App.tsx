@@ -12,7 +12,6 @@ import { useProjects } from "./hooks/useProjects";
 import { useConsultants } from "./hooks/useConsultants";
 import { useTimeEntries } from "./hooks/useTimeEntries";
 import { useExpenses } from "./hooks/useExpenses";
-import { useForecasts } from "./hooks/useForecasts";
 import { useRevenue } from "./hooks/useRevenue";
 import { useFxConfigs } from "./hooks/useFxConfigs";
 import { useAdminUsers } from "./hooks/useAdminUsers";
@@ -26,7 +25,6 @@ import { ConsultantsTab } from "./features/consultants/ConsultantsTab";
 import { TimesheetTab } from "./features/timesheet/TimesheetTab";
 import { TrackerTab } from "./features/tracker/TrackerTab";
 import { ReportsTab } from "./features/reports/ReportsTab";
-import { ForecastsTab } from "./features/forecasts/ForecastsTab";
 import { FxTab } from "./features/fx/FxTab";
 import { AdminTab } from "./features/admin/AdminTab";
 import { AuditTab } from "./features/audit/AuditTab";
@@ -204,7 +202,6 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   activities: "/activities",
   extraHours: "/extra-hours",
   financial: "/financial",
-  forecasts: "/forecasts",
   estimations: "/estimations",
   fx: "/fx",
   admin: "/admin",
@@ -1112,9 +1109,6 @@ function App() {
         } else if (key === "h") {
           e.preventDefault();
           setActiveTab("timeEntries");
-        } else if (key === "f") {
-          e.preventDefault();
-          setActiveTab("forecasts");
         } else if (key === "c") {
           e.preventDefault();
           setActiveTab("consultants");
@@ -1163,7 +1157,6 @@ function App() {
    */
   const [gastosBaseCurrency, setGastosBaseCurrency] = useState<string | undefined>(undefined);
   const expensesHook    = useExpenses(!!authUser && can("expenses:read"), gastosBaseCurrency);
-  const forecastsHook   = useForecasts(!!authUser && can("forecasts:read"));
   const revenueHook     = useRevenue(!!authUser && can("revenue:read"));
   const fxHook          = useFxConfigs(!!authUser && can("fx:read"));
   const adminHook       = useAdminUsers(!!authUser && can("users:manage"));
@@ -1494,7 +1487,7 @@ function App() {
           </div>
           <div>
             <h1>SynaTrack</h1>
-            <p>Gestión integral de proyectos, horas, gastos y proyecciones</p>
+            <p>Gestión integral de proyectos, horas, gastos e ingresos</p>
             {lastUpdatedLabel && (
               <div className="hero-meta">
                 <span className={`pill ${health?.ok ? "ok" : "error"}`} style={{ fontSize: "0.65rem", padding: "0.15rem 0.5rem" }}>
@@ -1805,7 +1798,6 @@ function App() {
                   projects={projectsHook.projects}
                   timeEntries={timeEntriesHook.timeEntries}
                   expenses={expensesHook.expenses}
-                  forecasts={forecastsHook.forecasts}
                   fxConfigs={fxHook.fxConfigs}
                   initialStats={statsHook.stats}
                   initialBaseCurrency="USD"
@@ -1893,18 +1885,6 @@ function App() {
                 />
               )}
 
-              {activeTab === "forecasts" && (
-                <ForecastsTab
-                  forecasts={forecastsHook.forecasts}
-                  projects={projectsHook.projects}
-                  consultants={consultantsHook.consultants}
-                  loading={forecastsHook.loading}
-                  canWrite={can("forecasts:write")}
-                  onReload={forecastsHook.reload}
-                  onError={handleError}
-                />
-              )}
-
               {activeTab === "financial" && (
                 <FinancialTab
                   panel={financialPanel}
@@ -1914,7 +1894,6 @@ function App() {
                   expenses={expensesHook.expenses}
                   revenueEntries={revenueHook.revenueEntries}
                   projects={projectsHook.projects}
-                  forecasts={forecastsHook.forecasts}
                   baseCurrency="USD"
                   onExpensesBaseCurrencyChange={setGastosBaseCurrency}
                   onIrATasasFx={irATasasFx}
@@ -2094,9 +2073,6 @@ function App() {
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.3rem" }}>
                 <strong>Alt + H</strong> <span>Horas</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.3rem" }}>
-                <strong>Alt + F</strong> <span>Proyecciones</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px dashed #e2e8f0", paddingBottom: "0.3rem" }}>
                 <strong>Alt + C</strong> <span>Consultores</span>

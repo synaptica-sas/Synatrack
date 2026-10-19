@@ -7,7 +7,6 @@ import {
   deleteExpense,
   updateExpense,
   type Expense,
-  type Forecast,
   type Project,
 } from "../../services/api";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -63,7 +62,6 @@ const emptyForm = {
 export function ExpensesTab({
   expenses,
   projects,
-  forecasts = [],
   loading,
   canWrite,
   onReload,
@@ -74,7 +72,6 @@ export function ExpensesTab({
 }: {
   expenses: Expense[];
   projects: Project[];
-  forecasts?: Forecast[];
   loading: boolean;
   canWrite: boolean;
   onReload: () => Promise<void>;
@@ -189,27 +186,6 @@ export function ExpensesTab({
     () => estadoConversionDe(filteredExpenses),
     [filteredExpenses],
   );
-
-  // ── Projected costs from forecasts (por proyecto) ────────────────────────
-  const forecastByProject = useMemo(() => {
-    const map = new Map<string, { name: string; total: number }>();
-    for (const f of forecasts) {
-      const key = f.projectId;
-      const existing = map.get(key);
-      map.set(key, {
-        name: f.project.name,
-        total: (existing?.total ?? 0) + (f.projectedCost ?? 0),
-      });
-    }
-    return [...map.entries()].map(([, v]) => v).sort((a, b) => b.total - a.total);
-  }, [forecasts]);
-
-  const totalProjectedCost = forecastByProject.reduce((s, r) => s + r.total, 0);
-  const [showForecastDetail, setShowForecastDetail] = useState(false);
-
-  function fmtBase(n: number) {
-    return new Intl.NumberFormat("es-CO", { style: "currency", currency: baseCurrency, maximumFractionDigits: 0 }).format(n);
-  }
 
   // ── CSV export (all filtered expenses, not just summaries) ────────────────
   function handleExport() {
@@ -384,62 +360,6 @@ export function ExpensesTab({
             onEdit={openEditForm}
             onDelete={setDeleteTarget}
           />
-        </article>
-      )}
-
-      {/* ── Costos proyectados (forecasts) ── */}
-      {forecasts.length > 0 && (
-        <article className="card card--roomy">
-          <div className="card-head">
-            <h3 className="card-title card-title--tight card-title--rule gastos-forecast-title">
-              Costos proyectados (forecasts)
-              <span className="gastos-forecast-note">
-                — costo futuro estimado basado en proyecciones activas
-              </span>
-            </h3>
-            <button
-              type="button"
-              className="ghost btn-sm"
-              onClick={() => setShowForecastDetail((p) => !p)}
-            >
-              {showForecastDetail ? "Ocultar detalle" : "Ver por proyecto"}
-            </button>
-          </div>
-
-          <div className="gastos-forecast-row">
-            <span className="gastos-forecast-total">
-              {fmtBase(totalProjectedCost)}
-            </span>
-            <span className="gastos-forecast-meta">
-              Total en {forecasts.length} proyecciones · {forecastByProject.length} proyectos
-            </span>
-          </div>
-
-          {showForecastDetail && (
-            <div className="table-wrap table-wrap--spaced">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Proyecto</th>
-                    <th className="cell-right">Costo proyectado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {forecastByProject.map((row) => (
-                    <tr key={row.name}>
-                      <td>{row.name}</td>
-                      <td className="cell-right cell-num">
-                        {fmtBase(row.total)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="gastos-forecast-foot">
-            Nota: costos proyectados en moneda original del forecast. Para comparación exacta en {baseCurrency} configure las tasas de cambio en FX Config.
-          </p>
         </article>
       )}
 

@@ -33,7 +33,6 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
     label: "Financiero",
     tabs: [
       { id: "financial",  label: "Ingresos/Gastos", icon: "⊕", permission: ["expenses:read", "revenue:read"] },
-      { id: "forecasts",  label: "Proyecciones",  icon: "◷", permission: "forecasts:read" },
       { id: "estimations", label: "Estimaciones",  icon: "⚖", permission: "estimations:read" },
       { id: "fx",         label: "Tasas FX",      icon: "⊗", permission: "fx:read" },
     ],

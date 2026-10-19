@@ -2,11 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   periodToDateRange,
   isInPeriod,
-  getAdjustedForecastCost,
-  getAdjustedForecastRevenue,
   calculateProfitability,
 } from "../financial.js";
-import { buildRateBook } from "../currency.js";
 import { UMBRALES_SALUD_POR_DEFECTO } from "../healthThresholds.js";
 
 // ─── periodToDateRange ────────────────────────────────────────────────────────
@@ -53,81 +50,9 @@ describe("isInPeriod", () => {
   });
 });
 
-// ─── getAdjustedForecastCost ──────────────────────────────────────────────────
-
-// Sin histórico: el libro resuelve siempre a la tasa actual, que es
-// exactamente el comportamiento de antes. Los números no cambian.
-const rateBook = buildRateBook([{ baseCode: "USD", quoteCode: "COP", rate: 4200 }], []);
-const FECHA = new Date("2026-01-15T00:00:00Z");
-
-const baseCurrency = "USD";
-
-const consultant = { hourlyRate: 65, rateCurrency: "USD" };
-const forecast = { hoursProjected: 120, hourlyRate: 65, sellRate: 100, currency: "USD" };
-
-describe("getAdjustedForecastCost", () => {
-  it("sin horas ejecutadas: costo = proyectado completo", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 0, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(120 * 65); // 7800
-  });
-
-  it("con 40h aprobadas: costo = 80h restantes", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 40, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(80 * 65); // 5200
-  });
-
-  it("si se ejecutaron más horas de las proyectadas: costo adicional es 0", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 150, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(0);
-  });
-
-  it("exactamente las horas proyectadas ya ejecutadas: retorna 0", () => {
-    const result = getAdjustedForecastCost(forecast, consultant, 120, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(0);
-  });
-
-  it("usa tarifa del consultor si forecast no tiene hourlyRate", () => {
-    const forecastSinRate = { ...forecast, hourlyRate: null };
-    const result = getAdjustedForecastCost(forecastSinRate, consultant, 0, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(120 * 65); // usa consultant.hourlyRate
-  });
-
-  it("retorna 0 si no hay tarifa ni en forecast ni en consultor", () => {
-    const forecastSinRate = { ...forecast, hourlyRate: null };
-    const consultantSinRate = { hourlyRate: null, rateCurrency: "USD" };
-    const result = getAdjustedForecastCost(forecastSinRate, consultantSinRate, 0, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(0);
-  });
-
-  it("convierte desde moneda del forecast a baseCurrency", () => {
-    const forecastCOP = { hoursProjected: 10, hourlyRate: 300000, sellRate: null, currency: "COP" };
-    // 10h * 300000 COP/h = 3,000,000 COP = 3,000,000 / 4200 USD ≈ 714.28 USD
-    const result = getAdjustedForecastCost(forecastCOP, consultant, 0, FECHA, rateBook, "USD");
-    expect(result).toBeCloseTo(3_000_000 / 4200, 2);
-  });
-});
-
-// ─── getAdjustedForecastRevenue ───────────────────────────────────────────────
-
-describe("getAdjustedForecastRevenue", () => {
-  it("sin horas ejecutadas: ingreso = proyectado completo", () => {
-    const result = getAdjustedForecastRevenue(forecast, 0, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(120 * 100); // 12000
-  });
-
-  it("con 40h ejecutadas: ingreso = 80h restantes * sellRate", () => {
-    const result = getAdjustedForecastRevenue(forecast, 40, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(80 * 100); // 8000
-  });
-
-  it("sin sellRate retorna 0", () => {
-    const forecastSinSell = { ...forecast, sellRate: null };
-    const result = getAdjustedForecastRevenue(forecastSinSell, 0, FECHA, rateBook, baseCurrency);
-    expect(result).toBe(0);
-  });
-});
-
 // ─── calculateProfitability ───────────────────────────────────────────────────
+
+const FECHA = new Date("2026-01-15T00:00:00Z");
 
 describe("calculateProfitability", () => {
   const baseInput = {
@@ -141,13 +66,6 @@ describe("calculateProfitability", () => {
     ],
     expenses: [{ amount: 1200, currency: "USD", entryDate: FECHA }],
     risks: [],
-    forecasts: [
-      {
-        consultantId: "c1",
-        hoursProjected: 120, hourlyRate: 65, sellRate: 100, currency: "USD",
-        startDate: "2026-04-01", endDate: "2026-06-30", consultant: { hourlyRate: 65, rateCurrency: "USD" },
-      },
-    ],
     fxConfigs: [],
     valuationDate: FECHA,
     baseCurrency: "USD",
@@ -202,7 +120,6 @@ describe("calculateProfitability", () => {
       revenueEntries: [],
       approvedTimeEntries: [],
       expenses: [],
-      forecasts: [],
     });
     expect(result.totalCostActual).toBe(0);
     expect(result.laborCostActual).toBe(0);
@@ -247,41 +164,6 @@ describe("calculateProfitability", () => {
     });
     // 4,200,000 COP / 4200 = 1000 USD
     expect(result.expensesActual).toBeCloseTo(1000, 0);
-  });
-
-  it("forecast con horas ya ejecutadas ajusta el costo proyectado", () => {
-    // Con 60h ya ejecutadas de 120 proyectadas → laborCostForecast = 60 * 65 = 3900
-    const result = calculateProfitability({
-      ...baseInput,
-      approvedTimeEntries: [
-        {
-          hours: 60,
-          workDate: new Date("2026-04-15"), // dentro del Q2
-          status: "APPROVED" as const,
-          hourlyRate: 65,
-          rateCurrency: "USD",
-          consultantId: "c1",
-        },
-      ],
-    });
-    // Con 60h aprobadas en Q2, las horas restantes del forecast son max(120-60, 0) = 60
-    // o dependiendo del matching por consultantId...
-    // El forecast debería ser <= 120*65 = 7800
-    expect(result.laborCostForecast).toBeLessThanOrEqual(120 * 65);
-  });
-
-  it("múltiples forecasts suman sus costos", () => {
-    const result = calculateProfitability({
-      ...baseInput,
-      approvedTimeEntries: [],
-      forecasts: [
-        { consultantId: "c1", hoursProjected: 50, hourlyRate: 65, sellRate: 100, currency: "USD", startDate: "2026-01-01", endDate: "2026-03-31", consultant: { hourlyRate: 65, rateCurrency: "USD" } },
-        { consultantId: "c2", hoursProjected: 80, hourlyRate: 65, sellRate: 100, currency: "USD", startDate: "2026-04-01", endDate: "2026-06-30", consultant: { hourlyRate: 65, rateCurrency: "USD" } },
-        { consultantId: "c3", hoursProjected: 60, hourlyRate: 65, sellRate: 100, currency: "USD", startDate: "2026-07-01", endDate: "2026-09-30", consultant: { hourlyRate: 65, rateCurrency: "USD" } },
-      ],
-    });
-    // 50+80+60 = 190h * 65 = 12350
-    expect(result.laborCostForecast).toBeCloseTo(12350, 0);
   });
 
   it("budgetConsumedPct es 0 si el presupuesto es 0", () => {

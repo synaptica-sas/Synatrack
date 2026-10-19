@@ -10,8 +10,6 @@ export type Permission =
   | "time:review"
   | "expenses:read"
   | "expenses:write"
-  | "forecasts:read"
-  | "forecasts:write"
   | "revenue:read"
   | "revenue:write"
   | "fx:read"
@@ -55,8 +53,6 @@ const allPermissions: Permission[] = [
   "time:review",
   "expenses:read",
   "expenses:write",
-  "forecasts:read",
-  "forecasts:write",
   "revenue:read",
   "revenue:write",
   "fx:read",
@@ -113,8 +109,6 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "time:review",
     "expenses:read",
     "expenses:write",
-    "forecasts:read",
-    "forecasts:write",
     "revenue:read",
     "revenue:write",
     "fx:read",
@@ -161,8 +155,7 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "revenue:read",
     "fx:read",
     "stats:read",
-    // Sin `capacity:read` (P3) ni `forecasts:read`: la ocupación y las horas
-    // planificadas por consultor son confidenciales (D8).
+    // Sin `capacity:read` (P3): la ocupación por consultor es confidencial (D8).
     "holidays:read",
     "alerts:read",
     "extrahours:read",

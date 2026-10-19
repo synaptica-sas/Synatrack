@@ -56,7 +56,7 @@ export function AuditTab({ onError }: { onError: (msg: string) => void }) {
         <h3>Log de Auditoría</h3>
         <div className="form-grid filters-grid filters-grid--spaced">
           <input
-            placeholder="Entidad (ej. Project, Forecast)"
+            placeholder="Entidad (ej. Project, Consultant)"
             value={filters.entity}
             onChange={(e) => setFilters((p) => ({ ...p, entity: e.target.value }))}
           />

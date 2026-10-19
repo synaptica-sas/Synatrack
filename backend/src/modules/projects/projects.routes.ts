@@ -375,9 +375,6 @@ export async function projectsRoutes(app: FastifyInstance) {
           },
           financialEntries: true,
           risks: { select: { estimatedCost: true, costCurrency: true, status: true, identifiedAt: true } },
-          forecasts: {
-            include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
-          },
         },
       });
 
@@ -415,19 +412,6 @@ export async function projectsRoutes(app: FastifyInstance) {
         })),
         expenses,
         risks: toRiskCostInputs(project.risks),
-        forecasts: project.forecasts.map((f) => ({
-          consultantId: f.consultantId,
-          hoursProjected: Number(f.hoursProjected),
-          hourlyRate: f.hourlyRate ? Number(f.hourlyRate) : null,
-          sellRate: f.sellRate ? Number(f.sellRate) : null,
-          currency: f.currency,
-          startDate: f.startDate,
-          endDate: f.endDate,
-          consultant: {
-            hourlyRate: f.consultant.hourlyRate ? Number(f.consultant.hourlyRate) : null,
-            rateCurrency: f.consultant.rateCurrency,
-          },
-        })),
         // ANTES (bug §10.2 #4): se reconstruía el rateMap con `key.split("_")`
         // cuando buildRateMap usa "->", así que TODAS las conversiones caían al
         // fallback (monto sin convertir). Se pasan los FxConfig crudos.

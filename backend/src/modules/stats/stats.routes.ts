@@ -85,9 +85,6 @@ export async function statsRoutes(app: FastifyInstance) {
               ],
             },
           },
-          forecasts: {
-            include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
-          },
           milestones: { select: { status: true, plannedDate: true, weight: true } },
           risks: { select: { riskScore: true, status: true, estimatedCost: true, costCurrency: true, identifiedAt: true } },
         },
@@ -156,7 +153,7 @@ export async function statsRoutes(app: FastifyInstance) {
           spent,
           remainingBudget: budget - spent,
           usedBudgetPercent: fin.budgetConsumedPct,
-          projectedCost: fin.laborCostForecast,
+          projectedCost: fin.riskExposure,
           projectedTotal: totalProjected,
           projectedPct: fin.projectedPct,
           estimateAtCompletion: fin.estimateAtCompletion,
@@ -306,9 +303,6 @@ export async function statsRoutes(app: FastifyInstance) {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           financialEntries: true,
-          forecasts: {
-            include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
-          },
           milestones: { select: { status: true, plannedDate: true, weight: true } },
           risks: { select: { riskScore: true, status: true, estimatedCost: true, costCurrency: true, identifiedAt: true } },
           issues: { select: { status: true, severity: true } },
@@ -321,9 +315,6 @@ export async function statsRoutes(app: FastifyInstance) {
         );
 
         // Mismo cálculo unificado que /overview y el detalle del proyecto.
-        // ANTES: este endpoint sumaba `hoursProjected * consultant.hourlyRate`
-        // sin descontar lo ya aprobado, ignorando `forecast.hourlyRate` y
-        // convirtiendo desde la moneda del consultor en vez de la del forecast.
         const fin = computeProjectFinancials({
           ...toFinancialsInput(project, approvedEntries, rateBook, baseCurrency, umbralesSalud, now),
           ledger: ledgerPeticion,

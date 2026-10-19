@@ -2,7 +2,7 @@
  * Pruebas del cálculo financiero unificado (R10).
  *
  * Cubre los casos borde obligatorios: presupuesto cero, sin horas aprobadas,
- * sin forecast, margen negativo, umbrales de margen nulos y moneda sin tasa de
+ * sin riesgos, margen negativo, umbrales de margen nulos y moneda sin tasa de
  * conversión disponible.
  */
 
@@ -48,7 +48,6 @@ const base: ProjectFinancialsInput = {
   ],
   expenses: [{ amount: 2_000, currency: "USD", entryDate: FECHA }],
   risks: [],
-  forecasts: [],
   rateBook,
   valuationDate: FECHA,
   baseCurrency: "USD",
@@ -117,7 +116,7 @@ describe("computeProjectFinancials — costos e ingresos", () => {
   it("consumo y proyección de presupuesto", () => {
     const f = computeProjectFinancials(base);
     expect(f.budgetConsumedPct).toBe(30);
-    expect(f.projectedPct).toBe(30); // sin forecast, proyectado = real
+    expect(f.projectedPct).toBe(30); // sin riesgos, proyectado = real
     expect(f.estimateAtCompletion).toBe(30_000);
     expect(f.budgetVariance).toBe(70_000);
   });
@@ -185,11 +184,10 @@ describe("computeProjectFinancials — casos borde", () => {
     expect(f.grossMarginActualPct).toBe(96);
   });
 
-  it("sin forecast: proyectado = real", () => {
-    const f = computeProjectFinancials({ ...base, forecasts: [] });
-    expect(f.laborCostForecast).toBe(0);
+  it("sin riesgos: proyectado = real", () => {
+    const f = computeProjectFinancials({ ...base, risks: [] });
+    expect(f.riskExposure).toBe(0);
     expect(f.totalCostProjected).toBe(f.totalCostActual);
-    expect(f.revenueProjected).toBe(f.revenueRecognized);
   });
 
   it("sin ingresos reconocidos: el margen % es null (no medible), nunca 0", () => {
@@ -334,152 +332,13 @@ describe("computeProjectFinancials — marca de conversión incompleta", () => {
     expect(missingRatePairs(consolidado)).toEqual(["JPY->USD"]);
   });
 
-  it("el forecast en moneda sin tasa también marca el total", () => {
+  it("el riesgo en moneda sin tasa también marca el total", () => {
     const f = computeProjectFinancials({
       ...base,
-      forecasts: [
-        {
-          consultantId: "c1",
-          hoursProjected: 100,
-          hourlyRate: 50,
-          sellRate: 80,
-          currency: "JPY",
-          startDate: "2026-07-01",
-          endDate: "2026-09-30",
-          consultant: { hourlyRate: 50, rateCurrency: "JPY" },
-        },
-      ],
+      risks: [{ amount: 1_000, currency: "JPY", status: "OPEN", identifiedAt: FECHA }],
     });
     expect(f.conversion.incomplete).toBe(true);
     expect(f.conversion.missingPairs).toEqual(["JPY->USD"]);
-  });
-});
-
-// ─── Forecast: la diferencia que tenía /portfolio ────────────────────────────
-
-describe("computeProjectFinancials — forecast ajustado", () => {
-  const conForecast: ProjectFinancialsInput = {
-    ...base,
-    approvedTimeEntries: [
-      {
-        consultantId: "c1",
-        hours: 60,
-        workDate: new Date("2026-05-10T00:00:00Z"),
-        hourlyRate: 70,
-        rateCurrency: "USD",
-      },
-    ],
-    forecasts: [
-      {
-        consultantId: "c1",
-        hoursProjected: 100,
-        hourlyRate: 80, // tarifa propia del forecast, prevalece sobre la del consultor
-        sellRate: 120,
-        currency: "USD",
-        startDate: "2026-04-01",
-        endDate: "2026-06-30",
-        consultant: { hourlyRate: 70, rateCurrency: "USD" },
-      },
-    ],
-  };
-
-  it("descuenta las horas ya aprobadas dentro del rango del forecast", () => {
-    const f = computeProjectFinancials(conForecast);
-    // 100 proyectadas - 60 ya ejecutadas = 40 restantes * 80 = 3 200
-    expect(f.laborCostForecast).toBe(40 * 80);
-  });
-
-  it("usa forecast.hourlyRate y no la tarifa del consultor", () => {
-    const f = computeProjectFinancials({
-      ...conForecast,
-      approvedTimeEntries: [],
-    });
-    expect(f.laborCostForecast).toBe(100 * 80); // no 100 * 70
-  });
-
-  it("horas fuera del rango del forecast no se descuentan (UTC)", () => {
-    const f = computeProjectFinancials({
-      ...conForecast,
-      approvedTimeEntries: [
-        {
-          consultantId: "c1",
-          hours: 60,
-          workDate: new Date("2026-07-01T00:00:00Z"), // fuera del Q2
-          hourlyRate: 70,
-          rateCurrency: "USD",
-        },
-      ],
-    });
-    expect(f.laborCostForecast).toBe(100 * 80);
-  });
-
-  it("el último día del forecast sí cuenta (frontera inclusiva en UTC)", () => {
-    const f = computeProjectFinancials({
-      ...conForecast,
-      approvedTimeEntries: [
-        {
-          consultantId: "c1",
-          hours: 100,
-          workDate: new Date("2026-06-30T23:59:59.000Z"),
-          hourlyRate: 70,
-          rateCurrency: "USD",
-        },
-      ],
-    });
-    expect(f.laborCostForecast).toBe(0);
-  });
-
-  it("horas de otro consultor no descuentan el forecast", () => {
-    const f = computeProjectFinancials({
-      ...conForecast,
-      approvedTimeEntries: [
-        {
-          consultantId: "c2",
-          hours: 100,
-          workDate: new Date("2026-05-10T00:00:00Z"),
-          hourlyRate: 70,
-          rateCurrency: "USD",
-        },
-      ],
-    });
-    expect(f.laborCostForecast).toBe(100 * 80);
-  });
-
-  it("convierte el forecast desde SU moneda, no la del consultor", () => {
-    const f = computeProjectFinancials({
-      ...conForecast,
-      approvedTimeEntries: [],
-      forecasts: [
-        {
-          consultantId: "c1",
-          hoursProjected: 10,
-          hourlyRate: 400_000,
-          sellRate: null,
-          currency: "COP",
-          startDate: "2026-04-01",
-          endDate: "2026-06-30",
-          consultant: { hourlyRate: 70, rateCurrency: "USD" },
-        },
-      ],
-    });
-    // 10 * 400 000 COP = 4 000 000 COP / 4000 = 1 000 USD
-    expect(f.laborCostForecast).toBeCloseTo(1_000, 6);
-  });
-
-  it("forecast ya sobre-ejecutado no genera costo adicional negativo", () => {
-    const f = computeProjectFinancials({
-      ...conForecast,
-      approvedTimeEntries: [
-        {
-          consultantId: "c1",
-          hours: 500,
-          workDate: new Date("2026-05-10T00:00:00Z"),
-          hourlyRate: 70,
-          rateCurrency: "USD",
-        },
-      ],
-    });
-    expect(f.laborCostForecast).toBe(0);
   });
 });
 
@@ -492,23 +351,12 @@ describe("computeProjectFinancials — alertLevel", () => {
     expect(computeProjectFinancials(sinIngreso).alertLevel).toBe("ok");
   });
 
-  it("warning al alcanzar budgetAlertPct, contando el forecast", () => {
+  it("warning al alcanzar budgetAlertPct, contando la exposición de riesgos", () => {
     const f = computeProjectFinancials({
       ...sinIngreso,
-      forecasts: [
-        {
-          consultantId: "c9",
-          hoursProjected: 1_000,
-          hourlyRate: 60,
-          sellRate: null,
-          currency: "USD",
-          startDate: "2026-01-01",
-          endDate: "2026-12-31",
-          consultant: { hourlyRate: 60, rateCurrency: "USD" },
-        },
-      ],
+      risks: [{ amount: 60_000, currency: "USD", status: "OPEN", identifiedAt: FECHA }],
     });
-    // 30 000 real + 60 000 forecast = 90 000 sobre 100 000 → 90 %
+    // 30 000 real + 60 000 de riesgo = 90 000 sobre 100 000 → 90 %
     expect(f.projectedPct).toBe(90);
     expect(f.alertLevel).toBe("warning");
   });
@@ -596,7 +444,6 @@ describe("toFinancialsInput", () => {
           { type: "EXPENSE" as const, amount: "50.00", currency: "USD", entryDate: FECHA },
         ],
         risks: [],
-        forecasts: [],
       },
       [
         {
@@ -635,7 +482,6 @@ describe("toFinancialsInput", () => {
         budgetAlertPct: null,
         financialEntries: [],
         risks: [],
-        forecasts: [],
       },
       [],
       rateBook,

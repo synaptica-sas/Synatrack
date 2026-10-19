@@ -100,34 +100,6 @@ export function formatMY(my: MonthYear): string {
   return `${monthShort(my.month)} ${my.year}`;
 }
 
-// ── Build period array from month range ───────────────────────────────────────
-
-/**
- * Convert a month-range selection into an array of "YYYY-Qn" period strings.
- * Example: from={month:4, year:2026} to={month:9, year:2026}
- *          → ["2026-Q2", "2026-Q3"]
- *
- * TODO(backend): Once the backend accepts ISO date ranges instead of quarter
- * strings, replace this with a direct date payload and remove the conversion.
- * Backend route: POST /api/forecasts — currently validates /^\d{4}-Q[1-4]$/.
- */
-export function buildPeriodsFromMonths(from: MonthYear, to: MonthYear): string[] {
-  if (compareMY(to, from) < 0) {
-    throw new Error("La fecha fin debe ser igual o posterior a la fecha inicio");
-  }
-  const periods: string[] = [];
-  let cur: MonthYear = { ...from };
-
-  while (compareMY(cur, to) <= 0) {
-    const period = monthYearToQuarter(cur);
-    if (!periods.includes(period)) periods.push(period);
-    // Advance to next month
-    cur = cur.month === 12 ? { month: 1, year: cur.year + 1 } : { month: cur.month + 1, year: cur.year };
-  }
-
-  return periods;
-}
-
 // ── ISO date utilities ────────────────────────────────────────────────────────
 
 function pad(n: number): string { return String(n).padStart(2, "0"); }
@@ -208,20 +180,6 @@ export function quarterToDateRange(period: string): { from: string; to: string }
     from: `${year}-${pad(startMonth)}-01`,
     to:   `${year}-${pad(endMonth)}-${pad(lastDay)}`,
   };
-}
-
-/**
- * Build "YYYY-Qn" period array from ISO date range.
- * "2026-04-11" → "2026-09-30" → ["2026-Q2", "2026-Q3"]
- *
- * TODO(backend): Once the backend accepts ISO date ranges instead of quarter
- * strings, pass dateFrom/dateTo directly and remove this conversion.
- * Backend route: POST /api/forecasts — currently validates /^\d{4}-Q[1-4]$/.
- */
-export function buildPeriodsFromDates(from: string, to: string): string[] {
-  const [fy, fm] = from.split("-").map(Number);
-  const [ty, tm] = to.split("-").map(Number);
-  return buildPeriodsFromMonths({ month: fm, year: fy }, { month: tm, year: ty });
 }
 
 // ── ISO Date range presets ────────────────────────────────────────────────────

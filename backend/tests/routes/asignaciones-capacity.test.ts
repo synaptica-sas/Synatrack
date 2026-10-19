@@ -10,13 +10,13 @@ import { comoRol, crearAppDePrueba } from "../helpers/app.js";
  *
  * - Escribir asignaciones es solo de ADMIN (`assignments:write`); el PM ya no.
  * - Las fechas son DATE: lo que se envía como YYYY-MM-DD vuelve igual.
- * - Ya no se crea Forecast; la sobreasignación avisa (OVERALLOCATED) y no bloquea.
+ * - La sobreasignación avisa (OVERALLOCATED) y no bloquea.
  * - Un PROSPECT se crea y se lista, pero no entra en los KPIs de stats.
  *
  * El consultor usa un país propio de la ejecución y una jornada de 8 h propia, para no depender
  * de los feriados ni de las jornadas compartidas de la base.
  */
-describe("Asignaciones: permisos, fechas, avisos y sin Forecast", () => {
+describe("Asignaciones: permisos, fechas y avisos", () => {
   let app: FastifyInstance;
 
   const prefijo = `asig-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -76,7 +76,6 @@ describe("Asignaciones: permisos, fechas, avisos y sin Forecast", () => {
   });
 
   afterAll(async () => {
-    await prisma.forecast.deleteMany({ where: { projectId: proyectoId } });
     await prisma.assignment.deleteMany({ where: { consultantId: consultorId } });
     await prisma.capacityConfig.deleteMany({ where: { consultantId: consultorId } });
     await prisma.consultant.deleteMany({ where: { id: consultorId } });
@@ -182,14 +181,6 @@ describe("Asignaciones: permisos, fechas, avisos y sin Forecast", () => {
       payload: cuerpo({ startDate: "2031-08-01", endDate: "2031-08-04", hoursPerPeriod: 4 }),
     });
     expect(futura.json().data.status).toBe("PLANNED");
-  });
-
-  it("ya no crea Forecast y la respuesta no trae forecastCreated", async () => {
-    const antes = await prisma.forecast.count({ where: { projectId: proyectoId } });
-    const res = await crear({ startDate: "2031-09-01", endDate: "2031-09-05", hoursPerPeriod: 4 });
-    expect(res.statusCode).toBe(201);
-    expect(res.json()).not.toHaveProperty("forecastCreated");
-    expect(await prisma.forecast.count({ where: { projectId: proyectoId } })).toBe(antes);
   });
 
   it("sobreasignación: 201 con warnings OVERALLOCATED (no bloquea); la probable no avisa", async () => {

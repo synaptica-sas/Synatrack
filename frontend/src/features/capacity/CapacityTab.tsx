@@ -571,7 +571,6 @@ function OverviewPanel({
 }
 
 function AssignmentDetail({ assignments }: { assignments: CapacityConsultantRow["activeAssignments"] }) {
-  const isForecast = (status: string) => status === "FORECAST";
   return (
     <table className="capacity-subtable">
       <thead>
@@ -582,36 +581,29 @@ function AssignmentDetail({ assignments }: { assignments: CapacityConsultantRow[
         </tr>
       </thead>
       <tbody>
-        {assignments.map((a) => {
-          const forecast = isForecast(a.status);
-          return (
-            <tr key={a.assignmentId} className={forecast ? "row-warning" : undefined}>
-              <td>
-                <span className={`state-chip state-chip--${forecast ? "warning" : "neutral"}`}>
-                  {forecast ? "Proyección" : "Asignación"}
-                </span>
-              </td>
-              <td>{a.projectName}</td>
-              <td className="cell-date">
-                {formatDate(a.startDate)} – {formatDate(a.endDate)}
-              </td>
-              <td>
-                {forecast
-                  ? `${a.hoursPerPeriod ?? 0}h (trimestre)`
-                  : a.allocationMode === "PERCENTAGE"
-                    ? `${a.allocationPct ?? 0}%`
-                    : `${a.hoursPerPeriod ?? 0}h/sem`}
-              </td>
-              <td>
-                <span
-                  className={`state-chip state-chip--${forecast ? "warning" : ASSIGNMENT_STATUS_CLASS[a.status as AssignmentStatus] ?? "neutral"}`}
-                >
-                  {forecast ? "Forecast" : ASSIGNMENT_STATUS_LABELS[a.status as AssignmentStatus] ?? a.status}
-                </span>
-              </td>
-            </tr>
-          );
-        })}
+        {assignments.map((a) => (
+          <tr key={a.assignmentId}>
+            <td>
+              <span className="state-chip state-chip--neutral">Asignación</span>
+            </td>
+            <td>{a.projectName}</td>
+            <td className="cell-date">
+              {formatDate(a.startDate)} – {formatDate(a.endDate)}
+            </td>
+            <td>
+              {a.allocationMode === "PERCENTAGE"
+                ? `${a.allocationPct ?? 0}%`
+                : `${a.hoursPerPeriod ?? 0}h/sem`}
+            </td>
+            <td>
+              <span
+                className={`state-chip state-chip--${ASSIGNMENT_STATUS_CLASS[a.status as AssignmentStatus] ?? "neutral"}`}
+              >
+                {ASSIGNMENT_STATUS_LABELS[a.status as AssignmentStatus] ?? a.status}
+              </span>
+            </td>
+          </tr>
+        ))}
       </tbody>
     </table>
   );

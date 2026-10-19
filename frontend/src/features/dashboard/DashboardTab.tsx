@@ -2,14 +2,13 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   getStatsOverview,
   listAllFinancialEntries,
-  type Expense, type FinancialEntry, type FxConfig, type Forecast,
+  type Expense, type FinancialEntry, type FxConfig,
   type Project, type StatsOverview, type TimeEntry,
 } from "../../services/api";
 import { DateRangePicker } from "../../components/DateRangePicker";
 import { readPersistedRange, type DateRange } from "../../components/dateRangeUtils";
 import { SearchableSelect } from "../../components/SearchableSelect";
 import type { TabId, FinancialPanel } from "../../types";
-import { formatISODateRange } from "../../utils/periodUtils";
 import { textoCriteriosSalud, PRESENTACION_SALUD } from "../../utils/projectHealth";
 import { AlertBadge } from "./AlertBadge";
 import {
@@ -38,12 +37,6 @@ function isWithinDateRange(dateText: string, from?: string, to?: string) {
   return true;
 }
 
-
-function overlapsRange(start: string, end: string, from?: string, to?: string) {
-  const min = from || "0000-01-01";
-  const max = to || "9999-12-31";
-  return !(end < min || start > max);
-}
 
 /** Calculate previous period equivalent to current range */
 function prevPeriod(from: string, to: string): { from: string; to: string } {
@@ -348,7 +341,6 @@ export function DashboardTab({
   projects,
   timeEntries,
   expenses,
-  forecasts,
   fxConfigs,
   initialStats,
   initialBaseCurrency,
@@ -362,7 +354,6 @@ export function DashboardTab({
   projects: Project[];
   timeEntries: TimeEntry[];
   expenses: Expense[];
-  forecasts: Forecast[];
   fxConfigs: FxConfig[];
   initialStats: StatsOverview | null;
   initialBaseCurrency: string;
@@ -516,14 +507,6 @@ export function DashboardTab({
       isWithinDateRange(e.expenseDate.slice(0, 10), statsFilters.from, statsFilters.to)),
   [expenses, dashboardProjectIds, statsFilters.from, statsFilters.to]);
 
-  const dashboardForecasts = useMemo(() =>
-    forecasts.filter((f) => {
-      if (!dashboardProjectIds.has(f.projectId)) return false;
-      if (!f.startDate || !f.endDate) return true;
-      return overlapsRange(f.startDate, f.endDate, statsFilters.from, statsFilters.to);
-    }),
-  [forecasts, dashboardProjectIds, statsFilters.from, statsFilters.to]);
-
   // DEP-36: aquí vivía `dashboardTotals`, un cálculo local de respaldo que sumaba
   // `p.budget`, `e.amount` y `f.projectedCost` **sin convertir de moneda**. Solo se
   // activaba cuando fallaba `/api/stats/overview`, así que el efecto neto era
@@ -563,24 +546,6 @@ export function DashboardTab({
       .map(([consultant, value]) => ({ consultant, total: value.total, byProject: value.byProject }))
       .sort((a, b) => b.total - a.total);
   }, [dashboardApprovedTimeEntries]);
-
-  // Forecast by consultant
-  const dashboardForecastByConsultant = useMemo(() => {
-    const grouped = new Map<string, { totalHours: number; items: Forecast[] }>();
-    for (const forecast of dashboardForecasts) {
-      const key = forecast.consultant.fullName || "Sin nombre";
-      if (!grouped.has(key)) grouped.set(key, { totalHours: 0, items: [] });
-      const node = grouped.get(key)!;
-      node.totalHours += numberish(forecast.hoursProjected);
-      node.items.push(forecast);
-    }
-    return Array.from(grouped.entries())
-      .map(([consultant, value]) => ({
-        consultant, totalHours: value.totalHours,
-        items: value.items.sort((a, b) => (a.startDate || "").localeCompare(b.startDate || "")),
-      }))
-      .sort((a, b) => b.totalHours - a.totalHours);
-  }, [dashboardForecasts]);
 
   const expensesCategoryData = useMemo(() => {
     const grouped = new Map<string, number>();
@@ -1093,10 +1058,9 @@ export function DashboardTab({
         <DashboardKpi
           label={`Costo proyectado (${baseCurrency})`}
           value={fmt(totals.projectedCost, baseCurrency)}
-          tooltip="Suma de costos proyectados en forecasts del período"
+          tooltip="Exposición de riesgos vigentes (OPEN/ACCEPTED) del período, encima del gasto real"
           error={totalsFailed ? statsErrorMessage : null}
           loading={totalsPending || statsLoading}
-          onClick={() => onDrillTo?.("forecasts")}
         />
         <DashboardKpi
           label="Horas aprobadas"
@@ -1355,65 +1319,34 @@ export function DashboardTab({
         )}
       </article>
 
-      {/* ── Horas y Proyección ── */}
-      <section className="grid two-col">
-        <article className="card">
-          <h3>Horas aprobadas por consultor</h3>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Consultor</th><th>Total horas</th><th>Detalle por proyecto</th></tr></thead>
-              <tbody>
-                {dashboardHoursByConsultant.length === 0 && (
-                  <tr><td colSpan={3} className="cell-empty">Sin horas en el período</td></tr>
-                )}
-                {dashboardHoursByConsultant.map((row) => (
-                  <tr key={row.consultant}>
-                    <td>{row.consultant}</td>
-                    <td>{row.total.toFixed(2)}</td>
-                    <td>
-                      <div className="tag-list">
-                        {Array.from(row.byProject.entries()).map(([pid, hours]) => {
-                          const pName = projects.find((p) => p.id === pid)?.name ?? "Proyecto";
-                          return <span key={pid} className="pill neutral">{`${pName}: ${hours.toFixed(2)}h`}</span>;
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article className="card">
-          <h3>Proyección por consultor</h3>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Consultor</th><th>Horas proyectadas</th><th>Detalle</th></tr></thead>
-              <tbody>
-                {dashboardForecastByConsultant.length === 0 && (
-                  <tr><td colSpan={3} className="cell-empty">Sin proyecciones en el período</td></tr>
-                )}
-                {dashboardForecastByConsultant.map((row) => (
-                  <tr key={row.consultant}>
-                    <td>{row.consultant}</td>
-                    <td>{row.totalHours.toFixed(2)}</td>
-                    <td>
-                      <div className="tag-list">
-                        {row.items.map((item) => (
-                          <span key={item.id} className="pill neutral">
-                            {`${item.startDate && item.endDate ? formatISODateRange(item.startDate, item.endDate) : "—"}: ${numberish(item.hoursProjected).toFixed(2)}h`}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </article>
-      </section>
+      {/* ── Horas por consultor ── */}
+      <article className="card">
+        <h3>Horas aprobadas por consultor</h3>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Consultor</th><th>Total horas</th><th>Detalle por proyecto</th></tr></thead>
+            <tbody>
+              {dashboardHoursByConsultant.length === 0 && (
+                <tr><td colSpan={3} className="cell-empty">Sin horas en el período</td></tr>
+              )}
+              {dashboardHoursByConsultant.map((row) => (
+                <tr key={row.consultant}>
+                  <td>{row.consultant}</td>
+                  <td>{row.total.toFixed(2)}</td>
+                  <td>
+                    <div className="tag-list">
+                      {Array.from(row.byProject.entries()).map(([pid, hours]) => {
+                        const pName = projects.find((p) => p.id === pid)?.name ?? "Proyecto";
+                        return <span key={pid} className="pill neutral">{`${pName}: ${hours.toFixed(2)}h`}</span>;
+                      })}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
 
       {/* ── Gráficos Principales (Presupuesto vs Gasto + Distribución de Gastos) ── */}
       <section className="grid two-col">

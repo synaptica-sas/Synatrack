@@ -152,7 +152,7 @@ export function RagChat({ projects, statsProjects = [], fxConfigs, consultants =
               return `• **${p.projectName}**: ${statusSymbol} ${pctText}`;
             }).join("\n");
         }
-        sources = ["Motor de Reglas Financieras", "Cálculo de Proyecciones de Costo"];
+        sources = ["Motor de Reglas Financieras", "Cálculo de Presupuesto Proyectado"];
 
       } else if (query.includes("proyecto") || query.includes("cuántos") || query.includes("lista")) {
         const count = projects.length;
