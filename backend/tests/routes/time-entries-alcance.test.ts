@@ -315,7 +315,7 @@ describe("POST /api/time-entries: no se puede registrar a nombre de otro", () =>
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.json().message).toContain("No hay un consultor asociado al correo");
+    expect(res.json().message).toContain("no tiene una ficha de consultor enlazada");
   });
 
   it("un PM sí puede registrar horas a nombre de otro consultor", async () => {

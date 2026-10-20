@@ -270,6 +270,13 @@ model Consultant {
   activities       Activity[]
   runningTimer     RunningTimer?
   risks            Risk[]
+
+  // Enlace directo al usuario de login (reemplaza la comparación implícita por
+  // email). Nulable: un consultor puede no tener todavía un usuario que
+  // coincida o que se haya enlazado a mano. `SetNull` en vez de cascada porque
+  // borrar el usuario de alguien no debe borrar su historial de consultor.
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model TimeEntry {
@@ -454,6 +461,8 @@ model User {
   skills   String[]   @default([])
   roles    UserRole[]
   country  String?
+
+  consultant Consultant?
 }
 
 model Role {

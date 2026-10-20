@@ -189,7 +189,16 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       return reply.status(400).send({ message: resolved.message });
     }
 
-    request.authUser = resolved.identity;
+    // La identidad demo/simulada no tiene una fila `User` real detrás (su `id`
+    // es sintético, p.ej. "local-admin"), así que no hay `userId` que buscar:
+    // se resuelve por correo, de solo lectura. Se busca sin importar el rol
+    // simulado -- un ADMIN o PM también puede tener su propia ficha de
+    // consultor (factura horas como cualquier otro).
+    const consultant = await prisma.consultant.findFirst({
+      where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
+    });
+
+    request.authUser = { ...resolved.identity, consultantId: consultant?.id ?? null };
     return;
   }
 
@@ -360,14 +369,28 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     });
   }
 
-  // JIT sincronización: Si el usuario tiene rol CONSULTANT, asegurar que exista su correspondiente consultor en la base de datos
-  if (roles.includes(AppRole.CONSULTANT)) {
-    try {
-      const existingConsultant = await prisma.consultant.findFirst({
-        where: { email: { equals: userWithRoles.email, mode: "insensitive" } },
+  // JIT sincronización: enlazar (y, solo para un CONSULTANT puro, crear si
+  // hace falta) el Consultant del usuario. El enlace vive en
+  // `Consultant.userId`, no en el correo: se fija aquí (si hace falta) y de
+  // ahí en adelante toda la sesión lee ese id, sin volver a comparar emails en
+  // cada módulo. La búsqueda corre para cualquier rol -- un ADMIN o PM también
+  // puede tener su propia ficha de consultor -- pero la creación automática de
+  // una ficha nueva con tarifa 0 sigue reservada al rol CONSULTANT, igual que
+  // antes de este cambio.
+  let consultantId: string | null = null;
+  try {
+    let consultant = await prisma.consultant.findFirst({ where: { userId: user.id } });
+
+    if (!consultant) {
+      // Puede existir una ficha de antes de este enlace (creada a mano o por
+      // un login previo) con el mismo correo pero todavía sin `userId`.
+      const unlinked = await prisma.consultant.findFirst({
+        where: { email: { equals: userWithRoles.email, mode: "insensitive" }, userId: null },
       });
-      if (!existingConsultant) {
-        await prisma.consultant.create({
+      if (unlinked) {
+        consultant = await prisma.consultant.update({ where: { id: unlinked.id }, data: { userId: user.id } });
+      } else if (roles.includes(AppRole.CONSULTANT)) {
+        consultant = await prisma.consultant.create({
           data: {
             fullName: userWithRoles.displayName,
             email: userWithRoles.email,
@@ -377,12 +400,14 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
             country: userWithRoles.country || "Colombia",
             active: userWithRoles.active,
             allowWeekendWork: false,
+            userId: user.id,
           },
         });
       }
-    } catch (err) {
-      request.log.error({ err }, "Falló la sincronización JIT de consultor en el login");
     }
+    consultantId = consultant?.id ?? null;
+  } catch (err) {
+    request.log.error({ err }, "Falló la sincronización JIT de consultor en el login");
   }
 
   request.authUser = {
@@ -390,6 +415,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     email: user.email,
     displayName: user.displayName,
     roles,
+    consultantId,
   };
 }
 

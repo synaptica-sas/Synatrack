@@ -109,7 +109,10 @@ export function ActivitiesTab({ projects, consultants, authUser, onError, onDril
   const [loading, setLoading] = useState(false);
 
   // Filters
-  const myConsultant = consultants.find((c) => c.email?.toLowerCase() === authUser?.email?.toLowerCase());
+  // Resuelto por el enlace de sesión (Consultant.userId), no por correo: esta
+  // pantalla es solo de ADMIN, que siempre recibe la lista completa, pero el
+  // criterio queda consistente con el resto de la app.
+  const myConsultant = consultants.find((c) => c.id === authUser?.consultantId);
   const [filterConsultantId, setFilterConsultantId] = useState(myConsultant?.id || "");
   const [filterProjectId, setFilterProjectId] = useState("");
   const [filterType, setFilterType] = useState<string>("");

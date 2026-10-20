@@ -24,6 +24,7 @@ export async function authRoutes(app: FastifyInstance) {
           phrase: dbUser?.phrase || null,
           roles: user.roles,
           permissions: resolvePermissions(user.roles),
+          consultantId: user.consultantId,
         },
       };
     },

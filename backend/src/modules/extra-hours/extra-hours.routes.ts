@@ -333,7 +333,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       } else if (roles.includes(AppRole.PM)) {
         alcance = {
           OR: [
-            { consultant: { email: email } },
+            { consultantId: user.consultantId ?? "__none__" },
             { project: { projectManagerEmail: email } },
           ],
         };
@@ -343,7 +343,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         // los demás no viajan (`soloPropias` solo es cierto si no dirige nada).
         alcance = {
           OR: [
-            { consultant: { email: email } },
+            { consultantId: user.consultantId ?? "__none__" },
             { project: { projectManagerEmail: { equals: email, mode: "insensitive" } } },
           ],
         };
@@ -456,6 +456,13 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       if (!consultant) {
         return reply.status(400).send({ message: "Consultor no válido" });
+      }
+
+      // Un CONSULTANT solo puede registrar horas extra a su propio nombre;
+      // ADMIN y PM sí pueden hacerlo a nombre de otros (mismo criterio que
+      // `resolveTargetConsultantId` en time-entries).
+      if (!isManager && payload.consultantId !== request.authUser!.consultantId) {
+        return reply.status(403).send({ message: "Solo puedes registrar horas extra a tu propio nombre." });
       }
 
       const country = consultant.country || "Default";

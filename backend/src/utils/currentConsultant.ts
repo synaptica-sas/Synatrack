@@ -4,20 +4,19 @@ import { prisma } from "../infra/prisma.js";
 
 /**
  * El timesheet y el tracker son personales: siempre registran horas a nombre
- * de "yo". La identidad de login vive en `User` (correo de Azure AD) mientras
- * que las horas cuelgan de `Consultant`, y el unico puente entre ambos es el
- * correo -- igual que hace el modulo de actividades.
+ * de "yo". El puente entre `User` (identidad de login) y `Consultant` (dueño
+ * de las horas) es `Consultant.userId`, resuelto una sola vez por
+ * `authenticate` y expuesto en `request.authUser.consultantId` -- ya no se
+ * compara por correo en cada petición.
  *
- * Devuelve el consultor del usuario autenticado, o null si su correo no
- * corresponde a ninguno (por ejemplo un FINANCE que nunca carga horas).
+ * Devuelve el consultor del usuario autenticado, o null si no tiene ninguno
+ * enlazado (por ejemplo un FINANCE que nunca carga horas).
  */
 export async function findMyConsultant(request: FastifyRequest) {
-  const email = request.authUser?.email;
-  if (!email) return null;
+  const consultantId = request.authUser?.consultantId;
+  if (!consultantId) return null;
 
-  return prisma.consultant.findFirst({
-    where: { email: { equals: email, mode: "insensitive" } },
-  });
+  return prisma.consultant.findUnique({ where: { id: consultantId } });
 }
 
 /**
@@ -52,7 +51,7 @@ export async function resolveTargetConsultantId(
   const mine = await findMyConsultant(request);
   if (!mine) {
     return {
-      error: `No hay un consultor asociado al correo ${request.authUser?.email ?? ""}, así que no se pueden registrar horas a tu nombre. Pide a un administrador que cree tu ficha de consultor.`,
+      error: `Tu usuario (${request.authUser?.email ?? ""}) no tiene una ficha de consultor enlazada, así que no se pueden registrar horas a tu nombre. Pide a un administrador que te cree o enlace una.`,
     };
   }
 
