@@ -1854,6 +1854,7 @@ function App() {
                     setPreselectedCapacityConsultantId(id);
                     setActiveTab("capacity");
                   }}
+                  adminUsers={adminHook.adminUsers}
                 />
               )}
 

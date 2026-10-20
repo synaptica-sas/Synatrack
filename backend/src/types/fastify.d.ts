@@ -8,6 +8,11 @@ declare module "fastify" {
       email: string;
       displayName: string;
       roles: AppRole[];
+      /**
+       * Ficha de consultor enlazada a este usuario (`Consultant.userId`), si
+       * tiene una. Reemplaza la comparación por email que hacía cada módulo.
+       */
+      consultantId: string | null;
     };
   }
 }

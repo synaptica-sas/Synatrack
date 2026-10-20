@@ -61,7 +61,7 @@ function solicitud(id: string, project: Project): ExtraHourEntry {
 }
 
 function usuario(email: string, roles: AuthUser['roles']): AuthUser {
-  return { id: 'u1', email, displayName: 'Yo', roles, permissions: [] };
+  return { id: 'u1', email, displayName: 'Yo', roles, permissions: [], consultantId: null };
 }
 
 function pintar(authUser: AuthUser) {

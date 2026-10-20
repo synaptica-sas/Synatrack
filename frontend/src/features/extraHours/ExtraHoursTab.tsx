@@ -210,7 +210,11 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
 
   // --- 1. Report Form state ---
-  const myConsultant = consultants.find((c) => c.email?.toLowerCase() === authUser?.email?.toLowerCase());
+  // `authUser.consultantId` viene de la sesión (enlace Consultant <-> User),
+  // no de buscar el correo dentro de `consultants`: ese listado llega vacío
+  // para un CONSULTANT puro (no tiene `consultants:read`), así que antes de
+  // este enlace nunca podía autoreportar sus propias horas extra.
+  const myConsultant = consultants.find((c) => c.id === authUser?.consultantId);
 
   // Solo el PM del proyecto aprueba horas extra (ni el Administrador ni un
   // delegado): el buzón muestra únicamente las solicitudes de los proyectos que
@@ -220,7 +224,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     !!myEmail && pmEmail?.trim().toLowerCase() === myEmail;
   const dirijoAlgunProyecto = projects.some((p) => soyPmDe(p.projectManagerEmail));
   const misPendientes = pmPendingEntries.filter((e) => soyPmDe(e.project?.projectManagerEmail));
-  const [reportConsultantId, setReportConsultantId] = useState(myConsultant?.id || "");
+  const [reportConsultantId, setReportConsultantId] = useState(authUser?.consultantId || myConsultant?.id || "");
   const [reportProjectId, setReportProjectId] = useState("");
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [reportStartTime, setReportStartTime] = useState("18:00");
@@ -428,12 +432,12 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }
   }, [selectedCountryConfig, configsList]);
 
-  // Default consultant ID when consultants load
+  // Default consultant ID: directo de la sesión, no depende de que `consultants` traiga la fila.
   useEffect(() => {
-    if (myConsultant && !reportConsultantId) {
-      setReportConsultantId(myConsultant.id);
+    if (authUser?.consultantId && !reportConsultantId) {
+      setReportConsultantId(authUser.consultantId);
     }
-  }, [consultants, myConsultant, reportConsultantId]);
+  }, [authUser?.consultantId, reportConsultantId]);
 
   // Real-time backend calculation preview
   useEffect(() => {
@@ -1059,7 +1063,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     {(() => {
                       return entries.map((entry) => {
                         const stat = getStatusLabel(entry.status);
-                        const isOwn = entry.consultantId === myConsultant?.id || authUser?.roles.includes("ADMIN");
+                        const isOwn = entry.consultantId === authUser?.consultantId || authUser?.roles.includes("ADMIN");
                         const canDelete = isOwn && entry.status !== "APPROVED";
 
                         return (

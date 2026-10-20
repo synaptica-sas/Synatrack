@@ -54,6 +54,8 @@ export type AuthUser = {
   bio?: string | null;
   phrase?: string | null;
   skills?: string[];
+  /** Ficha de consultor enlazada (`Consultant.userId`), o null si no tiene. */
+  consultantId: string | null;
 };
 
 export type AdminUser = {
@@ -146,6 +148,8 @@ export type Consultant = {
   identification?: string | null;
   skills?: string[];
   seniority?: string | null;
+  /** Usuario de login enlazado (`Consultant.userId`), o null si no tiene. */
+  userId?: string | null;
 };
 
 export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -836,6 +840,12 @@ export async function updateConsultant(
 
 export async function deleteConsultant(id: string): Promise<void> {
   await request<void>(`/api/consultants/${id}`, "DELETE");
+}
+
+/** Enlace manual (ADMIN) a un usuario de login; `userId: null` desenlaza. */
+export async function linkConsultantUser(id: string, userId: string | null): Promise<Consultant> {
+  const response = await request<ApiEnvelope<Consultant>>(`/api/consultants/${id}/link-user`, "PATCH", { userId });
+  return response.data;
 }
 
 export type TimeEntryFilters = {

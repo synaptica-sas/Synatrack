@@ -76,6 +76,24 @@ const MENSAJE_FECHAS = "La fecha de salida no puede ser anterior a la fecha de i
 
 const consultantParamsSchema = z.object({ id: z.string().min(1) });
 
+const linkUserPayloadSchema = z.object({ userId: z.string().min(1).nullable() });
+
+/**
+ * Si el correo del consultor coincide con un `User` que todavía no tiene
+ * ningún consultor enlazado, los enlaza. Mismo criterio insensible a
+ * mayúsculas que usa `authenticate` en el login — es el segundo de los tres
+ * momentos de enlace (el primero es el login, el tercero es el enlace manual
+ * de `PATCH /:id/link-user`).
+ */
+async function autoLinkByEmail(consultantId: string, email: string | null) {
+  if (!email) return null;
+  const user = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" }, consultant: null },
+  });
+  if (!user) return null;
+  return prisma.consultant.update({ where: { id: consultantId }, data: { userId: user.id } });
+}
+
 export async function consultantsRoutes(app: FastifyInstance) {
   app.get(
     "/",
@@ -83,44 +101,6 @@ export async function consultantsRoutes(app: FastifyInstance) {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.FINANCE, AppRole.VIEWER])],
     },
     async (request) => {
-      try {
-        // JIT synchronization: Ensure all users with role AppRole.CONSULTANT have a Consultant record
-        const consultantUsers = await prisma.user.findMany({
-          where: {
-            roles: {
-              some: {
-                role: {
-                  name: AppRole.CONSULTANT,
-                },
-              },
-            },
-          },
-        });
-
-        for (const u of consultantUsers) {
-          const existing = await prisma.consultant.findFirst({
-            where: { email: { equals: u.email, mode: "insensitive" } },
-          });
-
-          if (!existing) {
-            await prisma.consultant.create({
-              data: {
-                fullName: u.displayName,
-                email: u.email,
-                role: "Consultor",
-                hourlyRate: 0,
-                rateCurrency: "USD",
-                country: u.country ? normalizeCountry(u.country) : "Colombia",
-                active: u.active,
-                allowWeekendWork: false,
-              },
-            });
-          }
-        }
-      } catch (err) {
-        app.log.error(err, "Failed to run JIT consultant sync");
-      }
-
       // Alcance por campo (DEP-38): este listado es la fuente más directa de
       // tarifas de toda la plantilla. Solo ADMIN, PM y FINANCE la reciben; para
       // CONSULTANT y VIEWER se omiten `hourlyRate`, `costPerMonth` e
@@ -151,7 +131,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ message: MENSAJE_FECHAS });
     }
 
-    const consultant = await prisma.consultant.create({
+    let consultant = await prisma.consultant.create({
       data: {
         fullName: payload.fullName,
         email: payload.email || null,
@@ -169,6 +149,8 @@ export async function consultantsRoutes(app: FastifyInstance) {
         ...camposDeVinculo(payload),
       },
     });
+
+    consultant = (await autoLinkByEmail(consultant.id, consultant.email)) ?? consultant;
 
     // El `after` incluye `hourlyRate` y `costPerMonth` a propósito: la tarifa es
     // justamente el dato que se quiere poder auditar, porque cambia todos los
@@ -209,7 +191,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ message: MENSAJE_FECHAS });
     }
 
-    const consultant = await prisma.consultant.update({
+    let consultant = await prisma.consultant.update({
       where: { id },
       data: {
         fullName: payload.fullName,
@@ -229,6 +211,12 @@ export async function consultantsRoutes(app: FastifyInstance) {
       },
     });
 
+    // Solo se intenta enlazar si todavía no tenía uno: un enlace ya hecho (a
+    // mano o por login) no se toca porque alguien edite otro campo.
+    if (!existing.userId) {
+      consultant = (await autoLinkByEmail(consultant.id, consultant.email)) ?? consultant;
+    }
+
     // Igual que en la creación: el `diff` deja ver el cambio de tarifa, que es
     // el motivo principal para auditar este endpoint.
     await writeAudit(prisma, {
@@ -240,6 +228,55 @@ export async function consultantsRoutes(app: FastifyInstance) {
       after: consultant as unknown as Record<string, unknown>,
       request,
     });
+
+      return { data: conFechas(consultant) };
+    },
+  );
+
+  /**
+   * Tercer momento de enlace (el primero es el login, el segundo es
+   * crear/editar por correo coincidente): a mano, para los casos en que el
+   * correo del consultor no coincide con el del usuario de Entra. `userId:
+   * null` desenlaza.
+   */
+  app.patch(
+    "/:id/link-user",
+    {
+      preHandler: [authenticate, authorize([AppRole.ADMIN])],
+    },
+    async (request, reply) => {
+      const { id } = consultantParamsSchema.parse(request.params);
+      const { userId } = linkUserPayloadSchema.parse(request.body);
+
+      const existing = await prisma.consultant.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.status(404).send({ message: "Consultant not found" });
+      }
+
+      if (userId) {
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+          return reply.status(400).send({ message: "Usuario no encontrado" });
+        }
+        const yaEnlazado = await prisma.consultant.findFirst({ where: { userId, NOT: { id } } });
+        if (yaEnlazado) {
+          return reply
+            .status(409)
+            .send({ message: `Ese usuario ya está enlazado a ${yaEnlazado.fullName}` });
+        }
+      }
+
+      const consultant = await prisma.consultant.update({ where: { id }, data: { userId } });
+
+      await writeAudit(prisma, {
+        entity: AUDIT_ENTITIES.consultant,
+        entityId: id,
+        action: "UPDATE",
+        changedBy: request.authUser!.email,
+        before: existing as unknown as Record<string, unknown>,
+        after: consultant as unknown as Record<string, unknown>,
+        request,
+      });
 
       return { data: conFechas(consultant) };
     },

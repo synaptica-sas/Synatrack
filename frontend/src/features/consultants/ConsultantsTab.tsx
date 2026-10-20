@@ -7,7 +7,9 @@ import {
   deleteConsultant,
   updateConsultant,
   listSupportedCountries,
+  linkConsultantUser,
   type Consultant,
+  type AdminUser,
 } from "../../services/api";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SectionLayout } from "../../components/SectionLayout";
@@ -88,6 +90,7 @@ export function ConsultantsTab({
   onReload,
   onError,
   onAssignConsultant,
+  adminUsers = [],
 }: {
   consultants: Consultant[];
   loading: boolean;
@@ -96,6 +99,12 @@ export function ConsultantsTab({
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
   onAssignConsultant?: (id: string) => void;
+  /**
+   * Para la columna "Usuario enlazado" y su selector manual (R-0XX). Opcional:
+   * solo ADMIN tiene `users:manage`, así que quien no lo tenga simplemente ve
+   * la columna sin opción de cambiarla.
+   */
+  adminUsers?: AdminUser[];
 }) {
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
@@ -300,6 +309,24 @@ export function ConsultantsTab({
     }
   }
 
+  const usuarioPorId = useMemo(() => new Map(adminUsers.map((u) => [u.id, u])), [adminUsers]);
+
+  /** Usuarios elegibles para enlazar a `consultant`: sin enlace, más el suyo propio si ya tiene uno. */
+  function usuariosEnlazables(consultant: Consultant) {
+    return adminUsers.filter(
+      (u) => u.id === consultant.userId || !consultants.some((c) => c.userId === u.id),
+    );
+  }
+
+  async function handleLinkUser(consultantId: string, userId: string) {
+    try {
+      await linkConsultantUser(consultantId, userId || null);
+      await onReload();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "No se pudo enlazar el usuario");
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return;
     const id = deleteTarget.id;
@@ -451,6 +478,7 @@ export function ConsultantsTab({
                   <thead>
                     <tr>
                       <th>Nombre</th>
+                      <th>Correo</th>
                       <th>Rol</th>
                       <th>Seniority</th>
                       <th>País</th>
@@ -459,6 +487,7 @@ export function ConsultantsTab({
                       <th>Tarifa</th>
                       <th>Tarifa en USD</th>
                       <th>Estado</th>
+                      <th>Usuario enlazado</th>
                       {(canWrite || !!onAssignConsultant) && <th>Acciones</th>}
                     </tr>
                   </thead>
@@ -466,6 +495,7 @@ export function ConsultantsTab({
                     {filteredConsultants.map((c) => (
                       <tr key={c.id}>
                         <td>{c.fullName}</td>
+                        <td className="cell-small">{c.email || "—"}</td>
                         <td>{c.role}</td>
                         <td><span className="state-chip state-chip--neutral">{c.seniority || "—"}</span></td>
                         <td>{c.country ? <CountryFlag country={c.country} /> : "—"}</td>
@@ -486,6 +516,22 @@ export function ConsultantsTab({
                               </span>
                             )}
                           </div>
+                        </td>
+                        <td className="cell-small">
+                          {canDelete ? (
+                            <select
+                              className="select-control cell-small"
+                              value={c.userId ?? ""}
+                              onChange={(e) => void handleLinkUser(c.id, e.target.value)}
+                            >
+                              <option value="">— sin enlazar —</option>
+                              {usuariosEnlazables(c).map((u) => (
+                                <option key={u.id} value={u.id}>{u.displayName} ({u.email})</option>
+                              ))}
+                            </select>
+                          ) : (
+                            c.userId ? usuarioPorId.get(c.userId)?.displayName ?? "Enlazado" : "— sin enlazar —"
+                          )}
                         </td>
                         {(canWrite || !!onAssignConsultant) && (
                           <td>
@@ -545,7 +591,7 @@ export function ConsultantsTab({
                     ))}
                     {filteredConsultants.length === 0 && (
                       <tr>
-                        <td colSpan={(canWrite || !!onAssignConsultant) ? 10 : 9} className="cell-empty cell-empty--roomy">
+                        <td colSpan={(canWrite || !!onAssignConsultant) ? 12 : 11} className="cell-empty cell-empty--roomy">
                           No se encontraron consultores con los filtros aplicados.
                         </td>
                       </tr>

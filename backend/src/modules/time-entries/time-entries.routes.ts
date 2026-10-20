@@ -132,7 +132,10 @@ function visibilityScope(request: FastifyRequest): {
   if (roles.includes(AppRole.PM)) {
     return {
       where: {
-        OR: [{ consultant: { email } }, { project: { projectManagerEmail: email } }],
+        OR: [
+          { consultantId: user.consultantId ?? "__none__" },
+          { project: { projectManagerEmail: email } },
+        ],
       },
       ocultarDatosSensibles: false,
     };
@@ -140,7 +143,7 @@ function visibilityScope(request: FastifyRequest): {
 
   if (roles.includes(AppRole.VIEWER)) return { where: {}, ocultarDatosSensibles: true };
 
-  return { where: { consultant: { email } }, ocultarDatosSensibles: false };
+  return { where: { consultantId: user.consultantId ?? "__none__" }, ocultarDatosSensibles: false };
 }
 
 /**
