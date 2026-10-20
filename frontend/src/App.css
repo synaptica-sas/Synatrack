@@ -4938,9 +4938,9 @@ body.dark .card .skill-empty.skill-empty { color: var(--text-muted); }
 
 body.dark .card .inline-success.inline-success { color: var(--state-success-strong); }
 
-/* ── Proyecciones ───────────────────────────────────────────────────────────
-   Medidor compacto de horas aprobadas frente a proyectadas dentro de una
-   celda. Reutiliza `.meter__track` y `.meter__fill--*`; solo cambia la escala. */
+/* ── Medidor compacto ───────────────────────────────────────────────────────
+   Para celdas de tabla (Capacity, Portafolio, Proyectos). Reutiliza
+   `.meter__track` y `.meter__fill--*`; solo cambia la escala. */
 .meter--compact { min-width: 8rem; gap: var(--space-1); }
 .meter--compact .meter__track { height: 0.375rem; }
 .meter--compact .meter__value { font-size: 0.7rem; min-width: 0; white-space: nowrap; }
@@ -5748,50 +5748,6 @@ td.gastos-subtable__total, body.dark td.gastos-subtable__total { color: var(--te
   box-shadow: none;
   transform: none;
 }
-
-/* ── Bloque de costos proyectados ────────────────────────────────────────
-   La cifra iba en #2563eb, el azul de Tailwind, sin contraparte oscura.
-   Pasa a `--state-info-strong`, el azul de marca contrastado en ambos temas. */
-.gastos-forecast-title.gastos-forecast-title { font-size: 0.95rem; }
-
-.gastos-forecast-note {
-  margin-left: var(--space-2);
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--text-soft);
-}
-
-.gastos-forecast-row {
-  display: flex;
-  gap: var(--space-6);
-  align-items: baseline;
-  flex-wrap: wrap;
-  margin-top: var(--space-3);
-}
-
-.gastos-forecast-total {
-  font-family: var(--display);
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: var(--state-info-strong);
-}
-
-.gastos-forecast-meta { font-size: 0.8rem; color: var(--text-soft); }
-
-.gastos-forecast-foot {
-  margin: var(--space-2) 0 0;
-  font-size: 0.72rem;
-  color: var(--text-soft);
-}
-
-/* Dentro de `.card`, en oscuro, `body.dark .card span:not(.pill)` aplana estos
-   textos con (0,3,2): tres clases y DOS elementos. Un selector de tres clases
-   y un elemento pierde el desempate, así que la clase va repetida para llegar
-   a (0,4,1). `--foot` es un `<p>` y le basta con (0,3,1). */
-body.dark .card .gastos-forecast-total.gastos-forecast-total { color: var(--state-info-strong); }
-body.dark .card .gastos-forecast-note.gastos-forecast-note,
-body.dark .card .gastos-forecast-meta.gastos-forecast-meta,
-body.dark .card .gastos-forecast-foot { color: var(--text-soft); }
 
 /* ── Móvil ───────────────────────────────────────────────────────────────
    A 560px las acciones dejan de empujarse a la derecha y ocupan su propia
@@ -6858,60 +6814,12 @@ body.dark td .cons-btn-assign.cons-btn-assign { color: var(--state-success-stron
 /* Utilidad: el texto de una casilla no debe seleccionarse al hacer doble clic. */
 .no-select { user-select: none; }
 
-/* ── Proyecciones ─────────────────────────────────────────────────────────
-   La barra de ejecución tenía su propia paleta (`#dc2626`, `#f59e0b`,
-   `#2563eb` sobre pista `#e5e7eb`): un cuarto semáforo, sin modo oscuro.
-   Pasa a `.meter`, que ya existía; el único estilo en línea que queda en la
-   pantalla es el ancho calculado del relleno. El formulario fijaba
-   `background: #ffffff`, así que en oscuro se quedaba blanco. */
-.meter__fill--info { background: var(--state-info-solid); }
-.meter__value--danger.meter__value--danger { color: var(--state-danger-strong); }
-body.dark .card .meter__value--danger.meter__value--danger { color: var(--state-danger-strong); }
-
 /* Variante de aviso de `.field-help`, para el texto de presupuesto ajustado. */
 .field-help--warning.field-help--warning { color: var(--state-warning-strong); }
 body.dark .card .field-help--warning.field-help--warning { color: var(--state-warning-strong); }
 
 /* Hermano de `.btn-block` para controles de formulario. */
 .control-block { width: 100%; }
-
-.fore-presets {
-  display: flex;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.fore-form {
-  background: var(--card-bg);
-  padding: var(--space-6);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-}
-
-.fore-row { display: grid; gap: 0.7rem; }
-.fore-row--lg { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-.fore-row--md { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: start; }
-.fore-row--sm { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: start; }
-
-.fore-submit-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-3);
-  border-top: 1px solid var(--border-color);
-  padding-top: var(--space-3);
-  margin-top: var(--space-1);
-}
-.fore-submit-row__msg { flex: 1; }
-.fore-range-error.fore-range-error { margin: 0; font-size: 0.78rem; }
-
-.fore-cell-date { font-size: 0.8rem; white-space: nowrap; }
-.fore-help-block { display: block; margin: var(--space-1) 0 0; }
-
-@media (max-width: 560px) {
-  .fore-submit-row { flex-direction: column; align-items: stretch; }
-}
 
 /* ── Proyectos ────────────────────────────────────────────────────────────
    `RagBadge` pintaba el semáforo con `result.color` de fondo y `#fff` encima,

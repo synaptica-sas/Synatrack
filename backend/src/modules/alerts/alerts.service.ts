@@ -190,9 +190,6 @@ export async function runAlertEngine(prisma: DbClient): Promise<void> {
       },
       financialEntries: true,
       risks: { select: { estimatedCost: true, costCurrency: true, status: true, identifiedAt: true } },
-      forecasts: {
-        include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
-      },
     },
   });
 

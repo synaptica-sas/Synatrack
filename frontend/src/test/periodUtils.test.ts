@@ -4,7 +4,6 @@ import {
   quarterToMonthRange,
   monthYearToQuarter,
   quarterToMonthYear,
-  buildPeriodsFromMonths,
   formatPeriodLabel,
   compareMY,
   addMonths,
@@ -55,42 +54,6 @@ describe('quarterToMonthYear', () => {
     const result = quarterToMonthYear("invalid");
     expect(result.month).toBeGreaterThanOrEqual(1);
     expect(result.month).toBeLessThanOrEqual(12);
-  });
-});
-
-// ── buildPeriodsFromMonths ───────────────────────────────────────────────────
-
-describe('buildPeriodsFromMonths', () => {
-  it('same month/quarter → one period', () => {
-    expect(buildPeriodsFromMonths({ month: 4, year: 2026 }, { month: 4, year: 2026 })).toEqual(["2026-Q2"]);
-  });
-
-  it('Apr–Jun 2026 → ["2026-Q2"]', () => {
-    expect(buildPeriodsFromMonths({ month: 4, year: 2026 }, { month: 6, year: 2026 })).toEqual(["2026-Q2"]);
-  });
-
-  it('Apr–Sep 2026 → ["2026-Q2", "2026-Q3"]', () => {
-    expect(buildPeriodsFromMonths({ month: 4, year: 2026 }, { month: 9, year: 2026 })).toEqual(["2026-Q2", "2026-Q3"]);
-  });
-
-  it('Jan–Dec 2026 → Q1 through Q4', () => {
-    const result = buildPeriodsFromMonths({ month: 1, year: 2026 }, { month: 12, year: 2026 });
-    expect(result).toEqual(["2026-Q1", "2026-Q2", "2026-Q3", "2026-Q4"]);
-  });
-
-  it('crosses year boundary: Nov 2026 – Feb 2027 → ["2026-Q4", "2027-Q1"]', () => {
-    const result = buildPeriodsFromMonths({ month: 11, year: 2026 }, { month: 2, year: 2027 });
-    expect(result).toEqual(["2026-Q4", "2027-Q1"]);
-  });
-
-  it('throws when to < from', () => {
-    expect(() => buildPeriodsFromMonths({ month: 6, year: 2026 }, { month: 4, year: 2026 })).toThrow();
-  });
-
-  it('no duplicate quarters within same quarter', () => {
-    // May and June both map to Q2 — should appear only once
-    const result = buildPeriodsFromMonths({ month: 5, year: 2026 }, { month: 6, year: 2026 });
-    expect(result).toEqual(["2026-Q2"]);
   });
 });
 

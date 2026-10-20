@@ -240,24 +240,6 @@ export type Expense = {
   conversionQuality: ConversionQuality;
 };
 
-export type Forecast = {
-  id: string;
-  projectId: string;
-  consultantId: string;
-  startDate: string;   // ISO "YYYY-MM-DD"
-  endDate: string;     // ISO "YYYY-MM-DD"
-  hoursProjected: string;
-  hourlyRate: string | null;
-  sellRate: string | null;
-  currency: string;
-  note: string | null;
-  createdAt: string;
-  updatedAt: string;
-  project: Project;
-  consultant: Consultant;
-  projectedCost?: number;
-};
-
 export type RevenueEntry = {
   id: string;
   projectId: string;
@@ -1121,48 +1103,6 @@ export async function updateExpense(
 
 export async function deleteExpense(id: string): Promise<void> {
   await request<void>(`/api/expenses/${id}`, "DELETE");
-}
-
-export async function listForecasts(): Promise<Forecast[]> {
-  const response = await request<ApiEnvelope<Forecast[]>>("/api/forecasts");
-  return response.data;
-}
-
-export async function createForecast(payload: {
-  projectId: string;
-  consultantId: string;
-  startDate: string;
-  endDate: string;
-  hoursProjected: number;
-  hourlyRate?: number;
-  sellRate?: number;
-  currency?: string;
-  note?: string;
-}): Promise<Forecast> {
-  const response = await request<ApiEnvelope<Forecast>>("/api/forecasts", "POST", payload);
-  return response.data;
-}
-
-export async function updateForecast(
-  id: string,
-  payload: {
-    projectId: string;
-    consultantId: string;
-    startDate: string;
-    endDate: string;
-    hoursProjected: number;
-    hourlyRate?: number;
-    sellRate?: number;
-    currency?: string;
-    note?: string;
-  },
-): Promise<Forecast> {
-  const response = await request<ApiEnvelope<Forecast>>(`/api/forecasts/${id}`, "PUT", payload);
-  return response.data;
-}
-
-export async function deleteForecast(id: string): Promise<void> {
-  await request<void>(`/api/forecasts/${id}`, "DELETE");
 }
 
 export async function getStatsOverview(baseCurrency?: string): Promise<StatsOverview> {

@@ -220,7 +220,6 @@ model Project {
 
   timeEntries      TimeEntry[]
   financialEntries FinancialEntry[]
-  forecasts        Forecast[]
   assignments      Assignment[]
   snapshots        MonthlySnapshot[]
   alerts           Alert[]
@@ -266,7 +265,6 @@ model Consultant {
   updatedBy        String? // email de quien lo modificó por última vez
 
   timeEntries      TimeEntry[]
-  forecasts        Forecast[]
   assignments      Assignment[]
   blocks           ConsultantBlock[]
   capacityConfigs  CapacityConfig[]
@@ -437,8 +435,6 @@ model Forecast {
   note           String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  createdBy      String? // email de quien creó el registro
-  updatedBy      String? // email de quien lo modificó por última vez
 
   project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)

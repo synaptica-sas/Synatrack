@@ -12,7 +12,6 @@ const NAV_LINKS: { label: string; tab: TabId }[] = [
   { label: "Portafolio",   tab: "portfolio" },
   { label: "Consultores",  tab: "consultants" },
   { label: "Ingresos/Gastos", tab: "financial" },
-  { label: "Proyecciones", tab: "forecasts" },
   { label: "Capacidad",    tab: "capacity" },
 ];
 
@@ -46,7 +45,7 @@ export function AppFooter({
             <p className="app-footer__app-name">SynaTrack</p>
           </div>
           <p className="app-footer__tagline">
-            Plataforma integral de planificación de recursos, control de horas, gastos y proyecciones financieras.
+            Plataforma integral de planificación de recursos, control de horas, gastos e ingresos.
           </p>
           <div className="app-footer__social">
             <a href="https://co.linkedin.com/company/synaptica-s-a-s" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn" className="app-footer__social-link">

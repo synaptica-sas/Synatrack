@@ -8,7 +8,7 @@ import { crearAsignacion, crearEscenarioBasico, limpiarEscenario, type Escenario
 /**
  * D8: capacity, asignaciones y horas planificadas son confidenciales. Las ven
  * ADMIN, PM, FINANCE y COMMERCIAL; no CONSULTANT ni VIEWER. Cierra los huecos que
- * dejó la revisión de seguridad: detalle de proyecto, forecasts, rangos sin tope,
+ * dejó la revisión de seguridad: detalle de proyecto, rangos sin tope,
  * fechas de vínculo, motivo de los bloqueos y alertas de capacidad.
  */
 describe("Confidencialidad de capacity (D8)", () => {
@@ -60,7 +60,6 @@ describe("Confidencialidad de capacity (D8)", () => {
   afterAll(async () => {
     await prisma.alert.deleteMany({ where: { projectId: escenario.projectId } });
     await prisma.consultantBlock.deleteMany({ where: { consultantId: escenario.consultorB.id } });
-    await prisma.forecast.deleteMany({ where: { projectId: escenario.projectId } });
     await limpiarEscenario(escenario);
     await app.close();
   });
@@ -92,19 +91,6 @@ describe("Confidencialidad de capacity (D8)", () => {
         expect(data.assignments.map((a: { consultantId: string }) => a.consultantId), rol).toContain(
           escenario.consultorB.id,
         );
-      }
-    });
-  });
-
-  describe("GET /api/forecasts", () => {
-    it("VIEWER, CONSULTANT y COMMERCIAL reciben 403; ADMIN, PM y FINANCE leen", async () => {
-      for (const rol of [AppRole.VIEWER, AppRole.CONSULTANT, AppRole.COMMERCIAL]) {
-        const res = await app.inject({ method: "GET", url: "/api/forecasts", headers: comoRol(rol) });
-        expect(res.statusCode, rol).toBe(403);
-      }
-      for (const rol of [AppRole.ADMIN, AppRole.PM, AppRole.FINANCE]) {
-        const res = await app.inject({ method: "GET", url: "/api/forecasts", headers: comoRol(rol) });
-        expect(res.statusCode, rol).toBe(200);
       }
     });
   });

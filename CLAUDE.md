@@ -33,7 +33,7 @@ de **PMO / control de proyectos de consultoría** para Synaptica. Cubre el ciclo
 
 - **Gobierno**: dashboard de KPIs, portafolio con semáforo RAG y métricas EVM (CPI/SPI), CRUD de proyectos, matriz de capacidad.
 - **Operación**: consultores, registro y aprobación de horas, actividades, horas extra con recargos por ley y aprobación única del PM, gastos.
-- **Financiero**: ingresos/facturación, proyecciones (forecasts), calculadora de estimaciones, tasas FX.
+- **Financiero**: ingresos/facturación, calculadora de estimaciones, tasas FX.
 - **Administración**: usuarios y roles, configuración de horas extra por país, bitácora de auditoría.
 
 Idioma del producto: **español** (UI, mensajes de error, comentarios de código). Mantenlo.
@@ -254,6 +254,5 @@ viva solo para horas extra, actividades y estimaciones hasta la fase 3 del plan.
 - Prisma devuelve `Decimal` -> en el frontend los montos llegan como **string**; convertir con `Number()`.
 - Fechas: el backend calcula en **UTC** (`Date.UTC`). Las fechas de calendario nuevas son `@db.Date`
   (`Assignment`, `Holiday`, vigencias de jornada) y viajan como `"YYYY-MM-DD"`.
-- Los `Forecast.startDate/endDate` son **strings** `"YYYY-MM-DD"`, no `DateTime`.
 - Sin librería de gráficos: las visualizaciones son SVG/CSS a mano.
 - Exportaciones: `xlsx` y `jspdf` + `jspdf-autotable` (chunks separados en `vite.config.ts`).

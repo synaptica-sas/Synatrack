@@ -6,8 +6,8 @@ import type { DbClient } from "../../infra/prisma.js";
  * fechado que usan los cálculos financieros (R-008 / R-012).
  *
  * POR QUÉ DE UN TIRÓN: la alternativa obvia —preguntar la tasa de cada
- * movimiento con `GET /api/fx/rate?date=`— sería una consulta por gasto, por
- * registro de horas y por forecast. `/stats/overview` recorre TODOS los
+ * movimiento con `GET /api/fx/rate?date=`— sería una consulta por gasto y por
+ * registro de horas. `/stats/overview` recorre TODOS los
  * proyectos: eso son miles de consultas por pantalla. El histórico de tasas es
  * una tabla pequeña (una fila por par y día), así que cabe entera en memoria y
  * se resuelve ahí, igual que ya se hacía con `buildRateMap`, pero con la

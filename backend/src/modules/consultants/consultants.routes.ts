@@ -258,17 +258,15 @@ export async function consultantsRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: "Consultant not found" });
       }
 
-      // Pre-check RESTRICT relations (TimeEntry, Forecast, Assignment)
-      const [linkedTimeEntries, linkedForecasts, linkedAssignments] = await Promise.all([
+      // Pre-check RESTRICT relations (TimeEntry, Assignment)
+      const [linkedTimeEntries, linkedAssignments] = await Promise.all([
         prisma.timeEntry.count({ where: { consultantId: id } }),
-        prisma.forecast.count({ where: { consultantId: id } }),
         prisma.assignment.count({ where: { consultantId: id } }),
       ]);
 
-      if (linkedTimeEntries > 0 || linkedForecasts > 0 || linkedAssignments > 0) {
+      if (linkedTimeEntries > 0 || linkedAssignments > 0) {
         const parts: string[] = [];
         if (linkedTimeEntries > 0) parts.push(`${linkedTimeEntries} registro(s) de horas`);
-        if (linkedForecasts > 0) parts.push(`${linkedForecasts} forecast(s)`);
         if (linkedAssignments > 0) parts.push(`${linkedAssignments} asignación(es)`);
         return reply
           .status(409)
@@ -325,17 +323,15 @@ export async function consultantsRoutes(app: FastifyInstance) {
 
       const { id } = existing;
 
-      // Pre-check RESTRICT relations (TimeEntry, Forecast, Assignment)
-      const [linkedTimeEntries, linkedForecasts, linkedAssignments] = await Promise.all([
+      // Pre-check RESTRICT relations (TimeEntry, Assignment)
+      const [linkedTimeEntries, linkedAssignments] = await Promise.all([
         prisma.timeEntry.count({ where: { consultantId: id } }),
-        prisma.forecast.count({ where: { consultantId: id } }),
         prisma.assignment.count({ where: { consultantId: id } }),
       ]);
 
-      if (linkedTimeEntries > 0 || linkedForecasts > 0 || linkedAssignments > 0) {
+      if (linkedTimeEntries > 0 || linkedAssignments > 0) {
         const parts: string[] = [];
         if (linkedTimeEntries > 0) parts.push(`${linkedTimeEntries} registro(s) de horas`);
-        if (linkedForecasts > 0) parts.push(`${linkedForecasts} forecast(s)`);
         if (linkedAssignments > 0) parts.push(`${linkedAssignments} asignación(es)`);
         return reply
           .status(409)

@@ -11,9 +11,8 @@ import { crearEscenarioBasico, limpiarEscenario, type EscenarioBasico } from "..
  * - `capacity:read`: ADMIN, PM, FINANCE y COMMERCIAL. CONSULTANT y VIEWER, no.
  * - `capacity:config` y `assignments:write` (bloqueos): solo ADMIN.
  * - Parámetros: `under < over`, solo ADMIN escribe, cualquiera con `capacity:read` lee.
- * - `overview` ya no suma forecasts (doble conteo, tarea 0.2).
  */
-describe("Capacity: permisos, parámetros y forecasts", () => {
+describe("Capacity: permisos y parámetros", () => {
   let app: FastifyInstance;
   let escenario: EscenarioBasico;
 
@@ -26,7 +25,6 @@ describe("Capacity: permisos, parámetros y forecasts", () => {
   });
 
   afterAll(async () => {
-    await prisma.forecast.deleteMany({ where: { projectId: escenario.projectId } });
     await prisma.consultantBlock.deleteMany({ where: { consultantId: escenario.consultorA.id } });
     await limpiarEscenario(escenario);
     await app.close();
@@ -81,36 +79,6 @@ describe("Capacity: permisos, parámetros y forecasts", () => {
       headers: comoRol(AppRole.PM),
     });
     expect(pmBorra.statusCode).toBe(403);
-  });
-
-  it("overview ya no suma forecasts: sin asignaciones, las horas comprometidas son 0", async () => {
-    await prisma.forecast.create({
-      data: {
-        projectId: escenario.projectId,
-        consultantId: escenario.consultorA.id,
-        startDate: "2026-06-01",
-        endDate: "2026-06-30",
-        hoursProjected: 120,
-      },
-    });
-
-    const res = await app.inject({
-      method: "GET",
-      url: "/api/capacity/overview?from=2026-06-01&to=2026-06-30",
-      headers: comoRol(AppRole.ADMIN),
-    });
-    expect(res.statusCode).toBe(200);
-    const fila = (res.json().data.consultants as {
-      consultantId: string;
-      committedHours: number;
-      utilizationPct: number;
-      activeAssignments: unknown[];
-    }[]).find((c) => c.consultantId === escenario.consultorA.id);
-
-    expect(fila).toBeDefined();
-    expect(fila!.committedHours).toBe(0);
-    expect(fila!.utilizationPct).toBe(0);
-    expect(fila!.activeAssignments).toHaveLength(0);
   });
 
   describe("PUT /api/capacity/settings", () => {

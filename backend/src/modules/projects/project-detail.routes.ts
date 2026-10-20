@@ -56,7 +56,6 @@ export async function projectDetailRoutes(app: FastifyInstance) {
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           financialEntries: true,
-          forecasts: { include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } } },
         },
       });
 
@@ -72,9 +71,6 @@ export async function projectDetailRoutes(app: FastifyInstance) {
 
       // Cálculo financiero unificado (utils/financial.ts): exactamente la misma
       // fórmula que /api/stats/overview y /api/stats/portfolio.
-      // ANTES esta ruta ignoraba los forecasts (que ya venían cargados) y
-      // calculaba `alertLevel` solo sobre el gasto real, por lo que un proyecto
-      // con desvío proyectado salía "ok" aquí y "warning"/"exceeded" allá.
       const fin = computeProjectFinancials(
         toFinancialsInput(project, project.timeEntries, rateBook, baseCurrency, umbralesSalud, now),
       );

@@ -1,6 +1,6 @@
 /**
  * Lógica financiera centralizada.
- * Todos los cálculos de margen, rentabilidad y forecast viven aquí —
+ * Todos los cálculos de margen y rentabilidad viven aquí —
  * fuera del frontend y fuera de las rutas, para que sean testeables.
  */
 
@@ -25,13 +25,6 @@ import {
 export type { FxRateRecord, FxHistoryRecord, RateBook, ConversionLedger, ConversionStatus };
 
 // ─── Tipos de entrada ─────────────────────────────────────────────────────────
-
-export type ForecastInput = {
-  hoursProjected: number;
-  hourlyRate: number | null;   // costo consultor
-  sellRate: number | null;     // tarifa de venta al cliente
-  currency: string;
-};
 
 export type ConsultantInput = {
   hourlyRate: number | null;
@@ -92,65 +85,6 @@ export function isInPeriod(date: Date, period: string): boolean {
   const range = periodToDateRange(period);
   if (!range) return false;
   return date >= range.start && date <= range.end;
-}
-
-// ─── Cálculo de forecast ajustado ────────────────────────────────────────────
-
-/**
- * Calcula el costo proyectado de un forecast descontando las horas ya aprobadas.
- *
- * ANTES (bug): projectedCost = hoursProjected * hourlyRate  (ignora lo ya ejecutado)
- * AHORA:       projectedCost = (hoursProjected - approvedHours) * hourlyRate
- *
- * Si ya se ejecutaron más horas de las proyectadas, el costo adicional es 0.
- */
-export function getAdjustedForecastCost(
-  forecast: ForecastInput,
-  consultant: ConsultantInput,
-  approvedHoursInPeriod: number,
-  /** Fecha a la que se valora el forecast: el inicio de su periodo. */
-  valuationDate: Date,
-  rateBook: RateBook,
-  baseCurrency: string,
-  ledger?: ConversionLedger,
-): number {
-  const effectiveCostRate = forecast.hourlyRate ?? consultant.hourlyRate ?? 0;
-  const remainingHours = Math.max(forecast.hoursProjected - approvedHoursInPeriod, 0);
-  const costInForecastCurrency = remainingHours * effectiveCostRate;
-  return convertAmountFallbackOnDate(
-    costInForecastCurrency,
-    forecast.currency,
-    baseCurrency,
-    valuationDate,
-    rateBook,
-    ledger,
-  );
-}
-
-/**
- * Calcula el ingreso proyectado de un forecast (usando sellRate).
- * Solo aplica para TIME_AND_MATERIAL y STAFFING.
- */
-export function getAdjustedForecastRevenue(
-  forecast: ForecastInput,
-  approvedHoursInPeriod: number,
-  /** Fecha a la que se valora el forecast: el inicio de su periodo. */
-  valuationDate: Date,
-  rateBook: RateBook,
-  baseCurrency: string,
-  ledger?: ConversionLedger,
-): number {
-  if (!forecast.sellRate) return 0;
-  const remainingHours = Math.max(forecast.hoursProjected - approvedHoursInPeriod, 0);
-  const revenueInForecastCurrency = remainingHours * forecast.sellRate;
-  return convertAmountFallbackOnDate(
-    revenueInForecastCurrency,
-    forecast.currency,
-    baseCurrency,
-    valuationDate,
-    rateBook,
-    ledger,
-  );
 }
 
 // ─── Umbrales por defecto (un solo sitio, con nombre) ────────────────────────
@@ -299,13 +233,6 @@ export type ApprovedTimeEntryInput = {
   rateCurrency: string;
 };
 
-export type ProjectForecastInput = ForecastInput & {
-  consultantId: string;
-  consultant: ConsultantInput;
-  startDate: string; // "YYYY-MM-DD"
-  endDate: string;   // "YYYY-MM-DD"
-};
-
 /**
  * Costo estimado de un riesgo (R-009). Solo los vigentes (`OPEN`/`ACCEPTED`)
  * exponen al presupuesto: uno `MITIGATED` ya se neutralizó y uno `CLOSED` dejó
@@ -344,7 +271,6 @@ export type ProjectFinancialsInput = {
   /** SOLO entradas ya aprobadas. El filtrado por estado es del llamador. */
   approvedTimeEntries: ApprovedTimeEntryInput[];
   expenses: ExpenseInput[];
-  forecasts: ProjectForecastInput[];
   /**
    * Exposición de riesgos (R-009). Obligatorio a propósito, igual que
    * `healthThresholds`: así ningún llamador nuevo olvida pasar los riesgos y
@@ -381,7 +307,7 @@ export type ProjectFinancialsResult = {
   budget: number;
   budgetConsumed: number;      // = totalCostActual
   budgetConsumedPct: number;   // gasto real / presupuesto
-  projectedPct: number;        // (gasto real + forecast) / presupuesto
+  projectedPct: number;        // (gasto real + riesgo) / presupuesto
   estimateAtCompletion: number;
   budgetVariance: number;
 
@@ -389,11 +315,9 @@ export type ProjectFinancialsResult = {
   contractValue: number;
   revenueRecognized: number;
   revenuePending: number;
-  revenueProjected: number;
 
   // Costos
   laborCostActual: number;
-  laborCostForecast: number;
   expensesActual: number;
   /**
    * Costo potencial de los riesgos vigentes (OPEN/ACCEPTED) (R-009). Ya está
@@ -429,9 +353,10 @@ export type ProjectFinancialsResult = {
    */
   budgetUseLevel: Exclude<NivelIndicador, "no-medible">;
   /**
-   * Nivel del gasto **proyectado** (real + forecast) contra el presupuesto.
-   * Es el que alimenta el semáforo de salud. Mismo criterio y misma función que
-   * `budgetUseLevel`, pero sobre otra métrica: por eso se devuelven los dos.
+   * Nivel del gasto **proyectado** (real + exposición de riesgos) contra el
+   * presupuesto. Es el que alimenta el semáforo de salud. Mismo criterio y
+   * misma función que `budgetUseLevel`, pero sobre otra métrica: por eso se
+   * devuelven los dos.
    */
   alertLevel: "ok" | "warning" | "exceeded";
 
@@ -462,7 +387,6 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     revenueEntries,
     approvedTimeEntries,
     expenses,
-    forecasts,
     risks,
     rateBook,
     valuationDate,
@@ -494,9 +418,8 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   //    ese día y a la tarifa y la tasa de ese día. Se valora registro a
   //    registro y no por periodo, porque el dato lo permite y promediar un mes
   //    volvería a inventar una fecha que nadie eligió.
-  //  · Forecast → el inicio de su periodo. Para periodos futuros no existe tasa
-  //    posterior a hoy, así que la búsqueda cae en la última conocida, que es
-  //    lo mejor disponible para proyectar.
+  //  · Riesgo → la fecha en que se identificó (R-009): no es un movimiento con
+  //    fecha propia, así que se usa la más cercana que existe.
   //
   // Cuando no hay tasa histórica anterior a la fecha de un movimiento se usa la
   // actual (mismo respaldo que `GET /api/fx/rate`) y queda anotado en el libro
@@ -540,44 +463,6 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
 
   const totalCostActual = laborCostActual + expensesActual;
 
-  // Forecast ajustado: descuenta las horas ya aprobadas del mismo consultor
-  // dentro del rango del forecast (UTC), para no contar dos veces lo ejecutado.
-  let laborCostForecast = 0;
-  let revenueProjected = revenueRecognized;
-
-  for (const forecast of forecasts) {
-    const rangeStart = new Date(`${forecast.startDate}T00:00:00Z`);
-    const rangeEnd = new Date(`${forecast.endDate}T23:59:59.999Z`);
-
-    const approvedInPeriod = approvedTimeEntries
-      .filter(
-        (e) =>
-          e.consultantId === forecast.consultantId &&
-          e.workDate >= rangeStart &&
-          e.workDate <= rangeEnd,
-      )
-      .reduce((sum, e) => sum + e.hours, 0);
-
-    laborCostForecast += getAdjustedForecastCost(
-      forecast,
-      forecast.consultant,
-      approvedInPeriod,
-      rangeStart,
-      rateBook,
-      baseCurrency,
-      ledger,
-    );
-
-    revenueProjected += getAdjustedForecastRevenue(
-      forecast,
-      approvedInPeriod,
-      rangeStart,
-      rateBook,
-      baseCurrency,
-      ledger,
-    );
-  }
-
   // Exposición de riesgos vigentes (R-009): se valora a la fecha en que se
   // identificó el riesgo (no es un movimiento con fecha propia como un gasto)
   // y solo suma al costo PROYECTADO, nunca al real.
@@ -589,7 +474,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
       0,
     );
 
-  const totalCostProjected = totalCostActual + laborCostForecast + riskExposure;
+  const totalCostProjected = totalCostActual + riskExposure;
   const budgetConsumedPct = budgetBase > 0 ? round2((totalCostActual / budgetBase) * 100) : 0;
   const projectedPct = budgetBase > 0 ? round2((totalCostProjected / budgetBase) * 100) : 0;
 
@@ -600,11 +485,11 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   const grossMarginActualPct =
     revenueRecognized > 0 ? round2((grossMarginActual / revenueRecognized) * 100) : null;
 
-  const grossMarginProjected = revenueProjected - totalCostProjected;
+  const grossMarginProjected = revenueRecognized - totalCostProjected;
   const grossMarginProjectedPct =
-    revenueProjected > 0 ? round2((grossMarginProjected / revenueProjected) * 100) : null;
+    revenueRecognized > 0 ? round2((grossMarginProjected / revenueRecognized) * 100) : null;
 
-  // Alerta de desvío presupuestal, sobre el TOTAL PROYECTADO (real + forecast).
+  // Alerta de desvío presupuestal, sobre el TOTAL PROYECTADO (real + riesgo).
   // ANTES el corte de "excedido" era un `> 100` escrito aquí (D-7); ahora sale
   // de la configuración general y se aplica con la misma función que clasifica
   // el gasto real, para que las dos barras no puedan usar criterios distintos.
@@ -630,9 +515,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     contractValue,
     revenueRecognized,
     revenuePending,
-    revenueProjected,
     laborCostActual,
-    laborCostForecast,
     expensesActual,
     riskExposure,
     totalCostActual,
@@ -736,16 +619,6 @@ type ProjectRowForFinancials = {
   budgetAlertPct: unknown;
   financialEntries: FinancialEntryRow[];
   risks: RiskRow[];
-  forecasts: Array<{
-    consultantId: string;
-    hoursProjected: unknown;
-    hourlyRate: unknown;
-    sellRate: unknown;
-    currency: string;
-    startDate: string;
-    endDate: string;
-    consultant: { hourlyRate: unknown; rateCurrency: string };
-  }>;
 };
 
 export function toFinancialsInput(
@@ -798,19 +671,6 @@ export function toFinancialsInput(
     })),
     expenses: split.expenses,
     risks: toRiskCostInputs(project.risks),
-    forecasts: project.forecasts.map((f) => ({
-      consultantId: f.consultantId,
-      hoursProjected: Number(f.hoursProjected),
-      hourlyRate: f.hourlyRate != null ? Number(f.hourlyRate) : null,
-      sellRate: f.sellRate != null ? Number(f.sellRate) : null,
-      currency: f.currency,
-      startDate: f.startDate,
-      endDate: f.endDate,
-      consultant: {
-        hourlyRate: f.consultant.hourlyRate != null ? Number(f.consultant.hourlyRate) : null,
-        rateCurrency: f.consultant.rateCurrency,
-      },
-    })),
     rateBook,
     baseCurrency,
   };
@@ -823,15 +683,13 @@ export type ProfitabilityResult = {
   contractValue: number;      // sellPrice del proyecto (en baseCurrency)
   revenueRecognized: number;  // sum(RevenueEntry) en baseCurrency
   revenuePending: number;     // contractValue - revenueRecognized
-  revenueProjected: number;   // ingresos proyectados de forecasts no ejecutados
 
   // Costos
   laborCostActual: number;    // horas aprobadas * hourlyRate en baseCurrency
-  laborCostForecast: number;  // forecast pendiente (ajustado) en baseCurrency
   expensesActual: number;     // gastos reales en baseCurrency
   riskExposure: number;       // costo potencial de riesgos vigentes (R-009), ya incluido en totalCostProjected
   totalCostActual: number;    // laborCostActual + expensesActual
-  totalCostProjected: number; // totalCostActual + laborCostForecast + riskExposure
+  totalCostProjected: number; // totalCostActual + riskExposure
 
   // Presupuesto
   budget: number;
@@ -874,7 +732,6 @@ export type ProfitabilityInput = {
   expenses: ExpenseInput[];
   /** Exposición de riesgos (R-009). Obligatorio igual que en `ProjectFinancialsInput`. */
   risks: RiskCostInput[];
-  forecasts: Array<ForecastInput & { consultantId: string; consultant: ConsultantInput; startDate: string; endDate: string }>;
   fxConfigs: FxRateRecord[];
   /** Histórico de `FxRateHistory` para valorar cada importe a su fecha (R-008). */
   fxHistory?: FxHistoryRecord[];
@@ -901,7 +758,6 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     approvedTimeEntries: input.approvedTimeEntries,
     expenses: input.expenses,
     risks: input.risks,
-    forecasts: input.forecasts,
     rateBook: buildRateBook(input.fxConfigs, input.fxHistory ?? []),
     valuationDate: input.valuationDate,
     baseCurrency: input.baseCurrency,
@@ -912,9 +768,7 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     contractValue: f.contractValue,
     revenueRecognized: f.revenueRecognized,
     revenuePending: f.revenuePending,
-    revenueProjected: f.revenueProjected,
     laborCostActual: f.laborCostActual,
-    laborCostForecast: f.laborCostForecast,
     expensesActual: f.expensesActual,
     riskExposure: f.riskExposure,
     totalCostActual: f.totalCostActual,
