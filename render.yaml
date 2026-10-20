@@ -16,7 +16,12 @@ services:
     plan: free
     rootDir: backend
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm run start
+    # `prisma migrate deploy` corre antes de levantar el proceso: antes el
+    # arranque era solo `npm run start` y nunca aplicaba migraciones, que es la
+    # razón de fondo por la que Supabase llevaba semanas atrasada respecto al
+    # código (ver documentacion/DESPLIEGUE.md §2, documentacion/PENDIENTES.md
+    # §0). Es seguro en cada reinicio: sin migraciones pendientes no hace nada.
+    startCommand: npm run prisma:deploy && npm run start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
