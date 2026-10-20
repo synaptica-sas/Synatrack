@@ -199,7 +199,17 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       return reply.status(400).send({ message: resolved.message });
     }
 
-    request.authUser = resolved.identity;
+    // La identidad demo/simulada no tiene una fila `User` real detrás (su `id`
+    // es sintético, p.ej. "local-admin"), así que no hay `userId` que buscar:
+    // se resuelve por correo, de solo lectura. Se busca sin importar el rol
+    // simulado -- un ADMIN o PM también puede tener su propia ficha de
+    // consultor (factura horas como cualquier otro).
+    const consultant = await prisma.consultant.findFirst({
+      where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
+    });
+
+    request.authUser = { ...resolved.identity, consultantId: consultant?.id ?? null };
+    setActor(resolved.identity.email);
     return;
   }
 
@@ -399,8 +409,10 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       const unlinked = await prisma.consultant.findFirst({
         where: { email: { equals: userWithRoles.email, mode: "insensitive" }, userId: null },
       });
-      if (!existingConsultant) {
-        await prisma.consultant.create({
+      if (unlinked) {
+        consultant = await prisma.consultant.update({ where: { id: unlinked.id }, data: { userId: user.id } });
+      } else if (roles.includes(AppRole.CONSULTANT)) {
+        consultant = await prisma.consultant.create({
           data: {
             fullName: userWithRoles.displayName,
             email: userWithRoles.email,
@@ -415,10 +427,10 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
         });
         await writeAudit(prisma, {
           entity: AUDIT_ENTITIES.consultant,
-          entityId: createdConsultant.id,
+          entityId: consultant.id,
           action: "CREATE",
           changedBy: ACTOR_ENTRA_ID,
-          after: createdConsultant as unknown as Record<string, unknown>,
+          after: consultant as unknown as Record<string, unknown>,
           request,
         });
       }

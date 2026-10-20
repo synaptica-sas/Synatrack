@@ -66,16 +66,6 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Forecast
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'Forecast' AND column_name = 'createdBy') THEN
-    ALTER TABLE "Forecast" ADD COLUMN "createdBy" TEXT;
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'Forecast' AND column_name = 'updatedBy') THEN
-    ALTER TABLE "Forecast" ADD COLUMN "updatedBy" TEXT;
-  END IF;
-END $$;
-
 -- FxConfig
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'FxConfig' AND column_name = 'createdBy') THEN

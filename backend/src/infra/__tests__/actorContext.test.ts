@@ -81,6 +81,6 @@ describe("modelos con trazabilidad (derivados del esquema)", () => {
     for (const m of ["JobRun", "AuditLog", "RunningTimer", "UserRole"]) {
       expect(camposDeTrazabilidadPorModelo.has(m)).toBe(false);
     }
-    expect(camposDeTrazabilidadPorModelo.size).toBe(32);
+    expect(camposDeTrazabilidadPorModelo.size).toBe(31);
   });
 });

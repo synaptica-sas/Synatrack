@@ -429,27 +429,6 @@ model ProjectCategory {
   @@index([active])
 }
 
-model Forecast {
-  id             String   @id @default(cuid())
-  projectId      String
-  consultantId   String
-  startDate      String   @default("") // ISO "YYYY-MM-DD" — fecha exacta de inicio
-  endDate        String   @default("") // ISO "YYYY-MM-DD" — fecha exacta de fin
-  hoursProjected Decimal  @db.Decimal(10, 2)
-  hourlyRate     Decimal? @db.Decimal(14, 2) // Costo consultor (lo que pagamos)
-  sellRate       Decimal? @db.Decimal(14, 2) // Tarifa de venta al cliente
-  currency       String   @default("USD")
-  note           String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
-
-  @@index([projectId])
-  @@index([consultantId])
-}
-
 // ─── FX ────────────────────────────────────────────────────────────────────────
 
 model FxConfig {
