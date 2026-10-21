@@ -565,8 +565,22 @@ export function DashboardTab({
   /**
    * DEP-36. Sin estadísticas no hay nada que mostrar: el único origen válido de
    * estos números es `/api/stats/overview`, que es quien convierte de moneda.
+   *
+   * Los filtros de Empresa/Proyecto/Estado/Tipo de esta pantalla no le llegan
+   * al servidor (ese endpoint no los acepta), así que se aplican aquí sobre lo
+   * que ya trajo `stats.projects` — mismo criterio que `dashboardProjects` más
+   * abajo, y el mismo patrón que ya usa Portafolio para que sus KPI respeten
+   * el filtro activo (R-005/R-032).
    */
-  const displayProjects = useMemo(() => stats?.projects ?? [], [stats]);
+  const displayProjects = useMemo(() =>
+    (stats?.projects ?? []).filter((p) => {
+      if (company && !p.company.toLowerCase().includes(company.toLowerCase())) return false;
+      if (projectId && p.projectId !== projectId && !p.projectName.toLowerCase().includes(projectId.toLowerCase())) return false;
+      if (projectStatus && p.status !== projectStatus) return false;
+      if (projectType && p.projectType !== projectType) return false;
+      return true;
+    }),
+  [stats, company, projectId, projectStatus, projectType]);
 
   /** Mensaje de fallo de las estadísticas: el del hook o el del cambio de moneda. */
   const statsErrorMessage = localStatsError ?? statsError;
@@ -575,18 +589,24 @@ export function DashboardTab({
   /** No hay dato todavía y tampoco fallo: petición en curso. */
   const totalsPending = !stats && statsErrorMessage == null;
 
-  // Aggregated totals. Los ceros son de relleno para los cálculos derivados;
-  // nunca se pintan cuando `totalsFailed` o `totalsPending` están activos.
+  /**
+   * Aggregated totals, recalculados sobre `displayProjects` (ya filtrado) en
+   * vez de leer `stats.totals` directo, que el servidor calcula sobre TODO el
+   * portafolio sin mirar los filtros de esta pantalla. `avgCpi`/`avgSpi` son
+   * la excepción: el servidor no manda el CPI/SPI de cada proyecto por
+   * separado, solo el promedio ya hecho, así que no hay con qué recalcularlos
+   * para un subconjunto — quedan sin filtrar, igual que en Portafolio.
+   */
   const totals = {
-    budget:           stats?.totals.budget           ?? 0,
-    spent:            stats?.totals.spent            ?? 0,
-    laborCostActual:  stats?.totals.laborCostActual  ?? null,
-    expensesActual:   stats?.totals.expensesActual   ?? null,
-    revenue:          stats?.totals.revenueRecognized ?? 0,
-    grossMargin:      stats?.totals.grossMarginActual ?? 0,
-    projectedCost:    stats?.totals.projectedCost    ?? 0,
-    approvedHours:    stats?.totals.approvedHours    ?? 0,
-    alertCount:       stats?.totals.alertCount       ?? 0,
+    budget:           displayProjects.reduce((s, p) => s + p.budget, 0),
+    spent:            displayProjects.reduce((s, p) => s + p.spent, 0),
+    laborCostActual:  stats ? displayProjects.reduce((s, p) => s + (p.laborCostActual ?? 0), 0) : null,
+    expensesActual:   stats ? displayProjects.reduce((s, p) => s + (p.expensesActual ?? 0), 0) : null,
+    revenue:          displayProjects.reduce((s, p) => s + p.revenueRecognized, 0),
+    grossMargin:      displayProjects.reduce((s, p) => s + p.grossMarginActual, 0),
+    projectedCost:    displayProjects.reduce((s, p) => s + p.projectedCost, 0),
+    approvedHours:    displayProjects.reduce((s, p) => s + p.approvedHours, 0),
+    alertCount:       displayProjects.filter((p) => p.alertLevel !== "ok").length,
     avgCpi:           stats?.totals.avgCpi           ?? null,
     avgSpi:           stats?.totals.avgSpi           ?? null,
   };
