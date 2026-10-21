@@ -47,7 +47,7 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "healthThresholds", label: "Umbrales de Salud", icon: "♡", permission: "health:thresholds" },
       { id: "approvalDigest", label: "Resumen de Aprobaciones", icon: "✉", permission: "notifications:digest" },
       { id: "financialCategories", label: "Categorías Financieras", icon: "⊞", permission: "finance:categories" },
-      { id: "audit", label: "Auditoría", icon: "⊛", permission: "users:manage" },
+      { id: "audit", label: "Auditoría", icon: "⊛", permission: "audit:read" },
     ],
   },
 ];

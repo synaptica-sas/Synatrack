@@ -7,6 +7,7 @@ import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/
 import { normalizeCountry, SUPPORTED_COUNTRIES } from "../../utils/country.js";
 import { getHolidaysForYear } from "../../utils/holidays.js";
 import { calculateExtraHours } from "../../utils/calculateExtraHours.js";
+import { resolveTargetConsultantId } from "../../utils/currentConsultant.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { avisoInmediatoActivo } from "../admin/approval-digest.routes.js";
 import { notifyNewExtraHourRequest, notifyExtraHourApprovedForPayroll, notifyExtraHourFullyApproved, notifyExtraHourRejected } from "../../utils/notifications.js";
@@ -414,8 +415,26 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         prisma.extraHourEntry.count({ where }),
       ]);
 
+      // VIEWER es un rol de consulta sin responsabilidad económica (igual que
+      // en `puedeVerTarifas`): ve que la solicitud existe, sus horas y su
+      // estado, pero no cuánto se le va a pagar a nadie. Antes recibía los
+      // montos de TODA la plantilla con su `totalAmount` completo.
+      const ocultarMontos = roles.includes(AppRole.VIEWER) && !puedeVerTarifas(roles);
+      const data = ocultarMontos
+        ? entries.map(
+            ({
+              diurnalAmount: _diurnalAmount,
+              nocturnalAmount: _nocturnalAmount,
+              diurnalHolidayAmount: _diurnalHolidayAmount,
+              nocturnalHolidayAmount: _nocturnalHolidayAmount,
+              totalAmount: _totalAmount,
+              ...resto
+            }) => resto,
+          )
+        : entries;
+
       return {
-        data: entries,
+        data,
         meta: {
           total,
           page: query.page,
@@ -626,12 +645,21 @@ export async function extraHoursRoutes(app: FastifyInstance) {
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT])],
     },
-    async (request) => {
+    async (request, reply) => {
       await ensureDefaultConfigs();
       const payload = calculatePayloadSchema.parse(request.body);
 
+      // Mismo criterio que `POST /`: un CONSULTANT solo puede simular el
+      // cálculo de su propio consultantId. Antes esta ruta usaba el valor del
+      // cuerpo tal cual, así que cualquiera podía pedir el cálculo (y de paso
+      // la tarifa horaria implícita en el resultado) de un compañero.
+      const target = await resolveTargetConsultantId(request, payload.consultantId);
+      if ("error" in target) {
+        return reply.status(403).send({ message: target.error });
+      }
+
       const consultant = await prisma.consultant.findUnique({
-        where: { id: payload.consultantId },
+        where: { id: target.consultantId },
       });
 
       const country = consultant?.country || "Default";
@@ -663,7 +691,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         date: payload.date,
         startTime: formattedStartTime,
         endTime: formattedEndTime,
-        consultantId: payload.consultantId,
+        consultantId: target.consultantId,
         config: {
           weeklyExtraHoursLimit: Number(activeConfig.weeklyExtraHoursLimit),
           diurnalMultiplier: Number(activeConfig.diurnalMultiplier),
@@ -734,10 +762,12 @@ export async function extraHoursRoutes(app: FastifyInstance) {
   );
 
   // 5. Actualizar/Crear configuración por país (Upsert)
+  //    Solo ADMIN (permiso `extrahours:config`, auth/roles.ts): mueve los
+  //    recargos de nómina de todo el país para cualquier solicitud futura.
   app.put(
     "/config/:country",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])],
+      preHandler: [authenticate, authorize([AppRole.ADMIN])],
     },
     async (request) => {
       const { country } = z.object({ country: z.string().trim().transform(normalizeCountry) }).parse(request.params);
@@ -782,11 +812,12 @@ export async function extraHoursRoutes(app: FastifyInstance) {
     },
   );
 
-  // 5b. Restablecer configuración a predeterminados por país
+  // 5b. Restablecer configuración a predeterminados por país (solo ADMIN, mismo
+  //     criterio que el PUT de arriba).
   app.post(
     "/config/:country/reset",
     {
-      preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])],
+      preHandler: [authenticate, authorize([AppRole.ADMIN])],
     },
     async (request) => {
       const { country } = z.object({ country: z.string().trim().transform(normalizeCountry) }).parse(request.params);
@@ -876,6 +907,14 @@ export async function extraHoursRoutes(app: FastifyInstance) {
             message: "No se pueden realizar cambios en solicitudes pertenecientes a un mes cerrado.",
           });
         }
+      }
+
+      // Nadie aprueba sus propias horas extra, sin importar el rol: ni
+      // siquiera un ADMIN que de casualidad figurara como PM del proyecto
+      // (hoy no puede por la regla de abajo, pero esta comprobación no
+      // depende de esa otra).
+      if (existing.consultantId && existing.consultantId === user.consultantId) {
+        return reply.status(403).send({ message: "No puedes aprobar tus propias horas extra." });
       }
 
       // Veredicto compartido con `reject` (DEP-17): solo el PM del proyecto.
@@ -988,6 +1027,12 @@ export async function extraHoursRoutes(app: FastifyInstance) {
             message: "No se pueden realizar cambios en solicitudes pertenecientes a un mes cerrado.",
           });
         }
+      }
+
+      // Nadie rechaza sus propias horas extra, sin importar el rol. Mismo
+      // candado que `approve`.
+      if (existing.consultantId && existing.consultantId === user.consultantId) {
+        return reply.status(403).send({ message: "No puedes rechazar tus propias horas extra." });
       }
 
       // Validar quién tiene permiso de rechazar. Mismo helper que `approve`

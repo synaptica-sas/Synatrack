@@ -41,7 +41,12 @@ describe("Auditoría: visibilidad por rol, filtro action y LOGIN por origen", ()
     expect(filas.every((f) => f.ipAddress === "10.1.2.3" && f.userAgent === "Navegador/1.0")).toBe(true);
   });
 
-  it.each([AppRole.PM, AppRole.FINANCE])("%s no ve IP, user-agent ni LOGIN, pero sí el cambio de rol", async (rol) => {
+  it("un PM ya no tiene acceso a la auditoría general (403)", async () => {
+    const res = await consultar(AppRole.PM);
+    expect(res.statusCode).toBe(403);
+  });
+
+  it.each([AppRole.FINANCE])("%s no ve IP, user-agent ni LOGIN, pero sí el cambio de rol", async (rol) => {
     const res = await consultar(rol);
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -62,11 +67,11 @@ describe("Auditoría: visibilidad por rol, filtro action y LOGIN por origen", ()
   });
 
   it("para no-ADMIN, action=LOGIN devuelve vacío y action=LOGIN,CREATE solo CREATE", async () => {
-    const login = await consultar(AppRole.PM, "&action=LOGIN");
+    const login = await consultar(AppRole.FINANCE, "&action=LOGIN");
     expect(login.statusCode).toBe(200);
     expect(login.json().data).toEqual([]);
     expect(login.json().meta.total).toBe(0);
-    const mixto = await consultar(AppRole.PM, "&action=LOGIN,CREATE");
+    const mixto = await consultar(AppRole.FINANCE, "&action=LOGIN,CREATE");
     expect((mixto.json().data as any[]).map((f) => f.action)).toEqual(["CREATE"]);
   });
 

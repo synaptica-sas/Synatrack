@@ -148,11 +148,26 @@ function visibilityScope(request: FastifyRequest): {
 
 /**
  * Un consultor solo puede modificar o borrar sus propias horas, y solo mientras
- * sigan pendientes de aprobación. ADMIN y PM no tienen esa restricción.
+ * sigan pendientes de aprobación. ADMIN no tiene esa restricción.
+ *
+ * Un PM solo la tiene levantada para los proyectos que gestiona
+ * (`Project.projectManagerEmail`): antes CUALQUIER PM podía editar o borrar las
+ * horas de CUALQUIER proyecto, propio o no. Un PM que no gestiona el proyecto
+ * de la entrada cae al mismo criterio que el resto: solo puede tocar lo suyo.
  */
-async function canMutateEntry(request: FastifyRequest, entry: { consultantId: string }) {
+async function canMutateEntry(request: FastifyRequest, entry: { consultantId: string; projectId: string }) {
   const roles = request.authUser?.roles ?? [];
-  if (roles.includes(AppRole.ADMIN) || roles.includes(AppRole.PM)) return true;
+  if (roles.includes(AppRole.ADMIN)) return true;
+
+  if (roles.includes(AppRole.PM)) {
+    const project = await prisma.project.findUnique({
+      where: { id: entry.projectId },
+      select: { projectManagerEmail: true },
+    });
+    const pmEmail = project?.projectManagerEmail?.trim().toLowerCase();
+    const email = request.authUser?.email?.toLowerCase();
+    if (pmEmail && email && pmEmail === email) return true;
+  }
 
   const mine = await findMyConsultant(request);
   return !!mine && mine.id === entry.consultantId;
@@ -572,16 +587,33 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params);
+    const user = request.authUser!;
     // La identidad de quien aprueba sale del token, no del cuerpo de la petición.
-    const revisor = request.authUser!.email.toLowerCase();
+    const revisor = user.email.toLowerCase();
 
-    const existing = await prisma.timeEntry.findUnique({ where: { id } });
+    const existing = await prisma.timeEntry.findUnique({ where: { id }, include: { project: true } });
     if (!existing) {
       return reply.status(404).send({ message: "Time entry not found" });
     }
 
     if (existing.status !== TimeEntryStatus.PENDING) {
       return reply.status(409).send({ message: "Only pending entries can be approved" });
+    }
+
+    // Nadie aprueba sus propias horas, sin importar el rol. Antes un PM podía
+    // aprobarse a sí mismo las horas que registró como consultor de su propio
+    // proyecto.
+    if (existing.consultantId && existing.consultantId === user.consultantId) {
+      return reply.status(403).send({ message: "No puedes aprobar tus propias horas." });
+    }
+
+    // Un PM (no ADMIN) solo aprueba horas de los proyectos que gestiona. Antes
+    // CUALQUIER PM aprobaba CUALQUIER hora de CUALQUIER proyecto.
+    if (!user.roles.includes(AppRole.ADMIN)) {
+      const pmEmail = existing.project.projectManagerEmail?.trim().toLowerCase();
+      if (!pmEmail || pmEmail !== revisor) {
+        return reply.status(403).send({ message: "Solo el PM de este proyecto puede aprobar estas horas." });
+      }
     }
 
     const entry = await prisma.timeEntry.update({
@@ -616,16 +648,30 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params);
     const payload = rejectPayloadSchema.parse(request.body);
+    const user = request.authUser!;
     // La identidad de quien rechaza sale del token, no del cuerpo de la petición.
-    const revisor = request.authUser!.email.toLowerCase();
+    const revisor = user.email.toLowerCase();
 
-    const existing = await prisma.timeEntry.findUnique({ where: { id } });
+    const existing = await prisma.timeEntry.findUnique({ where: { id }, include: { project: true } });
     if (!existing) {
       return reply.status(404).send({ message: "Time entry not found" });
     }
 
     if (existing.status !== TimeEntryStatus.PENDING) {
       return reply.status(409).send({ message: "Only pending entries can be rejected" });
+    }
+
+    // Mismo candado que `approve`: nadie rechaza sus propias horas, y un PM
+    // (no ADMIN) solo rechaza horas de los proyectos que gestiona.
+    if (existing.consultantId && existing.consultantId === user.consultantId) {
+      return reply.status(403).send({ message: "No puedes rechazar tus propias horas." });
+    }
+
+    if (!user.roles.includes(AppRole.ADMIN)) {
+      const pmEmail = existing.project.projectManagerEmail?.trim().toLowerCase();
+      if (!pmEmail || pmEmail !== revisor) {
+        return reply.status(403).send({ message: "Solo el PM de este proyecto puede rechazar estas horas." });
+      }
     }
 
     const entry = await prisma.timeEntry.update({

@@ -162,6 +162,45 @@ function ensureDateRange(startDate: Date, endDate: Date) {
   }
 }
 
+/**
+ * Un CONSULTANT llega a `GET /api/projects` (y a `GET /api/projects/:id`) solo
+ * por `estimations:read`, para el selector "Proyecto Vinculado" de
+ * Estimaciones -- no tiene `projects:read`. Ese selector solo necesita
+ * nombre e identificación básica, así que aquí se le recorta lo monetario del
+ * portafolio entero (presupuesto, precio de venta, umbrales de margen y
+ * presupuesto de línea base). Quien además tenga un rol con más alcance
+ * (ADMIN/PM/FINANCE/VIEWER) sigue viendo el proyecto completo: el recorte es
+ * por lo que la CUENTA puede ver, no por la ruta que usó para llegar.
+ */
+const CAMPOS_MONETARIOS_PROYECTO = [
+  "budget",
+  "sellPrice",
+  "marginWarningPct",
+  "marginCriticalPct",
+  "budgetAlertPct",
+  "baselineBudget",
+] as const;
+
+function esSoloConsultant(roles: AppRole[]): boolean {
+  return (
+    roles.includes(AppRole.CONSULTANT) &&
+    !roles.includes(AppRole.ADMIN) &&
+    !roles.includes(AppRole.PM) &&
+    !roles.includes(AppRole.FINANCE) &&
+    !roles.includes(AppRole.VIEWER)
+  );
+}
+
+function ocultarDatosMonetariosProyecto<T extends Record<string, unknown>>(
+  project: T,
+): Omit<T, (typeof CAMPOS_MONETARIOS_PROYECTO)[number]> {
+  const copia: Record<string, unknown> = { ...project };
+  for (const campo of CAMPOS_MONETARIOS_PROYECTO) {
+    delete copia[campo];
+  }
+  return copia as Omit<T, (typeof CAMPOS_MONETARIOS_PROYECTO)[number]>;
+}
+
 export async function projectsRoutes(app: FastifyInstance) {
   app.get(
     "/",
@@ -185,7 +224,12 @@ export async function projectsRoutes(app: FastifyInstance) {
       orderBy: { createdAt: "desc" },
     });
 
-      return { data: projects };
+      const roles = request.authUser!.roles;
+      const data = esSoloConsultant(roles)
+        ? projects.map(ocultarDatosMonetariosProyecto)
+        : projects;
+
+      return { data };
     },
   );
 
@@ -254,7 +298,10 @@ export async function projectsRoutes(app: FastifyInstance) {
       return reply.status(404).send({ message: "Project not found" });
     }
 
-      return { data: project };
+      const roles = request.authUser!.roles;
+      const data = esSoloConsultant(roles) ? ocultarDatosMonetariosProyecto(project) : project;
+
+      return { data };
     },
   );
 

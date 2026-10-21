@@ -133,11 +133,30 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "estimations:read",
     "holidays:read",
   ],
+  // El backend (más permisivo) es la referencia: FINANCE ya podía escribir
+  // gastos/ingresos, tasas FX, cerrar el mes y leer auditoría en las rutas
+  // reales. Esta matriz solo estaba desactualizada, lo que le ocultaba esas
+  // pantallas en el menú lateral (decisión del dueño del producto, R-055).
+  // `extrahours:config` NO se agrega: eso sigue exclusivo de ADMIN (R-055,
+  // punto aparte). Tampoco `projects:write`: FINANCE no gana capacidad de
+  // escritura sobre proyectos, ni siquiera sobre incidentes o cambios de
+  // alcance (ver `issues.routes.ts` y `change-requests.routes.ts`).
   FINANCE: [
     "extrahours:read",
     "extrahours:review",
     "capacity:read",
     "holidays:read",
+    "expenses:read",
+    "expenses:write",
+    "revenue:read",
+    "revenue:write",
+    "fx:read",
+    "fx:write",
+    "snapshots:close",
+    "audit:read",
+    "projects:read",
+    "stats:read",
+    "estimations:read",
   ],
   // Comercial: ve la ocupación y los feriados para saber a quién puede vender.
   // El detalle de asignaciones en solo lectura sale de `capacity:read`

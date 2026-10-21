@@ -46,9 +46,11 @@ export async function issuesRoutes(app: FastifyInstance) {
     },
   );
 
+  // Gestionar incidentes no es una función financiera (descuido de agrupar
+  // roles, no una decisión de negocio): solo ADMIN y PM.
   app.post(
     "/:projectId/issues",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])] },
+    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])] },
     async (request, reply) => {
       const { projectId } = projectIdSchema.parse(request.params);
       const payload = issuePayloadSchema.parse(request.body);
@@ -64,7 +66,7 @@ export async function issuesRoutes(app: FastifyInstance) {
 
   app.put(
     "/:projectId/issues/:id",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])] },
+    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])] },
     async (request, reply) => {
       const { projectId, id } = idSchema.parse(request.params);
       const payload = issuePayloadSchema.parse(request.body);

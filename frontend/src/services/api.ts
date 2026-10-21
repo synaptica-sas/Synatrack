@@ -86,7 +86,14 @@ export type Project = {
   company: string;
   country: string;
   currency: string;
-  budget: string;
+  /**
+   * **Opcional a propósito**: el backend lo omite (junto con el resto de los
+   * campos monetarios de este tipo) cuando el rol es CONSULTANT puro, que solo
+   * llega aquí por `estimations:read` para el selector de proyecto -- no debe
+   * ver presupuesto, precio de venta ni umbrales de margen de todo el
+   * portafolio. Para ADMIN/PM/FINANCE/VIEWER siempre viene presente.
+   */
+  budget?: string;
   startDate: string;
   endDate: string;
   description: string | null;
@@ -96,7 +103,8 @@ export type Project = {
   category?: string | null;
   /** Proyecto interno (stand-by): sus horas no son facturables. */
   isInternal?: boolean;
-  sellPrice: string | null;
+  /** Mismo criterio que `budget`: ausente para un CONSULTANT puro. */
+  sellPrice?: string | null;
   sellCurrency: string;
   createdAt: string;
   updatedAt: string;
@@ -2183,11 +2191,16 @@ export type ExtraHourEntry = {
   diurnalHoliday: string;
   nocturnalHoliday: string;
   totalHours: string;
-  diurnalAmount: string;
-  nocturnalAmount: string;
-  diurnalHolidayAmount: string;
-  nocturnalHolidayAmount: string;
-  totalAmount: string;
+  /**
+   * Montos pagados. **Opcionales a propósito**: el backend los omite para
+   * VIEWER (puede ver que la solicitud existe y sus horas, pero no cuánto se
+   * le pagó a nadie), mismo criterio que `Consultant.hourlyRate`.
+   */
+  diurnalAmount?: string;
+  nocturnalAmount?: string;
+  diurnalHolidayAmount?: string;
+  nocturnalHolidayAmount?: string;
+  totalAmount?: string;
   observations: string | null;
   status: ExtraHourStatus;
   approvedBy: string | null;

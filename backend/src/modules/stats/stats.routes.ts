@@ -36,12 +36,16 @@ const statsQuerySchema = z
   });
 
 export async function statsRoutes(app: FastifyInstance) {
+  // Sin CONSULTANT: la matriz de permisos (`stats:read`, auth/roles.ts) ya no
+  // se lo da y el frontend nunca llama a este endpoint con ese rol. Dejarlo
+  // en el `authorize()` exponía presupuesto, margen y rentabilidad de TODO el
+  // portafolio a cualquier consultor que lo pidiera directamente.
   app.get(
     "/overview",
     {
       preHandler: [
         authenticate,
-        authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.FINANCE, AppRole.VIEWER]),
+        authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER]),
       ],
     },
     async (request) => {

@@ -23,7 +23,11 @@ const querySchema = z.object({
 export async function auditRoutes(app: FastifyInstance) {
   app.get(
     "/",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.FINANCE, AppRole.PM])] },
+    // Solo ADMIN y FINANCE (permiso `audit:read`, auth/roles.ts). Un PM no
+    // tiene responsabilidad de auditoría general: antes veía la bitácora
+    // completa de la empresa, tarifas e identificación de toda la plantilla
+    // incluidas.
+    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.FINANCE])] },
     async (request) => {
       const query = querySchema.parse(request.query);
       const esAdmin = request.authUser?.roles.includes(AppRole.ADMIN) ?? false;

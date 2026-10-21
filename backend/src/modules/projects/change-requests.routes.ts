@@ -30,9 +30,11 @@ export async function changeRequestsRoutes(app: FastifyInstance) {
     },
   );
 
+  // Gestionar solicitudes de cambio no es una función financiera (descuido de
+  // agrupar roles, no una decisión de negocio): solo ADMIN y PM.
   app.post(
     "/:projectId/changes",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])] },
+    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])] },
     async (request, reply) => {
       const { projectId } = projectIdSchema.parse(request.params);
       const payload = changePayloadSchema.parse(request.body);

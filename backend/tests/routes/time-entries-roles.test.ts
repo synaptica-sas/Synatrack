@@ -263,3 +263,202 @@ describe("Matriz de roles de /api/time-entries", () => {
     });
   });
 });
+
+/**
+ * Dos exploits confirmados en la auditoría en vivo, ambos sobre
+ * `/api/time-entries/:id/approve|reject` (y, para edición/borrado,
+ * `canMutateEntry`):
+ *
+ *   1. Autoaprobación: un PM que registra horas como consultor de su propio
+ *      proyecto podía aprobárselas y rechazárselas a sí mismo.
+ *   2. Alcance: CUALQUIER PM aprobaba, rechazaba, editaba o borraba
+ *      CUALQUIER hora de CUALQUIER proyecto, no solo los que gestiona.
+ */
+describe("/api/time-entries: alcance por proyecto del PM y autoaprobación (R-055)", () => {
+  let app: FastifyInstance;
+  let escenario: EscenarioBasico;
+  let proyectoAjenoId: string;
+  let pmEmail: string;
+  // El PM del proyecto principal Y el consultor dueño de la hora son la MISMA
+  // persona: mismo correo en `projectManagerEmail` y en `Consultant.email`.
+  let pmConsultorId: string;
+
+  beforeAll(async () => {
+    app = await crearAppDePrueba();
+    escenario = await crearEscenarioBasico("te-pm-alcance");
+    pmEmail = `pm.${escenario.prefijo}@synaptica.test`;
+
+    const proyectoAjeno = await prisma.project.create({
+      data: {
+        name: `Proyecto ajeno ${escenario.prefijo}`,
+        company: "Synaptica",
+        country: "Colombia",
+        currency: "USD",
+        budget: 5000,
+        startDate: new Date(Date.UTC(2026, 0, 1)),
+        endDate: new Date(Date.UTC(2026, 11, 31)),
+        projectManagerEmail: `otro.pm.${escenario.prefijo}@synaptica.test`,
+      },
+    });
+    proyectoAjenoId = proyectoAjeno.id;
+
+    const pmComoConsultor = await prisma.consultant.create({
+      data: {
+        fullName: `PM-Consultor ${escenario.prefijo}`,
+        email: pmEmail,
+        role: "Consultor",
+        hourlyRate: 60,
+        rateCurrency: "USD",
+        country: "Colombia",
+      },
+    });
+    pmConsultorId = pmComoConsultor.id;
+  });
+
+  afterAll(async () => {
+    await prisma.timeEntry.deleteMany({ where: { projectId: proyectoAjenoId } });
+    await prisma.timeEntry.deleteMany({ where: { consultantId: pmConsultorId } });
+    await prisma.consultant.delete({ where: { id: pmConsultorId } });
+    await prisma.project.deleteMany({ where: { id: proyectoAjenoId } });
+    await limpiarEscenario(escenario);
+    await app.close();
+  });
+
+  async function sembrarHoraEn(projectId: string, consultantId: string, dia: number) {
+    return prisma.timeEntry.create({
+      data: {
+        projectId,
+        consultantId,
+        workDate: new Date(Date.UTC(2026, 9, dia)),
+        hours: 2,
+        status: "PENDING",
+      },
+    });
+  }
+
+  it("el PM del proyecto no puede aprobar sus propias horas (exploit bloqueado)", async () => {
+    const propia = await sembrarHoraEn(escenario.projectId, pmConsultorId, 1);
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${propia.id}/approve`,
+      headers: comoRol(AppRole.PM, pmEmail),
+    });
+
+    expect(res.statusCode).toBe(403);
+    const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: propia.id } });
+    expect(enBase.status).toBe("PENDING");
+  });
+
+  it("el PM del proyecto no puede rechazar sus propias horas (exploit bloqueado)", async () => {
+    const propia = await sembrarHoraEn(escenario.projectId, pmConsultorId, 2);
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${propia.id}/reject`,
+      headers: comoRol(AppRole.PM, pmEmail),
+      payload: { rejectionNote: "Me arrepentí" },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("el mismo PM sí puede aprobar y rechazar horas de OTRO consultor de su proyecto", async () => {
+    const deA = await sembrarHoraEn(escenario.projectId, escenario.consultorA.id, 3);
+    const aprobar = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${deA.id}/approve`,
+      headers: comoRol(AppRole.PM, pmEmail),
+    });
+    expect(aprobar.statusCode).toBe(200);
+
+    const deB = await sembrarHoraEn(escenario.projectId, escenario.consultorB.id, 4);
+    const rechazar = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${deB.id}/reject`,
+      headers: comoRol(AppRole.PM, pmEmail),
+      payload: { rejectionNote: "Horas duplicadas" },
+    });
+    expect(rechazar.statusCode).toBe(200);
+  });
+
+  it("un PM AJENO al proyecto recibe 403 al aprobar, rechazar, editar y borrar (exploit bloqueado)", async () => {
+    const entrada = await sembrarHoraEn(escenario.projectId, escenario.consultorA.id, 5);
+    const ajeno = comoRol(AppRole.PM, `otro.pm.${escenario.prefijo}@synaptica.test`);
+
+    const aprobar = await app.inject({ method: "PATCH", url: `/api/time-entries/${entrada.id}/approve`, headers: ajeno });
+    expect(aprobar.statusCode).toBe(403);
+
+    const rechazar = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${entrada.id}/reject`,
+      headers: ajeno,
+      payload: { rejectionNote: "No me corresponde" },
+    });
+    expect(rechazar.statusCode).toBe(403);
+
+    const editar = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${entrada.id}`,
+      headers: ajeno,
+      payload: { hours: 99 },
+    });
+    expect(editar.statusCode).toBe(403);
+
+    const borrar = await app.inject({ method: "DELETE", url: `/api/time-entries/${entrada.id}`, headers: ajeno });
+    expect(borrar.statusCode).toBe(403);
+
+    const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe("PENDING");
+    expect(Number(enBase.hours)).toBe(2);
+  });
+
+  it("un PM AJENO sí puede editar y borrar horas de un proyecto ajeno si son las suyas propias", async () => {
+    // El PM ajeno también tiene ficha de consultor y puede registrar sus
+    // propias horas en el proyecto que SÍ gestiona, aunque no gestione el
+    // principal: `canMutateEntry` cae al criterio de "es mía" para cualquiera.
+    const otroPmEmail = `otro.pm.${escenario.prefijo}@synaptica.test`;
+    const otroPmConsultor = await prisma.consultant.create({
+      data: {
+        fullName: `Otro PM Consultor ${escenario.prefijo}`,
+        email: otroPmEmail,
+        role: "Consultor",
+        hourlyRate: 50,
+        rateCurrency: "USD",
+        country: "Colombia",
+      },
+    });
+
+    const propia = await sembrarHoraEn(proyectoAjenoId, otroPmConsultor.id, 6);
+    const headers = comoRol(AppRole.PM, otroPmEmail);
+
+    const editar = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${propia.id}`,
+      headers,
+      payload: { hours: 3 },
+    });
+    expect(editar.statusCode).toBe(200);
+
+    const borrar = await app.inject({ method: "DELETE", url: `/api/time-entries/${propia.id}`, headers });
+    expect(borrar.statusCode).toBe(204);
+
+    await prisma.consultant.delete({ where: { id: otroPmConsultor.id } });
+  });
+
+  it("un PM AJENO no puede editar ni borrar horas de OTRO proyecto que tampoco son suyas", async () => {
+    const deA = await sembrarHoraEn(escenario.projectId, escenario.consultorA.id, 7);
+    const headers = comoRol(AppRole.PM, `otro.pm.${escenario.prefijo}@synaptica.test`);
+
+    const editar = await app.inject({
+      method: "PATCH",
+      url: `/api/time-entries/${deA.id}`,
+      headers,
+      payload: { hours: 3 },
+    });
+    expect(editar.statusCode).toBe(403);
+
+    const borrar = await app.inject({ method: "DELETE", url: `/api/time-entries/${deA.id}`, headers });
+    expect(borrar.statusCode).toBe(403);
+  });
+});

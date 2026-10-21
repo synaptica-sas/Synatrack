@@ -349,6 +349,100 @@ describe("PATCH /api/extra-hours/:id: quién puede aprobar y rechazar", () => {
 });
 
 /**
+ * Autoaprobación (exploit confirmado en la auditoría en vivo): `canReviewExtraHour`
+ * solo comprobaba que el aprobador fuera el PM del proyecto, nunca que la
+ * solicitud no fuera la suya propia. Un PM que registra sus propias horas
+ * extra como consultor de su proyecto podía aprobárselas y rechazárselas a sí
+ * mismo. El candado aplica a cualquier rol, no solo PM.
+ */
+describe("PATCH /api/extra-hours/:id: nadie aprueba ni rechaza sus propias horas extra", () => {
+  let app: FastifyInstance;
+  let escenario: EscenarioBasico;
+  // El PM del proyecto Y el consultor dueño de la solicitud son la MISMA
+  // persona: mismo correo en `Project.projectManagerEmail` y en `Consultant.email`.
+  let pmConsultorEmail: string;
+  let pmConsultorId: string;
+
+  beforeAll(async () => {
+    app = await crearAppDePrueba();
+    escenario = await crearEscenarioBasico("eh-autoaprobacion");
+    pmConsultorEmail = `pm.${escenario.prefijo}@synaptica.test`;
+    const pmComoConsultor = await prisma.consultant.create({
+      data: {
+        fullName: `PM-Consultor ${escenario.prefijo}`,
+        email: pmConsultorEmail,
+        role: "Consultor",
+        hourlyRate: 60,
+        rateCurrency: "USD",
+        country: "Colombia",
+      },
+    });
+    pmConsultorId = pmComoConsultor.id;
+  });
+
+  afterAll(async () => {
+    await prisma.extraHourEntry.deleteMany({ where: { consultantId: pmConsultorId } });
+    await prisma.consultant.delete({ where: { id: pmConsultorId } });
+    await limpiarEscenario(escenario);
+    await app.close();
+  });
+
+  it("el PM no puede aprobar sus propias horas extra (exploit bloqueado)", async () => {
+    const entrada = await crearHoraExtra({
+      consultantId: pmConsultorId,
+      projectId: escenario.projectId,
+      fecha: new Date(Date.UTC(2026, 6, 1)),
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, pmConsultorEmail),
+    });
+
+    expect(res.statusCode).toBe(403);
+    const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe(ExtraHourStatus.PENDING_PM);
+  });
+
+  it("el PM no puede rechazar sus propias horas extra (exploit bloqueado)", async () => {
+    const entrada = await crearHoraExtra({
+      consultantId: pmConsultorId,
+      projectId: escenario.projectId,
+      fecha: new Date(Date.UTC(2026, 6, 2)),
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/reject`,
+      headers: comoRol(AppRole.PM, pmConsultorEmail),
+      payload: { rejectionNote: "Me arrepentí" },
+    });
+
+    expect(res.statusCode).toBe(403);
+    const enBase = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe(ExtraHourStatus.PENDING_PM);
+  });
+
+  it("el mismo PM sí puede aprobar las horas extra de OTRO consultor de su proyecto", async () => {
+    const entrada = await crearHoraExtra({
+      consultantId: escenario.consultorA.id,
+      projectId: escenario.projectId,
+      fecha: new Date(Date.UTC(2026, 6, 3)),
+    });
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/extra-hours/${entrada.id}/approve`,
+      headers: comoRol(AppRole.PM, pmConsultorEmail),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe(ExtraHourStatus.APPROVED);
+  });
+});
+
+/**
  * Lo que el PM aprueba llega a nómina sin ningún paso intermedio.
  *
  * Es la razón por la que eliminar el segundo nivel no deja a Finanzas sin
