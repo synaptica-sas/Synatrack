@@ -24,8 +24,12 @@ import { resolveCountryTimezone } from "./country.js";
 
 /** Espejo del enum `TimeEntryCategory` de Prisma (tipo propio para no depender del cliente). */
 export type TimeEntryCategory = "REGULAR" | "EXTRA" | "ABSENCE";
-/** Espejo del enum `TimeEntryStatus` de Prisma. */
-export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
+/**
+ * Espejo del enum `TimeEntryStatus` de Prisma. `SUBMITTED` (R15 §2.1): semana entregada al PM; aquí
+ * se comporta como cualquier fila no PENDING (no editable, cuenta contra el tope, `fixed` en
+ * `splitExcess`).
+ */
+export type TimeEntryStatus = "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 export const HOURS_TOLERANCE = 1e-4;
 const MS_PER_HOUR = 3_600_000;

@@ -38,7 +38,9 @@ import { ProfileTab } from "./features/profile/ProfileTab";
 import { ExtraHoursTab } from "./features/extraHours/ExtraHoursTab";
 import { EstimationCalculatorTab } from "./features/estimations/EstimationCalculatorTab";
 import { ActivitiesTab } from "./features/activities/ActivitiesTab";
-import { visibleGroupsFor } from "./config/sidebar";
+import { REVIEW_QUEUE_PERMISSION, visibleGroupsFor } from "./config/sidebar";
+import { TimesheetReviewsTab } from "./features/timesheetReviews/TimesheetReviewsTab";
+import { useReviewQueue } from "./hooks/useReviewQueue";
 import { HolidaysTab } from "./features/holidays/HolidaysTab";
 import { WorkdayConfigTab } from "./features/workday/WorkdayConfigTab";
 import { HealthThresholdsTab } from "./features/admin/HealthThresholdsTab";
@@ -213,6 +215,7 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   approvalDigest: "/approval-digest",
   financialCategories: "/financial-categories",
   timeEntryTypes: "/time-entry-types",
+  timesheetReviews: "/aprobacion-horas",
   audit: "/audit",
   profile: "/profile",
   alerts: "/alerts",
@@ -1165,10 +1168,13 @@ function App() {
   const statsHook       = useStats(!!authUser && can("stats:read"));
   const alertsHook      = useAlerts(!!authUser && (can("stats:read") || can("projects:read")));
 
+  // Cola de revisión semanal (R15): la visibilidad la decide el backend, no el rol.
+  const reviewQueue     = useReviewQueue(!!authUser);
+
   // Visible tabs per permission
   const visibleGroups = useMemo(() =>
-    visibleGroupsFor(permissions),
-  [permissions]);
+    visibleGroupsFor(reviewQueue.canReview ? [...permissions, REVIEW_QUEUE_PERMISSION] : permissions),
+  [permissions, reviewQueue.canReview]);
 
   const allVisibleTabs = useMemo(() => visibleGroups.flatMap((g) => g.tabs), [visibleGroups]);
 
@@ -1215,7 +1221,9 @@ function App() {
         const pestanaPedida = rutaPedida ? PATH_TAB_MAP[rutaPedida] : undefined;
         const permitida =
           pestanaPedida !== undefined &&
-          (NON_SIDEBAR_TABS.includes(pestanaPedida) || allVisibleTabs.some((t) => t.id === pestanaPedida));
+          (NON_SIDEBAR_TABS.includes(pestanaPedida) ||
+            allVisibleTabs.some((t) => t.id === pestanaPedida) ||
+            (pestanaPedida === "timesheetReviews" && !reviewQueue.resolved));
 
         // Mientras no se conozcan los permisos no se decide nada: si se
         // resolviera ahora, el destino se descartaría por "no permitido".
@@ -1242,16 +1250,18 @@ function App() {
         goTo("/", true);
       }
     }
-  }, [currentPath, authUser, goTo, activeTab, allVisibleTabs]);
+  }, [currentPath, authUser, goTo, activeTab, allVisibleTabs, reviewQueue.resolved]);
 
   useEffect(() => {
     // DEP-33: sin sesión, `allVisibleTabs` está vacío y este efecto borraba la
     // pestaña pedida por URL. Sin permisos no hay nada que validar.
     if (!authUser || allVisibleTabs.length === 0) return;
+    // La cola de revisión se conoce tras una consulta propia: hasta entonces no se expulsa de ella.
+    if (activeTab === "timesheetReviews" && !reviewQueue.resolved) return;
     if (!NON_SIDEBAR_TABS.includes(activeTab) && !allVisibleTabs.some((t) => t.id === activeTab)) {
       setActiveTab(allVisibleTabs[0]?.id ?? "dashboard");
     }
-  }, [allVisibleTabs, activeTab, authUser]);
+  }, [allVisibleTabs, activeTab, authUser, reviewQueue.resolved]);
 
   useEffect(() => {
     setError(null);
@@ -1762,6 +1772,11 @@ function App() {
                 >
                   <span className="sidebar-icon" aria-hidden="true">{tab.icon}</span>
                   <span className="sidebar-label">{tab.label}</span>
+                  {tab.id === "timesheetReviews" && reviewQueue.pending > 0 && (
+                    <span className="sidebar-badge" aria-label={`${reviewQueue.pending} por revisar`}>
+                      {reviewQueue.pending}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -1840,6 +1855,7 @@ function App() {
                     onError={handleError}
                     statsProjects={statsHook.stats?.projects}
                     onOpenProject={setOpenProjectId}
+                    authUser={authUser}
                   />
                 )
               )}
@@ -1850,6 +1866,7 @@ function App() {
                   loading={consultantsHook.loading}
                   canWrite={can("consultants:write")}
                   canDelete={authUser?.roles.includes("ADMIN")}
+                  esAdmin={authUser?.roles.includes("ADMIN") ?? false}
                   onReload={consultantsHook.reload}
                   onError={handleError}
                   onAssignConsultant={(id) => {
@@ -1883,9 +1900,21 @@ function App() {
                   projects={projectsHook.projects}
                   consultants={consultantsHook.consultants}
                   canWrite={can("time:write")}
-                  canReview={can("time:review")}
+                  isAdmin={authUser?.roles.includes("ADMIN") ?? false}
                   onReload={timeEntriesHook.reload}
                   onError={handleError}
+                />
+              )}
+
+              {activeTab === "timesheetReviews" && (
+                <TimesheetReviewsTab
+                  onChanged={async () => {
+                    await Promise.all([reviewQueue.reload(), timeEntriesHook.reload(), statsHook.reload()]);
+                  }}
+                  onNotice={(msg, type) => showToast(msg, type)}
+                  projects={projectsHook.projects}
+                  userEmail={authUser?.email}
+                  isAdmin={authUser?.roles.includes("ADMIN") ?? false}
                 />
               )}
 

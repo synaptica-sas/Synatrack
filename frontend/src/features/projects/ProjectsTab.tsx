@@ -17,7 +17,9 @@ import {
   type HealthStatus,
   type StatsProjectRowEnriched,
   type NivelIndicador,
+  type AuthUser,
 } from "../../services/api";
+import { mensajeErrorPermiso, puedeEditarProyecto } from "../../utils/permisosFicha";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SectionLayout } from "../../components/SectionLayout";
 import { downloadCsv } from "../../utils/csv";
@@ -233,7 +235,10 @@ export function ProjectsTab({
   onError,
   statsProjects,
   onOpenProject,
+  authUser,
 }: {
+  /** Usuario efectivo (respeta el simulador de rol). Sin él se asume ADMIN: el backend decide igual. */
+  authUser?: AuthUser | null;
   projects: Project[];
   loading: boolean;
   canWrite: boolean;
@@ -246,7 +251,17 @@ export function ProjectsTab({
   const [projectFilter, setProjectFilter] = useState("");
   const [healthFilter, setHealthFilter] = useState<HealthStatus | "">("");
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | "">("");
-  const [form, setForm] = useState(emptyForm);
+  const esAdmin = !authUser || authUser.roles.includes("ADMIN");
+  const correoPropio = authUser?.email;
+  // Un no-ADMIN solo puede ponerse a sí mismo como PM al crear.
+  const formVacio = useMemo(
+    () => ({ ...emptyForm, projectManagerEmail: esAdmin ? "" : (correoPropio ?? "") }),
+    [esAdmin, correoPropio],
+  );
+  const [form, setForm] = useState(formVacio);
+  useEffect(() => {
+    setForm((p) => ({ ...p, projectManagerEmail: formVacio.projectManagerEmail }));
+  }, [formVacio]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [editForm, setEditForm] = useState<EditForm | null>(null);
@@ -318,11 +333,11 @@ export function ProjectsTab({
         budget: Number(form.budget),
         sellPrice: form.sellPrice ? Number(form.sellPrice) : undefined,
       });
-      setForm(emptyForm);
+      setForm(formVacio);
       setCategoryCustom(false);
       await Promise.all([onReload(), reloadCategories()]);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo crear proyecto";
+      const msg = mensajeErrorPermiso(err, "No se pudo crear proyecto");
       if (isValidationError(msg)) {
         setFormError(msg);
       } else {
@@ -355,7 +370,8 @@ export function ProjectsTab({
         sellCurrency: editForm.sellCurrency,
         allowExtraHours: editForm.allowExtraHours,
         isInternal: editForm.isInternal,
-        projectManagerEmail: editForm.projectManagerEmail,
+        // Un no-ADMIN no puede cambiar el PM: no se envía para no tocarlo.
+        projectManagerEmail: esAdmin ? editForm.projectManagerEmail : undefined,
         // Se envían tal cual (cadena incluida): la cadena vacía es significativa
         // y el backend le da a cada campo el tratamiento que le corresponde.
         marginWarningPct: editForm.marginWarningPct,
@@ -366,7 +382,7 @@ export function ProjectsTab({
       setEditCategoryCustom(false);
       await Promise.all([onReload(), reloadCategories()]);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo actualizar proyecto";
+      const msg = mensajeErrorPermiso(err, "No se pudo actualizar proyecto");
       if (isValidationError(msg)) {
         setEditError(msg);
       } else {
@@ -489,7 +505,10 @@ export function ProjectsTab({
             <input
               type="email"
               placeholder="Correo del Project Manager (opcional)"
-              title="Correo corporativo de quien aprueba las horas extra del proyecto"
+              title={esAdmin
+                ? "Correo corporativo de quien aprueba las horas extra del proyecto"
+                : "Al crear un proyecto quedas como su PM. Solo un administrador puede asignar a otra persona."}
+              readOnly={!esAdmin}
               value={form.projectManagerEmail}
               onChange={(e) => setForm((p) => ({ ...p, projectManagerEmail: e.target.value }))}
             />
@@ -704,6 +723,10 @@ export function ProjectsTab({
                                   <button
                                     type="button"
                                     className="ghost"
+                                    disabled={!puedeEditarProyecto(esAdmin, correoPropio, project.projectManagerEmail)}
+                                    title={puedeEditarProyecto(esAdmin, correoPropio, project.projectManagerEmail)
+                                      ? undefined
+                                      : "Solo puedes editar los proyectos que diriges."}
                                     onClick={() => {
                                       const categoriaActual = project.category ?? "";
                                       setEditCategoryCustom(
@@ -818,7 +841,10 @@ export function ProjectsTab({
               <input
                 type="email"
                 placeholder="Correo del Project Manager (opcional)"
-                title="Correo corporativo de quien aprueba las horas extra del proyecto. Vaciar el campo lo desasigna."
+                title={esAdmin
+                  ? "Correo corporativo de quien aprueba las horas extra del proyecto. Vaciar el campo lo desasigna."
+                  : "Solo un administrador puede cambiar el PM del proyecto."}
+                readOnly={!esAdmin}
                 value={editForm.projectManagerEmail}
                 onChange={(e) => setEditForm((p) => p && { ...p, projectManagerEmail: e.target.value })}
               />

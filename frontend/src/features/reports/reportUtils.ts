@@ -207,3 +207,32 @@ export function totals(bars: ReportBar[]) {
     { regular: 0, excess: 0, total: 0 },
   );
 }
+
+// -- Estados de aprobación (R15) ---------------------------------------------
+
+/** Horas por estado de aprobación: lo aprobado es la cifra oficial. */
+export type HoursByStatus = { approved: number; submitted: number; pending: number };
+
+/**
+ * Separa las horas por estado. Los registros `REJECTED` (histórico anterior a
+ * R15) no cuentan en ninguna de las tres cifras.
+ */
+export function hoursByStatus(entries: readonly TimeEntry[]): HoursByStatus {
+  const out: HoursByStatus = { approved: 0, submitted: 0, pending: 0 };
+  for (const e of entries) {
+    const h = Number(e.hours) || 0;
+    if (e.status === "APPROVED") out.approved += h;
+    else if (e.status === "SUBMITTED") out.submitted += h;
+    else if (e.status === "PENDING") out.pending += h;
+  }
+  return out;
+}
+
+/** Qué registros alimentan la gráfica: solo lo aprobado, o todo lo registrado vigente. */
+export type ReportScope = "approved" | "all";
+
+export function filterByScope(entries: readonly TimeEntry[], scope: ReportScope): TimeEntry[] {
+  return entries.filter((e) =>
+    scope === "approved" ? e.status === "APPROVED" : e.status !== "REJECTED",
+  );
+}

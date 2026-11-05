@@ -95,6 +95,16 @@ export async function delegationsRoutes(app: FastifyInstance) {
         });
       }
 
+      // R15: `resolveReviewer` exige `fromUserEmail` = PM del proyecto. Si crea un ADMIN que no es el
+      // PM, la delegación se guarda a nombre del PM del proyecto (y sin PM no hay a quién representar).
+      const pmDelProyecto = project.projectManagerEmail?.trim().toLowerCase() ?? "";
+      if (!isPM && pmDelProyecto === "") {
+        return reply.status(400).send({
+          message: "El proyecto no tiene PM asignado: asigna uno antes de crear una delegación de aprobación.",
+          code: "PROJECT_WITHOUT_PM",
+        });
+      }
+      const desde = isPM ? fromEmail : pmDelProyecto;
       // El delegado tiene que poder aprobar de verdad, y aprobar horas extra
       // está reservado al PM del proyecto y al Administrador (D-13: no se
       // amplían permisos). Antes bastaba con "existir" en `User` o en
@@ -122,7 +132,7 @@ export async function delegationsRoutes(app: FastifyInstance) {
       const delegation = await prisma.approvalDelegation.create({
         data: {
           projectId: payload.projectId,
-          fromUserEmail: fromEmail,
+          fromUserEmail: desde,
           toUserEmail: payload.toUserEmail,
           startDate: payload.startDate,
           endDate: payload.endDate,

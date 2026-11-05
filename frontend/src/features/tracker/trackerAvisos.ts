@@ -1,4 +1,4 @@
-import type { StopTimerResult } from "../../services/api";
+import { ApiError, type StopTimerResult } from "../../services/api";
 import { formatDuration, numberish } from "../timesheet/timesheetUtils";
 
 /**
@@ -25,4 +25,9 @@ export function avisosAlDetener(
     });
   }
   return avisos;
+}
+
+/** El servidor rechazó la operación porque la semana ya fue enviada (R15, `WEEK_LOCKED`). */
+export function isWeekLockedError(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.code === "WEEK_LOCKED";
 }

@@ -13,6 +13,13 @@ import { resolveCountryTimezone } from "../../utils/country.js";
 import { splitTimerSpan } from "../../utils/timesheetRules.js";
 import { loadDayContext, lockDay } from "../time-entries/day-context.service.js";
 import { pickRequest } from "../time-entries/timesheet.service.js";
+import {
+  checkWeekEditable,
+  localCalendarDay,
+  lockAndCheckMonths,
+  lockAndCheckWeeks,
+  weekLockedBody,
+} from "../timesheet-weeks/timesheet-weeks.service.js";
 
 const WRITE_ROLES = [AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT];
 
@@ -53,6 +60,19 @@ const MENSAJE_ANTIGUO = "El inicio del cronómetro no puede ser de hace más de 
 
 const MENSAJE_AUSENCIAS =
   "El proyecto Ausencias no admite cronómetro: registra los permisos y vacaciones desde el timesheet.";
+
+/**
+ * R15: el tiempo del cronómetro se imputa al día local en que arrancó. Si esa semana ya fue enviada
+ * (y el proyecto no fue devuelto), no se puede iniciar ni mover el cronómetro hacia ella.
+ */
+async function bloqueoDeSemana(consultantId: string, projectId: string, startedAt: Date) {
+  const duenio = await prisma.consultant.findUnique({ where: { id: consultantId }, select: { country: true } });
+  const dia = localCalendarDay(startedAt, duenio?.country);
+  return checkWeekEditable(prisma, consultantId, projectId, dia);
+}
+
+const MENSAJE_CRONOMETRO_BLOQUEADO =
+  " El cronómetro no se pierde: puedes descartarlo o esperar a que el PM devuelva el proyecto.";
 
 export async function timerRoutes(app: FastifyInstance) {
   // Cronómetro actualmente en marcha (null si no hay ninguno).
@@ -103,6 +123,9 @@ export async function timerRoutes(app: FastifyInstance) {
       if (startedAt.getTime() < Date.now() - MAX_TIMER_MS) {
         return reply.status(400).send({ message: MENSAJE_ANTIGUO });
       }
+
+      const bloqueoInicio = await bloqueoDeSemana(target.consultantId, payload.projectId, startedAt);
+      if (bloqueoInicio) return reply.status(409).send(weekLockedBody(bloqueoInicio));
 
       const existing = await prisma.runningTimer.findUnique({
         where: { consultantId: target.consultantId },
@@ -170,6 +193,14 @@ export async function timerRoutes(app: FastifyInstance) {
       if (payload.startedAt && payload.startedAt.getTime() < Date.now() - MAX_TIMER_MS) {
         return reply.status(400).send({ message: MENSAJE_ANTIGUO });
       }
+
+      // Proyecto y día de arranque resultantes: la semana de destino no puede estar bloqueada.
+      const bloqueoEdicion = await bloqueoDeSemana(
+        target.consultantId,
+        payload.projectId ?? existing.projectId,
+        payload.startedAt ?? existing.startedAt,
+      );
+      if (bloqueoEdicion) return reply.status(409).send(weekLockedBody(bloqueoEdicion));
 
       const timer = await prisma.runningTimer.update({
         where: { id: existing.id },
@@ -247,6 +278,18 @@ export async function timerRoutes(app: FastifyInstance) {
           select: { isAbsenceProject: true },
         });
         if (proyecto?.isAbsenceProject) return { error: MENSAJE_AUSENCIAS } as const;
+
+        // R15: semana enviada = no se puede registrar; el cronómetro se conserva (la transacción
+        // no escribe nada).
+        const bloqueo = await lockAndCheckWeeks(tx, timer.consultantId, [{ projectId: timer.projectId, workDate }]);
+        if (bloqueo) return { lock: bloqueo } as const;
+        // Candado del mes: el cierre mensual y esta escritura no se cruzan.
+        const cerrado = await lockAndCheckMonths(tx, [{ projectId: timer.projectId, workDate }]);
+        if (cerrado) {
+          return {
+            error: `El mes ${cerrado.year}-${String(cerrado.month).padStart(2, "0")} ya está cerrado para este proyecto, así que no se pueden registrar horas.`,
+          } as const;
+        }
 
         await lockDay(tx, timer.consultantId, workDate);
         const ctx = await loadDayContext(tx, timer.consultantId, workDate);
@@ -345,6 +388,11 @@ export async function timerRoutes(app: FastifyInstance) {
         return { creadas, particion: { ...particion, discardedHours: descartadas } } as const;
       });
 
+      if ("lock" in resultado && resultado.lock) {
+        return reply
+          .status(409)
+          .send({ ...weekLockedBody(resultado.lock), message: resultado.lock.message + MENSAJE_CRONOMETRO_BLOQUEADO });
+      }
       if ("error" in resultado) {
         return reply.status("forbidden" in resultado ? 403 : 400).send({ message: resultado.error });
       }

@@ -74,6 +74,7 @@ export async function limpiarEscenario(escenario: EscenarioBasico) {
   await prisma.activity.deleteMany({ where: { consultantId: { in: consultantIds } } });
   await prisma.assignment.deleteMany({ where: { consultantId: { in: consultantIds } } });
   await prisma.extraHourEntry.deleteMany({ where: { consultantId: { in: consultantIds } } });
+  await prisma.timesheetWeekReview.deleteMany({ where: { consultantId: { in: consultantIds } } });
   await prisma.timeEntry.deleteMany({ where: { consultantId: { in: consultantIds } } });
   await prisma.consultant.deleteMany({ where: { id: { in: consultantIds } } });
   await prisma.project.deleteMany({ where: { id: escenario.projectId } });

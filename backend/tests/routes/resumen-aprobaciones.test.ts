@@ -169,7 +169,7 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
       })
     ).id;
 
-    // Horas regulares PENDIENTES (R-020): dos de Ana, una de Beto, una huérfana.
+    // Semanas ENVIADAS (R15, R-020): dos de Ana, una de Beto, una huérfana.
     await prisma.timeEntry.createMany({
       data: [
         {
@@ -177,28 +177,28 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
           consultantId: consultorId,
           workDate: new Date("2026-09-30T00:00:00.000Z"),
           hours: 8,
-          status: "PENDING",
+          status: "SUBMITTED",
         },
         {
           projectId: proyectoAnaId,
           consultantId: consultorTravesuraId,
           workDate: new Date("2026-10-01T00:00:00.000Z"),
           hours: 4,
-          status: "PENDING",
+          status: "SUBMITTED",
         },
         {
           projectId: proyectoBetoId,
           consultantId: consultorId,
           workDate: new Date("2026-10-01T00:00:00.000Z"),
           hours: 6,
-          status: "PENDING",
+          status: "SUBMITTED",
         },
         {
           projectId: proyectoSinPmId,
           consultantId: consultorId,
           workDate: new Date("2026-10-01T00:00:00.000Z"),
           hours: 3,
-          status: "PENDING",
+          status: "SUBMITTED",
         },
         // Ya aprobada: NO debe aparecer en el resumen de nadie.
         {
@@ -209,6 +209,36 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
           status: "APPROVED",
         },
       ],
+    });
+
+    // Las revisiones semanales que cuenta el resumen (una por consultor × proyecto × semana).
+    const semana = new Date("2026-09-28T00:00:00.000Z");
+    const revision = (projectId: string, consultantId: string, hours: number) => ({
+      projectId,
+      consultantId,
+      weekStart: semana,
+      status: "SUBMITTED" as const,
+      submittedAt: new Date("2026-10-02T12:00:00.000Z"),
+      submittedBy: "test@synaptica.test",
+      hours,
+    });
+    await prisma.timesheetWeekReview.createMany({
+      data: [
+        revision(proyectoAnaId, consultorId, 8),
+        revision(proyectoAnaId, consultorTravesuraId, 4),
+        revision(proyectoBetoId, consultorId, 6),
+        revision(proyectoSinPmId, consultorId, 3),
+      ],
+    });
+    // Sin enviar (PENDING y sin revisión): el resumen NO la cuenta.
+    await prisma.timeEntry.create({
+      data: {
+        projectId: proyectoAnaId,
+        consultantId: consultorId,
+        workDate: new Date("2026-10-12T00:00:00.000Z"),
+        hours: 5,
+        status: "PENDING",
+      },
     });
 
     // Horas extra pendientes del PM (R-022): una de Ana.
@@ -235,6 +265,9 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
   });
 
   afterAll(async () => {
+    await prisma.timesheetWeekReview.deleteMany({
+      where: { consultantId: { in: [consultorId, consultorTravesuraId] } },
+    });
     await prisma.extraHourEntry.deleteMany({
       where: { consultantId: { in: [consultorId, consultorTravesuraId] } },
     });
@@ -287,7 +320,9 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
     // Ana: 2 horas regulares + 1 hora extra, todas de SU proyecto.
     expect(deAna!.subject).toContain("3 solicitudes pendientes");
     expect(deAna!.text).toContain(`Proyecto Ana ${prefijo}`);
-    expect(deAna!.text).toContain("HORAS REGULARES: 2 solicitud(es), 12 horas en total.");
+    // Cuenta semanas ENVIADAS: la hora PENDIENTE sin enviar (5 h el 2026-10-12) no aparece.
+    expect(deAna!.text).toContain("SEMANAS ENVIADAS POR REVISAR: 2 solicitud(es), 12 horas en total.");
+    expect(deAna!.text).not.toContain("2026-10-12");
     expect(deAna!.text).toContain("HORAS EXTRA: 1 solicitud(es), 3 horas en total.");
 
     // Y nada del proyecto de Beto ni del proyecto huérfano.
@@ -392,6 +427,29 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
     expect(motivos).toEqual(["enviar", "reclamado-por-otro"]);
     expect(a.enviados + b.enviados).toBe(2); // dos PM, un correo cada uno
     expect(correosEnviados).toHaveLength(2);
+  });
+
+  it("el delegado vigente del PM también recibe las semanas por revisar de ese proyecto", async () => {
+    const delegado = `dele.${prefijo}@synaptica.test`;
+    const delegacion = await prisma.approvalDelegation.create({
+      data: {
+        projectId: proyectoAnaId,
+        fromUserEmail: pmAna,
+        toUserEmail: delegado,
+        startDate: new Date("2026-09-01T00:00:00.000Z"),
+        endDate: new Date("2026-12-31T00:00:00.000Z"),
+      },
+    });
+    try {
+      await olvidarUltimoEnvio();
+      await runWeeklyApprovalDigest(prisma, LUNES_13_UTC);
+      const deDelegado = correoDe(delegado);
+      expect(deDelegado, "el delegado debe recibir el resumen").toBeTruthy();
+      expect(deDelegado!.text).toContain(`Proyecto Ana ${prefijo}`);
+      expect(deDelegado!.text).not.toContain(`Proyecto Beto ${prefijo}`);
+    } finally {
+      await prisma.approvalDelegation.delete({ where: { id: delegacion.id } });
+    }
   });
 
   it("vuelve a enviar la semana siguiente", async () => {

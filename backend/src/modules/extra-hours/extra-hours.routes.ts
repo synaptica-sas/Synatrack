@@ -458,7 +458,8 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         const h = Number(t.hours);
         if (t.isExcess) {
           acc.excess += h;
-          if (t.status === TimeEntryStatus.PENDING) acc.excessPending += h;
+          // R15: el excedente espera la decisión del PM mientras no esté aprobado (sin enviar o enviado).
+          if (t.status === TimeEntryStatus.PENDING || t.status === TimeEntryStatus.SUBMITTED) acc.excessPending += h;
         } else {
           acc.real += h;
         }
@@ -489,45 +490,16 @@ export async function extraHoursRoutes(app: FastifyInstance) {
     },
   );
 
-  // 1b. Excedentes pendientes de decisión del PM (R14).
-  //
-  //     Son los TimeEntry EXTRA con `isExcess = true` y estado PENDING de los proyectos que el usuario
-  //     dirige (`projectManagerEmail`), sin importar su rol. Se aprueban o rechazan con
-  //     `PATCH /api/time-entries/:id/approve|reject` (solo el PM del proyecto puede). No trae tarifas.
-  //     Respuesta: { data: [{ id, workDate, hours, startedAt, endedAt, description, projectId,
-  //     consultantId, extraHourEntryId, project: { id, name }, consultant: { id, fullName },
-  //     type: { id, code, name } }] }
+  // 1b. RETIRADA por R15. Los excedentes de horas extra se aprueban dentro de la revisión semanal
+  //     del proyecto (`GET /api/timesheet-reviews`, filas con la novedad EXCESS). Se conserva la ruta,
+  //     siempre detrás de authenticate/authorize, devolviendo una lista vacía para no romper clientes
+  //     antiguos que aún la consulten.
   app.get(
     "/excess-pending",
     {
       preHandler: [authenticate, authorize(ROLES_QUE_PUEDEN_SER_PM)],
     },
-    async (request) => {
-      const email = request.authUser!.email.toLowerCase();
-      const filas = await prisma.timeEntry.findMany({
-        where: {
-          isExcess: true,
-          status: TimeEntryStatus.PENDING,
-          project: { projectManagerEmail: { equals: email, mode: "insensitive" } },
-        },
-        select: {
-          id: true,
-          workDate: true,
-          hours: true,
-          startedAt: true,
-          endedAt: true,
-          description: true,
-          projectId: true,
-          consultantId: true,
-          extraHourEntryId: true,
-          project: { select: { id: true, name: true } },
-          consultant: { select: { id: true, fullName: true } },
-          type: { select: { id: true, code: true, name: true } },
-        },
-        orderBy: [{ workDate: "asc" }, { startedAt: "asc" }],
-      });
-      return { data: filas };
-    },
+    async () => ({ data: [] }),
   );
 
   // 2. Registrar solicitud de horas extras

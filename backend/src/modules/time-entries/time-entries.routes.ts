@@ -11,10 +11,12 @@ import {
   resolveActivityId,
   resolveTargetConsultantId,
 } from "../../utils/currentConsultant.js";
-import { isValidIsoDate, type IsoDate } from "../../utils/isoDate.js";
+import { isValidIsoDate, toIsoDate, type IsoDate } from "../../utils/isoDate.js";
+import { weekStartOf } from "../../utils/timesheetWeek.js";
 import { MAX_DAYS_RANGE, loadDaysContext, lockDay, summaryOfContext, type Db } from "./day-context.service.js";
 import {
   ENTRY_WITH_TYPE_INCLUDE,
+  loadTypes,
   saveDayGroup,
   syncAbsenceBlock,
   type AuditEvent,
@@ -22,6 +24,15 @@ import {
   type SaveDayError,
   type TypeInfo,
 } from "./timesheet.service.js";
+import {
+  checkWeekEditable,
+  lockAndCheckWeeks,
+  lockWeek,
+  lockAndCheckMonths,
+  monthClosedDayResult,
+  weekLockedBody,
+  weekLockedDayResult,
+} from "../timesheet-weeks/timesheet-weeks.service.js";
 
 const timeEntryPayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -98,20 +109,12 @@ const listQuerySchema = z.object({
   to: z.string().optional(),
   /** "1" restringe el listado a las horas del usuario autenticado. */
   mine: z.string().optional(),
-  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  status: z.enum(["PENDING", "SUBMITTED", "APPROVED", "REJECTED"]).optional(),
   // Paginación con el mismo contrato que `/api/audit`: `page` empieza en 1 y
   // `pageSize` está topado a 100 para que nadie pueda pedir la tabla entera
   // en una sola petición.
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(50),
-});
-
-/**
- * El cuerpo del rechazo solo aporta el motivo: la identidad de quien rechaza sale
- * de `request.authUser`, nunca del cliente.
- */
-const rejectPayloadSchema = z.object({
-  rejectionNote: z.string().trim().min(3),
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
@@ -148,39 +151,6 @@ function descriptionFilter(description: string): Prisma.TimeEntryWhereInput {
 /** Normaliza una fecha a medianoche UTC para que una celda del día sea única. */
 function toUtcDay(date: Date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
-/**
- * Puerta de rol de aprobar/rechazar. Ser PM de un proyecto depende de `projectManagerEmail` y no
- * del rol de la cuenta, así que entran todos los roles operativos y la regla real es
- * `puedeRevisar`.
- */
-const ROLES_REVISION = [AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.FINANCE, AppRole.VIEWER];
-
-/**
- * ADMIN y PM (rol) revisan como siempre. Cualquier otro rol solo puede revisar si es el
- * `projectManagerEmail` del proyecto Y el registro lo decide el PM del proyecto: un excedente de
- * horas extra o una ausencia del proyecto Ausencias con PM asignado.
- */
-function puedeRevisar(
-  roles: AppRole[],
-  pmEmail: string | undefined,
-  revisor: string,
-  entry: { isExcess: boolean; project: { isAbsenceProject: boolean } },
-): boolean {
-  if (roles.includes(AppRole.ADMIN) || roles.includes(AppRole.PM)) return true;
-  return !!pmEmail && pmEmail === revisor && (entry.isExcess || entry.project.isAbsenceProject);
-}
-
-/** Catálogo completo de tipos (activos e inactivos) indexado por id. */
-async function loadTypes(db: Db): Promise<Map<string, TypeInfo>> {
-  const rows = await db.timeEntryType.findMany();
-  return new Map(
-    rows.map((t) => [
-      t.id,
-      { id: t.id, code: t.code, name: t.name, category: t.category, blockType: t.blockType, active: t.active },
-    ]),
-  );
 }
 
 /** Id del tipo REGULAR: se resuelve por `code`, no por el id literal de la semilla. */
@@ -399,52 +369,80 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       }
 
       const roles = request.authUser?.roles ?? [];
-      const esRevisor = roles.includes(AppRole.ADMIN) || roles.includes(AppRole.PM);
 
-      const candidatas = await prisma.timeEntry.findMany({
-        where: {
-          consultantId: target.consultantId,
-          projectId: payload.projectId,
-          activityId: payload.from.activityId,
-          ...descriptionFilter(payload.from.description),
+      // Todo en UNA transacción con el candado de cada semana tocada: la comprobación de bloqueo
+      // (R15) no puede competir con un envío concurrente.
+      const filtro = {
+        consultantId: target.consultantId,
+        projectId: payload.projectId,
+        activityId: payload.from.activityId,
+        ...descriptionFilter(payload.from.description),
+      };
+      const { aFusionar, actualizadas, saltadasCerradas, saltadasRevisadas, saltadasSemana } = await prisma.$transaction(
+        async (tx) => {
+          const previas = await tx.timeEntry.findMany({ where: filtro, select: { workDate: true } });
+          const semanas = [...new Set(previas.map((e) => weekStartOf(toIsoDate(e.workDate))))].sort();
+          for (const semana of semanas) await lockWeek(tx, target.consultantId, semana);
+          const candidatas = await tx.timeEntry.findMany({ where: filtro });
+
+          // Meses cerrados: se consulta cada mes distinto una sola vez.
+          const mesesCerrados = new Set<string>();
+          const mesesVistos = new Set<string>();
+          for (const e of candidatas) {
+            const mes = `${e.workDate.getUTCFullYear()}-${e.workDate.getUTCMonth()}`;
+            if (mesesVistos.has(mes)) continue;
+            mesesVistos.add(mes);
+            if (await isMonthClosed(payload.projectId, e.workDate)) mesesCerrados.add(mes);
+          }
+
+          // Semanas enviadas o aprobadas (R15): bloqueadas para todos los roles. Una devolución
+          // reabre solo ese proyecto.
+          const semanasBloqueadas = new Set<string>();
+          const semanasVistas = new Set<string>();
+          for (const e of candidatas) {
+            const semana = weekStartOf(toIsoDate(e.workDate));
+            if (semanasVistas.has(semana)) continue;
+            semanasVistas.add(semana);
+            if (await checkWeekEditable(tx, target.consultantId, payload.projectId, e.workDate)) {
+              semanasBloqueadas.add(semana);
+            }
+          }
+
+          let saltadasCerradas = 0;
+          let saltadasRevisadas = 0;
+          let saltadasSemana = 0;
+          const aFusionar = candidatas.filter((e) => {
+            const mes = `${e.workDate.getUTCFullYear()}-${e.workDate.getUTCMonth()}`;
+            if (mesesCerrados.has(mes)) {
+              saltadasCerradas++;
+              return false;
+            }
+            if (semanasBloqueadas.has(weekStartOf(toIsoDate(e.workDate)))) {
+              saltadasSemana++;
+              return false;
+            }
+            // Solo se reetiqueta lo PENDING editable; lo enviado nunca se toca y lo aprobado lo corrige
+            // únicamente ADMIN (un PM ya no).
+            const esAdmin = roles.includes(AppRole.ADMIN);
+            if (e.status === TimeEntryStatus.SUBMITTED || (!esAdmin && e.status !== TimeEntryStatus.PENDING)) {
+              saltadasRevisadas++;
+              return false;
+            }
+            return true;
+          });
+
+          const actualizadas = [];
+          for (const e of aFusionar) {
+            actualizadas.push(
+              await tx.timeEntry.update({
+                where: { id: e.id },
+                data: { description: payload.to.description || null, activityId: activity.activityId },
+              }),
+            );
+          }
+          return { aFusionar, actualizadas, saltadasCerradas, saltadasRevisadas, saltadasSemana };
         },
-      });
-
-      // Meses cerrados: se consulta cada mes distinto una sola vez.
-      const mesesCerrados = new Set<string>();
-      const mesesVistos = new Set<string>();
-      for (const e of candidatas) {
-        const mes = `${e.workDate.getUTCFullYear()}-${e.workDate.getUTCMonth()}`;
-        if (mesesVistos.has(mes)) continue;
-        mesesVistos.add(mes);
-        if (await isMonthClosed(payload.projectId, e.workDate)) mesesCerrados.add(mes);
-      }
-
-      let saltadasCerradas = 0;
-      let saltadasRevisadas = 0;
-      const aFusionar = candidatas.filter((e) => {
-        const mes = `${e.workDate.getUTCFullYear()}-${e.workDate.getUTCMonth()}`;
-        if (mesesCerrados.has(mes)) {
-          saltadasCerradas++;
-          return false;
-        }
-        if (!esRevisor && e.status !== TimeEntryStatus.PENDING) {
-          saltadasRevisadas++;
-          return false;
-        }
-        return true;
-      });
-
-      const actualizadas = await prisma.$transaction(
-        aFusionar.map((e) =>
-          prisma.timeEntry.update({
-            where: { id: e.id },
-            data: {
-              description: payload.to.description || null,
-              activityId: activity.activityId,
-            },
-          }),
-        ),
+        { timeout: 30_000, maxWait: 10_000 },
       );
 
       // La auditoría va después de confirmar, como en el resto del módulo.
@@ -465,6 +463,7 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
           merged: actualizadas.length,
           skippedClosedMonth: saltadasCerradas,
           skippedReviewed: saltadasRevisadas,
+          skippedWeekLocked: saltadasSemana,
         },
       };
     },
@@ -743,8 +742,13 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
         if (tocaExtra) return reply.status(403).send({ message: MENSAJE_EXTRA_SOLO_PROPIO });
       }
 
-      const result = await prisma.$transaction((tx) =>
-        saveDayGroup(tx, {
+      const result = await prisma.$transaction(async (tx) => {
+        // R15: una semana enviada queda bloqueada (salvo el proyecto devuelto).
+        const lock = await lockAndCheckWeeks(tx, target.consultantId, [{ projectId: payload.projectId, workDate }]);
+        if (lock) return weekLockedDayResult(lock);
+        const cerrado = await lockAndCheckMonths(tx, [{ projectId: payload.projectId, workDate }]);
+        if (cerrado) return monthClosedDayResult(cerrado);
+        return saveDayGroup(tx, {
           consultantId: target.consultantId,
           projectId: payload.projectId,
           workDate,
@@ -752,8 +756,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
           rows,
           deleteMissing: true,
           types,
-        }),
-      );
+        });
+      });
       if (!result.ok) return sendDayError(reply, result.error);
 
       await flushAudits(request, result.audits);
@@ -814,8 +818,12 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       }
 
       // Misma validación del día completo que `PUT /day` (tope, fines de semana, horas extra).
-      const result = await prisma.$transaction((tx) =>
-        saveDayGroup(tx, {
+      const result = await prisma.$transaction(async (tx) => {
+        const lock = await lockAndCheckWeeks(tx, target.consultantId, [{ projectId: payload.projectId, workDate }]);
+        if (lock) return weekLockedDayResult(lock);
+        const cerrado = await lockAndCheckMonths(tx, [{ projectId: payload.projectId, workDate }]);
+        if (cerrado) return monthClosedDayResult(cerrado);
+        return saveDayGroup(tx, {
           consultantId: target.consultantId,
           projectId: payload.projectId,
           workDate,
@@ -834,8 +842,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
           ],
           deleteMissing: false,
           types,
-        }),
-      );
+        });
+      });
       if (!result.ok) return sendDayError(reply, result.error);
 
       await flushAudits(request, result.audits);
@@ -868,6 +876,10 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       if (!(await canMutateEntry(request, existing))) {
         return reply.status(403).send({ message: "Solo puedes editar tus propias horas" });
       }
+
+      // R15: semana enviada o aprobada = bloqueo total (se re-comprueba dentro de la transacción).
+      const bloqueo = await checkWeekEditable(prisma, existing.consultantId, existing.projectId, existing.workDate);
+      if (bloqueo) return reply.status(409).send(weekLockedBody(bloqueo));
 
       if (existing.status !== TimeEntryStatus.PENDING) {
         return reply.status(409).send({
@@ -942,8 +954,18 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       }
 
       // Misma validación del día completo que `PUT /day`, con la fila ya combinada.
-      const result = await prisma.$transaction((tx) =>
-        saveDayGroup(tx, {
+      const result = await prisma.$transaction(async (tx) => {
+        const lock = await lockAndCheckWeeks(tx, existing.consultantId, [
+          { projectId: existing.projectId, workDate: existing.workDate },
+          { projectId, workDate },
+        ]);
+        if (lock) return weekLockedDayResult(lock);
+        const cerrado = await lockAndCheckMonths(tx, [
+          { projectId: existing.projectId, workDate: existing.workDate },
+          { projectId, workDate },
+        ]);
+        if (cerrado) return monthClosedDayResult(cerrado);
+        return saveDayGroup(tx, {
           consultantId: existing.consultantId,
           projectId,
           workDate,
@@ -964,8 +986,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
           deleteMissing: false,
           types,
           movedIds: moved ? [id] : [],
-        }),
-      );
+        });
+      });
       if (!result.ok) return sendDayError(reply, result.error);
 
       await flushAudits(request, result.audits);
@@ -975,190 +997,33 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
     },
   );
 
-  app.patch(
-    "/:id/approve",
-    {
-      preHandler: [authenticate, authorize(ROLES_REVISION)],
-    },
-    async (request, reply) => {
-    const { id } = idParamsSchema.parse(request.params);
-    const user = request.authUser!;
-    // La identidad de quien aprueba sale del token, no del cuerpo de la petición.
-    const revisor = user.email.toLowerCase();
-
-    const existing = await prisma.timeEntry.findUnique({
-      where: { id },
-      include: { project: true, type: { select: { category: true } } },
-    });
-    if (!existing) {
-      return reply.status(404).send({ message: "Time entry not found" });
-    }
-
-    if (existing.status !== TimeEntryStatus.PENDING) {
-      return reply.status(409).send({ message: "Only pending entries can be approved" });
-    }
-
-    // Nadie aprueba sus propias horas, sin importar el rol. Antes un PM podía
-    // aprobarse a sí mismo las horas que registró como consultor de su propio
-    // proyecto.
-    if (existing.consultantId && existing.consultantId === user.consultantId) {
-      return reply.status(403).send({ message: "No puedes aprobar tus propias horas." });
-    }
-
-    // Un PM (no ADMIN) solo aprueba horas de los proyectos que gestiona. Antes
-    // CUALQUIER PM aprobaba CUALQUIER hora de CUALQUIER proyecto.
-    // El excedente de horas extra (R14) lo decide SOLO el PM del proyecto, como la solicitud
-    // original: ni ADMIN. Para el proyecto de Ausencias aprueba ADMIN o su PM, si lo tiene.
-    const pmEmail = existing.project.projectManagerEmail?.trim().toLowerCase();
-    if (!puedeRevisar(user.roles, pmEmail, revisor, existing)) {
-      return reply.status(403).send({ message: "Insufficient permissions" });
-    }
-    if (existing.isExcess) {
-      if (!pmEmail || pmEmail !== revisor) {
-        return reply.status(403).send({ message: "Solo el PM de este proyecto puede aprobar el excedente de horas extra." });
-      }
-    } else if (!user.roles.includes(AppRole.ADMIN)) {
-      if (!pmEmail || pmEmail !== revisor) {
-        return reply.status(403).send({ message: "Solo el PM de este proyecto puede aprobar estas horas." });
-      }
-    }
-
-    // La aprobación decide la nómina: no se puede cambiar el estado de horas de un mes cerrado.
-    const cerrado = await isMonthClosed(existing.projectId, existing.workDate);
-    if (cerrado) {
-      return reply.status(400).send({
-        message: `No se pueden modificar horas de un mes cerrado para este proyecto (${cerrado.year}-${String(cerrado.month).padStart(2, "0")}).`,
-      });
-    }
-
-    const esAusencia = existing.type.category === TimeEntryCategory.ABSENCE;
-    const { entry, bloques } = await prisma.$transaction(async (tx) => {
-      const updated = await tx.timeEntry.update({
-        where: { id },
-        data: {
-          status: TimeEntryStatus.APPROVED,
-          approvedAt: new Date(),
-          approvedBy: revisor,
-          rejectionNote: null,
-        },
-      });
-      // Si las ausencias aprobadas del día cubren la jornada, se crea el bloqueo de capacidad.
-      const eventos = esAusencia ? await syncAbsenceBlock(tx, existing.consultantId, existing.workDate, id) : [];
-      return { entry: updated, bloques: eventos };
-    });
-    await flushAudits(request, bloques, AUDIT_ENTITIES.consultantBlock);
-
-    await writeAudit(prisma, {
-      entity: AUDIT_ENTITIES.timeEntry,
-      entityId: entry.id,
-      action: "APPROVE",
-      changedBy: revisor,
-      before: existing as unknown as Record<string, unknown>,
-      after: entry as unknown as Record<string, unknown>,
-      request,
-    });
-
-      return { data: entry };
-    },
-  );
-
-  app.patch(
-    "/:id/reject",
-    {
-      preHandler: [authenticate, authorize(ROLES_REVISION)],
-    },
-    async (request, reply) => {
-    const { id } = idParamsSchema.parse(request.params);
-    const payload = rejectPayloadSchema.parse(request.body);
-    const user = request.authUser!;
-    // La identidad de quien rechaza sale del token, no del cuerpo de la petición.
-    const revisor = user.email.toLowerCase();
-
-    const existing = await prisma.timeEntry.findUnique({
-      where: { id },
-      include: { project: true, type: { select: { category: true } } },
-    });
-    if (!existing) {
-      return reply.status(404).send({ message: "Time entry not found" });
-    }
-
-    if (existing.status !== TimeEntryStatus.PENDING) {
-      return reply.status(409).send({ message: "Only pending entries can be rejected" });
-    }
-
-    // Mismo candado que `approve`: nadie rechaza sus propias horas, y un PM
-    // (no ADMIN) solo rechaza horas de los proyectos que gestiona.
-    if (existing.consultantId && existing.consultantId === user.consultantId) {
-      return reply.status(403).send({ message: "No puedes rechazar tus propias horas." });
-    }
-
-    const pmEmail = existing.project.projectManagerEmail?.trim().toLowerCase();
-    if (!puedeRevisar(user.roles, pmEmail, revisor, existing)) {
-      return reply.status(403).send({ message: "Insufficient permissions" });
-    }
-    if (existing.isExcess) {
-      if (!pmEmail || pmEmail !== revisor) {
-        return reply.status(403).send({ message: "Solo el PM de este proyecto puede rechazar el excedente de horas extra." });
-      }
-    } else if (!user.roles.includes(AppRole.ADMIN)) {
-      if (!pmEmail || pmEmail !== revisor) {
-        return reply.status(403).send({ message: "Solo el PM de este proyecto puede rechazar estas horas." });
-      }
-    }
-
-    // La aprobación decide la nómina: no se puede cambiar el estado de horas de un mes cerrado.
-    const cerrado = await isMonthClosed(existing.projectId, existing.workDate);
-    if (cerrado) {
-      return reply.status(400).send({
-        message: `No se pueden modificar horas de un mes cerrado para este proyecto (${cerrado.year}-${String(cerrado.month).padStart(2, "0")}).`,
-      });
-    }
-
-    const esAusencia = existing.type.category === TimeEntryCategory.ABSENCE;
-    const esExtra = existing.type.category === TimeEntryCategory.EXTRA;
-    const { entry, bloques, reparto } = await prisma.$transaction(async (tx) => {
-      await lockDay(tx, existing.consultantId, existing.workDate);
-      const updated = await tx.timeEntry.update({
-        where: { id },
-        data: {
-          status: TimeEntryStatus.REJECTED,
-          approvedAt: null,
-          approvedBy: revisor,
-          rejectionNote: payload.rejectionNote,
-        },
-      });
-      // El saldo que libera un EXTRA rechazado puede cubrir un excedente pendiente.
-      const repartido = esExtra
-        ? await saveDayGroup(tx, {
-            consultantId: existing.consultantId,
-            projectId: existing.projectId,
-            workDate: existing.workDate,
-            isAbsenceProject: existing.project.isAbsenceProject,
-            rows: [],
-            deleteMissing: false,
-            types: await loadTypes(tx),
-          })
-        : null;
-      // Una ausencia rechazada no puede sostener un bloqueo de capacidad.
-      const eventos = esAusencia ? await syncAbsenceBlock(tx, existing.consultantId, existing.workDate) : [];
-      return { entry: updated, bloques: eventos, reparto: repartido && repartido.ok ? repartido.audits : [] };
-    });
-    await flushAudits(request, bloques, AUDIT_ENTITIES.consultantBlock);
-    await flushAudits(request, reparto);
-
-    await writeAudit(prisma, {
-      entity: AUDIT_ENTITIES.timeEntry,
-      entityId: entry.id,
-      action: "REJECT",
-      changedBy: revisor,
-      before: existing as unknown as Record<string, unknown>,
-      after: entry as unknown as Record<string, unknown>,
-      request,
-    });
-
-      return { data: entry };
-    },
-  );
+  /**
+   * R15: la aprobación ya no es registro por registro. Se aprueba o devuelve la SEMANA de un
+   * proyecto desde `POST /api/timesheet-reviews/approve|return`. Estas rutas se retiran para todos
+   * los roles (410 Gone): dejarlas, aun solo para ADMIN, permitiría saltarse el envío y dejar la
+   * revisión semanal incoherente. Para corregir algo aprobado, ADMIN borra el registro.
+   * Siguen detrás de `authenticate` y `authorize`.
+   */
+  const RETIRADA = {
+    message:
+      "Las horas ya no se aprueban ni se rechazan una por una: el PM aprueba o devuelve la semana completa del proyecto desde Aprobación de horas.",
+    code: "ENDPOINT_RETIRED",
+  };
+  for (const accion of ["approve", "reject"] as const) {
+    app.patch(
+      `/:id/${accion}`,
+      {
+        preHandler: [
+          authenticate,
+          authorize([AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT, AppRole.FINANCE, AppRole.VIEWER]),
+        ],
+      },
+      async (request, reply) => {
+        idParamsSchema.parse(request.params);
+        return reply.status(410).send(RETIRADA);
+      },
+    );
+  }
 
   app.delete(
     "/:id",
@@ -1180,8 +1045,23 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
       }
 
       const roles = request.authUser?.roles ?? [];
-      const isReviewer = roles.includes(AppRole.ADMIN) || roles.includes(AppRole.PM);
-      if (!isReviewer && existing.status !== TimeEntryStatus.PENDING) {
+      // R15: bloqueo de semana para todos los roles. Única excepción: ADMIN borra registros que ya
+      // no están PENDING (corrección de lo aprobado), como antes de R15.
+      // La excepción es SOLO para registros APROBADOS: uno SUBMITTED está en revisión y no se borra.
+      const adminCorrige = roles.includes(AppRole.ADMIN) && existing.status === TimeEntryStatus.APPROVED;
+      if (!adminCorrige) {
+        const bloqueo = await checkWeekEditable(prisma, existing.consultantId, existing.projectId, existing.workDate);
+        if (bloqueo) return reply.status(409).send(weekLockedBody(bloqueo));
+        if (existing.status === TimeEntryStatus.SUBMITTED) {
+          return reply.status(409).send({
+            message: "Estas horas están enviadas a revisión y no se pueden eliminar.",
+            code: "WEEK_LOCKED",
+            weekStart: weekStartOf(toIsoDate(existing.workDate)),
+          });
+        }
+      }
+      // Borrar cualquier registro que no esté PENDING (corrección de lo aprobado) exige ADMIN.
+      if (!roles.includes(AppRole.ADMIN) && existing.status !== TimeEntryStatus.PENDING) {
         return reply.status(409).send({
           message: "Solo se pueden eliminar las horas que siguen pendientes de aprobación",
         });
@@ -1202,7 +1082,19 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
           where: { id: existing.projectId },
           select: { isAbsenceProject: true },
         });
-        const { bloques, reparto } = await prisma.$transaction(async (tx) => {
+        const borrado = await prisma.$transaction(async (tx) => {
+          // ADMIN corrigiendo lo aprobado toma el candado de la semana (sin comprobar el bloqueo).
+          if (adminCorrige) await lockWeek(tx, existing.consultantId, weekStartOf(toIsoDate(existing.workDate)));
+          const lock = adminCorrige
+            ? null
+            : await lockAndCheckWeeks(tx, existing.consultantId, [
+                { projectId: existing.projectId, workDate: existing.workDate },
+              ]);
+          if (lock) return { lock } as const;
+          const cerrado = await lockAndCheckMonths(tx, [
+            { projectId: existing.projectId, workDate: existing.workDate },
+          ]);
+          if (cerrado) return { cerrado } as const;
           await lockDay(tx, existing.consultantId, existing.workDate);
           await tx.timeEntry.delete({ where: { id } });
           const eventos =
@@ -1224,6 +1116,11 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
               : null;
           return { bloques: eventos, reparto: repartido && repartido.ok ? repartido.audits : [] };
         });
+        if ("lock" in borrado && borrado.lock) return reply.status(409).send(weekLockedBody(borrado.lock));
+        if ("cerrado" in borrado && borrado.cerrado) {
+          return reply.status(400).send({ message: "No se pueden eliminar horas de un mes cerrado para este proyecto." });
+        }
+        const { bloques, reparto } = borrado as unknown as { bloques: AuditEvent[]; reparto: AuditEvent[] };
         await flushAudits(request, bloques, AUDIT_ENTITIES.consultantBlock);
         await flushAudits(request, reparto);
 

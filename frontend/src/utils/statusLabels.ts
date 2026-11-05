@@ -89,6 +89,7 @@ export const ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
 
 export const TIME_ENTRY_STATUS_LABELS: Record<string, string> = {
   PENDING:  "Pendiente",
+  SUBMITTED: "Enviado",
   APPROVED: "Aprobado",
   REJECTED: "Rechazado",
 };

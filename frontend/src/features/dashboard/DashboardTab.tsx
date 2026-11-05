@@ -606,6 +606,8 @@ export function DashboardTab({
     grossMargin:      displayProjects.reduce((s, p) => s + p.grossMarginActual, 0),
     projectedCost:    displayProjects.reduce((s, p) => s + p.projectedCost, 0),
     approvedHours:    displayProjects.reduce((s, p) => s + p.approvedHours, 0),
+    submittedHours:   displayProjects.reduce((s, p) => s + p.submittedHours, 0),
+    pendingHours:     displayProjects.reduce((s, p) => s + p.pendingHours, 0),
     alertCount:       displayProjects.filter((p) => p.alertLevel !== "ok").length,
     avgCpi:           stats?.totals.avgCpi           ?? null,
     avgSpi:           stats?.totals.avgSpi           ?? null,
@@ -1086,10 +1088,24 @@ export function DashboardTab({
           label="Horas aprobadas"
           value={totals.approvedHours.toFixed(1)}
           delta={calcDelta(totals.approvedHours, prevTotals.approvedHours)}
-          tooltip={totals.approvedHours === 0 ? "Sin horas aprobadas en el período. Revisar registros de tiempo pendientes." : "Horas aprobadas por responsables en el período"}
+          tooltip={totals.approvedHours === 0 ? "Sin horas aprobadas en el período. Revisar registros de tiempo pendientes." : "Horas aprobadas por responsables en el período (las únicas que cuentan en las cifras oficiales)"}
           error={totalsFailed ? statsErrorMessage : null}
           loading={totalsPending || statsLoading}
           onClick={() => onDrillTo?.("timeEntries")}
+        />
+        <DashboardKpi
+          label="Horas enviadas"
+          value={totals.submittedHours.toFixed(1)}
+          tooltip="Horas que los consultores ya enviaron y esperan la aprobación del PM. No cuentan en las cifras oficiales."
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
+        />
+        <DashboardKpi
+          label="Horas pendientes"
+          value={totals.pendingHours.toFixed(1)}
+          tooltip="Horas guardadas por los consultores que aún no se envían a aprobación."
+          error={totalsFailed ? statsErrorMessage : null}
+          loading={totalsPending || statsLoading}
         />
         {/* EVM KPIs (PMBOK) */}
         {portfolioEV > 0 && (

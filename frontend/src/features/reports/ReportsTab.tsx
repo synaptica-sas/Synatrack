@@ -4,7 +4,15 @@ import { downloadCsv } from "../../utils/csv";
 import { listAllTimeEntries, type Consultant, type TimeEntry } from "../../services/api";
 import { addDays, formatWeekRange, startOfWeek, todayIso } from "../timesheet/timesheetUtils";
 import { HoursBarChart } from "./HoursBarChart";
-import { barsByConsultant, barsByDay, formatHms, totals } from "./reportUtils";
+import {
+  barsByConsultant,
+  barsByDay,
+  filterByScope,
+  formatHms,
+  hoursByStatus,
+  totals,
+  type ReportScope,
+} from "./reportUtils";
 import { useEffectiveWorkdays } from "../../hooks/useEffectiveWorkdays";
 
 export function ReportsTab({
@@ -18,7 +26,8 @@ export function ReportsTab({
   const [consultantId, setConsultantId] = useState("");
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [onlyApproved, setOnlyApproved] = useState(false);
+  // La gráfica muestra por defecto lo aprobado (cifra oficial); "all" suma también lo enviado y lo pendiente.
+  const [scope, setScope] = useState<ReportScope>("approved");
 
   // La jornada ya no es fija: cada consultor se compara contra la suya, según
   // la configuración por país y por consultor (decisión de negocio D-5).
@@ -38,7 +47,6 @@ export function ReportsTab({
         from: weekStart,
         to: weekEnd,
         ...(consultantId ? { consultantId } : {}),
-        ...(onlyApproved ? { status: "APPROVED" as const } : {}),
       });
       setEntries(data);
     } catch (err) {
@@ -46,7 +54,7 @@ export function ReportsTab({
     } finally {
       setLoading(false);
     }
-  }, [weekStart, weekEnd, consultantId, onlyApproved, onError]);
+  }, [weekStart, weekEnd, consultantId, onError]);
 
   useEffect(() => {
     void reload();
@@ -56,8 +64,10 @@ export function ReportsTab({
   // consultor cambia de quién son esas horas, no lo que representa cada
   // columna. El sábado y el domingo entran en los totales, y todas sus horas
   // cuentan como horas extra.
-  const bars = useMemo(() => barsByDay(entries, weekStart, jornadaDe), [entries, weekStart, jornadaDe]);
-  const porConsultor = useMemo(() => barsByConsultant(entries, jornadaDe), [entries, jornadaDe]);
+  const shown = useMemo(() => filterByScope(entries, scope), [entries, scope]);
+  const porEstado = useMemo(() => hoursByStatus(entries), [entries]);
+  const bars = useMemo(() => barsByDay(shown, weekStart, jornadaDe), [shown, weekStart, jornadaDe]);
+  const porConsultor = useMemo(() => barsByConsultant(shown, jornadaDe), [shown, jornadaDe]);
   const resumen = useMemo(() => totals(bars), [bars]);
 
   const nombreConsultor = consultants.find((c) => c.id === consultantId)?.fullName;
@@ -124,13 +134,28 @@ export function ReportsTab({
                 <option key={c.id} value={c.id}>{c.fullName}</option>
               ))}
             </select>
-            <label className="report-check">
-              <input type="checkbox" checked={onlyApproved} onChange={(e) => setOnlyApproved(e.target.checked)} />
-              Solo aprobadas
-            </label>
-            <button type="button" className="ghost" onClick={handleExport} disabled={entries.length === 0}>
+            <select value={scope} onChange={(e) => setScope(e.target.value as ReportScope)} aria-label="Horas que muestra la gráfica">
+              <option value="approved">Gráfica: solo aprobadas</option>
+              <option value="all">Gráfica: aprobadas, enviadas y pendientes</option>
+            </select>
+            <button type="button" className="ghost" onClick={handleExport} disabled={shown.length === 0}>
               Exportar CSV
             </button>
+          </div>
+        </div>
+
+        <div className="report-kpis" aria-label="Horas por estado de aprobación">
+          <div>
+            <span>Aprobadas (cifra oficial)</span>
+            <strong className="ok">{formatHms(porEstado.approved)}</strong>
+          </div>
+          <div>
+            <span>Enviadas, sin aprobar</span>
+            <strong>{formatHms(porEstado.submitted)}</strong>
+          </div>
+          <div>
+            <span>Pendientes de enviar</span>
+            <strong>{formatHms(porEstado.pending)}</strong>
           </div>
         </div>
 
@@ -158,8 +183,8 @@ export function ReportsTab({
             jornada={jornadaReferencia}
             emptyMessage={
               unaPersona
-                ? `${nombreConsultor ?? "Ese consultor"} no registró horas en esta semana.`
-                : "Nadie registró horas en esta semana."
+                ? `${nombreConsultor ?? "Ese consultor"} no tiene horas ${scope === "approved" ? "aprobadas " : ""}en esta semana.`
+                : `Nadie tiene horas ${scope === "approved" ? "aprobadas " : ""}en esta semana.`
             }
           />
         )}

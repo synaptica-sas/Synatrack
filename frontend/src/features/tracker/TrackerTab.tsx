@@ -20,7 +20,7 @@ import {
   type RunningTimer,
   type TimeEntry,
 } from "../../services/api";
-import { avisosAlDetener } from "./trackerAvisos";
+import { avisosAlDetener, isWeekLockedError } from "./trackerAvisos";
 import {
   addDays,
   formatClock,
@@ -96,6 +96,8 @@ export function TrackerTab({
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Mensaje cuando la semana del cronómetro ya fue enviada: no se puede detener, solo descartar.
+  const [weekLockedMessage, setWeekLockedMessage] = useState<string | null>(null);
 
   // Campos del formulario. Mientras el cronómetro corre reflejan el timer del
   // servidor; cuando está parado son el borrador de la próxima entrada.
@@ -284,6 +286,7 @@ export function TrackerTab({
   async function handleStop() {
     setBusy(true);
     try {
+      setWeekLockedMessage(null);
       const resultado = await stopTimer(targetConsultantId || undefined);
       setTimer(null);
       setDescription("");
@@ -298,7 +301,12 @@ export function TrackerTab({
       await reloadEntries();
       await onReload();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "No se pudo detener el cronómetro");
+      if (isWeekLockedError(err)) {
+        // El cronómetro sigue en marcha: se avisa y se ofrece descartarlo.
+        setWeekLockedMessage(err.message);
+      } else {
+        onError(err instanceof Error ? err.message : "No se pudo detener el cronómetro");
+      }
     } finally {
       setBusy(false);
     }
@@ -309,6 +317,7 @@ export function TrackerTab({
     setBusy(true);
     try {
       await discardTimer(targetConsultantId || undefined);
+      setWeekLockedMessage(null);
       setTimer(null);
       setDescription("");
       setActivityId("");
@@ -477,6 +486,19 @@ export function TrackerTab({
             ))}
           </select>
           {running && <span className="tk-whofor-lock">bloqueado mientras corre</span>}
+        </div>
+      )}
+
+      {weekLockedMessage && (
+        <div role="alert" className="notice notice--danger">
+          <p className="notice__title">No se puede detener el cronómetro</p>
+          <p className="notice__text">
+            {weekLockedMessage} El cronómetro sigue en marcha, pero esa semana ya fue enviada: puedes descartarlo
+            o pedir al PM que la devuelva para registrar las horas.
+          </p>
+          <button type="button" className="ghost" onClick={() => setConfirmDiscard(true)} disabled={busy}>
+            Descartar cronómetro
+          </button>
         </div>
       )}
 

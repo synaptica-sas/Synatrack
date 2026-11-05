@@ -16,6 +16,10 @@ import {
   missingRatePairs,
 } from "../../utils/currency.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { toIsoDate } from "../../utils/isoDate.js";
+import { lockProjectMonth } from "../timesheet-weeks/timesheet-weeks.service.js";
+import { roundHours } from "../../utils/timesheetRules.js";
+import { weekStartOf } from "../../utils/timesheetWeek.js";
 
 const closePayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -54,6 +58,53 @@ export async function snapshotsRoutes(app: FastifyInstance) {
 
       const startOfMonth = new Date(Date.UTC(year, month - 1, 1));
       const endOfMonth = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+      // R15 §2.6: no se cierra un mes con horas sin aprobar. Las PENDING (sin enviar) y SUBMITTED
+      // (enviadas, sin revisar) quedarían fuera de las cifras y congeladas sin aviso. Las REJECTED
+      // históricas no bloquean.
+      const sinAprobar = await prisma.timeEntry.findMany({
+        where: {
+          projectId,
+          status: { in: [TimeEntryStatus.PENDING, TimeEntryStatus.SUBMITTED] },
+          workDate: { gte: startOfMonth, lte: endOfMonth },
+        },
+        select: {
+          consultantId: true,
+          workDate: true,
+          hours: true,
+          status: true,
+          consultant: { select: { fullName: true } },
+        },
+      });
+      if (sinAprobar.length > 0) {
+        const grupos = new Map<
+          string,
+          { consultantId: string; fullName: string; weekStart: string; hours: number; status: string }
+        >();
+        for (const e of sinAprobar) {
+          const weekStart = weekStartOf(toIsoDate(e.workDate));
+          const key = `${e.consultantId}|${weekStart}|${e.status}`;
+          const g = grupos.get(key) ?? {
+            consultantId: e.consultantId,
+            fullName: e.consultant.fullName,
+            weekStart,
+            hours: 0,
+            status: e.status,
+          };
+          g.hours = roundHours(g.hours + Number(e.hours));
+          grupos.set(key, g);
+        }
+        const pending = [...grupos.values()].sort(
+          (a, b) => a.weekStart.localeCompare(b.weekStart) || a.fullName.localeCompare(b.fullName),
+        );
+        return reply.status(409).send({
+          message:
+            `No se puede cerrar ${year}-${String(month).padStart(2, "0")}: hay horas sin aprobar (${pending.length} semana(s) de consultor). ` +
+            "Pide que se envíen y se aprueben, o que se eliminen, antes de cerrar.",
+          code: "PENDING_HOURS",
+          pending,
+        });
+      }
 
       const [fxConfigs, fxHistory, timeEntries, expenses, revenueEntries] = await Promise.all([
         prisma.fxConfig.findMany(),
@@ -165,7 +216,29 @@ export async function snapshotsRoutes(app: FastifyInstance) {
         );
       }
 
-      const snapshot = await prisma.monthlySnapshot.create({
+      // H6: la comprobación definitiva y el alta van juntas bajo el candado del mes, el mismo que toman
+      // las escrituras de horas. Si algo cambió desde que se calcularon las cifras (horas nuevas sin
+      // aprobar o aprobadas a destiempo), se aborta en vez de congelar un número viejo.
+      const cierre = await prisma.$transaction(async (tx) => {
+        await lockProjectMonth(tx, projectId, year, month);
+        if (await tx.monthlySnapshot.findUnique({ where: { projectId_year_month: { projectId, year, month } } })) {
+          return { conflicto: "Ya existe un cierre para este proyecto en este mes." } as const;
+        }
+        const sinAprobarAhora = await tx.timeEntry.count({
+          where: {
+            projectId,
+            status: { in: [TimeEntryStatus.PENDING, TimeEntryStatus.SUBMITTED] },
+            workDate: { gte: startOfMonth, lte: endOfMonth },
+          },
+        });
+        const aprobadasAhora = await tx.timeEntry.aggregate({
+          where: { projectId, status: TimeEntryStatus.APPROVED, workDate: { gte: startOfMonth, lte: endOfMonth } },
+          _sum: { hours: true },
+        });
+        if (sinAprobarAhora > 0 || Math.abs(Number(aprobadasAhora._sum.hours ?? 0) - hoursApproved) > 1e-6) {
+          return { conflicto: "Las horas del mes cambiaron mientras se calculaba el cierre. Vuelve a intentarlo." } as const;
+        }
+        return { snapshot: await tx.monthlySnapshot.create({
         data: {
           projectId,
           year,
@@ -183,7 +256,10 @@ export async function snapshotsRoutes(app: FastifyInstance) {
           closedBy: performedBy,
           closedAt: new Date(),
         },
+      }) } as const;
       });
+      if ("conflicto" in cierre) return reply.status(409).send({ message: cierre.conflicto, code: "MONTH_CHANGED" });
+      const snapshot = cierre.snapshot;
 
       await writeAudit(prisma, {
         entity: AUDIT_ENTITIES.monthlySnapshot,

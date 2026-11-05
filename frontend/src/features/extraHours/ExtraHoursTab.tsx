@@ -13,10 +13,6 @@ import {
   approveExtraHour,
   rejectExtraHour,
   getPayrollReport,
-  listExcessPending,
-  approveTimeEntry,
-  rejectTimeEntry,
-  type ExcessPendingEntry,
   deleteExtraHour,
   listCustomHolidays,
   createCustomHoliday,
@@ -204,13 +200,6 @@ function AmountCell({ entry }: { entry: ExtraHourEntry }) {
   );
 }
 
-/** "18:00 - 20:30" a partir de dos instantes ISO, en hora local. */
-function formatRange(startedAt: string | null, endedAt: string | null): string {
-  if (!startedAt || !endedAt) return "—";
-  const f = (iso: string) =>
-    new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
-  return `${f(startedAt)} - ${f(endedAt)}`;
-}
 
 const MENSAJE_SIN_FICHA =
   "Tu usuario no está vinculado a una ficha de consultor; pide a un administrador que lo enlace en Consultores.";
@@ -238,9 +227,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   // la primera página. Si se paginara, un aprobador dejaría de ver solicitudes
   // sin enterarse.
   const [pmPendingEntries, setPmPendingEntries] = useState<ExtraHourEntry[]>([]);
-  // Excedentes (horas registradas por encima de lo aprobado) que espera el PM (R14).
-  const [excessPending, setExcessPending] = useState<ExcessPendingEntry[]>([]);
-  const [decidingExcessId, setDecidingExcessId] = useState<string | null>(null);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
   // Supported countries from backend
@@ -329,8 +315,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
   // --- 2. Approvals PM & Finance ---
   const [rejectionTargetId, setRejectionTargetId] = useState<string | null>(null);
-  // Qué se está rechazando: una solicitud de horas extra o un excedente del timesheet.
-  const [rejectionKind, setRejectionKind] = useState<"request" | "excess">("request");
   const [rejectionNote, setRejectionNote] = useState("");
   const [approvingId, setApprovingId] = useState<string | null>(null);
 
@@ -404,12 +388,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     } catch (err) {
       setPmPendingEntries([]);
       onError(err instanceof Error ? err.message : "Error al cargar el buzón de aprobación");
-    }
-    try {
-      setExcessPending(await listExcessPending());
-    } catch (err) {
-      setExcessPending([]);
-      onError(err instanceof Error ? err.message : "Error al cargar los excedentes por aprobar");
     }
   }, [onError]);
 
@@ -650,35 +628,18 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }
 
     try {
-      if (rejectionKind === "excess") {
-        await rejectTimeEntry(rejectionTargetId, rejectionNote.trim());
-      } else {
-        await rejectExtraHour(rejectionTargetId, {
-          rejectionNote: rejectionNote.trim()
-        });
-      }
+      await rejectExtraHour(rejectionTargetId, {
+        rejectionNote: rejectionNote.trim(),
+      });
       setRejectionTargetId(null);
       setRejectionNote("");
-      triggerSuccess(rejectionKind === "excess" ? "Excedente rechazado." : "Solicitud rechazada con éxito.");
+      triggerSuccess("Solicitud rechazada con éxito.");
       await loadEntries();
     } catch (err) {
       onError(err instanceof Error ? err.message : "Error al rechazar la solicitud");
     }
   };
 
-  // Aprueba un excedente: usa la aprobación normal del registro de horas.
-  const handleApproveExcess = async (id: string) => {
-    setDecidingExcessId(id);
-    try {
-      await approveTimeEntry(id);
-      triggerSuccess("Excedente aprobado: se pagará con la nómina del mes.");
-      await loadPendingInboxes();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "Error al aprobar el excedente");
-    } finally {
-      setDecidingExcessId(null);
-    }
-  };
 
   // Fetch consolidated payroll closure
   const handleLoadPayroll = async () => {
@@ -878,7 +839,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   className={activeSubTab === "pm" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("pm")}
                 >
-                  👥 Aprobaciones ({misPendientes.length + excessPending.length})
+                  👥 Aprobaciones ({misPendientes.length})
                 </button>
               )}
 
@@ -901,7 +862,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         <div className="modal-overlay">
           <form onSubmit={handleRejectSubmit} className="modal-card modal-card--sm">
             <div className="modal-header">
-              <h3>{rejectionKind === "excess" ? "Rechazar Excedente de Horas Extra" : "Rechazar Solicitud de Horas Extra"}</h3>
+              <h3>Rechazar Solicitud de Horas Extra</h3>
               <button type="button" className="ghost modal-close" onClick={() => setRejectionTargetId(null)}>✕</button>
             </div>
             <div className="form-grid">
@@ -917,7 +878,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             </div>
             <div className="modal-actions modal-actions--spaced">
               <button type="button" className="ghost" onClick={() => setRejectionTargetId(null)}>Cancelar</button>
-              <button type="submit" className="btn-danger">{rejectionKind === "excess" ? "Rechazar Excedente" : "Rechazar Solicitud"}</button>
+              <button type="submit" className="btn-danger">Rechazar Solicitud</button>
             </div>
           </form>
         </div>,
@@ -1288,7 +1249,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                           <button
                             type="button"
                             className="btn-sm btn-danger-soft"
-                            onClick={() => { setRejectionKind("request"); setRejectionTargetId(entry.id); setRejectionNote(""); }}
+                            onClick={() => { setRejectionTargetId(entry.id); setRejectionNote(""); }}
                           >
                             ✕ Rechazar
                           </button>
@@ -1303,64 +1264,12 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         </div>
       )}
 
-      {/* --- EXCEDENTES POR APROBAR (parte del buzón del PM) --- */}
+      {/* Los excedentes se deciden dentro de la revisión semanal (R15). */}
       {activeSubTab === "pm" && (
-        <div className="card card--roomy">
-          <h3 className="card-title">Excedentes por aprobar</h3>
-          <p className="card-lead">
-            Horas extra que el consultor registró por encima de lo aprobado en la solicitud. Si las apruebas, se pagan con la nómina; si las rechazas, no cuentan.
-          </p>
-          {excessPending.length === 0 ? (
-            <p className="empty-note">No hay excedentes pendientes en los proyectos que diriges.</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Consultor</th>
-                    <th>Proyecto</th>
-                    <th>Fecha</th>
-                    <th>Horario</th>
-                    <th>Horas</th>
-                    <th>Descripción</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {excessPending.map((row) => (
-                    <tr key={row.id}>
-                      <td><strong>{row.consultant.fullName}</strong></td>
-                      <td>{row.project.name}</td>
-                      <td>{row.workDate.slice(0, 10)}</td>
-                      <td className="cell-small">{formatRange(row.startedAt, row.endedAt)}</td>
-                      <td><strong>{Number(row.hours).toFixed(2)}</strong></td>
-                      <td><span className="cell-note">{row.description || "Sin descripción"}</span></td>
-                      <td>
-                        <div className="inline-actions">
-                          <button
-                            type="button"
-                            className="btn-sm btn-success"
-                            disabled={decidingExcessId === row.id}
-                            onClick={() => void handleApproveExcess(row.id)}
-                          >
-                            {decidingExcessId === row.id ? "Aprobando..." : "✓ Aprobar"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-sm btn-danger-soft"
-                            onClick={() => { setRejectionKind("excess"); setRejectionTargetId(row.id); setRejectionNote(""); }}
-                          >
-                            ✕ Rechazar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <p className="card-lead">
+          Los excedentes de horas extra (horas registradas por encima de lo aprobado) se aprueban o
+          devuelven junto con la semana del consultor, en la pantalla «Aprobación de horas».
+        </p>
       )}
 
       {/* --- PAYROLL CLOSURE SUB-TAB --- */}

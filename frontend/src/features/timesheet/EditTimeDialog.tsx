@@ -62,6 +62,7 @@ export function EditTimeDialog({
   summary,
   readOnly,
   esPropio = true,
+  readOnlyReason,
   onSave,
   onClose,
 }: {
@@ -76,6 +77,8 @@ export function EditTimeDialog({
   readOnly: boolean;
   /** `false` si se edita la semana de otro consultor: las horas extra quedan de solo lectura. */
   esPropio?: boolean;
+  /** Por qué está en solo lectura (semana enviada o aprobada); se muestra como aviso. */
+  readOnlyReason?: string;
   /** Ejecuta el guardado contra la API; debe lanzar el error si falla. */
   onSave: (entries: DayEntryInput[]) => Promise<void>;
   onClose: () => void;
@@ -350,6 +353,12 @@ export function EditTimeDialog({
           </p>
         )}
 
+        {readOnly && readOnlyReason && (
+          <p className="ts-notice" role="status">
+            {readOnlyReason}
+          </p>
+        )}
+
         {!esPropio && !readOnly && (
           <p className="ts-notice" role="status">
             Las horas extra solo las registra el propio consultor: aquí no se pueden crear ni editar.
@@ -412,11 +421,16 @@ export function EditTimeDialog({
                         </select>
                       )}
                       {row.status && row.status !== "PENDING" && (
-                        <span className={`pill ${row.status === "APPROVED" ? "ok" : "error"}`}>
+                        <span className={`pill ${row.status === "APPROVED" ? "ok" : row.status === "SUBMITTED" ? "warn" : "error"}`}>
                           {label(TIME_ENTRY_STATUS_LABELS, row.status)}
                         </span>
                       )}
-                      {row.isExcess && row.status === "PENDING" && (
+                      {row.rejectionNote && row.status === "PENDING" && (
+                        <span className="pill error" title={row.rejectionNote}>
+                          Devuelto: «{row.rejectionNote}»
+                        </span>
+                      )}
+                      {row.isExcess && (row.status === "PENDING" || row.status === "SUBMITTED") && (
                         <span className="pill warn">Excedente — pendiente PM</span>
                       )}
                       {row.isExcess && row.status === "APPROVED" && (

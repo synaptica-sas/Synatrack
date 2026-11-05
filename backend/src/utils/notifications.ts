@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
 import { getLogger } from "../infra/logger.js";
 import type { LineaResumen, ResumenPm } from "./approval-digest.js";
+import { formatDateLong } from "./timesheetWeek.js";
 
 // Leer variables directamente de process.env para notificaciones
 const SMTP_HOST = process.env.SMTP_HOST || "";
@@ -448,7 +449,7 @@ export function construirResumenAprobaciones(resumen: ResumenPm): {
     `Hola ${resumen.pmNombre},\n\n` +
     `Este es tu resumen semanal de lo que está esperando tu aprobación en los proyectos que gestionas.\n\n` +
     seccionTexto(
-      "HORAS REGULARES",
+      "SEMANAS ENVIADAS POR REVISAR",
       resumen.horas,
       resumen.totalHoras,
       resumen.sumaHoras,
@@ -462,7 +463,7 @@ export function construirResumenAprobaciones(resumen: ResumenPm): {
       resumen.sumaHorasExtra,
       resumen.horasExtraOmitidas,
     ) +
-    `\n\nIngresa a la plataforma para revisarlas: Horas -> Aprobaciones y Horas Extra -> Aprobaciones PM.\n\n` +
+    `\n\nIngresa a la plataforma para revisarlas: Aprobación de horas (semanas enviadas) y Horas Extra -> Aprobaciones PM.\n\n` +
     `Atentamente,\nApp Gestión Synaptica`;
 
   const filaHtml = (l: LineaResumen) => `
@@ -507,9 +508,9 @@ export function construirResumenAprobaciones(resumen: ResumenPm): {
       <h2 style="color: #9a4f0f;">Resumen semanal de aprobaciones</h2>
       <p>Hola <strong>${escaparHtml(resumen.pmNombre)}</strong>,</p>
       <p>Esto es lo que está esperando tu aprobación en los proyectos que gestionas.</p>
-      ${seccionHtml("Horas regulares", resumen.horas, resumen.totalHoras, resumen.sumaHoras, resumen.horasOmitidas)}
+      ${seccionHtml("Semanas enviadas por revisar", resumen.horas, resumen.totalHoras, resumen.sumaHoras, resumen.horasOmitidas)}
       ${seccionHtml("Horas extra", resumen.horasExtra, resumen.totalHorasExtra, resumen.sumaHorasExtra, resumen.horasExtraOmitidas)}
-      <p>Ingresa a la plataforma para revisarlas: <strong>Horas → Aprobaciones</strong> y <strong>Horas Extra → Aprobaciones PM</strong>.</p>
+      <p>Ingresa a la plataforma para revisarlas: <strong>Aprobación de horas</strong> (semanas enviadas) y <strong>Horas Extra → Aprobaciones PM</strong>.</p>
       <br/>
       <hr style="border: none; border-top: 1px solid #f4d4b6;" />
       <p style="font-size: 0.8rem; color: #888;">Mensaje automático de la Plataforma de Gestión de Proyectos Synaptica. Se envía una vez por semana y solo cuando hay algo pendiente.</p>
@@ -526,4 +527,59 @@ export async function notifyWeeklyApprovalDigest(resumen: ResumenPm): Promise<vo
   if (!resumen.pmEmail) return;
   const { subject, text, html } = construirResumenAprobaciones(resumen);
   await sendEmail({ to: resumen.pmEmail, subject, text, html });
+}
+
+/**
+ * Correo al consultor cuando el PM (o su delegado / un administrador) le devuelve una semana de un
+ * proyecto (R15 §2.5). Construcción PURA: la nota del revisor y los nombres los escribió una
+ * persona, así que todo valor interpolado en el `html` pasa por `escaparHtml`.
+ */
+export function construirCorreoSemanaDevuelta(params: {
+  consultantName: string;
+  projectName: string;
+  /** Lunes de la semana, "YYYY-MM-DD". */
+  weekStart: string;
+  note: string;
+  reviewerName: string;
+}): { subject: string; text: string; html: string } {
+  const { consultantName, projectName, weekStart, note, reviewerName } = params;
+  const semana = `semana del ${formatDateLong(weekStart)}`;
+  const subject = `[Horas] Semana devuelta - ${projectName}`;
+  const text =
+    `Hola ${consultantName},\n\n` +
+    `${reviewerName} devolvió tus horas del proyecto "${projectName}" de la ${semana}.\n\n` +
+    `Motivo: ${note}\n\n` +
+    `Corrige los registros de ese proyecto en tu timesheet y vuelve a enviar la semana.\n\n` +
+    `Atentamente,\nApp Gestión Synaptica`;
+  const html = `
+    <div style="font-family: sans-serif; padding: 20px; color: #2a1e12;">
+      <h2 style="color: #dc2626;">Semana devuelta</h2>
+      <p>Hola <strong>${escaparHtml(consultantName)}</strong>,</p>
+      <p><strong>${escaparHtml(reviewerName)}</strong> devolvió tus horas del proyecto <strong>"${escaparHtml(projectName)}"</strong> de la ${escaparHtml(semana)}.</p>
+      <table style="border-collapse: collapse; width: 100%; max-width: 500px; margin: 15px 0;">
+        <tr>
+          <td style="padding: 8px; border: 1px solid #f4d4b6; font-weight: bold; background: #fee2e2; color: #dc2626; width: 150px;">Motivo</td>
+          <td style="padding: 8px; border: 1px solid #f4d4b6; color: #dc2626;">${escaparHtml(note)}</td>
+        </tr>
+      </table>
+      <p>Corrige los registros de ese proyecto en tu timesheet y vuelve a enviar la semana.</p>
+      <br/>
+      <hr style="border: none; border-top: 1px solid #f4d4b6;" />
+      <p style="font-size: 0.8rem; color: #888;">Mensaje automático de la Plataforma de Gestión de Proyectos Synaptica.</p>
+    </div>
+  `;
+  return { subject, text, html };
+}
+
+export async function notifyTimesheetReturned(params: {
+  consultantName: string;
+  consultantEmail: string | null | undefined;
+  projectName: string;
+  weekStart: string;
+  note: string;
+  reviewerName: string;
+}): Promise<void> {
+  if (!params.consultantEmail) return;
+  const { subject, text, html } = construirCorreoSemanaDevuelta(params);
+  await sendEmail({ to: params.consultantEmail, subject, text, html });
 }

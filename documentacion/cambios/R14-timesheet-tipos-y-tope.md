@@ -152,6 +152,16 @@ Se respetan: candado de `MonthlySnapshot`, `writeAudit`, `resolveTargetConsultan
 | 4 | Modal con tabla, catálogo, vista aprobado vs. real | frontend-react |
 | 5 | Pruebas de ruta, navegador, permisos | qa-pruebas, revisor-ui, revisor-seguridad |
 
+## 5.1 Decisiones abiertas al cerrar R14 (2026-11-05)
+
+1. Borrado de un EXTRA ajeno: hoy ADMIN y el PM del proyecto pueden borrarlo. Propuesta: solo
+   ADMIN (limpieza); rechazar sigue siendo del PM.
+2. Capacity mensual y ausencias: el cliente decidió el 2026-10-15 que la proyección no descuenta
+   ausencias (`capacity/PLAN.md` D4, `CONTRATO.md` §2). Las ausencias aprobadas sí se descuentan
+   en "Disponibilidad real". Pendiente confirmar si se mantiene.
+3. Sobrante del cronómetro sin solicitud aprobada: hoy se descarta con aviso. Propuesta: ofrecer
+   "Solicitar horas extra por esta franja" (formulario precargado) o descartar.
+
 ## 6. Fuera de alcance
 
 - Detección de solapamiento de franjas entre registros.

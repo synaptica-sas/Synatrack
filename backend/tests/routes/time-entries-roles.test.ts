@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
 import { crearEscenarioBasico, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
+import { aprobarSemana, borrarRevisiones, devolverSemana, lunesDe, marcarSemanaEnviada } from "../helpers/semana.js";
 
 /**
  * MATRIZ DE ROLES del timesheet: quién entra a cada ruta de `/api/time-entries`
@@ -111,17 +112,22 @@ describe("Matriz de roles de /api/time-entries", () => {
     it.each([AppRole.CONSULTANT, AppRole.FINANCE, AppRole.VIEWER])(
       "%s no puede aprobar horas",
       async (rol) => {
+        // R15: se aprueba la semana del proyecto. Sin ser su PM ni delegado, ningún rol puede.
         const entrada = await sembrarHora(escenario.consultorA.id);
+        await marcarSemanaEnviada(entrada.consultantId, entrada.projectId, entrada.workDate);
 
-        const res = await app.inject({
-          method: "PATCH",
-          url: `/api/time-entries/${entrada.id}/approve`,
-          headers: comoConsultorA(rol),
+        const res = await aprobarSemana(app, comoConsultorA(rol), {
+          consultantId: entrada.consultantId,
+          projectId: entrada.projectId,
+          weekStart: lunesDe(entrada.workDate),
         });
 
         expect(res.statusCode).toBe(403);
         const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entrada.id } });
-        expect(enBase.status).toBe("PENDING");
+        expect(enBase.status).toBe("SUBMITTED");
+        // La semana enviada bloquearía al resto de pruebas del consultor: se deshace.
+        await borrarRevisiones([entrada.consultantId]);
+        await prisma.timeEntry.delete({ where: { id: entrada.id } });
       },
     );
   });
@@ -316,6 +322,7 @@ describe("/api/time-entries: alcance por proyecto del PM y autoaprobación (R-05
   });
 
   afterAll(async () => {
+    await borrarRevisiones([pmConsultorId, escenario.consultorA.id, escenario.consultorB.id]);
     await prisma.timeEntry.deleteMany({ where: { projectId: proyectoAjenoId } });
     await prisma.timeEntry.deleteMany({ where: { consultantId: pmConsultorId } });
     await prisma.consultant.delete({ where: { id: pmConsultorId } });
@@ -336,66 +343,55 @@ describe("/api/time-entries: alcance por proyecto del PM y autoaprobación (R-05
     });
   }
 
+  const itemDe = (e: { consultantId: string; projectId: string; workDate: Date }) => ({
+    consultantId: e.consultantId,
+    projectId: e.projectId,
+    weekStart: lunesDe(e.workDate),
+  });
+
   it("el PM del proyecto no puede aprobar sus propias horas (exploit bloqueado)", async () => {
     const propia = await sembrarHoraEn(escenario.projectId, pmConsultorId, 1);
+    await marcarSemanaEnviada(propia.consultantId, propia.projectId, propia.workDate);
 
-    const res = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${propia.id}/approve`,
-      headers: comoRol(AppRole.PM, pmEmail),
-    });
+    const res = await aprobarSemana(app, comoRol(AppRole.PM, pmEmail), itemDe(propia));
 
     expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("NOT_REVIEWER");
     const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: propia.id } });
-    expect(enBase.status).toBe("PENDING");
+    expect(enBase.status).toBe("SUBMITTED");
   });
 
-  it("el PM del proyecto no puede rechazar sus propias horas (exploit bloqueado)", async () => {
+  it("el PM del proyecto no puede devolver sus propias horas (exploit bloqueado)", async () => {
     const propia = await sembrarHoraEn(escenario.projectId, pmConsultorId, 2);
+    await marcarSemanaEnviada(propia.consultantId, propia.projectId, propia.workDate);
 
-    const res = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${propia.id}/reject`,
-      headers: comoRol(AppRole.PM, pmEmail),
-      payload: { rejectionNote: "Me arrepentí" },
-    });
+    const res = await devolverSemana(app, comoRol(AppRole.PM, pmEmail), { ...itemDe(propia), note: "Me arrepentí" });
 
     expect(res.statusCode).toBe(403);
   });
 
-  it("el mismo PM sí puede aprobar y rechazar horas de OTRO consultor de su proyecto", async () => {
+  it("el mismo PM sí puede aprobar y devolver horas de OTRO consultor de su proyecto", async () => {
     const deA = await sembrarHoraEn(escenario.projectId, escenario.consultorA.id, 3);
-    const aprobar = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${deA.id}/approve`,
-      headers: comoRol(AppRole.PM, pmEmail),
-    });
-    expect(aprobar.statusCode).toBe(200);
+    await marcarSemanaEnviada(deA.consultantId, deA.projectId, deA.workDate);
+    const aprobar = await aprobarSemana(app, comoRol(AppRole.PM, pmEmail), itemDe(deA));
+    expect(aprobar.statusCode, aprobar.body).toBe(200);
 
     const deB = await sembrarHoraEn(escenario.projectId, escenario.consultorB.id, 4);
-    const rechazar = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${deB.id}/reject`,
-      headers: comoRol(AppRole.PM, pmEmail),
-      payload: { rejectionNote: "Horas duplicadas" },
-    });
-    expect(rechazar.statusCode).toBe(200);
+    await marcarSemanaEnviada(deB.consultantId, deB.projectId, deB.workDate);
+    const devolver = await devolverSemana(app, comoRol(AppRole.PM, pmEmail), { ...itemDe(deB), note: "Horas duplicadas" });
+    expect(devolver.statusCode, devolver.body).toBe(200);
   });
 
-  it("un PM AJENO al proyecto recibe 403 al aprobar, rechazar, editar y borrar (exploit bloqueado)", async () => {
+  it("un PM AJENO al proyecto recibe 403 al aprobar, devolver, editar y borrar (exploit bloqueado)", async () => {
     const entrada = await sembrarHoraEn(escenario.projectId, escenario.consultorA.id, 5);
+    await marcarSemanaEnviada(entrada.consultantId, entrada.projectId, entrada.workDate);
     const ajeno = comoRol(AppRole.PM, `otro.pm.${escenario.prefijo}@synaptica.test`);
 
-    const aprobar = await app.inject({ method: "PATCH", url: `/api/time-entries/${entrada.id}/approve`, headers: ajeno });
+    const aprobar = await aprobarSemana(app, ajeno, itemDe(entrada));
     expect(aprobar.statusCode).toBe(403);
 
-    const rechazar = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${entrada.id}/reject`,
-      headers: ajeno,
-      payload: { rejectionNote: "No me corresponde" },
-    });
-    expect(rechazar.statusCode).toBe(403);
+    const devolver = await devolverSemana(app, ajeno, { ...itemDe(entrada), note: "No me corresponde" });
+    expect(devolver.statusCode).toBe(403);
 
     const editar = await app.inject({
       method: "PATCH",
@@ -409,7 +405,7 @@ describe("/api/time-entries: alcance por proyecto del PM y autoaprobación (R-05
     expect(borrar.statusCode).toBe(403);
 
     const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entrada.id } });
-    expect(enBase.status).toBe("PENDING");
+    expect(enBase.status).toBe("SUBMITTED");
     expect(Number(enBase.hours)).toBe(2);
   });
 

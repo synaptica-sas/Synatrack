@@ -1,4 +1,4 @@
-import { ExtraHourStatus, TimeEntryStatus } from "@prisma/client";
+import { ExtraHourStatus, TimesheetReviewStatus } from "@prisma/client";
 import { getLogger } from "../../infra/logger.js";
 import {
   AMBITO_GENERAL,
@@ -10,6 +10,7 @@ import {
   type PendienteCrudo,
 } from "../../utils/approval-digest.js";
 import { notifyWeeklyApprovalDigest } from "../../utils/notifications.js";
+import { resolveReviewer } from "../../utils/timesheetWeek.js";
 import type { DbClient } from "../../infra/prisma.js";
 
 /**
@@ -63,31 +64,65 @@ function aFechaUtc(fecha: Date): string {
 }
 
 /**
- * Horas regulares esperando aprobación, aplanadas para el agrupador.
+ * Semanas enviadas esperando revisión (R15 §2.5), una línea por consultor × proyecto × semana. Ya no
+ * se cuentan los registros PENDING: esos todavía no se entregaron y no hay nada que el PM pueda hacer.
  *
- * El `select` es deliberadamente estrecho: nombre del consultor, nombre del
- * proyecto, fecha y horas. Nada de tarifas ni importes — el correo es un
- * recordatorio de que hay trabajo que aprobar, no un documento de nómina, y
- * `Consultant.hourlyRate` no tiene por qué viajar a un buzón.
+ * Cada semana va al PM del proyecto y a sus delegados vigentes esa semana (`resolveReviewer` decide
+ * quién puede revisarla). Si el proyecto no tiene PM, o el PM es el propio consultor, revisa ADMIN: la
+ * línea queda sin destinatario (se cuenta en el log) en vez de mandársela a quien no le toca.
+ *
+ * El `select` es deliberadamente estrecho: nombres, semana y horas. Nada de tarifas ni importes.
  */
 async function pendientesDeHoras(prisma: DbClient): Promise<PendienteCrudo[]> {
-  const filas = await prisma.timeEntry.findMany({
-    where: { status: TimeEntryStatus.PENDING },
+  const filas = await prisma.timesheetWeekReview.findMany({
+    where: { status: TimesheetReviewStatus.SUBMITTED },
     select: {
-      workDate: true,
+      weekStart: true,
       hours: true,
-      consultant: { select: { fullName: true } },
-      project: { select: { name: true, projectManagerEmail: true } },
+      consultant: { select: { fullName: true, email: true, user: { select: { email: true } } } },
+      project: {
+        select: {
+          name: true,
+          projectManagerEmail: true,
+          delegations: { select: { fromUserEmail: true, toUserEmail: true, startDate: true, endDate: true } },
+        },
+      },
     },
   });
 
-  return filas.map((fila) => ({
-    pmEmail: fila.project?.projectManagerEmail ?? null,
-    consultantName: fila.consultant?.fullName ?? "Consultor",
-    projectName: fila.project?.name ?? "Proyecto",
-    fecha: aFechaUtc(fila.workDate),
-    horas: Number(fila.hours),
-  }));
+  const lineas: PendienteCrudo[] = [];
+  for (const fila of filas) {
+    const pm = (fila.project?.projectManagerEmail ?? "").trim().toLowerCase();
+    const consultorEmail = (fila.consultant?.email ?? "").trim().toLowerCase();
+    // Correo del usuario enlazado a la ficha: la identidad real aunque `Consultant.email` esté vacío.
+    const consultorUsuario = (fila.consultant?.user?.email ?? "").trim().toLowerCase();
+    const base = {
+      consultantName: fila.consultant?.fullName ?? "Consultor",
+      projectName: fila.project?.name ?? "Proyecto",
+      fecha: aFechaUtc(fila.weekStart),
+      horas: Number(fila.hours),
+    };
+    // PM = consultor (o sin PM): revisa ADMIN, no hay a quién escribir.
+    const pmRevisa = pm !== "" && pm !== consultorEmail && pm !== consultorUsuario;
+    lineas.push({ ...base, pmEmail: pmRevisa ? pm : null });
+    if (!pmRevisa) continue;
+
+    const delegados = new Set(
+      (fila.project?.delegations ?? []).map((d) => d.toUserEmail.trim().toLowerCase()).filter((e) => e !== "" && e !== pm),
+    );
+    for (const delegado of delegados) {
+      const veredicto = resolveReviewer({
+        projectManagerEmail: pm,
+        consultantEmail: consultorEmail,
+        delegations: fila.project?.delegations ?? [],
+        weekStart: fila.weekStart,
+        actor: { email: delegado, roles: [] },
+        actorIsConsultant: delegado === consultorUsuario,
+      });
+      if (veredicto.canReview) lineas.push({ ...base, pmEmail: delegado });
+    }
+  }
+  return lineas;
 }
 
 /** Horas extra esperando la aprobación del PM (el único nivel que queda). */

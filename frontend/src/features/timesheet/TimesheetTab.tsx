@@ -2,30 +2,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PageHeader } from "../../components/PageHeader";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { SectionLayout } from "../../components/SectionLayout";
-import { TIME_ENTRY_STATUS_LABELS, label } from "../../utils/statusLabels";
-import { formatDate } from "../../utils/formatDate";
-import { downloadCsv } from "../../utils/csv";
 import {
-  approveTimeEntry,
+  ApiError,
   createTimeEntry,
   deleteTimeEntry,
   getDaySummary,
   getMyConsultant,
+  getTimesheetWeekStatus,
   listAllTimeEntries,
-  listTimeEntries,
   listTimeEntryTypes,
-  rejectTimeEntry,
   saveDayEntries,
+  submitTimesheetWeek,
   updateTimeEntry,
   type Consultant,
   type DayEntryInput,
   type DaySummary,
-  type PageMeta,
   type Project,
   type TimeEntry,
-  type TimeEntryStatus,
   type TimeEntryType,
+  type TimesheetWeekStatus,
+  type WeekProjectReview,
 } from "../../services/api";
 import {
   addDays,
@@ -51,6 +47,17 @@ import {
 } from "./timesheetGrid";
 import { EditTimeDialog } from "./EditTimeDialog";
 import { cellDefaultTypeId, formatDayUsage, isCellTypable } from "./timesheetDay";
+import {
+  REVIEW_STATUS_LABELS,
+  WEEK_STATE_LABELS,
+  deriveWeekState,
+  formatMissingDay,
+  isProjectEditable,
+  returnedMessage,
+  returnedReviews,
+  submitErrorMessages,
+  summarizeSubmission,
+} from "./weekStatus";
 
 /**
  * Consumo de la jornada en la cabecera de un día: "7,5/8,4 h", en rojo si se
@@ -79,6 +86,13 @@ function DayUsage({ summary }: { summary: DaySummary | undefined }) {
   );
 }
 
+/** Estado de un proyecto en la semana enviada (R15), junto a su nombre. */
+function ReviewPill({ review }: { review: WeekProjectReview | undefined }) {
+  if (!review) return null;
+  const tone = review.status === "APPROVED" ? "ok" : review.status === "RETURNED" ? "error" : "warn";
+  return <span className={`pill ts-project-pill ${tone}`}>{REVIEW_STATUS_LABELS[review.status]}</span>;
+}
+
 /** Letrero con las actividades de una celda, anclado a la celda bajo el ratón. */
 type Tooltip = { key: string; lines: string[]; left: number; top: number };
 
@@ -86,18 +100,17 @@ export function TimesheetTab({
   projects,
   consultants,
   canWrite,
-  canReview,
+  isAdmin,
   onReload,
   onError,
 }: {
   projects: Project[];
   consultants: Consultant[];
   canWrite: boolean;
-  canReview: boolean;
+  isAdmin: boolean;
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
 }) {
-  const [view, setView] = useState<"week" | "approvals">("week");
   const [weekStart, setWeekStart] = useState(() => startOfWeek(todayIso()));
 
   const [myConsultant, setMyConsultant] = useState<Consultant | null>(null);
@@ -110,21 +123,13 @@ export function TimesheetTab({
   // Catálogo de tipos de hora y situación de cada día frente a la jornada (R14).
   const [timeTypes, setTimeTypes] = useState<TimeEntryType[]>([]);
   const [daySummaries, setDaySummaries] = useState<Record<string, DaySummary>>({});
-
-  // -- Vista de aprobaciones -------------------------------------------------
-  // Antes esta tabla pintaba el histórico completo que `App.tsx` cargaba de una
-  // vez. Ahora pide una página al servidor y el paginador muestra el total, de
-  // modo que nunca se enseñe un subconjunto sin decirlo.
-  const [approvalEntries, setApprovalEntries] = useState<TimeEntry[]>([]);
-  const [approvalMeta, setApprovalMeta] = useState<PageMeta>({
-    total: 0,
-    page: 1,
-    pageSize: 50,
-    totalPages: 1,
-  });
-  const [approvalLoading, setApprovalLoading] = useState(false);
-  const [approvalStatus, setApprovalStatus] = useState<TimeEntryStatus | "">("");
-  const [exporting, setExporting] = useState(false);
+  // Estado de la semana ante el flujo de envío y aprobación (R15).
+  const [weekStatus, setWeekStatus] = useState<TimesheetWeekStatus | null>(null);
+  const [weekStatusError, setWeekStatusError] = useState<string | null>(null);
+  const statusRequest = useRef(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [submitErrors, setSubmitErrors] = useState<string[]>([]);
 
   // Proyectos que el usuario acaba de añadir y aún no tienen horas.
   const [draftProjects, setDraftProjects] = useState<string[]>([]);
@@ -192,10 +197,27 @@ export function TimesheetTab({
     if (!consultantId) {
       setWeekEntries([]);
       setDaySummaries({});
+      setWeekStatus(null);
       return;
     }
     setWeekLoading(true);
     try {
+      // Estado de la semana (R15): bloqueo, devoluciones y si se puede enviar.
+      // Tampoco tumba la grilla; sin él no se puede enviar y se dice por qué.
+      const statusId = ++statusRequest.current;
+      void getTimesheetWeekStatus({ weekStart, consultantId })
+        .then((s) => {
+          if (statusId !== statusRequest.current) return;
+          setWeekStatus(s);
+          setWeekStatusError(null);
+        })
+        .catch((err: unknown) => {
+          if (statusId !== statusRequest.current) return;
+          setWeekStatus(null);
+          setWeekStatusError(
+            err instanceof Error ? err.message : "No se pudo consultar el estado de la semana",
+          );
+        });
       // El resumen del día (jornada, tope, saldo de extra) no debe tumbar la
       // grilla: si falla se avisa y las horas se ven igual.
       void getDaySummary({ consultantId, from: weekStart, to: addDays(weekStart, 6) })
@@ -454,119 +476,67 @@ export function TimesheetTab({
     });
   }
 
-  // ── Aprobaciones ───────────────────────────────────────────────────────────
 
-  const loadApprovals = useCallback(
-    async (page: number) => {
-      setApprovalLoading(true);
-      try {
-        const result = await listTimeEntries({
-          page,
-          ...(approvalStatus ? { status: approvalStatus } : {}),
-        });
-        setApprovalEntries(result.data);
-        setApprovalMeta(result.meta);
-      } catch (err) {
-        setApprovalEntries([]);
-        onError(err instanceof Error ? err.message : "No se pudieron cargar las aprobaciones");
-      } finally {
-        setApprovalLoading(false);
-      }
-    },
-    [approvalStatus, onError],
-  );
-
-  // Al entrar en la vista, y cada vez que cambia el filtro, se vuelve SIEMPRE a
-  // la página 1: conservar la página actual dejaría al usuario en una que quizá
-  // ya no existe con el filtro nuevo, y vería una tabla vacía sin motivo.
-  //
-  // Ojo con las dependencias: NO puede depender de la identidad de
-  // `loadApprovals`. `onError` llega del padre como función declarada, así que
-  // cambia en cada render; el efecto se volvía a disparar y devolvía la tabla a
-  // la página 1 justo después de que el usuario pulsara "siguiente", dejando el
-  // paginador clavado en la primera página. Depende solo de lo que de verdad
-  // debe reiniciar la paginación, y llama al cargador por referencia.
-  const loadApprovalsRef = useRef(loadApprovals);
-  useEffect(() => {
-    loadApprovalsRef.current = loadApprovals;
-  }, [loadApprovals]);
-
-  useEffect(() => {
-    if (view !== "approvals") return;
-    void loadApprovalsRef.current(1);
-  }, [view, approvalStatus]);
-
-  async function handleReview(id: string, action: "approve" | "reject") {
+  /** Envía la semana completa (o, siendo ADMIN, la del consultor elegido). */
+  async function handleSubmitWeek() {
+    setConfirmSubmit(false);
+    setSubmitting(true);
+    setSubmitErrors([]);
+    setNotice(null);
     try {
-      // La identidad del revisor la toma el backend del token: el cliente no
-      // la envía ni podría falsificarla.
-      if (action === "approve") {
-        await approveTimeEntry(id);
-      } else {
-        await rejectTimeEntry(id, "No cumple criterio");
-      }
-      await onReload();
-      await reloadWeek();
-      await loadApprovals(approvalMeta.page);
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "No se pudo actualizar estado");
-    }
-  }
-
-  /**
-   * El CSV exporta **todas** las horas del filtro actual, no solo la página que
-   * se está viendo: un informe recortado en silencio a 50 filas sería justo el
-   * defecto que la paginación no puede introducir.
-   */
-  async function handleExport() {
-    setExporting(true);
-    try {
-      const todas = await listAllTimeEntries(
-        approvalStatus ? { status: approvalStatus } : undefined,
+      const result = await submitTimesheetWeek({
+        weekStart,
+        ...(onBehalf ? { consultantId } : {}),
+      });
+      setNotice(
+        onBehalf
+          ? `Semana de ${consultantLabel} enviada en su nombre (${formatHoursTotal(result.submittedHours)}).`
+          : `Semana enviada (${formatHoursTotal(result.submittedHours)}). Un PM la revisará.`,
       );
-      exportarCsv(todas);
+      await refreshAll();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "No se pudo exportar el listado");
+      if (err instanceof ApiError) {
+        const detalles = submitErrorMessages(err.details);
+        setSubmitErrors(detalles.length > 0 ? detalles : [err.message]);
+      } else {
+        onError(err instanceof Error ? err.message : "No se pudo enviar la semana");
+      }
+      // El estado pudo cambiar bajo los pies del usuario (otro envío, un PM): se refresca.
+      await reloadWeek();
     } finally {
-      setExporting(false);
+      setSubmitting(false);
     }
   }
-
-  function exportarCsv(filas: TimeEntry[]) {
-    downloadCsv(
-      filas.map((e) => ({
-        proyecto: e.project.name,
-        consultor: e.consultant.fullName,
-        fecha: e.workDate.slice(0, 10),
-        horas: numberish(e.hours).toFixed(2),
-        tarea: e.activity?.title ?? "",
-        descripcion: e.description ?? "",
-        estado: e.status,
-        origen: e.source,
-        nota: e.note ?? "",
-        aprobadoPor: e.approvedBy ?? "",
-      })),
-      [
-        { key: "proyecto", label: "Proyecto" },
-        { key: "consultor", label: "Consultor" },
-        { key: "fecha", label: "Fecha" },
-        { key: "horas", label: "Horas" },
-        { key: "tarea", label: "Tarea" },
-        { key: "descripcion", label: "Descripción" },
-        { key: "estado", label: "Estado" },
-        { key: "origen", label: "Origen" },
-        { key: "nota", label: "Nota" },
-        { key: "aprobadoPor", label: "Aprobado Por" },
-      ],
-      "horas",
-    );
-  }
-
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const noConsultant = consultantResolved && !consultantId && !myConsultant && !canPickConsultant;
   const gridEditable = canWrite && !!consultantId;
+  // Estado de la semana (R15). Si lo que hay guardado es de otra semana u otro
+  // consultor (cambio en curso), se ignora: mejor "sin dato" que un estado ajeno.
+  const status =
+    weekStatus && weekStatus.weekStart === weekStart && weekStatus.consultantId === consultantId
+      ? weekStatus
+      : null;
+  // Los registros solo deciden el estado cuando no hay revisiones ni nada por enviar
+  // (semanas previas a R15); si el servidor dice que hay proyectos por enviar, es "Pendiente".
+  const weekState = deriveWeekState(
+    status?.reviews,
+    status && !weekLoading && status.submission.projectsToSubmit.length === 0 ? weekEntries : undefined,
+  );
+  const submission = summarizeSubmission(status);
+  const returned = returnedReviews(status?.reviews);
+  const weekLocked = !!status?.locked;
+  const viewingOther = !!consultantId && consultantId !== myConsultant?.id;
+  // Un ADMIN puede enviar la semana de otro; los demás roles solo la propia.
+  const onBehalf = isAdmin && viewingOther;
+  const canSubmitWeek = canWrite && !!consultantId && (!viewingOther || isAdmin);
+  const consultantLabel = consultants.find((c) => c.id === consultantId)?.fullName ?? "el consultor";
+  const nothingToSubmit = !!status && status.submission.projectsToSubmit.length === 0 && !submission.canSubmit;
+  const submitDisabled = !status || !submission.canSubmit || submitting || weekLoading;
+  const reviewOf = (projectId: string) => status?.reviews.find((r) => r.projectId === projectId);
+  /** Celdas, ⋮ y quitar fila: solo en proyectos no enviados (o devueltos). */
+  const projectEditable = (projectId: string) => gridEditable && isProjectEditable(status, projectId);
   const dayClass = (index: number, day: string) =>
     `ts-col-day${isWeekend(index) ? " weekend" : ""}${day === today ? " today" : ""}`;
   const editingRow = editing ? rows.find((r) => r.projectId === editing.projectId) : undefined;
@@ -579,31 +549,21 @@ export function TimesheetTab({
         description="Carga tus horas de la semana: una fila por proyecto, una columna por día. Con ⋮ anotas qué actividades hiciste."
       />
 
-      <div className="ts-viewswitch" role="tablist" aria-label="Vistas del timesheet">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "week"}
-          className={view === "week" ? "active" : ""}
-          onClick={() => setView("week")}
-        >
-          Semana
-        </button>
-        {canReview && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "approvals"}
-            className={view === "approvals" ? "active" : ""}
-            onClick={() => setView("approvals")}
-          >
-            Aprobaciones
-          </button>
-        )}
-      </div>
-
-      {view === "week" && (
         <article className="card ts-card">
+          {returned.length > 0 && (
+            <div className="notice notice--danger ts-returned" role="alert">
+              <p className="notice__title">Semana devuelta para corrección</p>
+              <ul className="notice__list">
+                {returned.map((r) => (
+                  <li key={r.projectId}>{returnedMessage(r)}</li>
+                ))}
+              </ul>
+              <p className="notice__text">
+                Corrige las horas de {returned.length === 1 ? "ese proyecto" : "esos proyectos"} y vuelve a enviar la semana.
+              </p>
+            </div>
+          )}
+
           <div className="ts-toolbar">
             <div className="ts-weeknav">
               <button
@@ -646,7 +606,7 @@ export function TimesheetTab({
                   ))}
                 </select>
               )}
-              {gridEditable && (
+              {gridEditable && !weekLocked && (
                 <button
                   type="button"
                   className="ghost ts-expand-all"
@@ -663,6 +623,92 @@ export function TimesheetTab({
               </div>
             </div>
           </div>
+
+          {consultantId && (
+            <div className="ts-statusbar" data-state={weekState} aria-label="Estado de la semana">
+              <div className="ts-statusbar-main">
+                <span className={`ts-statepill ts-statepill--${weekState.toLowerCase()}`}>
+                  {status ? WEEK_STATE_LABELS[weekState] : "Estado sin cargar"}
+                </span>
+                {status && status.reviews.length > 0 && (
+                  <ul className="ts-statusbar-projects">
+                    {status.reviews.map((r) => (
+                      <li key={r.projectId}>
+                        {r.projectName}: <strong>{REVIEW_STATUS_LABELS[r.status]}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {weekStatusError && (
+                  <span className="ts-statusbar-error" role="alert">
+                    {weekStatusError}{" "}
+                    <button type="button" className="ghost" onClick={() => void reloadWeek()}>
+                      Reintentar
+                    </button>
+                  </span>
+                )}
+              </div>
+
+              {canSubmitWeek && (
+                <div className="ts-statusbar-submit">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSubmit(true)}
+                    disabled={submitDisabled}
+                    aria-describedby="ts-submit-help"
+                  >
+                    {submitting ? "Enviando…" : onBehalf ? `Enviar en nombre de ${consultantLabel}` : "Enviar semana"}
+                  </button>
+                </div>
+              )}
+
+              {status && !submission.canSubmit && canSubmitWeek && (
+                <div id="ts-submit-help" className="ts-submit-help">
+                  {nothingToSubmit && submission.missingDays.length === 0 && submission.otherMessages.length === 0 ? (
+                    <p>
+                      {weekState === "EMPTY"
+                        ? "Esta semana no tiene registros: no hay nada que enviar."
+                        : weekState === "APPROVED"
+                          ? "Esta semana ya está aprobada: no hay nada que enviar."
+                          : "No hay nada pendiente de enviar en esta semana."}
+                    </p>
+                  ) : (
+                    <>
+                      {submission.inProgress && <p>Semana en curso: aún faltan días por completar.</p>}
+                      {submission.missingDays.length > 0 && (
+                        <>
+                          <p>Para enviar, completa la jornada de estos días:</p>
+                          <ul>
+                            {submission.missingDays.map((d) => (
+                              <li key={d.date}>{formatMissingDay(d)}</li>
+                            ))}
+                          </ul>
+                        </>
+                      )}
+                      {submission.otherMessages.length > 0 && (
+                        <ul>
+                          {submission.otherMessages.map((m) => (
+                            <li key={m}>{m}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {submitErrors.length > 0 && (
+                <div className="notice notice--danger ts-submit-errors" role="alert">
+                  <p className="notice__title">No se pudo enviar la semana</p>
+                  <ul className="notice__list">
+                    {submitErrors.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
 
           {noConsultant && (
             <p className="ts-empty-note">
@@ -706,6 +752,7 @@ export function TimesheetTab({
                         <span className="ts-project-name" title={projectName(row.projectId)}>
                           {projectName(row.projectId)}
                         </span>
+                        <ReviewPill review={reviewOf(row.projectId)} />
                       </td>
 
                       {days.map((day, index) => {
@@ -717,7 +764,7 @@ export function TimesheetTab({
                         // nuevo entre ellos: se editan uno a uno en la ventana.
                         const varios = entries.length > 1;
                         const absenceProject = isAbsence(row.projectId);
-                        const typable = gridEditable && isCellTypable(entries, absenceProject);
+                        const typable = projectEditable(row.projectId) && isCellTypable(entries, absenceProject);
                         const draft = cellDrafts[key];
                         const value = draft !== undefined ? draft : formatHoursShort(hours);
                         const withDots = entries.length > 0;
@@ -786,26 +833,28 @@ export function TimesheetTab({
                       <td className="ts-col-total">{formatHoursTotal(rowTotal(row))}</td>
                       {gridEditable && (
                         <td className="ts-col-actions">
-                          <button
-                            type="button"
-                            className="ghost ts-rowdel"
-                            onClick={() =>
-                              rowTotal(row) > 0
-                                ? setRemoveTarget(row)
-                                : setDraftProjects((prev) => prev.filter((id) => id !== row.projectId))
-                            }
-                            aria-label="Quitar fila"
-                            title="Quitar el proyecto y sus horas pendientes de esta semana"
-                          >
-                            ✕
-                          </button>
+                          {projectEditable(row.projectId) && (
+                            <button
+                              type="button"
+                              className="ghost ts-rowdel"
+                              onClick={() =>
+                                rowTotal(row) > 0
+                                  ? setRemoveTarget(row)
+                                  : setDraftProjects((prev) => prev.filter((id) => id !== row.projectId))
+                              }
+                              aria-label="Quitar fila"
+                              title="Quitar el proyecto y sus horas pendientes de esta semana"
+                            >
+                              ✕
+                            </button>
+                          )}
                         </td>
                       )}
                     </tr>
                   ))}
 
                   {/* Fila para añadir un proyecto, como la última de Clockify. */}
-                  {gridEditable && (
+                  {gridEditable && !weekLocked && (
                     <tr className="ts-project-row ts-addrow-row">
                       <td className="ts-col-project">
                         <label className="ts-addproject">
@@ -896,12 +945,29 @@ export function TimesheetTab({
               entries={editingRow?.cells[editing.day] ?? []}
               types={timeTypes}
               summary={daySummaries[editing.day]}
-              readOnly={!gridEditable}
+              readOnly={!projectEditable(editing.projectId)}
+              readOnlyReason={weekLocked ? "Esta semana ya fue enviada: no se puede modificar hasta que un PM la devuelva." : undefined}
               esPropio={!!myConsultant && consultantId === myConsultant.id}
               onSave={handleSaveEdit}
               onClose={() => setEditing(null)}
             />
           )}
+
+          <ConfirmDialog
+            open={confirmSubmit}
+            title={onBehalf ? `Enviar la semana de ${consultantLabel}` : "Enviar semana"}
+            confirmLabel="Enviar"
+            onCancel={() => setConfirmSubmit(false)}
+            onConfirm={() => void handleSubmitWeek()}
+            message={
+              <p>
+                {onBehalf
+                  ? `Se enviará la semana de ${consultantLabel} en su nombre. `
+                  : ""}
+                Al enviar no podrás modificar la semana hasta que un PM la devuelva.
+              </p>
+            }
+          />
 
           <ConfirmDialog
             open={!!removeTarget}
@@ -931,135 +997,6 @@ export function TimesheetTab({
             inicio y fin; al pasar el ratón por una celda las ves.
           </p>
         </article>
-      )}
-
-      {view === "approvals" && (
-        <SectionLayout
-          title="Flujo de aprobación"
-          canWrite={false}
-          onExport={() => void handleExport()}
-          exportDisabled={approvalMeta.total === 0 || exporting}
-          table={
-            <>
-              <div className="ts-approvals-filter">
-                <label className="field-label" htmlFor="ts-approval-status">
-                  Estado
-                </label>
-                <select
-                  id="ts-approval-status"
-                  value={approvalStatus}
-                  onChange={(e) => setApprovalStatus(e.target.value as TimeEntryStatus | "")}
-                >
-                  <option value="">Todos</option>
-                  <option value="PENDING">Pendientes</option>
-                  <option value="APPROVED">Aprobadas</option>
-                  <option value="REJECTED">Rechazadas</option>
-                </select>
-              </div>
-              {approvalLoading ? (
-                <p className="loading">Cargando...</p>
-              ) : approvalMeta.total === 0 ? (
-                <p className="empty-note">
-                  No hay horas registradas
-                  {approvalStatus ? " con el estado seleccionado" : ""}.
-                </p>
-              ) : (
-                <>
-              <div className="table-wrap">
-                <table className="approval-table">
-                  <thead>
-                    <tr>
-                      <th>Proyecto</th>
-                      <th>Consultor</th>
-                      <th>Fecha</th>
-                      <th>Tarea</th>
-                      <th>Horas</th>
-                      <th>Estado</th>
-                      {canReview && <th>Acciones</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {approvalEntries.map((entry) => {
-                      const rowClass =
-                        entry.status === "APPROVED"
-                          ? "row-approved"
-                          : entry.status === "REJECTED"
-                            ? "row-rejected"
-                            : "row-pending";
-                      const task = entry.activity?.title ?? entry.description ?? "—";
-                      return (
-                        <tr key={entry.id} className={rowClass}>
-                          <td title={entry.project.name}>{entry.project.name}</td>
-                          <td title={entry.consultant.fullName}>{entry.consultant.fullName}</td>
-                          <td>{formatDate(entry.workDate)}</td>
-                          <td title={task}>{task}</td>
-                          <td>{numberish(entry.hours).toFixed(2)}</td>
-                          <td>
-                            <span
-                              className={`pill ${entry.status === "APPROVED" ? "ok" : entry.status === "REJECTED" ? "error" : "warn"}`}
-                            >
-                              {label(TIME_ENTRY_STATUS_LABELS, entry.status)}
-                            </span>
-                          </td>
-                          {canReview && (
-                            <td>
-                              {entry.status === "PENDING" && (
-                                <div className="inline-actions">
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleReview(entry.id, "approve")}
-                                  >
-                                    Aprobar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="ghost"
-                                    onClick={() => void handleReview(entry.id, "reject")}
-                                  >
-                                    Rechazar
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <div className="table-pager">
-                <span className="table-pager__status">
-                  {approvalMeta.total} registros · página {approvalMeta.page} de{" "}
-                  {Math.max(1, approvalMeta.totalPages)}
-                </span>
-                <div className="table-pager__nav">
-                  <button
-                    type="button"
-                    className="ghost"
-                    disabled={approvalMeta.page <= 1}
-                    onClick={() => void loadApprovals(approvalMeta.page - 1)}
-                    aria-label="Página anterior"
-                  >
-                    ‹
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    disabled={approvalMeta.page >= approvalMeta.totalPages}
-                    onClick={() => void loadApprovals(approvalMeta.page + 1)}
-                    aria-label="Página siguiente"
-                  >
-                    ›
-                  </button>
-                </div>
-              </div>
-                </>
-              )}
-            </>
-          }
-        />
-      )}
     </div>
   );
 }

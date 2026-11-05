@@ -16,6 +16,7 @@ import { SectionLayout } from "../../components/SectionLayout";
 import { downloadCsv } from "../../utils/csv";
 import { ValidationErrorBox } from "../../components/ValidationErrorBox";
 import { isValidationError } from "../../utils/validation";
+import { mensajeErrorPermiso } from "../../utils/permisosFicha";
 import { CurrencyInput } from "../../components/CurrencyInput";
 import { displayCountryWithFlag } from "../../utils/statusLabels";
 import { CountryFlag } from "../../components/CountryFlag";
@@ -91,7 +92,10 @@ export function ConsultantsTab({
   onError,
   onAssignConsultant,
   adminUsers = [],
+  esAdmin = true,
 }: {
+  /** Rol efectivo ADMIN (respeta el simulador). Solo ADMIN cambia el correo de una ficha; el backend decide igual. */
+  esAdmin?: boolean;
   consultants: Consultant[];
   loading: boolean;
   canWrite: boolean;
@@ -255,7 +259,8 @@ export function ConsultantsTab({
     try {
       await updateConsultant(editForm.id, {
         fullName: editForm.fullName,
-        email: editForm.email || undefined,
+        // Un no-ADMIN no envía el correo: el backend lo conserva.
+        email: esAdmin ? editForm.email || undefined : undefined,
         role: editForm.role,
         company: editForm.company || undefined,
         hourlyRate: editForm.hourlyRate ? Number(editForm.hourlyRate) : undefined,
@@ -273,7 +278,7 @@ export function ConsultantsTab({
       setEditForm(null);
       await onReload();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "No se pudo actualizar consultor";
+      const msg = mensajeErrorPermiso(err, "No se pudo actualizar consultor");
       if (isValidationError(msg)) {
         setEditError(msg);
       } else {
@@ -288,7 +293,7 @@ export function ConsultantsTab({
     try {
       await updateConsultant(consultant.id, {
         fullName: consultant.fullName,
-        email: consultant.email || undefined,
+        email: esAdmin ? consultant.email || undefined : undefined,
         role: consultant.role,
         company: consultant.company || undefined,
         hourlyRate: numberish(consultant.hourlyRate),
@@ -305,7 +310,7 @@ export function ConsultantsTab({
       });
       await onReload();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "No se pudo cambiar estado del consultor");
+      onError(mensajeErrorPermiso(err, "No se pudo cambiar estado del consultor"));
     }
   }
 
@@ -621,7 +626,7 @@ export function ConsultantsTab({
                 </div>
                 <div>
                   <label className="field-label">Correo</label>
-                  <input type="email" value={editForm.email} onChange={(e) => setEditForm((p) => p && { ...p, email: e.target.value })} placeholder="Correo" />
+                  <input type="email" readOnly={!esAdmin} title={esAdmin ? undefined : "Solo un administrador puede cambiar el correo."} value={editForm.email} onChange={(e) => setEditForm((p) => p && { ...p, email: e.target.value })} placeholder="Correo" />
                 </div>
                 <div>
                   <label className="field-label">Empresa</label>

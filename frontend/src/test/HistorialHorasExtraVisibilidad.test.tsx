@@ -18,7 +18,6 @@ vi.mock('../services/api', async () => {
     listExtraHoursConfigs: vi.fn().mockResolvedValue([]),
     listCustomHolidays: vi.fn().mockResolvedValue([]),
     listSupportedCountries: vi.fn().mockResolvedValue([]),
-    listExcessPending: vi.fn().mockResolvedValue([]),
     calculateExtraHoursApi: vi.fn(),
   };
 });

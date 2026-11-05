@@ -191,11 +191,18 @@ export async function consultantsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ message: MENSAJE_FECHAS });
     }
 
+    // R15: el correo de la ficha participa en quién puede aprobar horas: solo ADMIN lo cambia.
+    const esAdmin = request.authUser!.roles.includes(AppRole.ADMIN);
+    const emailPedido = (payload.email ?? "").trim().toLowerCase();
+    if (!esAdmin && payload.email !== undefined && emailPedido !== (existing.email ?? "").trim().toLowerCase()) {
+      return reply.status(403).send({ message: "Solo un administrador puede cambiar el correo de un consultor.", code: "EMAIL_CHANGE_FORBIDDEN" });
+    }
+
     let consultant = await prisma.consultant.update({
       where: { id },
       data: {
         fullName: payload.fullName,
-        email: payload.email || null,
+        email: esAdmin ? payload.email || null : existing.email,
         role: payload.role,
         company: payload.company || null,
         hourlyRate: payload.hourlyRate,

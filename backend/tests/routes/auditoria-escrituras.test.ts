@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
+import { aprobarSemanaDeRegistro } from "../helpers/semana.js";
 import {
   crearEscenarioBasico,
   crearHoraExtra,
@@ -135,7 +136,7 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
     expect(diff.rejectionNote.after).toBe("Sin autorización previa");
   });
 
-  it("aprobar horas registra APPROVE sobre la entidad timeEntry", async () => {
+  it("aprobar la semana deja la huella en la revisión y en cada registro", async () => {
     const creacion = await app.inject({
       method: "POST",
       url: "/api/time-entries",
@@ -155,24 +156,28 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
     expect(creado!.action).toBe("CREATE");
     expect(creado!.changedBy).toBe(ADMIN_EMAIL);
 
-    const aprobacion = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${entrada.id}/approve`,
-      headers: comoRol(AppRole.ADMIN),
-    });
-    expect(aprobacion.statusCode).toBe(200);
+    // R15: se aprueba la semana del proyecto; la hace su PM (ADMIN no revisa si el proyecto tiene PM).
+    const pmEmail = `pm.${escenario.prefijo}@synaptica.test`;
+    const aprobacion = await aprobarSemanaDeRegistro(app, comoRol(AppRole.PM, pmEmail), entrada.id);
+    expect(aprobacion.statusCode, aprobacion.body).toBe(200);
 
     const registro = await ultimoRegistro("timeEntry", entrada.id);
-    expect(registro!.action).toBe("APPROVE");
+    expect(registro!.action).toBe("UPDATE");
     expect(registro!.entity).toBe("timeEntry");
-    expect(registro!.changedBy).toBe(ADMIN_EMAIL);
-
+    expect(registro!.changedBy).toBe(pmEmail);
     const diff = registro!.diff as Record<string, { before: unknown; after: unknown }>;
     expect(diff.status).toEqual({
-      before: TimeEntryStatus.PENDING,
+      before: TimeEntryStatus.SUBMITTED,
       after: TimeEntryStatus.APPROVED,
     });
-    expect(diff.approvedBy.after).toBe(ADMIN_EMAIL);
+    expect(diff.approvedBy.after).toBe(pmEmail);
+
+    const revision = await prisma.timesheetWeekReview.findFirstOrThrow({
+      where: { consultantId: escenario.consultorA.id, projectId: escenario.projectId },
+    });
+    const auditoriaRevision = await ultimoRegistro("timesheetWeekReview", revision.id);
+    expect(auditoriaRevision!.action).toBe("APPROVE");
+    expect(auditoriaRevision!.changedBy).toBe(pmEmail);
   });
 
   it("editar un consultor deja el cambio de tarifa en el diff", async () => {

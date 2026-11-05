@@ -162,7 +162,7 @@ export type Consultant = {
   userId?: string | null;
 };
 
-export type TimeEntryStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type TimeEntryStatus = "PENDING" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 /**
  * Consultor tal como llega dentro de un registro de horas.
@@ -200,6 +200,9 @@ export type TimeEntry = {
   approvedBy: string | null;
   approvedAt: string | null;
   rejectionNote: string | null;
+  /** Quién y cuándo devolvió el registro (R15); se conserva hasta que se reenvíe. */
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   project: Project;
@@ -463,6 +466,10 @@ export type StatsProjectRow = {
   // Hours
   totalHours: number;
   approvedHours: number;
+  /** Horas enviadas al PM, aún sin aprobar (R15). */
+  submittedHours: number;
+  /** Horas guardadas sin enviar (R15). */
+  pendingHours: number;
   // Alert
   alertLevel: AlertLevel;
 };
@@ -510,6 +517,8 @@ export type StatsOverview = {
     grossMarginActual: number;
     totalHours: number;
     approvedHours: number;
+    submittedHours: number;
+    pendingHours: number;
     alertCount: number;
     byHealth?: { GREEN: number; YELLOW: number; RED: number };
     avgCpi?: number | null;
@@ -549,13 +558,22 @@ export class ApiError extends Error {
   status: number;
   code: string | null;
   errors: RowError[];
+  /** Cuerpo completo del error: aquí viajan `item`, `days` o `pending` según el código. */
+  details: Record<string, unknown>;
 
-  constructor(message: string, status: number, code: string | null = null, errors: RowError[] = []) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null = null,
+    errors: RowError[] = [],
+    details: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
     this.errors = errors;
+    this.details = details;
   }
 }
 
@@ -583,6 +601,7 @@ async function request<T>(path: string, method: HttpMethod = "GET", body?: unkno
     let errorMessage = fallbackMessage;
     let errorCode: string | null = null;
     let rowErrors: RowError[] = [];
+    let errorDetails: Record<string, unknown> = {};
 
     try {
       const errorBody = (await response.json()) as {
@@ -674,6 +693,7 @@ async function request<T>(path: string, method: HttpMethod = "GET", body?: unkno
         errorMessage = errorBody.message || fallbackMessage;
       }
       errorCode = typeof errorBody.code === "string" ? errorBody.code : null;
+      errorDetails = errorBody as Record<string, unknown>;
       if (Array.isArray(errorBody.errors)) {
         rowErrors = errorBody.errors.filter(
           (e) => e && typeof e.message === "string" && (e.index === null || typeof e.index === "number"),
@@ -683,7 +703,7 @@ async function request<T>(path: string, method: HttpMethod = "GET", body?: unkno
       errorMessage = fallbackMessage;
     }
 
-    throw new ApiError(errorMessage, response.status, errorCode, rowErrors);
+    throw new ApiError(errorMessage, response.status, errorCode, rowErrors, errorDetails);
   }
 
   if (response.status === 204) {
@@ -1211,19 +1231,203 @@ export async function discardTimer(consultantId?: string): Promise<void> {
   await request<void>(`/api/timer${suffix}`, "DELETE");
 }
 
-// La identidad de quien aprueba o rechaza la toma el backend del token; el
-// cliente ya no la envía (ni podría falsificarla).
-export async function approveTimeEntry(id: string): Promise<TimeEntry> {
-  const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}/approve`, "PATCH");
+// -- Aprobacion semanal del timesheet (R15) --------------------------------
+// La revision es por consultor + proyecto + semana. `weekStart` es siempre el
+// lunes ("YYYY-MM-DD"). Las rutas por registro (`/approve`, `/reject`) se
+// retiraron: ya no existen en este cliente.
+
+export type WeekReviewStatus = "SUBMITTED" | "APPROVED" | "RETURNED";
+
+export type WeekProjectReview = {
+  projectId: string;
+  projectName: string;
+  status: WeekReviewStatus;
+  note: string | null;
+  hours: number;
+  submittedAt: string | null;
+  submittedBy: string | null;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewedByName: string | null;
+};
+
+export type SubmissionError = {
+  code: string;
+  message: string;
+  date?: string;
+  missingHours?: number;
+  projectId?: string;
+};
+
+export type SubmissionDay = {
+  date: string;
+  isWorkday: boolean;
+  nonWorkingReason?: string;
+  /** Horas de jornada exigidas; `null` si el consultor no tiene jornada (NO_SCHEDULE). */
+  required: number | null;
+  covered: number;
+  missing: number;
+  complete: boolean;
+};
+
+export type WeekSubmission = {
+  ok: boolean;
+  errors: SubmissionError[];
+  projectsToSubmit: string[];
+  returnedWithoutEntries: string[];
+  days: SubmissionDay[];
+};
+
+export type TimesheetWeekStatus = {
+  consultantId: string;
+  weekStart: string;
+  today: string;
+  /** La semana tiene al menos un proyecto enviado o aprobado. */
+  locked: boolean;
+  /** Proyectos que siguen editables aunque la semana esté bloqueada (devueltos). */
+  editableProjectIds: string[];
+  reviews: WeekProjectReview[];
+  submission: WeekSubmission;
+};
+
+export async function getTimesheetWeekStatus(params: {
+  weekStart: string;
+  consultantId?: string;
+}): Promise<TimesheetWeekStatus> {
+  const query = new URLSearchParams({ weekStart: params.weekStart });
+  if (params.consultantId) query.set("consultantId", params.consultantId);
+  const response = await request<ApiEnvelope<TimesheetWeekStatus>>(
+    `/api/timesheet-weeks/status?${query.toString()}`,
+  );
   return response.data;
 }
 
-export async function rejectTimeEntry(id: string, rejectionNote: string): Promise<TimeEntry> {
-  const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}/reject`, "PATCH", {
-    rejectionNote,
-  });
+export type SubmitWeekResult = {
+  consultantId: string;
+  weekStart: string;
+  submittedProjectIds: string[];
+  submittedHours: number;
+  closedReturnedProjectIds: string[];
+  onBehalf: boolean;
+};
+
+export async function submitTimesheetWeek(payload: {
+  weekStart: string;
+  consultantId?: string;
+}): Promise<SubmitWeekResult> {
+  const response = await request<ApiEnvelope<SubmitWeekResult>>(
+    "/api/timesheet-weeks/submit",
+    "POST",
+    payload,
+  );
   return response.data;
 }
+
+/** Novedades de un día o de una fila en la revisión semanal. */
+export type ReviewFlag = "EXTRA" | "EXCESS" | "ABSENCE" | "NON_WORKING_DAY" | "OVER_JORNADA";
+
+export type WeekReviewDay = {
+  date: string;
+  hours: number;
+  flags: ReviewFlag[];
+  /** Total del consultor ese día en todos sus proyectos. */
+  consultantTotal: number;
+  /** Jornada del día; `null` si el consultor no tiene jornada (NO_SCHEDULE). */
+  jornada: number | null;
+};
+
+export type WeekReviewEntry = {
+  id: string;
+  workDate: string;
+  hours: number | string;
+  status: TimeEntryStatus;
+  isExcess: boolean;
+  startedAt: string | null;
+  endedAt: string | null;
+  description: string | null;
+  rejectionNote: string | null;
+  type: { id: string; code: string | null; name: string; category: TimeEntryTypeCategory } | null;
+};
+
+export type WeekReviewRow = {
+  consultantId: string;
+  consultantName: string;
+  projectId: string;
+  projectName: string;
+  weekStart: string;
+  days: WeekReviewDay[];
+  total: number;
+  /** Además de los estados de revisión, la fila puede venir sin enviar (PENDING) o rechazada (REJECTED). */
+  status: WeekReviewStatus | "PENDING" | "REJECTED";
+  flags: ReviewFlag[];
+  /** El usuario actual puede aprobar o devolver esta fila. */
+  canReview: boolean;
+  review: {
+    id: string;
+    status: WeekReviewStatus;
+    hours: number;
+    submittedAt: string | null;
+    submittedBy: string | null;
+    reviewedAt: string | null;
+    reviewedBy: string | null;
+    note: string | null;
+  };
+  entries: WeekReviewEntry[];
+};
+
+export type WeekReviewFilters = {
+  weekStart?: string;
+  projectId?: string;
+  consultantId?: string;
+  status?: WeekReviewStatus | "ALL";
+};
+
+export type WeekReviewList = { rows: WeekReviewRow[]; total: number; truncated: boolean };
+
+export async function listTimesheetReviews(filters: WeekReviewFilters = {}): Promise<WeekReviewList> {
+  const query = new URLSearchParams();
+  if (filters.weekStart) query.set("weekStart", filters.weekStart);
+  if (filters.projectId) query.set("projectId", filters.projectId);
+  if (filters.consultantId) query.set("consultantId", filters.consultantId);
+  if (filters.status) query.set("status", filters.status);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  const response = await request<{
+    data: WeekReviewRow[];
+    meta?: { total?: number; truncated?: boolean };
+  }>(`/api/timesheet-reviews${suffix}`);
+  return {
+    rows: response.data,
+    total: response.meta?.total ?? response.data.length,
+    truncated: response.meta?.truncated ?? false,
+  };
+}
+
+export type ReviewCount = { canReview: boolean; pending: number };
+
+export async function getTimesheetReviewCount(): Promise<ReviewCount> {
+  const response = await request<ApiEnvelope<ReviewCount>>("/api/timesheet-reviews/count");
+  return response.data;
+}
+
+export type WeekReviewItem = { consultantId: string; projectId: string; weekStart: string };
+
+/** Todo o nada: si un ítem falla, el error trae `details.item.index`. */
+export async function approveTimesheetReviews(items: WeekReviewItem[]): Promise<void> {
+  await request<unknown>("/api/timesheet-reviews/approve", "POST", { items });
+}
+
+export async function returnTimesheetReview(payload: WeekReviewItem & { note: string }): Promise<void> {
+  await request<unknown>("/api/timesheet-reviews/return", "POST", payload);
+}
+
+/** Horas que impiden cerrar el mes (`409 PENDING_HOURS` de `POST /api/snapshots/close`). */
+export type PendingHoursItem = {
+  consultantId: string;
+  fullName: string;
+  weekStart: string;
+  hours: number;
+  status: string;
+};
 
 /** Una página de movimientos financieros (gastos + ingresos), para reportería. */
 export async function listFinancialEntries(
@@ -2453,22 +2657,6 @@ export type PayrollSummary = {
   legacyRequestIds: string[];
 };
 
-/** Excedente de horas extra (parte que superó lo aprobado) esperando decisión del PM. */
-export type ExcessPendingEntry = {
-  id: string;
-  workDate: string;
-  hours: string;
-  startedAt: string | null;
-  endedAt: string | null;
-  description: string | null;
-  projectId: string;
-  consultantId: string;
-  extraHourEntryId: string | null;
-  project: { id: string; name: string };
-  consultant: { id: string; fullName: string };
-  type: { id: string; code: string | null; name: string } | null;
-};
-
 export type ExtraHourFilters = {
   status?: ExtraHourEntry["status"];
   consultantId?: string;
@@ -2580,11 +2768,6 @@ export async function getPayrollReport(year: number, month: number): Promise<Pay
     warnings: response.meta?.warnings ?? [],
     legacyRequestIds: response.meta?.legacyRequestIds ?? [],
   };
-}
-
-export async function listExcessPending(): Promise<ExcessPendingEntry[]> {
-  const response = await request<ApiEnvelope<ExcessPendingEntry[]>>("/api/extra-hours/excess-pending");
-  return response.data;
 }
 
 export async function deleteExtraHour(id: string): Promise<void> {

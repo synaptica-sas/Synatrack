@@ -241,6 +241,15 @@ export async function projectsRoutes(app: FastifyInstance) {
     async (request, reply) => {
     const body = projectPayloadSchema.parse(request.body);
 
+    // R15: el PM del proyecto decide quién aprueba horas. Quien no es ADMIN solo puede ponerse a sí
+    // mismo (o dejarlo vacío).
+    if (!request.authUser!.roles.includes(AppRole.ADMIN)) {
+      const pedido = (body.projectManagerEmail ?? "").trim().toLowerCase();
+      if (pedido !== "" && pedido !== request.authUser!.email.trim().toLowerCase()) {
+        return reply.status(403).send({ message: "Solo un administrador puede asignar a otra persona como PM del proyecto.", code: "PM_CHANGE_FORBIDDEN" });
+      }
+    }
+
     try {
       ensureDateRange(body.startDate, body.endDate);
     } catch (error) {
@@ -323,6 +332,19 @@ export async function projectsRoutes(app: FastifyInstance) {
     const existing = await prisma.project.findUnique({ where: { id } });
     if (!existing) {
       return reply.status(404).send({ message: "Project not found" });
+    }
+
+    // R15: un PM (no ADMIN) solo edita proyectos que ya dirige y no puede cambiar el PM: de eso
+    // depende quién aprueba las horas.
+    if (!request.authUser!.roles.includes(AppRole.ADMIN)) {
+      const yo = request.authUser!.email.trim().toLowerCase();
+      const actual = (existing.projectManagerEmail ?? "").trim().toLowerCase();
+      if (actual !== yo) {
+        return reply.status(403).send({ message: "Solo puedes editar los proyectos que diriges.", code: "NOT_PROJECT_MANAGER" });
+      }
+      if (body.projectManagerEmail !== undefined && (body.projectManagerEmail ?? "").trim().toLowerCase() !== actual) {
+        return reply.status(403).send({ message: "Solo un administrador puede cambiar el PM del proyecto.", code: "PM_CHANGE_FORBIDDEN" });
+      }
     }
 
     const category = await resolverOInsertarCategoria(body.category);

@@ -770,3 +770,60 @@ body.dark .ts-grid tfoot td { background: rgba(255, 255, 255, 0.03); }
 
 body.dark .ts-day-row--blank td { background: rgba(255, 255, 255, 0.03); }
 body.dark .ts-day-row--error td { background: rgba(220, 38, 38, 0.15); }
+
+/* ── Estado de la semana y envío (R15) ── */
+.ts-returned { margin-bottom: 0.9rem; }
+
+.ts-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  margin-bottom: 0.9rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.ts-statusbar-main { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+
+.ts-statusbar-projects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.ts-statusbar-error { color: var(--state-danger-text); font-size: 0.8rem; }
+
+.ts-statepill {
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--state-neutral-border);
+  background: var(--state-neutral-bg);
+  color: var(--state-neutral-text);
+}
+.ts-statepill--empty { color: var(--text-muted); }
+.ts-statepill--submitted { background: var(--state-warning-bg); border-color: var(--state-warning-border); color: var(--state-warning-text); }
+.ts-statepill--approved { background: var(--state-success-bg); border-color: var(--state-success-border); color: var(--state-success-text); }
+.ts-statepill--partial { background: var(--state-info-bg); border-color: var(--state-info-border); color: var(--state-info-text); }
+.ts-statepill--returned { background: var(--state-danger-bg); border-color: var(--state-danger-border); color: var(--state-danger-text); }
+
+.ts-submit-help {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.ts-submit-help p { margin: 0 0 0.2rem; }
+.ts-submit-help ul { margin: 0; padding-left: 1.1rem; }
+
+.ts-submit-errors { flex-basis: 100%; }
+.ts-project-pill { margin-left: 0.4rem; font-size: 0.65rem; padding: 0.1rem 0.45rem; }

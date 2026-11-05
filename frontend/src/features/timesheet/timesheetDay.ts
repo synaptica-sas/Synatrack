@@ -38,6 +38,8 @@ export type DayRow = {
   locked?: boolean;
   status: TimeEntryStatus | null;
   isExcess: boolean;
+  /** Nota con la que el PM devolvió el registro (R15); se conserva hasta reenviar. */
+  rejectionNote?: string | null;
   /** Nombre del tipo, para mostrarlo en filas de solo lectura. */
   typeName: string;
   /** Valores originales del servidor: si no se tocan se reenvían tal cual. */
@@ -88,6 +90,7 @@ export function rowFromEntry(entry: TimeEntry, opciones?: { lockExtra?: boolean 
     locked,
     status: entry.status,
     isExcess: !!entry.isExcess,
+    rejectionNote: entry.rejectionNote,
     typeName: entry.type?.name ?? "Horas Regulares",
     original: { hours, startedAt: entry.startedAt, endedAt: entry.endedAt, start, end, duration },
   };

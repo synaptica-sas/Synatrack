@@ -84,6 +84,8 @@ const STATS: StatsOverview = {
     grossMarginActual: 2500,
     totalHours: 20,
     approvedHours: 20,
+    submittedHours: 0,
+    pendingHours: 0,
     alertCount: 1,
     avgCpi: null,
     avgSpi: null,

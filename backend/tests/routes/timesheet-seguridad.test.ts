@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
 import { crearEscenarioBasico, crearHoraExtra, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
+import { aprobarSemana, aprobarSemanaDeRegistro, devolverSemanaDeRegistro, lunesDe, marcarSemanaEnviada } from "../helpers/semana.js";
 
 // El cronómetro imputa al día LOCAL del país (Colombia, UTC-5 sin horario de verano).
 function diaLocalBogota(d: Date): Date {
@@ -28,6 +29,7 @@ describe("Timesheet R14: endurecimiento", () => {
   const ids = () => [escenario.consultorA.id, escenario.consultorB.id];
 
   async function limpiar() {
+    await prisma.timesheetWeekReview.deleteMany({ where: { consultantId: { in: ids() } } });
     await prisma.runningTimer.deleteMany({ where: { consultantId: { in: ids() } } });
     await prisma.consultantBlock.deleteMany({ where: { consultantId: { in: ids() } } });
     await prisma.timeEntry.deleteMany({ where: { consultantId: { in: ids() } } });
@@ -107,7 +109,7 @@ describe("Timesheet R14: endurecimiento", () => {
     expect(ok.statusCode, ok.body).toBe(200);
   });
 
-  it("aprobar y rechazar respetan el cierre mensual", async () => {
+  it("aprobar y devolver la semana respetan el cierre mensual", async () => {
     await limpiar();
     const crear = () =>
       prisma.timeEntry.create({
@@ -138,17 +140,15 @@ describe("Timesheet R14: endurecimiento", () => {
         closedBy: "test",
       },
     });
-    const aprobar = await app.inject({ method: "PATCH", url: `/api/time-entries/${a.id}/approve`, headers: comoAdmin() });
+    const pm = comoRol(AppRole.PM, pmEmail());
+    const aprobar = await aprobarSemanaDeRegistro(app, pm, a.id);
     expect(aprobar.statusCode).toBe(400);
     expect(aprobar.json().message).toMatch(/mes cerrado/);
-    const rechazar = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${b.id}/reject`,
-      headers: comoAdmin(),
-      payload: { rejectionNote: "no procede" },
-    });
-    expect(rechazar.statusCode).toBe(400);
-    expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("PENDING");
+    const devolver = await devolverSemanaDeRegistro(app, pm, b.id, "no procede");
+    expect(devolver.statusCode).toBe(400);
+    // Nada cambió: siguen enviados y la revisión sigue pendiente.
+    expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("SUBMITTED");
+    expect((await prisma.timesheetWeekReview.findFirstOrThrow({ where: { consultantId: escenario.consultorA.id } })).status).toBe("SUBMITTED");
   });
 
   it("dos PUT /day concurrentes que juntos superan la jornada: uno falla", async () => {
@@ -263,44 +263,47 @@ describe("Timesheet R14: endurecimiento", () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it("el PM del proyecto con rol CONSULTANT decide el excedente, pero no horas normales", async () => {
+  it("el PM del proyecto con rol CONSULTANT revisa la semana (incluido el excedente); quien no es PM no", async () => {
     await limpiar();
-    const crear = (isExcess: boolean) =>
+    const crear = (dia: number, isExcess: boolean) =>
       prisma.timeEntry.create({
         data: {
           projectId: escenario.projectId,
           consultantId: escenario.consultorA.id,
-          workDate: new Date(Date.UTC(2026, 7, 11)),
+          workDate: new Date(Date.UTC(2026, 7, dia)),
           hours: 1,
           typeId: isExcess ? extra : regular,
           isExcess,
         },
       });
-    const [excedente, normal] = [await crear(true), await crear(false)];
+    const [excedente, normal] = [await crear(11, true), await crear(11, false)];
     const pmConsultor = comoRol(AppRole.CONSULTANT, pmEmail());
+    const item = { consultantId: escenario.consultorA.id, projectId: escenario.projectId, weekStart: lunesDe(excedente.workDate) };
 
-    const horas = await app.inject({ method: "PATCH", url: `/api/time-entries/${normal.id}/approve`, headers: pmConsultor });
-    expect(horas.statusCode).toBe(403);
-
-    const rechaza = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${excedente.id}/reject`,
-      headers: pmConsultor,
-      payload: { rejectionNote: "no se autoriza" },
-    });
-    expect(rechaza.statusCode, rechaza.body).toBe(200);
-
-    const otro = await crear(true);
-    const aprueba = await app.inject({ method: "PATCH", url: `/api/time-entries/${otro.id}/approve`, headers: pmConsultor });
-    expect(aprueba.statusCode, aprueba.body).toBe(200);
-
-    const ajeno = await crear(true);
-    const noPm = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${ajeno.id}/approve`,
-      headers: comoRol(AppRole.CONSULTANT, "cualquiera@synaptica.test"),
-    });
+    // Quien no es PM del proyecto no puede, sea cual sea su rol.
+    await marcarSemanaEnviada(item.consultantId, item.projectId, excedente.workDate);
+    const noPm = await aprobarSemana(app, comoRol(AppRole.CONSULTANT, "cualquiera@synaptica.test"), item);
     expect(noPm.statusCode).toBe(403);
+
+    // El PM (con rol CONSULTANT) devuelve la semana: excedente y horas normales vuelven a PENDING.
+    const devuelve = await app.inject({
+      method: "POST",
+      url: "/api/timesheet-reviews/return",
+      headers: pmConsultor,
+      payload: { ...item, note: "no se autoriza" },
+    });
+    expect(devuelve.statusCode, devuelve.body).toBe(200);
+    for (const id of [excedente.id, normal.id]) {
+      expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id } })).status).toBe("PENDING");
+    }
+
+    // Reenvía y el PM aprueba: el excedente se aprueba junto con el resto de la semana.
+    await marcarSemanaEnviada(item.consultantId, item.projectId, excedente.workDate);
+    const aprueba = await aprobarSemana(app, pmConsultor, item);
+    expect(aprueba.statusCode, aprueba.body).toBe(200);
+    for (const id of [excedente.id, normal.id]) {
+      expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id } })).status).toBe("APPROVED");
+    }
   });
 
   it("nómina: una solicitud legacy con solo registros RECHAZADOS vinculados sigue pagándose", async () => {

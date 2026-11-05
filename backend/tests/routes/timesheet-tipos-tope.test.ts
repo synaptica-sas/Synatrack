@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
 import { crearEscenarioBasico, crearHoraExtra, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
+import { aprobarSemana, aprobarSemanaDeRegistro, lunesDe, marcarSemanaEnviada } from "../helpers/semana.js";
 
 // El cronómetro imputa al día LOCAL del país (Colombia, UTC-5 sin horario de verano).
 function diaLocalBogota(d: Date): Date {
@@ -123,6 +124,7 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
   afterAll(async () => {
     for (const r of restaurar.reverse()) await r();
     const consultantIds = [escenario.consultorA.id, escenario.consultorB.id, semanaSinPermiso];
+    await prisma.timesheetWeekReview.deleteMany({ where: { consultantId: { in: consultantIds } } });
     await prisma.consultantBlock.deleteMany({ where: { consultantId: { in: consultantIds } } });
     await prisma.runningTimer.deleteMany({ where: { consultantId: { in: consultantIds } } });
     await prisma.timeEntry.deleteMany({ where: { consultantId: { in: consultantIds } } });
@@ -136,6 +138,7 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
 
   async function limpiarHoras() {
     const consultantIds = [escenario.consultorA.id, escenario.consultorB.id, semanaSinPermiso];
+    await prisma.timesheetWeekReview.deleteMany({ where: { consultantId: { in: consultantIds } } });
     await prisma.consultantBlock.deleteMany({ where: { consultantId: { in: consultantIds } } });
     await prisma.timeEntry.deleteMany({ where: { consultantId: { in: consultantIds } } });
     await prisma.extraHourEntry.deleteMany({ where: { consultantId: { in: consultantIds } } });
@@ -366,32 +369,35 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
       expect(res.statusCode, res.body).toBe(200);
       const excedente = (res.json().data.entries as Entry[]).find((e) => e.isExcess)!;
 
-      const pendientes = await app.inject({ method: "GET", url: "/api/extra-hours/excess-pending", headers: comoPM() });
-      expect(pendientes.statusCode).toBe(200);
-      expect((pendientes.json().data as { id: string }[]).map((e) => e.id)).toContain(excedente.id);
-      expect(JSON.stringify(pendientes.json())).not.toContain("hourlyRate");
+      // R15: la bandeja aparte de excedentes se retiró; el excedente se decide en la revisión semanal.
+      const retirada = await app.inject({ method: "GET", url: "/api/extra-hours/excess-pending", headers: comoPM() });
+      expect(retirada.statusCode).toBe(200);
+      expect(retirada.json().data).toEqual([]);
 
-      const admin = await app.inject({
-        method: "PATCH",
-        url: `/api/time-entries/${excedente.id}/approve`,
-        headers: comoAdmin(),
-      });
-      expect(admin.statusCode).toBe(403);
+      await marcarSemanaEnviada(escenario.consultorA.id, escenario.projectId, dia);
+      const semana = lunesDe(dia);
+      const item = { consultantId: escenario.consultorA.id, projectId: escenario.projectId, weekStart: semana };
 
-      const otroPm = await app.inject({
-        method: "PATCH",
-        url: `/api/time-entries/${excedente.id}/approve`,
-        headers: comoRol(AppRole.PM, "otro.pm@synaptica.test"),
-      });
-      expect(otroPm.statusCode).toBe(403);
-
-      const pm = await app.inject({
-        method: "PATCH",
-        url: `/api/time-entries/${excedente.id}/approve`,
+      const lista = await app.inject({
+        method: "GET",
+        url: `/api/timesheet-reviews?weekStart=${semana}`,
         headers: comoPM(),
       });
-      expect(pm.statusCode).toBe(200);
-      expect(pm.json().data.status).toBe("APPROVED");
+      expect(lista.statusCode, lista.body).toBe(200);
+      const filaRevision = (lista.json().data as { consultantId: string; flags: string[]; entries: { id: string; isExcess: boolean }[] }[]).find(
+        (r) => r.consultantId === escenario.consultorA.id,
+      )!;
+      expect(filaRevision.flags).toContain("EXCESS");
+      expect(filaRevision.entries.find((e) => e.id === excedente.id)!.isExcess).toBe(true);
+      expect(lista.body).not.toContain("hourlyRate");
+
+      // ADMIN no revisa si el proyecto tiene PM; un PM ajeno tampoco.
+      expect((await aprobarSemana(app, comoAdmin(), item)).statusCode).toBe(403);
+      expect((await aprobarSemana(app, comoRol(AppRole.PM, "otro.pm@synaptica.test"), item)).statusCode).toBe(403);
+
+      const pm = await aprobarSemana(app, comoPM(), item);
+      expect(pm.statusCode, pm.body).toBe(200);
+      expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: excedente.id } })).status).toBe("APPROVED");
     });
 
     it("el cronómetro parte la franja: jornada, extra hasta el saldo y excedente", async () => {
@@ -517,12 +523,11 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
       // Pendiente de aprobar: no se paga todavía.
       expect(await buscar()).toBeUndefined();
 
-      const aprobada = await app.inject({
-        method: "PATCH",
-        url: `/api/time-entries/${id}/approve`,
-        headers: comoAdmin(),
-      });
-      // Es una hora extra normal (no excedente): la aprueba ADMIN o el PM del proyecto.
+      // Enviada pero sin aprobar: tampoco se paga.
+      await marcarSemanaEnviada(escenario.consultorA.id, escenario.projectId, new Date(Date.UTC(2026, 7, 11)));
+      expect(await buscar()).toBeUndefined();
+
+      const aprobada = await aprobarSemanaDeRegistro(app, comoPM(), id);
       expect(aprobada.statusCode, aprobada.body).toBe(200);
 
       const fila_ = await buscar();
@@ -608,7 +613,7 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
     it("cuenta contra la jornada y, aprobada y completa, crea el bloqueo; al borrarla se elimina", async () => {
       await limpiarHoras();
       const dia = "2026-08-18";
-      // Permiso parcial aprobado: no bloquea.
+      // Permiso parcial: 2 h.
       const permiso = await putDia(ausenciasId, dia, [{ typeId: ids.permiso, hours: 2 }]);
       expect(permiso.statusCode, permiso.body).toBe(200);
       const idPermiso = (permiso.json().data.entries as Entry[])[0].id;
@@ -618,28 +623,25 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
       expect(tope.statusCode).toBe(400);
       expect(tope.json().code).toBe("DAILY_CAP_EXCEEDED");
 
-      // El proyecto Ausencias no tiene PM: lo aprueba ADMIN.
-      const aprobarPermiso = await app.inject({
-        method: "PATCH",
-        url: `/api/time-entries/${idPermiso}/approve`,
-        headers: comoAdmin(),
-      });
-      expect(aprobarPermiso.statusCode, aprobarPermiso.body).toBe(200);
+      // Vacaciones por el resto de la jornada (6.4 h): las ausencias cubren el día completo.
+      const vac = await putDia(ausenciasId, dia, [{ id: idPermiso, typeId: ids.permiso, hours: 2 }, { typeId: ids.vacaciones, hours: 6.4 }]);
+      expect(vac.statusCode, vac.body).toBe(200);
+      const idVac = (vac.json().data.entries as Entry[]).find((e) => e.type.code === "VACACIONES")!.id;
+
+      // Pendiente o enviada: no bloquea capacidad. El proyecto Ausencias no tiene PM: aprueba ADMIN.
+      await marcarSemanaEnviada(escenario.consultorA.id, ausenciasId, dia);
       expect(await prisma.consultantBlock.count({ where: { consultantId: escenario.consultorA.id } })).toBe(0);
-
-      // Vacaciones por el resto de la jornada (6.4 h): ahora las ausencias cubren el día completo.
-      const vac = await putDia(ausenciasId, dia, [{ typeId: ids.vacaciones, hours: 6.4 }, { id: idPermiso, typeId: ids.permiso, hours: 2 }]);
-      expect(vac.statusCode).toBe(409); // el permiso ya está aprobado y no se reescribe
-      const vac2 = await putDia(ausenciasId, dia, [{ typeId: ids.vacaciones, hours: 6.4 }]);
-      expect(vac2.statusCode, vac2.body).toBe(200);
-      const idVac = (vac2.json().data.entries as Entry[]).find((e) => e.type.code === "VACACIONES")!.id;
-
-      const aprobarVac = await app.inject({
-        method: "PATCH",
-        url: `/api/time-entries/${idVac}/approve`,
-        headers: comoAdmin(),
+      const aprobarVac = await aprobarSemana(app, comoAdmin(), {
+        consultantId: escenario.consultorA.id,
+        projectId: ausenciasId,
+        weekStart: lunesDe(dia),
       });
-      expect(aprobarVac.statusCode).toBe(200);
+      expect(aprobarVac.statusCode, aprobarVac.body).toBe(200);
+
+      // Ya aprobada, la semana queda bloqueada para el consultor.
+      const reescribir = await putDia(ausenciasId, dia, [{ typeId: ids.vacaciones, hours: 1 }]);
+      expect(reescribir.statusCode).toBe(409);
+      expect(reescribir.json().code).toBe("WEEK_LOCKED");
 
       const bloques = await prisma.consultantBlock.findMany({ where: { consultantId: escenario.consultorA.id } });
       expect(bloques).toHaveLength(1);
@@ -650,6 +652,21 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
       // Borrar la ausencia (la puede borrar un ADMIN aunque esté aprobada) elimina el bloqueo.
       const borrar = await app.inject({ method: "DELETE", url: `/api/time-entries/${idVac}`, headers: comoAdmin() });
       expect(borrar.statusCode).toBe(204);
+      expect(await prisma.consultantBlock.count({ where: { consultantId: escenario.consultorA.id } })).toBe(0);
+    });
+
+    it("un permiso parcial aprobado no genera bloqueo de capacidad", async () => {
+      await limpiarHoras();
+      const dia = "2026-09-01";
+      const permiso = await putDia(ausenciasId, dia, [{ typeId: ids.permiso, hours: 2 }]);
+      expect(permiso.statusCode, permiso.body).toBe(200);
+      await marcarSemanaEnviada(escenario.consultorA.id, ausenciasId, dia);
+      const res = await aprobarSemana(app, comoAdmin(), {
+        consultantId: escenario.consultorA.id,
+        projectId: ausenciasId,
+        weekStart: lunesDe(dia),
+      });
+      expect(res.statusCode, res.body).toBe(200);
       expect(await prisma.consultantBlock.count({ where: { consultantId: escenario.consultorA.id } })).toBe(0);
     });
 

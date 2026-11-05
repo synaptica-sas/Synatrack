@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
+import { lunesDe, marcarSemanaEnviada } from "../helpers/semana.js";
 import { crearEscenarioBasico, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
 
 /**
@@ -336,7 +337,7 @@ describe("POST /api/time-entries: no se puede registrar a nombre de otro", () =>
   });
 });
 
-describe("PATCH /api/time-entries/:id: approvedBy sale del token", () => {
+describe("Aprobación semanal: el revisor sale del token (R15)", () => {
   let app: FastifyInstance;
   let escenario: EscenarioBasico;
 
@@ -364,47 +365,63 @@ describe("PATCH /api/time-entries/:id: approvedBy sale del token", () => {
   it("al aprobar guarda el correo del token aunque el cliente mande otro approvedBy", async () => {
     const entrada = await crearHoraPendiente(1);
     const pmEmail = `pm.${escenario.prefijo}@synaptica.test`;
+    await marcarSemanaEnviada(entrada.consultantId, entrada.projectId, entrada.workDate);
 
     const res = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${entrada.id}/approve`,
+      method: "POST",
+      url: "/api/timesheet-reviews/approve",
       headers: comoRol(AppRole.PM, pmEmail),
-      payload: { approvedBy: "Director General Falsificado" },
+      payload: {
+        approvedBy: "Director General Falsificado",
+        items: [{ consultantId: entrada.consultantId, projectId: entrada.projectId, weekStart: lunesDe(entrada.workDate) }],
+      },
     });
 
-    expect(res.statusCode).toBe(200);
-    expect(res.json().data.approvedBy).toBe(pmEmail);
-
+    expect(res.statusCode, res.body).toBe(200);
     const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entrada.id } });
     expect(enBase.approvedBy).toBe(pmEmail);
+    const revision = await prisma.timesheetWeekReview.findFirstOrThrow({ where: { consultantId: entrada.consultantId, projectId: entrada.projectId } });
+    expect(revision.reviewedBy).toBe(pmEmail);
   });
 
-  it("al rechazar guarda el correo del token y conserva el motivo del cliente", async () => {
-    const entrada = await crearHoraPendiente(2);
+  it("al devolver guarda el correo del token y la nota del revisor", async () => {
+    const entrada = await crearHoraPendiente(9);
     const pmEmail = `pm.${escenario.prefijo}@synaptica.test`;
+    await marcarSemanaEnviada(entrada.consultantId, entrada.projectId, entrada.workDate);
 
     const res = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${entrada.id}/reject`,
+      method: "POST",
+      url: "/api/timesheet-reviews/return",
       headers: comoRol(AppRole.PM, pmEmail),
-      payload: { approvedBy: "Otra Persona", rejectionNote: "Horas duplicadas" },
+      payload: {
+        reviewedBy: "Otra Persona",
+        consultantId: entrada.consultantId,
+        projectId: entrada.projectId,
+        weekStart: lunesDe(entrada.workDate),
+        note: "Horas duplicadas",
+      },
     });
 
-    expect(res.statusCode).toBe(200);
-    expect(res.json().data.approvedBy).toBe(pmEmail);
-    expect(res.json().data.rejectionNote).toBe("Horas duplicadas");
+    expect(res.statusCode, res.body).toBe(200);
+    const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe("PENDING");
+    expect(enBase.rejectedBy).toBe(pmEmail);
+    expect(enBase.rejectionNote).toBe("Horas duplicadas");
   });
 
-  it("aprobar sin cuerpo funciona: el endpoint ya no exige approvedBy", async () => {
-    const entrada = await crearHoraPendiente(3);
-
-    const res = await app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${entrada.id}/approve`,
-      headers: comoRol(AppRole.ADMIN),
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.json().data.approvedBy).toBe("admin@synaptica.local");
+  it("las rutas por registro están retiradas (410) para todos, ADMIN incluido", async () => {
+    const entrada = await crearHoraPendiente(15);
+    for (const accion of ["approve", "reject"]) {
+      const res = await app.inject({
+        method: "PATCH",
+        url: `/api/time-entries/${entrada.id}/${accion}`,
+        headers: comoRol(AppRole.ADMIN),
+        payload: { rejectionNote: "no importa" },
+      });
+      expect(res.statusCode).toBe(410);
+      expect(res.json().code).toBe("ENDPOINT_RETIRED");
+    }
+    const enBase = await prisma.timeEntry.findUniqueOrThrow({ where: { id: entrada.id } });
+    expect(enBase.status).toBe("PENDING");
   });
 });

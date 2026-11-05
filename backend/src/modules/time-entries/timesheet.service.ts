@@ -450,3 +450,14 @@ export async function syncAbsenceBlock(
   }
   return events;
 }
+
+/** Catálogo completo de tipos (activos e inactivos) indexado por id. */
+export async function loadTypes(db: Db): Promise<Map<string, TypeInfo>> {
+  const rows = await db.timeEntryType.findMany();
+  return new Map(
+    rows.map((t) => [
+      t.id,
+      { id: t.id, code: t.code, name: t.name, category: t.category, blockType: t.blockType, active: t.active },
+    ]),
+  );
+}

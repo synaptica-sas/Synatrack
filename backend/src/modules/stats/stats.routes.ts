@@ -98,7 +98,13 @@ export async function statsRoutes(app: FastifyInstance) {
         const approvedEntries = project.timeEntries.filter(
           (e) => e.status === TimeEntryStatus.APPROVED,
         );
-        const totalHours = project.timeEntries.reduce((s, e) => s + Number(e.hours), 0);
+        // R15: la cifra principal de horas es lo APROBADO; lo enviado (esperando al PM) y lo pendiente
+        // (sin enviar) van aparte. `totalHours` se conserva por compatibilidad y vale lo aprobado.
+        const hoursOf = (status: TimeEntryStatus) =>
+          project.timeEntries.filter((e) => e.status === status).reduce((s, e) => s + Number(e.hours), 0);
+        const submittedHours = hoursOf(TimeEntryStatus.SUBMITTED);
+        const pendingHours = hoursOf(TimeEntryStatus.PENDING);
+        const totalHours = hoursOf(TimeEntryStatus.APPROVED);
 
         // Cálculo financiero unificado (utils/financial.ts) — misma fórmula que
         // /portfolio, el detalle del proyecto y el motor de alertas.
@@ -183,6 +189,8 @@ export async function statsRoutes(app: FastifyInstance) {
           // Horas
           totalHours,
           approvedHours: fin.approvedHours,
+          submittedHours,
+          pendingHours,
           // Desglose de gasto
           laborCostActual: fin.laborCostActual,
           expensesActual: fin.expensesActual,
@@ -207,6 +215,8 @@ export async function statsRoutes(app: FastifyInstance) {
         grossMarginActual: byProject.reduce((s, p) => s + p.grossMarginActual, 0),
         totalHours: byProject.reduce((s, p) => s + p.totalHours, 0),
         approvedHours: byProject.reduce((s, p) => s + p.approvedHours, 0),
+        submittedHours: byProject.reduce((s, p) => s + p.submittedHours, 0),
+        pendingHours: byProject.reduce((s, p) => s + p.pendingHours, 0),
         alertCount: byProject.filter((p) => p.alertLevel !== "ok").length,
         byHealth: {
           GREEN: byProject.filter((p) => p.healthStatus === "GREEN").length,

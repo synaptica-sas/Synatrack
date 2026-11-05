@@ -12,6 +12,8 @@ datasource db {
 
 enum TimeEntryStatus {
   PENDING
+  // R15: semana entregada al PM; nadie la edita hasta que se apruebe o devuelva.
+  SUBMITTED
   APPROVED
   REJECTED
 }
@@ -227,18 +229,19 @@ model Project {
   risks            Risk[]
   issues           Issue[]
   changeRequests   ChangeRequest[]
-  allowExtraHours  Boolean              @default(true)
+  allowExtraHours  Boolean               @default(true)
   extraHourEntries ExtraHourEntry[]
   estimations      Estimation[]
   activities       Activity[]
   delegations      ApprovalDelegation[]
   runningTimers    RunningTimer[]
+  weekReviews      TimesheetWeekReview[]
   // Proyecto interno / stand-by. No es lo mismo que Consultant.isInternal
   // (empleado propio frente a externo).
-  isInternal       Boolean              @default(false)
+  isInternal       Boolean               @default(false)
   // Proyecto interno "Ausencias" (R14): único destino de los tipos de hora
   // ABSENCE (permiso, vacaciones). Visible a todos los consultores sin asignación.
-  isAbsenceProject Boolean              @default(false)
+  isAbsenceProject Boolean               @default(false)
 }
 
 model Consultant {
@@ -277,6 +280,7 @@ model Consultant {
   activities       Activity[]
   runningTimer     RunningTimer?
   risks            Risk[]
+  weekReviews      TimesheetWeekReview[]
 
   // Enlace directo al usuario de login (reemplaza la comparación implícita por
   // email). Nulable: un consultor puede no tener todavía un usuario que
@@ -300,6 +304,9 @@ model TimeEntry {
   approvedBy       String?
   approvedAt       DateTime?
   rejectionNote    String?
+  // R15: quien devolvio el registro y cuando (se conserva hasta el reenvio).
+  rejectedBy       String?
+  rejectedAt       DateTime?
   // Descripcion libre de la tarea (estilo Clockify). `note` se conserva para el
   // flujo de aprobacion existente; `description` es lo que el consultor escribe
   // en el timesheet o en el tracker.
@@ -334,8 +341,46 @@ model TimeEntry {
   @@index([workDate])
   @@index([activityId])
   @@index([consultantId, workDate])
+  @@index([consultantId, workDate, status])
   @@index([typeId])
   @@index([extraHourEntryId])
+}
+
+enum TimesheetReviewStatus {
+  SUBMITTED
+  APPROVED
+  RETURNED
+}
+
+/// Revision semanal (R15): consultor + semana (lunes) + proyecto. El consultor
+/// envia la semana; el PM del proyecto (o su delegado) la aprueba o devuelve.
+/// Consultant es Restrict porque la revision es historia de aprobacion de horas;
+/// Project es Cascade porque no tiene sentido sin el proyecto.
+model TimesheetWeekReview {
+  id           String                @id @default(cuid())
+  consultantId String
+  projectId    String
+  weekStart    DateTime              @db.Date
+  status       TimesheetReviewStatus
+  submittedAt  DateTime
+  // Email del actor; puede ser ADMIN enviando en nombre del consultor.
+  submittedBy  String
+  reviewedAt   DateTime?
+  reviewedBy   String?
+  note         String?
+  // Total de horas enviado (snapshot para la vista del PM).
+  hours        Decimal               @db.Decimal(8, 4)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  createdBy    String? // email de quien creó el registro
+  updatedBy    String? // email de quien lo modificó por última vez
+
+  consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([consultantId, weekStart, projectId])
+  @@index([projectId, status])
+  @@index([status, weekStart])
 }
 
 enum TimeEntryCategory {

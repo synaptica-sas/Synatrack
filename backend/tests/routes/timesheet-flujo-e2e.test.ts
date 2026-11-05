@@ -3,6 +3,14 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
+import {
+  lunesDe as lunesDeDia,
+  aprobarSemana,
+  aprobarSemanaDeRegistro,
+  devolverSemana,
+  devolverSemanaDeRegistro,
+  marcarSemanaEnviada,
+} from "../helpers/semana.js";
 
 // El cronómetro imputa al día LOCAL del país (Colombia, UTC-5 sin horario de verano).
 function diaLocalBogota(d: Date): Date {
@@ -151,15 +159,10 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
     return { typeId: tipos.extra, hours, startedAt, endedAt, ...extraCampos };
   };
 
-  const aprobar = (id: string, headers: Record<string, string>) =>
-    app.inject({ method: "PATCH", url: `/api/time-entries/${id}/approve`, headers });
-  const rechazar = (id: string, headers: Record<string, string>) =>
-    app.inject({
-      method: "PATCH",
-      url: `/api/time-entries/${id}/reject`,
-      headers,
-      payload: { rejectionNote: "No se autoriza este tramo" },
-    });
+  // R15: se aprueba/devuelve la SEMANA del proyecto del registro (se deja "enviada" directamente).
+  const aprobar = (id: string, headers: Record<string, string>) => aprobarSemanaDeRegistro(app, headers, id);
+  const devolver = (id: string, headers: Record<string, string>) =>
+    devolverSemanaDeRegistro(app, headers, id, "No se autoriza este tramo");
 
   async function filaNomina(fecha: string, nombre: string) {
     const [y, m] = fecha.split("-").map(Number);
@@ -233,6 +236,7 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
   afterAll(async () => {
     for (const r of restaurar.reverse()) await r();
     const ids = consultores.map((c) => c.id);
+    await prisma.timesheetWeekReview.deleteMany({ where: { consultantId: { in: ids } } });
     await prisma.runningTimer.deleteMany({ where: { consultantId: { in: ids } } });
     await prisma.consultantBlock.deleteMany({ where: { consultantId: { in: ids } } });
     await prisma.timeEntry.deleteMany({ where: { consultantId: { in: ids } } });
@@ -324,44 +328,31 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
 
       expect(await filaSolicitud(solicitud.id)).toMatchObject({ realHours: 3, excessHours: 1, excessPendingHours: 1 });
 
-      // El PM del proyecto ve el excedente en su bandeja; el de otro proyecto no.
+      // La bandeja aparte de excedentes se retiró (R15): el excedente se decide en la revisión semanal.
       const bandeja = await app.inject({ method: "GET", url: "/api/extra-hours/excess-pending", headers: comoPM() });
-      expect((bandeja.json().data as { id: string }[]).map((e) => e.id)).toContain(excedentes[0].id);
-      const ajena = await app.inject({
-        method: "GET",
-        url: "/api/extra-hours/excess-pending",
-        headers: comoRol(AppRole.PM, `otro.${pmEmail}`),
-      });
-      expect((ajena.json().data as { id: string }[]).map((e) => e.id)).not.toContain(excedentes[0].id);
+      expect(bandeja.json().data).toEqual([]);
 
       // Nada aprobado en el timesheet todavía: la nómina no paga nada (ni la solicitud aprobada).
       expect(await filaNomina(dia, (await prisma.consultant.findUniqueOrThrow({ where: { id: c.id } })).fullName)).toBeUndefined();
-
-      // El PM aprueba las horas normales.
-      for (const e of normales) {
-        const r = await aprobar(e.id, comoPM());
-        expect(r.statusCode, r.body).toBe(200);
-      }
-      return { solicitud, normales, excedente: excedentes[0] };
+      return { solicitud, normales, excedente: excedentes[0], item: { consultantId: c.id, projectId: proyecto, weekStart: lunesDeDia(dia) } };
     }
 
-    it("excedente APROBADO: la nómina paga las 4 h reales, no las 3 h pedidas", async () => {
+    it("excedente APROBADO con la semana: la nómina paga las 4 h reales, no las 3 h pedidas", async () => {
       const c = await nuevoConsultor("ExtraOk", { jornadaPropia: 8 });
-      const { solicitud, excedente } = await hastaExcedente(c);
+      const { solicitud, excedente, item } = await hastaExcedente(c);
 
-      const soloNormales = await filaNomina(dia, c.fullName);
-      expect(soloNormales).toBeDefined();
-      expect(soloNormales!.realHours).toBeCloseTo(3, 2);
-      expect(soloNormales!.legacy).toBe(false);
-
-      // El consultor no decide su excedente, ni ADMIN; el PM del proyecto sí.
-      expect((await aprobar(excedente.id, como(c))).statusCode).toBe(403);
-      expect((await aprobar(excedente.id, comoAdmin())).statusCode).toBe(403);
-      const ok = await aprobar(excedente.id, comoPM());
+      // Enviada la semana, tampoco se paga. Ni el consultor, ni ADMIN, ni el PM de otro proyecto la aprueban.
+      await marcarSemanaEnviada(c.id, proyecto, dia);
+      expect(await filaNomina(dia, c.fullName)).toBeUndefined();
+      expect((await aprobarSemana(app, como(c), item)).statusCode).toBe(403);
+      expect((await aprobarSemana(app, comoAdmin(), item)).statusCode).toBe(403);
+      expect((await aprobarSemana(app, comoRol(AppRole.PM, `otro.${pmEmail}`), item)).statusCode).toBe(403);
+      const ok = await aprobarSemana(app, comoPM(), item);
       expect(ok.statusCode, ok.body).toBe(200);
-      // Transiciones inválidas: aprobar o rechazar algo ya aprobado.
-      expect((await aprobar(excedente.id, comoPM())).statusCode).toBe(409);
-      expect((await rechazar(excedente.id, comoPM())).statusCode).toBe(409);
+      expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: excedente.id } })).status).toBe("APPROVED");
+      // Transiciones inválidas: aprobar o devolver algo ya aprobado.
+      expect((await aprobarSemana(app, comoPM(), item)).statusCode).toBe(409);
+      expect((await devolverSemana(app, comoPM(), { ...item, note: "tarde" })).statusCode).toBe(409);
 
       const fila = await filaNomina(dia, c.fullName);
       expect(fila!.realHours).toBeCloseTo(4, 2);
@@ -385,24 +376,44 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       expect(await filaSolicitud(solicitud.id)).toMatchObject({ realHours: 3, excessHours: 1, excessPendingHours: 0 });
     });
 
-    it("excedente RECHAZADO: no se paga; la nómina queda en las 3 h normales", async () => {
+    it("excedente DEVUELTO: el consultor lo quita y reenvía; la nómina queda en las 3 h normales", async () => {
       const c = await nuevoConsultor("ExtraNo", { jornadaPropia: 8 });
-      const { solicitud, excedente } = await hastaExcedente(c);
+      const { solicitud, normales, excedente, item } = await hastaExcedente(c);
+      await marcarSemanaEnviada(c.id, proyecto, dia);
 
-      // Rechazar exige motivo.
+      // Devolver exige nota.
       const sinMotivo = await app.inject({
-        method: "PATCH",
-        url: `/api/time-entries/${excedente.id}/reject`,
+        method: "POST",
+        url: "/api/timesheet-reviews/return",
         headers: comoPM(),
-        payload: {},
+        payload: item,
       });
       expect(sinMotivo.statusCode).toBe(400);
 
-      const r = await rechazar(excedente.id, comoPM());
+      const r = await devolverSemana(app, comoPM(), { ...item, note: "No se autoriza el excedente" });
       expect(r.statusCode, r.body).toBe(200);
-      expect(r.json().data.status).toBe("REJECTED");
-      // Lo rechazado no se aprueba después.
-      expect((await aprobar(excedente.id, comoPM())).statusCode).toBe(409);
+      const devuelto = await prisma.timeEntry.findUniqueOrThrow({ where: { id: excedente.id } });
+      expect(devuelto).toMatchObject({ status: "PENDING", rejectionNote: "No se autoriza el excedente", rejectedBy: pmEmail });
+      // Devuelta no se paga todavía.
+      expect(await filaNomina(dia, c.fullName)).toBeUndefined();
+
+      // El consultor deja solo las filas normales (el proyecto devuelto sí se puede editar) y reenvía.
+      const corregido = await putDia(
+        como(c),
+        proyecto,
+        dia,
+        normales.map((e) => ({
+          id: e.id,
+          typeId: tipos.extra,
+          hours: Number(e.hours),
+          startedAt: (e as unknown as { startedAt: string }).startedAt,
+          endedAt: (e as unknown as { endedAt: string }).endedAt,
+        })),
+      );
+      expect(corregido.statusCode, corregido.body).toBe(200);
+      expect((corregido.json().data.entries as Entry[]).some((e) => e.isExcess)).toBe(false);
+      await marcarSemanaEnviada(c.id, proyecto, dia);
+      expect((await aprobarSemana(app, comoPM(), item)).statusCode).toBe(200);
 
       const fila = await filaNomina(dia, c.fullName);
       expect(fila!.realHours).toBeCloseTo(3, 2);
@@ -418,7 +429,7 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       expect(fila!.nocturnal + fila!.nocturnalHoliday).toBeCloseTo(Number(esperado.nocturnal) + Number(esperado.nocturnalHoliday), 2);
       expect(fila!.totalAmountLocal).toBeCloseTo(Number(esperado.totalAmount), 2);
 
-      // Aprobado vs. real: el excedente rechazado ya no cuenta.
+      // Aprobado vs. real: el excedente quitado ya no cuenta.
       expect(await filaSolicitud(solicitud.id)).toMatchObject({ realHours: 3, excessHours: 0, excessPendingHours: 0 });
     });
   });
@@ -464,8 +475,12 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       expect(tras[0]).toMatchObject({ blockType: "VACATION", timeEntryId: id });
       expect(await capacidadAgosto(c.id)).toBeCloseTo(base - 8, 1);
 
-      // Ya aprobada: no se rechaza (409) ni la borra el consultor (409); el bloqueo sigue.
-      expect((await rechazar(id, comoAdmin())).statusCode).toBe(409);
+      // Ya aprobada: no se devuelve (409) ni la borra el consultor (409, semana bloqueada); el bloqueo sigue.
+      expect(
+        (
+          await devolverSemana(app, comoAdmin(), { consultantId: c.id, projectId: ausencias, weekStart: lunesDeDia(dia), note: "tarde" })
+        ).statusCode,
+      ).toBe(409);
       expect((await app.inject({ method: "DELETE", url: `/api/time-entries/${id}`, headers: como(c) })).statusCode).toBe(409);
       expect(await bloques(c.id)).toHaveLength(1);
 
@@ -475,31 +490,29 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       expect(await capacidadAgosto(c.id)).toBe(base);
     });
 
-    it("rechazada no bloquea ni cuenta contra el tope; permiso + vacaciones que suman la jornada sí bloquean", async () => {
+    it("devuelta no bloquea ni cuenta; corregida con permiso + vacaciones que suman la jornada, sí bloquea", async () => {
       const c = await nuevoConsultor("Ausente", { jornadaPropia: 8 });
       const base = await capacidadAgosto(c.id);
 
       const vac = await putDia(como(c), ausencias, dia, [{ typeId: tipos.vacaciones, hours: 8 }]);
       const idVac = (vac.json().data.entries as Entry[])[0].id;
-      const r = await rechazar(idVac, comoAdmin());
+      const r = await devolver(idVac, comoAdmin());
       expect(r.statusCode, r.body).toBe(200);
       expect(await bloques(c.id)).toHaveLength(0);
       expect(await capacidadAgosto(c.id)).toBe(base);
 
-      // Rechazada no cuenta: el día admite 4 h de permiso + 4 h de vacaciones nuevas.
+      // El consultor corrige el proyecto devuelto: 4 h de permiso + 4 h de vacaciones.
       const mixto = await putDia(como(c), ausencias, dia, [
         { typeId: tipos.permiso, hours: 4 },
         { typeId: tipos.vacaciones, hours: 4 },
       ]);
       expect(mixto.statusCode, mixto.body).toBe(200);
-      const pendientes = (mixto.json().data.entries as Entry[]).filter((e) => e.status === "PENDING");
+      const pendientes = mixto.json().data.entries as Entry[];
       expect(pendientes).toHaveLength(2);
+      expect(pendientes.every((e) => e.status === "PENDING")).toBe(true);
 
-      // Aprobada solo una (4 de 8): parcial, no bloquea.
+      // Enviada y aprobada la semana: ya cubren la jornada.
       expect((await aprobar(pendientes[0].id, comoAdmin())).statusCode).toBe(200);
-      expect(await bloques(c.id)).toHaveLength(0);
-      // Aprobada la segunda: ya cubren la jornada.
-      expect((await aprobar(pendientes[1].id, comoAdmin())).statusCode).toBe(200);
       expect(await bloques(c.id)).toHaveLength(1);
       expect(await capacidadAgosto(c.id)).toBeCloseTo(base - 8, 1);
 
@@ -529,7 +542,7 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       return { c, solicitud, normal, excedente };
     }
 
-    it("PUT /day sin la fila EXTRA normal: el excedente pendiente pasa a normal y sale de la bandeja del PM", async () => {
+    it("PUT /day sin la fila EXTRA normal: el excedente pendiente pasa a normal y deja de contar como excedente", async () => {
       const { c, solicitud, excedente } = await preparar("Reclasif");
 
       const res = await putDia(como(c), proyecto, dia, [
@@ -545,18 +558,17 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       expect((bandeja.json().data as { id: string }[]).map((e) => e.id)).not.toContain(excedente.id);
       expect(await filaSolicitud(solicitud.id)).toMatchObject({ realHours: 1, excessHours: 0, excessPendingHours: 0 });
 
-      // Y ahora ADMIN puede aprobarla (ya no es excedente).
-      expect((await aprobar(excedente.id, comoAdmin())).statusCode).toBe(200);
+      // Y ahora el PM puede aprobarla (ya no es excedente).
+      expect((await aprobar(excedente.id, comoPM())).statusCode).toBe(200);
     });
 
-    it("al rechazar la EXTRA normal, el siguiente guardado del día reclasifica el excedente (el saldo se liberó)", async () => {
-      const { c, solicitud, normal, excedente } = await preparar("ReclasRech");
-      expect((await rechazar(normal.id, comoPM())).statusCode).toBe(200);
+    it("devolver la semana no altera la partición: el excedente sigue siendo excedente y conserva la nota", async () => {
+      const { solicitud, normal, excedente } = await preparar("ReclasRech");
+      expect((await devolver(normal.id, comoPM())).statusCode).toBe(200);
 
-      const res = await putDia(como(c), proyecto, dia, [{ ...extra(dia, "21:00", "22:00"), id: excedente.id }]);
-      expect(res.statusCode, res.body).toBe(200);
-      const vivo = (res.json().data.entries as Entry[]).find((e) => e.id === excedente.id)!;
-      expect(vivo).toMatchObject({ isExcess: false, extraHourEntryId: solicitud.id });
+      const despues = await prisma.timeEntry.findMany({ where: { id: { in: [normal.id, excedente.id] } } });
+      expect(despues.every((e) => e.status === "PENDING" && e.rejectedBy === pmEmail)).toBe(true);
+      expect(despues.find((e) => e.id === excedente.id)).toMatchObject({ isExcess: true, extraHourEntryId: solicitud.id });
     });
 
     // Hallazgo QA-R14-2 (ver informe): DELETE /api/time-entries/:id no reparte el saldo liberado.
@@ -617,8 +629,8 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       const v16 = await putDia(como(c), ausencias, "2026-07-16", [{ typeId: tipos.vacaciones, hours: 8 }]);
       expect(v13.statusCode, v13.body).toBe(200);
       expect(v16.statusCode, v16.body).toBe(200);
+      // Ambos días son de la misma semana del proyecto Ausencias: una sola aprobación los cubre.
       expect((await aprobar((v13.json().data.entries as Entry[])[0].id, comoAdmin())).statusCode).toBe(200);
-      expect((await aprobar((v16.json().data.entries as Entry[])[0].id, comoAdmin())).statusCode).toBe(200);
       const bloques = await prisma.consultantBlock.findMany({ where: { consultantId: c.id } });
       expect(bloques.map((b) => b.startDate.toISOString().slice(0, 10))).toEqual(["2026-07-13"]);
     });

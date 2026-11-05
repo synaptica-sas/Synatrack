@@ -303,7 +303,7 @@ describe("construirResumenAprobaciones", () => {
 
   it("el texto plano lista las dos secciones con sus datos", () => {
     const { text } = construirResumenAprobaciones(resumenDe());
-    expect(text).toContain("HORAS REGULARES");
+    expect(text).toContain("SEMANAS ENVIADAS POR REVISAR");
     expect(text).toContain("HORAS EXTRA");
     expect(text).toContain("2026-10-01 · Carlos Ruiz · Migración Cloudera · 8 h");
     expect(text).toContain("2026-10-02 · Carlos Ruiz · Migración Cloudera · 3 h");
