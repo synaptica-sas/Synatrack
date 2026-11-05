@@ -109,6 +109,8 @@ export type Project = {
   createdAt: string;
   updatedAt: string;
   allowExtraHours?: boolean;
+  /** Proyecto interno "Ausencias" (R14): solo admite tipos de hora de ausencia. */
+  isAbsenceProject?: boolean;
   /** Correo del Project Manager. `null` si el proyecto no tiene PM asignado. */
   projectManagerEmail?: string | null;
   /**
@@ -203,6 +205,22 @@ export type TimeEntry = {
   project: Project;
   consultant: TimeEntryConsultant;
   activity?: TimeEntryActivityRef | null;
+  /** Tipo de hora (R14). Opcional: un registro anterior al catálogo se trata como Regular. */
+  typeId?: string | null;
+  type?: TimeEntryTypeRef | null;
+  /** Solicitud de horas extra aprobada a la que se imputa (solo tipo EXTRA). */
+  extraHourEntryId?: string | null;
+  /** Parte de un registro EXTRA que superó el saldo aprobado: la decide el PM. */
+  isExcess?: boolean;
+};
+
+export type TimeEntryTypeCategory = "REGULAR" | "EXTRA" | "ABSENCE";
+
+export type TimeEntryTypeRef = {
+  id: string;
+  code: string | null;
+  name: string;
+  category: TimeEntryTypeCategory;
 };
 
 /** Cronometro en marcha del usuario autenticado. */
@@ -520,6 +538,27 @@ export function setApiAccessToken(token: string | null) {
   accessToken = token;
 }
 
+/** Un error del servidor atribuible a una fila del payload (`PUT /day`). */
+export type RowError = { index: number | null; code: string; message: string };
+
+/**
+ * Error HTTP del backend. Conserva `code` y `errors` (errores por fila) para que
+ * una pantalla pueda marcar la fila culpable en vez de solo mostrar el texto.
+ */
+export class ApiError extends Error {
+  status: number;
+  code: string | null;
+  errors: RowError[];
+
+  constructor(message: string, status: number, code: string | null = null, errors: RowError[] = []) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.errors = errors;
+  }
+}
+
 async function request<T>(path: string, method: HttpMethod = "GET", body?: unknown): Promise<T> {
   const baseUrl = ensureApiUrl();
 
@@ -542,10 +581,14 @@ async function request<T>(path: string, method: HttpMethod = "GET", body?: unkno
   if (!response.ok) {
     const fallbackMessage = `Request failed with status ${response.status}`;
     let errorMessage = fallbackMessage;
+    let errorCode: string | null = null;
+    let rowErrors: RowError[] = [];
 
     try {
       const errorBody = (await response.json()) as {
         message?: string;
+        code?: string;
+        errors?: RowError[];
         issues?: { path: string; message: string }[];
       };
 
@@ -630,11 +673,17 @@ async function request<T>(path: string, method: HttpMethod = "GET", body?: unkno
       } else {
         errorMessage = errorBody.message || fallbackMessage;
       }
+      errorCode = typeof errorBody.code === "string" ? errorBody.code : null;
+      if (Array.isArray(errorBody.errors)) {
+        rowErrors = errorBody.errors.filter(
+          (e) => e && typeof e.message === "string" && (e.index === null || typeof e.index === "number"),
+        );
+      }
     } catch {
       errorMessage = fallbackMessage;
     }
 
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status, errorCode, rowErrors);
   }
 
   if (response.status === 204) {
@@ -921,6 +970,8 @@ export async function createTimeEntry(payload: {
   /** Franja horaria opcional, en ISO. */
   startedAt?: string | null;
   endedAt?: string | null;
+  /** Tipo de hora; si se omite, Regular. */
+  typeId?: string;
 }): Promise<TimeEntry> {
   const response = await request<ApiEnvelope<TimeEntry>>("/api/time-entries", "POST", payload);
   return response.data;
@@ -937,6 +988,7 @@ export async function updateTimeEntry(
     workDate?: string;
     startedAt?: string | null;
     endedAt?: string | null;
+    typeId?: string;
   },
 ): Promise<TimeEntry> {
   const response = await request<ApiEnvelope<TimeEntry>>(`/api/time-entries/${id}`, "PATCH", payload);
@@ -945,6 +997,124 @@ export async function updateTimeEntry(
 
 export async function deleteTimeEntry(id: string): Promise<void> {
   await request<void>(`/api/time-entries/${id}`, "DELETE");
+}
+
+// -- Tipos de hora y tope diario (R14) ---------------------------------------
+
+export type TimeEntryType = TimeEntryTypeRef & {
+  /** Solo si es una ausencia: qué tipo de bloqueo de capacidad genera. */
+  blockType: string | null;
+  active: boolean;
+  sortOrder: number;
+  /** Solo con `?all=true` y permiso `time:types`. */
+  entriesCount?: number;
+};
+
+export async function listTimeEntryTypes(all = false): Promise<TimeEntryType[]> {
+  const response = await request<ApiEnvelope<TimeEntryType[]>>(
+    `/api/time-entry-types${all ? "?all=true" : ""}`,
+  );
+  return response.data;
+}
+
+export async function createTimeEntryType(payload: {
+  name: string;
+  category: TimeEntryTypeCategory;
+  blockType?: string;
+  active?: boolean;
+  sortOrder?: number;
+}): Promise<TimeEntryType> {
+  const response = await request<ApiEnvelope<TimeEntryType>>("/api/time-entry-types", "POST", payload);
+  return response.data;
+}
+
+export async function updateTimeEntryType(
+  id: string,
+  payload: { name?: string; blockType?: string | null; active?: boolean; sortOrder?: number },
+): Promise<TimeEntryType> {
+  const response = await request<ApiEnvelope<TimeEntryType>>(`/api/time-entry-types/${id}`, "PATCH", payload);
+  return response.data;
+}
+
+export async function deleteTimeEntryType(id: string): Promise<void> {
+  await request<void>(`/api/time-entry-types/${id}`, "DELETE");
+}
+
+/** Saldo de horas extra aprobadas de un proyecto en un día. */
+/** Franja de una solicitud de horas extra aprobada (hora local "HH:MM"). */
+export type ApprovedExtraRequest = {
+  id: string;
+  startTime: string;
+  endTime: string;
+  totalHours: number | string;
+};
+
+export type DayProjectExtra = {
+  /** Solo lo envían los servidores nuevos; si falta, no se precargan franjas. */
+  approvedRequests?: ApprovedExtraRequest[];
+  projectId: string;
+  extraApproved: number;
+  extraUsed: number;
+  extraExcess: number;
+  extraRemaining: number;
+};
+
+/** Situación de un día frente al tope de la jornada (calculada por el servidor). */
+export type DaySummary = {
+  date: string;
+  isWeekend: boolean;
+  isHoliday: boolean;
+  holidayName: string | null;
+  allowWeekendWork: boolean;
+  hoursPerDay: number;
+  isNonWorkingDay: boolean;
+  regularAllowed: boolean;
+  usedRegular: number;
+  usedAbsence: number;
+  usedAgainstCap: number;
+  remaining: number;
+  overBy: number;
+  projects: DayProjectExtra[];
+};
+
+export async function getDaySummary(params: {
+  from: string;
+  to: string;
+  consultantId?: string;
+}): Promise<DaySummary[]> {
+  const query = new URLSearchParams({ from: params.from, to: params.to });
+  if (params.consultantId) query.set("consultantId", params.consultantId);
+  const response = await request<ApiEnvelope<{ consultantId: string; days: DaySummary[] }>>(
+    `/api/time-entries/day-summary?${query.toString()}`,
+  );
+  return response.data.days;
+}
+
+export type DayEntryInput = {
+  id?: string;
+  typeId: string;
+  hours: number;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  description?: string | null;
+};
+
+/**
+ * Reemplaza en una sola transacción los registros PENDING de un día y proyecto.
+ * Los errores por fila llegan en `ApiError.errors` con el `index` de la fila.
+ */
+export async function saveDayEntries(payload: {
+  projectId: string;
+  consultantId?: string;
+  workDate: string;
+  entries: DayEntryInput[];
+}): Promise<{ entries: TimeEntry[]; summary: DaySummary }> {
+  const response = await request<ApiEnvelope<{ entries: TimeEntry[]; summary: DaySummary }>>(
+    "/api/time-entries/day",
+    "PUT",
+    payload,
+  );
+  return response.data;
 }
 
 /** Una descripción de tarea ya usada, para sugerirla al escribir. */
@@ -1019,14 +1189,20 @@ export async function updateRunningTimer(payload: {
   return response.data;
 }
 
-/** Detiene el cronometro y devuelve la entrada de horas que genero. */
-export async function stopTimer(consultantId?: string): Promise<TimeEntry> {
-  const response = await request<ApiEnvelope<TimeEntry>>(
-    "/api/timer/stop",
-    "POST",
-    consultantId ? { consultantId } : {},
-  );
-  return response.data;
+/** Resultado de detener el cronómetro: el servidor parte la franja contra la jornada (R14). */
+export type StopTimerResult = {
+  /** Primer registro creado, o `null` si todo quedó fuera del tope. */
+  data: TimeEntry | null;
+  entries: TimeEntry[];
+  /** Horas que no se guardaron por superar la jornada sin horas extra aprobadas. */
+  discardedHours: number;
+  discardedFrom: string | null;
+  totalHours: number;
+};
+
+/** Detiene el cronometro y devuelve los registros que genero (de 1 a 3). */
+export async function stopTimer(consultantId?: string): Promise<StopTimerResult> {
+  return request<StopTimerResult>("/api/timer/stop", "POST", consultantId ? { consultantId } : {});
 }
 
 /** Descarta el cronometro sin registrar horas. */
@@ -2210,6 +2386,11 @@ export type ExtraHourEntry = {
   updatedAt: string;
   project?: Project | null;
   consultant?: Consultant;
+  /** Real registrado en el timesheet contra esta solicitud (R14). */
+  realHours?: number;
+  /** Parte del real que superó lo aprobado (pendiente o ya decidida). */
+  excessHours?: number;
+  excessPendingHours?: number;
 };
 
 export type ExtraHoursConfig = {
@@ -2257,6 +2438,35 @@ export type PayrollConsolidationRow = {
   nocturnalHoliday: number;
   totalAmountLocal: number;
   totalAmountUSD: number;
+  /** Lo pagado según horas reales del timesheet (R14). */
+  realHours?: number;
+  realAmountLocal?: number;
+  /** Lo anterior a R14: solicitudes aprobadas sin registro real vinculado. */
+  legacyHours?: number;
+  legacyAmountLocal?: number;
+  legacy?: boolean;
+};
+
+export type PayrollSummary = {
+  rows: PayrollConsolidationRow[];
+  warnings: string[];
+  legacyRequestIds: string[];
+};
+
+/** Excedente de horas extra (parte que superó lo aprobado) esperando decisión del PM. */
+export type ExcessPendingEntry = {
+  id: string;
+  workDate: string;
+  hours: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  description: string | null;
+  projectId: string;
+  consultantId: string;
+  extraHourEntryId: string | null;
+  project: { id: string; name: string };
+  consultant: { id: string; fullName: string };
+  type: { id: string; code: string | null; name: string } | null;
 };
 
 export type ExtraHourFilters = {
@@ -2302,6 +2512,8 @@ export async function calculateExtraHoursApi(payload: {
   date: string;
   startTime: string;
   endTime: string;
+  /** Con proyecto, el PM de ese proyecto también recibe los montos; sin él, solo ADMIN/FINANCE. */
+  projectId?: string;
 }): Promise<ExtraHoursCalculationResult> {
   const response = await request<ApiEnvelope<ExtraHoursCalculationResult>>("/api/extra-hours/calculate", "POST", payload);
   return response.data;
@@ -2357,8 +2569,21 @@ export async function rejectExtraHour(id: string, payload: {
   return response.data;
 }
 
-export async function getPayrollSummary(year: number, month: number): Promise<PayrollConsolidationRow[]> {
-  const response = await request<ApiEnvelope<PayrollConsolidationRow[]>>(`/api/extra-hours/payroll?year=${year}&month=${month}`);
+/** Nómina con sus avisos (`meta.warnings`) y las solicitudes pagadas por el método anterior. */
+export async function getPayrollReport(year: number, month: number): Promise<PayrollSummary> {
+  const response = await request<{
+    data: PayrollConsolidationRow[];
+    meta?: { warnings?: string[]; legacyRequestIds?: string[] };
+  }>(`/api/extra-hours/payroll?year=${year}&month=${month}`);
+  return {
+    rows: response.data,
+    warnings: response.meta?.warnings ?? [],
+    legacyRequestIds: response.meta?.legacyRequestIds ?? [],
+  };
+}
+
+export async function listExcessPending(): Promise<ExcessPendingEntry[]> {
+  const response = await request<ApiEnvelope<ExcessPendingEntry[]>>("/api/extra-hours/excess-pending");
   return response.data;
 }
 

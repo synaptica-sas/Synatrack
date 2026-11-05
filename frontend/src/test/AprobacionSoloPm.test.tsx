@@ -19,6 +19,8 @@ vi.mock('../services/api', async () => {
     listExtraHoursConfigs: vi.fn().mockResolvedValue([]),
     listCustomHolidays: vi.fn().mockResolvedValue([]),
     listSupportedCountries: vi.fn().mockResolvedValue([]),
+    // R14: excedentes de horas extra por aprobar (parte del buzón del PM).
+    listExcessPending: vi.fn().mockResolvedValue([]),
   };
 });
 
@@ -83,6 +85,34 @@ describe('Aprobación de horas extra: solo el PM del proyecto', () => {
       solicitud('e1', MI_PROYECTO),
       solicitud('e2', OTRO_PROYECTO),
     ]);
+    vi.mocked(api.listExcessPending).mockResolvedValue([]);
+  });
+
+  it('el buzón cuenta y lista los excedentes de horas extra que el backend le devuelve al PM', async () => {
+    vi.mocked(api.listExcessPending).mockResolvedValue([
+      {
+        id: 'x1',
+        workDate: '2026-10-01T00:00:00.000Z',
+        hours: '1.5',
+        startedAt: '2026-10-02T03:00:00.000Z',
+        endedAt: '2026-10-02T04:30:00.000Z',
+        description: 'Despliegue nocturno',
+        projectId: 'p1',
+        consultantId: 'c1',
+        extraHourEntryId: 'e1',
+        project: { id: 'p1', name: 'Proyecto Mío' },
+        consultant: { id: 'c1', fullName: 'Ana Consultora' },
+        type: { id: 't', code: 'EXTRA', name: 'Horas Extras' },
+      },
+    ]);
+    pintar(usuario('yo.pm@synaptica.test', ['PM']));
+
+    // 1 solicitud propia + 1 excedente.
+    const pestana = await screen.findByRole('button', { name: /Aprobaciones \(2\)/ });
+    fireEvent.click(pestana);
+    expect(await screen.findByText('Despliegue nocturno')).toBeTruthy();
+    expect(screen.getByText('1.50')).toBeTruthy();
+    expect(api.listExcessPending).toHaveBeenCalled();
   });
 
   it('el buzón del PM muestra solo las solicitudes de sus proyectos', async () => {

@@ -35,9 +35,13 @@ export type Permission =
   | "finance:categories"
   | "health:thresholds"
   | "notifications:digest"
-  | "activities:manage";
+  | "activities:manage"
+  | "time:types";
 
 const allPermissions: Permission[] = [
+  // Solo ADMIN: el catálogo de tipos de hora del timesheet (R14) es configuración
+  // general. Leerlo lo permite `time:read`.
+  "time:types",
   // `activities:manage` gobierna SOLO la visibilidad de la pantalla de
   // Actividades, que por decisión de negocio (D-8) queda oculta salvo para
   // ADMIN mientras se decide el futuro del módulo. NO se usa para leer

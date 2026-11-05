@@ -1,12 +1,14 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { AppRole, ExtraHourStatus, Prisma } from "@prisma/client";
+import { AppRole, ExtraHourStatus, Prisma, TimeEntryCategory, TimeEntryStatus } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
-import { normalizeCountry, SUPPORTED_COUNTRIES } from "../../utils/country.js";
+import { normalizeCountry, resolveCountryTimezone, SUPPORTED_COUNTRIES } from "../../utils/country.js";
 import { getHolidaysForYear } from "../../utils/holidays.js";
 import { calculateExtraHours } from "../../utils/calculateExtraHours.js";
+import { roundHours, toLocalExtraShift } from "../../utils/timesheetRules.js";
+import { PROYECTO_MINIMO_SELECT, puedeVerMontosHoraExtra, sinMontosHoraExtra, veProyectoCompleto } from "../../utils/extraHoursVisibility.js";
 import { resolveTargetConsultantId } from "../../utils/currentConsultant.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { avisoInmediatoActivo } from "../admin/approval-digest.routes.js";
@@ -14,7 +16,8 @@ import { notifyNewExtraHourRequest, notifyExtraHourApprovedForPayroll, notifyExt
 
 const extraHourPayloadSchema = z.object({
   projectId: z.string().min(1),
-  consultantId: z.string().min(1),
+  /** Opcional: solo puede ser el propio consultor (separación de funciones). */
+  consultantId: z.string().min(1).optional(),
   date: z.coerce.date(),
   startTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
   endTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
@@ -23,6 +26,8 @@ const extraHourPayloadSchema = z.object({
 
 const calculatePayloadSchema = z.object({
   consultantId: z.string().min(1),
+  /** Opcional: permite al PM de ese proyecto ver los montos de la previsualización. */
+  projectId: z.string().min(1).optional(),
   date: z.coerce.date(),
   startTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
   endTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
@@ -49,6 +54,12 @@ const rejectPayloadSchema = z.object({
 });
 
 const idParamsSchema = z.object({ id: z.string().min(1) });
+
+/**
+ * Fecha de la migración R14 (timesheet con tipos de hora). Las solicitudes aprobadas creadas antes
+ * y sin ningún TimeEntry vinculado se siguen pagando por su monto en la nómina (`legacy`).
+ */
+const PAYROLL_REAL_HOURS_SINCE = new Date("2026-11-04T00:00:00.000Z");
 
 const payrollQuerySchema = z.object({
   year: z.coerce.number().min(2020).max(2100),
@@ -390,11 +401,15 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const orderBy = [{ date: "desc" as const }, { id: "desc" as const }];
       const skip = (query.page - 1) * query.pageSize;
 
+      // ADMIN y FINANCE reciben el proyecto completo; el resto, solo la proyección mínima
+      // (sin presupuesto ni tarifas).
+      const proyectoInclude = veProyectoCompleto(roles) ? (true as const) : { select: PROYECTO_MINIMO_SELECT };
+
       const [entries, total] = await Promise.all([
         puedeVerTarifas(roles) || soloPropias
           ? prisma.extraHourEntry.findMany({
               where,
-              include: { project: true, consultant: true },
+              include: { project: proyectoInclude, consultant: true },
               orderBy,
               skip,
               take: query.pageSize,
@@ -402,7 +417,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           : prisma.extraHourEntry.findMany({
               where,
               include: {
-                project: true,
+                project: proyectoInclude,
                 consultant: { select: consultantSinDatosSensiblesSelect },
               },
               orderBy,
@@ -419,19 +434,48 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       // en `puedeVerTarifas`): ve que la solicitud existe, sus horas y su
       // estado, pero no cuánto se le va a pagar a nadie. Antes recibía los
       // montos de TODA la plantilla con su `totalAmount` completo.
-      const ocultarMontos = roles.includes(AppRole.VIEWER) && !puedeVerTarifas(roles);
-      const data = ocultarMontos
-        ? entries.map(
-            ({
-              diurnalAmount: _diurnalAmount,
-              nocturnalAmount: _nocturnalAmount,
-              diurnalHolidayAmount: _diurnalHolidayAmount,
-              nocturnalHolidayAmount: _nocturnalHolidayAmount,
-              totalAmount: _totalAmount,
-              ...resto
-            }) => resto,
-          )
-        : entries;
+      // Ampliado: los montos (y lo real/excedente) los ven solo ADMIN, FINANCE y el
+      // PM del proyecto de cada fila; el resto, incluido el consultor dueño de la
+      // solicitud, recibe solo horas. Se decide fila por fila, abajo.
+
+      // Aprobado vs. real (R14): lo registrado en el timesheet contra cada solicitud.
+      //   realHours          EXTRA vinculados, no rechazados y que no son excedente.
+      //   excessHours        EXTRA excedentes vinculados no rechazados (pendientes o aprobados).
+      //   excessPendingHours los excedentes que aún espera decidir el PM.
+      const vinculados = entries.length
+        ? await prisma.timeEntry.findMany({
+            where: {
+              extraHourEntryId: { in: entries.map((e) => e.id) },
+              status: { not: TimeEntryStatus.REJECTED },
+              type: { category: TimeEntryCategory.EXTRA },
+            },
+            select: { extraHourEntryId: true, hours: true, isExcess: true, status: true },
+          })
+        : [];
+      const porSolicitud = new Map<string, { real: number; excess: number; excessPending: number }>();
+      for (const t of vinculados) {
+        const acc = porSolicitud.get(t.extraHourEntryId!) ?? { real: 0, excess: 0, excessPending: 0 };
+        const h = Number(t.hours);
+        if (t.isExcess) {
+          acc.excess += h;
+          if (t.status === TimeEntryStatus.PENDING) acc.excessPending += h;
+        } else {
+          acc.real += h;
+        }
+        porSolicitud.set(t.extraHourEntryId!, acc);
+      }
+      const data = entries.map((e) => {
+        if (!puedeVerMontosHoraExtra(user, e.project?.projectManagerEmail)) {
+          return sinMontosHoraExtra(e);
+        }
+        const acc = porSolicitud.get(e.id);
+        return {
+          ...e,
+          realHours: roundHours(acc?.real ?? 0),
+          excessHours: roundHours(acc?.excess ?? 0),
+          excessPendingHours: roundHours(acc?.excessPending ?? 0),
+        };
+      });
 
       return {
         data,
@@ -442,6 +486,47 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           totalPages: Math.ceil(total / query.pageSize),
         },
       };
+    },
+  );
+
+  // 1b. Excedentes pendientes de decisión del PM (R14).
+  //
+  //     Son los TimeEntry EXTRA con `isExcess = true` y estado PENDING de los proyectos que el usuario
+  //     dirige (`projectManagerEmail`), sin importar su rol. Se aprueban o rechazan con
+  //     `PATCH /api/time-entries/:id/approve|reject` (solo el PM del proyecto puede). No trae tarifas.
+  //     Respuesta: { data: [{ id, workDate, hours, startedAt, endedAt, description, projectId,
+  //     consultantId, extraHourEntryId, project: { id, name }, consultant: { id, fullName },
+  //     type: { id, code, name } }] }
+  app.get(
+    "/excess-pending",
+    {
+      preHandler: [authenticate, authorize(ROLES_QUE_PUEDEN_SER_PM)],
+    },
+    async (request) => {
+      const email = request.authUser!.email.toLowerCase();
+      const filas = await prisma.timeEntry.findMany({
+        where: {
+          isExcess: true,
+          status: TimeEntryStatus.PENDING,
+          project: { projectManagerEmail: { equals: email, mode: "insensitive" } },
+        },
+        select: {
+          id: true,
+          workDate: true,
+          hours: true,
+          startedAt: true,
+          endedAt: true,
+          description: true,
+          projectId: true,
+          consultantId: true,
+          extraHourEntryId: true,
+          project: { select: { id: true, name: true } },
+          consultant: { select: { id: true, fullName: true } },
+          type: { select: { id: true, code: true, name: true } },
+        },
+        orderBy: [{ workDate: "asc" }, { startedAt: "asc" }],
+      });
+      return { data: filas };
     },
   );
 
@@ -456,7 +541,19 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const payload = extraHourPayloadSchema.parse(request.body);
 
       const roles = request.authUser!.roles;
-      const isManager = roles.includes(AppRole.ADMIN) || roles.includes(AppRole.PM);
+
+      // Separación de funciones: la solicitud la hace SOLO el consultor dueño, sin
+      // excepción para ADMIN/PM. La identidad sale del token, no del cuerpo.
+      const miConsultantId = request.authUser!.consultantId;
+      if (payload.consultantId && payload.consultantId !== miConsultantId) {
+        return reply.status(403).send({ message: "Las horas extra solo las puede solicitar el propio consultor." });
+      }
+      if (!miConsultantId) {
+        return reply.status(400).send({
+          message: "Tu usuario no tiene una ficha de consultor enlazada, así que no puedes solicitar horas extra. Pide a un administrador que te cree o enlace una.",
+        });
+      }
+      const consultantId = miConsultantId;
 
       const entryYear = payload.date.getUTCFullYear();
       const entryMonth = payload.date.getUTCMonth() + 1;
@@ -479,7 +576,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       const [project, consultant] = await Promise.all([
         prisma.project.findUnique({ where: { id: payload.projectId } }),
-        prisma.consultant.findUnique({ where: { id: payload.consultantId } }),
+        prisma.consultant.findUnique({ where: { id: consultantId } }),
       ]);
 
       if (!project) {
@@ -494,28 +591,12 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: "Consultor no válido" });
       }
 
-      // Un CONSULTANT solo puede registrar horas extra a su propio nombre;
-      // ADMIN y PM sí pueden hacerlo a nombre de otros (mismo criterio que
-      // `resolveTargetConsultantId` en time-entries).
-      if (!isManager && payload.consultantId !== request.authUser!.consultantId) {
-        return reply.status(403).send({ message: "Solo puedes registrar horas extra a tu propio nombre." });
-      }
-
       const country = consultant.country || "Default";
 
-      // Check date limit for standard consultants (non-Admin/non-PM)
-      if (!isManager) {
-        const COUNTRY_TIMEZONES: Record<string, string> = {
-          Colombia: "America/Bogota",
-          Peru: "America/Lima",
-          Chile: "America/Santiago",
-          Mexico: "America/Mexico_City",
-          Ecuador: "America/Guayaquil",
-          Argentina: "America/Argentina/Buenos_Aires",
-          España: "Europe/Madrid",
-          Default: "America/Bogota",
-        };
-        const timezone = COUNTRY_TIMEZONES[country] || "America/Bogota";
+      // Nadie solicita horas extra para días anteriores al actual.
+      {
+        // Misma tabla de zonas que usa la nómina real (utils/country.ts).
+        const timezone = resolveCountryTimezone(consultant.country).timeZone;
         const todayStr = new Intl.DateTimeFormat("en-CA", {
           timeZone: timezone,
           year: "numeric",
@@ -561,7 +642,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         date: payload.date,
         startTime: formattedStartTime,
         endTime: formattedEndTime,
-        consultantId: payload.consultantId,
+        consultantId,
         config: {
           weeklyExtraHoursLimit: Number(activeConfig.weeklyExtraHoursLimit),
           diurnalMultiplier: Number(activeConfig.diurnalMultiplier),
@@ -576,7 +657,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       const entry = await prisma.extraHourEntry.create({
         data: {
-          consultantId: payload.consultantId,
+          consultantId,
           projectId: payload.projectId,
           date: payload.date,
           startTime: formattedStartTime,
@@ -595,7 +676,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           status: ExtraHourStatus.PENDING_PM,
         },
         include: {
-          project: true,
+          project: veProyectoCompleto(roles) ? true : { select: PROYECTO_MINIMO_SELECT },
           consultant: true,
         },
       });
@@ -635,7 +716,11 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         request,
       });
 
-      return reply.status(201).send({ data: entry, warnings: calcResult.warnings });
+      // Los montos solo vuelven a ADMIN, FINANCE y al PM del proyecto.
+      const data = puedeVerMontosHoraExtra(request.authUser!, project.projectManagerEmail)
+        ? entry
+        : sinMontosHoraExtra(entry);
+      return reply.status(201).send({ data, warnings: calcResult.warnings });
     },
   );
 
@@ -704,7 +789,17 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         },
       });
 
-      return { data: calcResult };
+      // Sin projectId (o con uno cuyo PM no es el usuario) solo ADMIN/FINANCE ven montos y tarifa.
+      const pmProyecto = payload.projectId
+        ? (await prisma.project.findUnique({
+            where: { id: payload.projectId },
+            select: { projectManagerEmail: true },
+          }))?.projectManagerEmail
+        : null;
+      const data = puedeVerMontosHoraExtra(request.authUser!, pmProyecto)
+        ? calcResult
+        : sinMontosHoraExtra(calcResult);
+      return { data };
     },
   );
 
@@ -935,7 +1030,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           approvedBy: email,
           rejectionNote: null,
         },
-        include: { project: true, consultant: true },
+        include: { project: { select: PROYECTO_MINIMO_SELECT }, consultant: true },
       });
 
       // Aviso al consultor de que sus horas quedaron aprobadas.
@@ -1053,7 +1148,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
           approvedBy: email,
           rejectionNote: payload.rejectionNote,
         },
-        include: { project: true, consultant: true },
+        include: { project: { select: PROYECTO_MINIMO_SELECT }, consultant: true },
       });
 
       // Notify the consultant of the rejection
@@ -1084,6 +1179,15 @@ export async function extraHoursRoutes(app: FastifyInstance) {
   );
 
   // 8. Cierre consolidado de nómina mensual (bimoneda local / USD)
+  //
+  //    R14: la nómina paga lo REAL. Se calcula sobre los TimeEntry de tipo EXTRA APROBADOS del
+  //    mes (incluidos los excedentes que el PM aprobó), con su franja real convertida a hora local
+  //    del país del consultor y valorada con `calculateExtraHours`. La solicitud de horas extra es
+  //    solo el presupuesto.
+  //
+  //    Transición: las solicitudes APROBADAS creadas antes de la migración (2026-11-04) que no
+  //    tienen ningún TimeEntry vinculado se siguen pagando por su monto aprobado y se marcan como
+  //    `legacy` (el consultor las registró antes de que el timesheet conociera las horas extra).
   app.get(
     "/payroll",
     {
@@ -1095,23 +1199,56 @@ export async function extraHoursRoutes(app: FastifyInstance) {
       const startDate = new Date(Date.UTC(year, month - 1, 1));
       const endDate = new Date(Date.UTC(year, month, 1));
 
-      // Obtener todas las solicitudes aprobadas en el mes
-      const approvedEntries = await prisma.extraHourEntry.findMany({
-        where: {
-          status: ExtraHourStatus.APPROVED,
-          date: {
-            gte: startDate,
-            lt: endDate,
+      const [realEntries, legacyEntries, fxRates, configRows] = await Promise.all([
+        // Lo real: horas EXTRA aprobadas en el timesheet.
+        prisma.timeEntry.findMany({
+          where: {
+            status: TimeEntryStatus.APPROVED,
+            type: { category: TimeEntryCategory.EXTRA },
+            workDate: { gte: startDate, lt: endDate },
           },
-        },
-        include: {
-          consultant: true,
-          project: true,
-        },
-      });
+          include: { consultant: true },
+          orderBy: [{ workDate: "asc" }, { startedAt: "asc" }],
+        }),
+        // Lo anterior a R14: solicitudes aprobadas sin ningún registro real vinculado.
+        prisma.extraHourEntry.findMany({
+          where: {
+            status: ExtraHourStatus.APPROVED,
+            date: { gte: startDate, lt: endDate },
+            createdAt: { lt: PAYROLL_REAL_HOURS_SINCE },
+            timeEntries: { none: { status: { not: TimeEntryStatus.REJECTED } } },
+          },
+          include: { consultant: true, project: true },
+        }),
+        prisma.fxConfig.findMany(),
+        prisma.extraHoursConfig.findMany(),
+      ]);
 
-      // Obtener configuraciones de FX para conversiones a USD
-      const fxRates = await prisma.fxConfig.findMany();
+      const warnings = new Set<string>();
+      const configByCountry = new Map(configRows.map((c) => [c.country, c]));
+      const configFor = (country: string) => {
+        const row = configByCountry.get(country) ?? configByCountry.get("Default");
+        return {
+          weeklyExtraHoursLimit: Number(row?.weeklyExtraHoursLimit ?? 12),
+          diurnalMultiplier: Number(row?.diurnalMultiplier ?? 1.25),
+          nocturnalMultiplier: Number(row?.nocturnalMultiplier ?? 1.75),
+          diurnalHolidayMultiplier: Number(row?.diurnalHolidayMultiplier ?? 2),
+          nocturnalHolidayMultiplier: Number(row?.nocturnalHolidayMultiplier ?? 2.5),
+          diurnalStart: row?.diurnalStart ?? "06:00:00",
+          diurnalEnd: row?.diurnalEnd ?? "21:00:00",
+          monthlyDivisor: Number(row?.monthlyDivisor ?? 220),
+        };
+      };
+
+      // Conversión a USD con la configuración de FX.
+      const toUsd = (amountLocal: number, currency: string) => {
+        if (currency === "USD") return amountLocal;
+        const rateRow = fxRates.find((fx) => fx.baseCode === "USD" && fx.quoteCode === currency);
+        if (rateRow && Number(rateRow.rate) > 0) return amountLocal / Number(rateRow.rate);
+        const reverseRow = fxRates.find((fx) => fx.baseCode === currency && fx.quoteCode === "USD");
+        if (reverseRow && Number(reverseRow.rate) > 0) return amountLocal * Number(reverseRow.rate);
+        return amountLocal;
+      };
 
       // Consolidar por consultor
       const consolidationMap = new Map<string, {
@@ -1126,35 +1263,27 @@ export async function extraHoursRoutes(app: FastifyInstance) {
         nocturnalHoliday: number;
         totalAmountLocal: number;
         totalAmountUSD: number;
+        realHours: number;
+        realAmountLocal: number;
+        legacyHours: number;
+        legacyAmountLocal: number;
+        legacy: boolean;
       }>();
 
-      for (const entry of approvedEntries) {
-        const c = entry.consultant;
-        const cId = c.id;
-        const currency = c.rateCurrency || "USD";
-        const totalAmountLocal = Number(entry.totalAmount);
-
-        // Convertir a USD usando FX Config
-        let totalAmountUSD = totalAmountLocal;
-        if (currency !== "USD") {
-          const rateRow = fxRates.find((fx) => fx.baseCode === "USD" && fx.quoteCode === currency);
-          if (rateRow && Number(rateRow.rate) > 0) {
-            totalAmountUSD = totalAmountLocal / Number(rateRow.rate);
-          } else {
-            // Conversión inversa si aplica
-            const reverseRow = fxRates.find((fx) => fx.baseCode === currency && fx.quoteCode === "USD");
-            if (reverseRow && Number(reverseRow.rate) > 0) {
-              totalAmountUSD = totalAmountLocal * Number(reverseRow.rate);
-            }
-          }
-        }
-
-        if (!consolidationMap.has(cId)) {
-          consolidationMap.set(cId, {
+      const bucketOf = (c: {
+        id: string;
+        fullName: string;
+        identification: string | null;
+        country: string | null;
+        rateCurrency: string | null;
+      }) => {
+        let data = consolidationMap.get(c.id);
+        if (!data) {
+          data = {
             consultantName: c.fullName,
             identification: c.identification || "N/A",
             country: c.country || "Default",
-            currency: currency,
+            currency: c.rateCurrency || "USD",
             totalHours: 0,
             diurnal: 0,
             nocturnal: 0,
@@ -1162,32 +1291,83 @@ export async function extraHoursRoutes(app: FastifyInstance) {
             nocturnalHoliday: 0,
             totalAmountLocal: 0,
             totalAmountUSD: 0,
-          });
+            realHours: 0,
+            realAmountLocal: 0,
+            legacyHours: 0,
+            legacyAmountLocal: 0,
+            legacy: false,
+          };
+          consolidationMap.set(c.id, data);
         }
+        return data;
+      };
 
-        const data = consolidationMap.get(cId)!;
+      for (const entry of realEntries) {
+        const c = entry.consultant;
+        const data = bucketOf(c);
+        if (!entry.startedAt || !entry.endedAt) {
+          // Un EXTRA siempre exige franja; si falta (dato inconsistente) no se puede valorar.
+          warnings.add(`El registro ${entry.id} de ${c.fullName} es de horas extra sin franja horaria: no se pagó.`);
+          continue;
+        }
+        const shift = toLocalExtraShift({ startedAt: entry.startedAt, endedAt: entry.endedAt, country: c.country });
+        shift.warnings.forEach((w) => warnings.add(`${c.fullName}: ${w}`));
+
+        for (const seg of shift.segments) {
+          const calc = await calculateExtraHours({
+            date: seg.date,
+            startTime: seg.startTime,
+            endTime: seg.endTime,
+            consultantId: c.id,
+            config: configFor(shift.country),
+          });
+          data.totalHours += calc.totalHours;
+          data.diurnal += calc.diurnal;
+          data.nocturnal += calc.nocturnal;
+          data.diurnalHoliday += calc.diurnalHoliday;
+          data.nocturnalHoliday += calc.nocturnalHoliday;
+          data.totalAmountLocal += calc.totalAmount;
+          data.totalAmountUSD += toUsd(calc.totalAmount, data.currency);
+          data.realHours += calc.totalHours;
+          data.realAmountLocal += calc.totalAmount;
+        }
+      }
+
+      const legacyIds: string[] = [];
+      for (const entry of legacyEntries) {
+        const data = bucketOf(entry.consultant);
+        const totalAmountLocal = Number(entry.totalAmount);
         data.totalHours += Number(entry.totalHours);
         data.diurnal += Number(entry.diurnal);
         data.nocturnal += Number(entry.nocturnal);
         data.diurnalHoliday += Number(entry.diurnalHoliday);
         data.nocturnalHoliday += Number(entry.nocturnalHoliday);
         data.totalAmountLocal += totalAmountLocal;
-        data.totalAmountUSD += totalAmountUSD;
+        data.totalAmountUSD += toUsd(totalAmountLocal, data.currency);
+        data.legacyHours += Number(entry.totalHours);
+        data.legacyAmountLocal += totalAmountLocal;
+        data.legacy = true;
+        legacyIds.push(entry.id);
       }
 
       // Convertir mapa a array y redondear
+      const r2 = (n: number) => Math.round(n * 100) / 100;
       const summaryList = Array.from(consolidationMap.values()).map((c) => ({
         ...c,
-        totalHours: Math.round(c.totalHours * 100) / 100,
-        diurnal: Math.round(c.diurnal * 100) / 100,
-        nocturnal: Math.round(c.nocturnal * 100) / 100,
-        diurnalHoliday: Math.round(c.diurnalHoliday * 100) / 100,
-        nocturnalHoliday: Math.round(c.nocturnalHoliday * 100) / 100,
-        totalAmountLocal: Math.round(c.totalAmountLocal * 100) / 100,
-        totalAmountUSD: Math.round(c.totalAmountUSD * 100) / 100,
+        totalHours: r2(c.totalHours),
+        diurnal: r2(c.diurnal),
+        nocturnal: r2(c.nocturnal),
+        diurnalHoliday: r2(c.diurnalHoliday),
+        nocturnalHoliday: r2(c.nocturnalHoliday),
+        totalAmountLocal: r2(c.totalAmountLocal),
+        totalAmountUSD: r2(c.totalAmountUSD),
+        realHours: r2(c.realHours),
+        realAmountLocal: r2(c.realAmountLocal),
+        legacyHours: r2(c.legacyHours),
+        legacyAmountLocal: r2(c.legacyAmountLocal),
       }));
 
-      return { data: summaryList };
+      return { data: summaryList, meta: { warnings: [...warnings], legacyRequestIds: legacyIds } };
     },
   );
 

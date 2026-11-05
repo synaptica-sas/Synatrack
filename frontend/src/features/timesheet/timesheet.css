@@ -658,3 +658,115 @@ body.dark .tk-entry           { border-bottom-color: rgba(255, 255, 255, 0.05); 
 }
 
 body.dark .ts-grid tfoot td { background: rgba(255, 255, 255, 0.03); }
+
+/* ── Ventana "Editar tiempo" en forma de tabla (R14) ── */
+.modal-card.ts-edit.ts-edit--table {
+  width: min(62rem, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.ts-edit-notice {
+  margin: 1rem 1.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--color-accent-10);
+  color: var(--text-strong);
+  font-size: 0.82rem;
+}
+.ts-edit--table .ts-edit-error { margin: 1rem 1.5rem 0; }
+
+/* En pantallas angostas la tabla se desplaza dentro de la ventana. */
+.ts-day-tablewrap {
+  margin: 1rem 1.5rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+.ts-day-table { width: 100%; min-width: 46rem; border-collapse: collapse; }
+.ts-day-table th {
+  padding: 0.5rem 0.5rem;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  border-bottom: 1px solid var(--border-color);
+}
+.ts-day-table td {
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-color);
+}
+.ts-day-table tbody tr:last-child td { border-bottom: 0; }
+.ts-day-col-type { width: 11rem; }
+.ts-day-col-time { width: 6.2rem; }
+.ts-day-col-dur { width: 7.6rem; }
+.ts-day-col-del { width: 2.4rem; text-align: center; }
+.ts-day-table select,
+.ts-day-table input { width: 100%; height: 2.3rem; box-sizing: border-box; }
+.ts-day-table input { text-align: center; font-variant-numeric: tabular-nums; }
+/* El padding global de los select no cabe en 2.3rem y recortaba el texto. */
+.ts-day-table select {
+  padding: 0 1.6rem 0 0.6rem;
+  font-size: 0.82rem;
+  line-height: normal;
+  text-overflow: ellipsis;
+}
+.ts-day-table textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.3rem;
+  resize: vertical;
+  font: inherit;
+  font-size: 0.9rem;
+}
+.ts-day-table select:not(:disabled),
+.ts-day-table input:not(:disabled),
+.ts-day-table textarea:not(:disabled) {
+  background: var(--card-bg);
+  color: var(--text-strong);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+}
+.ts-day-table select:focus,
+.ts-day-table input:focus,
+.ts-day-table textarea:focus { border-color: var(--color-accent); outline: none; }
+.ts-day-table input.ts-day-required:not(:disabled) { border-color: var(--color-accent); }
+.ts-day-table input.ts-day-required::placeholder { color: var(--color-accent); font-size: 0.72rem; }
+.ts-day-typename { display: block; font-size: 0.88rem; color: var(--text-strong); padding: 0.3rem 0; }
+.ts-day-table .pill { display: inline-block; margin-top: 0.25rem; font-size: 0.7rem; }
+.ts-day-row--locked td { opacity: 0.8; }
+.ts-day-row--blank td { background: var(--color-primary-05); }
+.ts-day-row--error td { background: var(--color-red-10, rgba(220, 38, 38, 0.08)); }
+.ts-day-rowerror { margin-top: 0.25rem; font-size: 0.78rem; color: var(--color-sec-red); }
+.ts-day-table input[aria-invalid="true"] { border-color: var(--color-sec-red); }
+.ts-day-warn { margin-top: 0.25rem; font-size: 0.76rem; color: var(--state-warning-text); }
+.ts-day-hint { margin-top: 0.25rem; font-size: 0.74rem; color: var(--text-soft); }
+.ts-day-del { padding: 0.15rem 0.4rem; color: var(--color-sec-red); }
+
+.ts-day-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.9rem 1.5rem 0;
+  font-size: 0.85rem;
+  color: var(--text-soft);
+}
+.ts-day-footer strong { color: var(--text-strong); font-variant-numeric: tabular-nums; }
+.ts-day-over, .ts-day-over strong { color: var(--color-sec-red); }
+.ts-day-keys { margin: 0.7rem 1.5rem 0; font-size: 0.74rem; color: var(--text-soft); }
+
+/* Cabecera de cada día de la grilla: consumo de la jornada. */
+.ts-day-usage { display: block; font-size: 0.66rem; font-weight: 400; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.ts-day-usage.over { color: var(--color-sec-red); font-weight: 700; }
+.ts-day-extra {
+  display: inline-block;
+  margin-left: 0.2rem;
+  color: var(--color-accent);
+  font-size: 0.7rem;
+  cursor: help;
+}
+
+body.dark .ts-day-row--blank td { background: rgba(255, 255, 255, 0.03); }
+body.dark .ts-day-row--error td { background: rgba(220, 38, 38, 0.15); }

@@ -21,6 +21,7 @@ import {
  */
 describe("R9: la bitácora de auditoría registra las escrituras sensibles", () => {
   const ADMIN_EMAIL = "admin@synaptica.local";
+  const fechaFutura = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   let app: FastifyInstance;
   let escenario: EscenarioBasico;
   const idsAuditados: string[] = [];
@@ -49,11 +50,11 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
     const res = await app.inject({
       method: "POST",
       url: "/api/extra-hours",
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.CONSULTANT, escenario.consultorA.email),
       payload: {
         projectId: escenario.projectId,
         consultantId: escenario.consultorA.id,
-        date: "2026-05-04",
+        date: fechaFutura,
         startTime: "19:00",
         endTime: "21:00",
         observations: "Cierre de sprint",
@@ -66,7 +67,7 @@ describe("R9: la bitácora de auditoría registra las escrituras sensibles", () 
     const registro = await ultimoRegistro("extraHourEntry", creada.id);
     expect(registro).not.toBeNull();
     expect(registro!.action).toBe("CREATE");
-    expect(registro!.changedBy).toBe(ADMIN_EMAIL);
+    expect(registro!.changedBy).toBe(escenario.consultorA.email);
     expect(registro!.entity).toBe("extraHourEntry");
 
     // El `after` conserva el monto calculado, que es lo que termina en nómina.

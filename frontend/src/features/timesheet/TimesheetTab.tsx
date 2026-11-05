@@ -10,16 +10,22 @@ import {
   approveTimeEntry,
   createTimeEntry,
   deleteTimeEntry,
+  getDaySummary,
   getMyConsultant,
   listAllTimeEntries,
   listTimeEntries,
+  listTimeEntryTypes,
   rejectTimeEntry,
+  saveDayEntries,
   updateTimeEntry,
   type Consultant,
+  type DayEntryInput,
+  type DaySummary,
   type PageMeta,
   type Project,
   type TimeEntry,
   type TimeEntryStatus,
+  type TimeEntryType,
 } from "../../services/api";
 import {
   addDays,
@@ -43,7 +49,35 @@ import {
   projectsToCopy,
   type ProjectRow,
 } from "./timesheetGrid";
-import { EditTimeDialog, type EditTimeChanges } from "./EditTimeDialog";
+import { EditTimeDialog } from "./EditTimeDialog";
+import { cellDefaultTypeId, formatDayUsage, isCellTypable } from "./timesheetDay";
+
+/**
+ * Consumo de la jornada en la cabecera de un día: "7,5/8,4 h", en rojo si se
+ * pasa del tope, y una marca si ese día hay horas extra aprobadas.
+ */
+function DayUsage({ summary }: { summary: DaySummary | undefined }) {
+  if (!summary) return null;
+  const extra = summary.projects.reduce((sum, p) => sum + p.extraApproved, 0);
+  const over = summary.overBy > 0;
+  const title = [
+    summary.holidayName ?? (summary.isWeekend ? "Fin de semana" : null),
+    over ? `Te pasas de la jornada por ${formatDayUsage(summary.overBy, summary.hoursPerDay).split("/")[0]} h` : null,
+    extra > 0 ? `Horas extra aprobadas: ${extra} h` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <span className={`ts-day-usage${over ? " over" : ""}`} title={title || undefined}>
+      {summary.usedAgainstCap > 0 || over ? formatDayUsage(summary.usedAgainstCap, summary.hoursPerDay) : " "}
+      {extra > 0 && (
+        <span className="ts-day-extra" aria-label="Con horas extra aprobadas">
+          ⧗
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** Letrero con las actividades de una celda, anclado a la celda bajo el ratón. */
 type Tooltip = { key: string; lines: string[]; left: number; top: number };
@@ -73,6 +107,9 @@ export function TimesheetTab({
   const [consultantId, setConsultantId] = useState("");
   const [weekEntries, setWeekEntries] = useState<TimeEntry[]>([]);
   const [weekLoading, setWeekLoading] = useState(false);
+  // Catálogo de tipos de hora y situación de cada día frente a la jornada (R14).
+  const [timeTypes, setTimeTypes] = useState<TimeEntryType[]>([]);
+  const [daySummaries, setDaySummaries] = useState<Record<string, DaySummary>>({});
 
   // -- Vista de aprobaciones -------------------------------------------------
   // Antes esta tabla pintaba el histórico completo que `App.tsx` cargaba de una
@@ -99,7 +136,6 @@ export function TimesheetTab({
   const [savingCells, setSavingCells] = useState<Record<string, boolean>>({});
   // Celda abierta en la ventana "Editar tiempo".
   const [editing, setEditing] = useState<{ projectId: string; day: string } | null>(null);
-  const [savingEdit, setSavingEdit] = useState(false);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
   // Fila a punto de vaciarse: el ✕ borra horas, así que pide confirmación.
   const [removeTarget, setRemoveTarget] = useState<ProjectRow | null>(null);
@@ -133,13 +169,41 @@ export function TimesheetTab({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listTimeEntryTypes();
+        if (!cancelled) setTimeTypes(list);
+      } catch (err) {
+        if (!cancelled) {
+          onError(err instanceof Error ? err.message : "No se pudo cargar el catálogo de tipos de hora");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Una sola vez: `onError` cambia en cada render del padre.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const reloadWeek = useCallback(async () => {
     if (!consultantId) {
       setWeekEntries([]);
+      setDaySummaries({});
       return;
     }
     setWeekLoading(true);
     try {
+      // El resumen del día (jornada, tope, saldo de extra) no debe tumbar la
+      // grilla: si falla se avisa y las horas se ven igual.
+      void getDaySummary({ consultantId, from: weekStart, to: addDays(weekStart, 6) })
+        .then((list) => setDaySummaries(Object.fromEntries(list.map((d) => [d.date, d]))))
+        .catch((err: unknown) => {
+          setDaySummaries({});
+          onError(err instanceof Error ? err.message : "No se pudo cargar la jornada de la semana");
+        });
       // La rejilla necesita todos los registros de la semana para sumar cada
       // celda y el total por día: se piden todas las páginas del rango.
       const data = await listAllTimeEntries({
@@ -175,6 +239,12 @@ export function TimesheetTab({
 
   const projectName = useCallback(
     (id: string) => projects.find((p) => p.id === id)?.name ?? "Proyecto",
+    [projects],
+  );
+
+  /** ¿Es el proyecto interno de Ausencias? (solo admite tipos de ausencia) */
+  const isAbsence = useCallback(
+    (id: string) => projects.find((p) => p.id === id)?.isAbsenceProject === true,
     [projects],
   );
 
@@ -272,11 +342,16 @@ export function TimesheetTab({
           workDate: day,
           hours,
           source: "TIMESHEET",
+          // En Ausencias el tipo por defecto es Permiso; en el resto, el servidor usa Regular.
+          typeId: cellDefaultTypeId(timeTypes, isAbsence(row.projectId)),
         });
       }
       clearCellDraft(key);
       await refreshAll();
     } catch (err) {
+      // El servidor manda el motivo (p. ej. superar la jornada); se muestra tal cual
+      // y la celda vuelve a lo que hay guardado.
+      clearCellDraft(key);
       onError(err instanceof Error ? err.message : "No se pudo guardar la hora");
     } finally {
       setSavingCells((prev) => {
@@ -287,43 +362,28 @@ export function TimesheetTab({
     }
   }
 
-  /** Aplica lo que se guardó en la ventana "Editar tiempo". */
-  async function handleSaveEdit(changes: EditTimeChanges) {
+  /**
+   * Guarda el día de un proyecto con UNA llamada: el servidor reemplaza los
+   * registros pendientes en una transacción, así que o queda todo o nada. Si
+   * falla, se relanza para que la ventana marque la fila culpable.
+   */
+  async function handleSaveEdit(entries: DayEntryInput[]) {
     if (!editing) return;
-    setSavingEdit(true);
     try {
-      for (const id of changes.remove) await deleteTimeEntry(id);
-      for (const u of changes.update) {
-        await updateTimeEntry(u.id, {
-          hours: u.hours,
-          description: u.description,
-          startedAt: u.startedAt,
-          endedAt: u.endedAt,
-        });
-      }
-      for (const c of changes.create) {
-        await createTimeEntry({
-          projectId: editing.projectId,
-          consultantId,
-          workDate: editing.day,
-          hours: c.hours,
-          description: c.description,
-          startedAt: c.startedAt,
-          endedAt: c.endedAt,
-          source: "TIMESHEET",
-        });
-      }
-      setEditing(null);
-      clearCellDraft(cellKey(editing.projectId, editing.day));
-      await refreshAll();
+      await saveDayEntries({
+        projectId: editing.projectId,
+        consultantId,
+        workDate: editing.day,
+        entries,
+      });
     } catch (err) {
-      // La ventana sigue abierta para que no se pierda lo escrito. Lo que ya se
-      // guardó antes del fallo se ve al recargar.
       onError(err instanceof Error ? err.message : "No se pudo guardar el tiempo");
-      await reloadWeek();
-    } finally {
-      setSavingEdit(false);
+      throw err;
     }
+    const closed = editing;
+    setEditing(null);
+    clearCellDraft(cellKey(closed.projectId, closed.day));
+    await refreshAll();
   }
 
   function handleAddProject(projectId: string) {
@@ -623,6 +683,7 @@ export function TimesheetTab({
                       <th key={day} className={dayClass(index, day)}>
                         <span className="ts-day-name">{weekdayLabel(index)}</span>
                         <span className="ts-day-num">{dayOfMonth(day)}</span>
+                        <DayUsage summary={daySummaries[day]} />
                       </th>
                     ))}
                     <th className="ts-col-total">Total</th>
@@ -655,8 +716,8 @@ export function TimesheetTab({
                         // Con varios registros no hay forma de repartir un número
                         // nuevo entre ellos: se editan uno a uno en la ventana.
                         const varios = entries.length > 1;
-                        const revisada = !!single && single.status !== "PENDING";
-                        const typable = gridEditable && !varios && !revisada;
+                        const absenceProject = isAbsence(row.projectId);
+                        const typable = gridEditable && isCellTypable(entries, absenceProject);
                         const draft = cellDrafts[key];
                         const value = draft !== undefined ? draft : formatHoursShort(hours);
                         const withDots = entries.length > 0;
@@ -830,10 +891,14 @@ export function TimesheetTab({
               key={`${editing.projectId}|${editing.day}`}
               day={editing.day}
               projectName={projectName(editing.projectId)}
+              projectId={editing.projectId}
+              isAbsenceProject={isAbsence(editing.projectId)}
               entries={editingRow?.cells[editing.day] ?? []}
+              types={timeTypes}
+              summary={daySummaries[editing.day]}
               readOnly={!gridEditable}
-              saving={savingEdit}
-              onSave={(changes) => void handleSaveEdit(changes)}
+              esPropio={!!myConsultant && consultantId === myConsultant.id}
+              onSave={handleSaveEdit}
               onClose={() => setEditing(null)}
             />
           )}

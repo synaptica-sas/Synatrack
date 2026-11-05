@@ -9,9 +9,18 @@ import {
   calculateCommittedHours,
   calculateCapacityHours,
   addDays,
-  resolverJornada,
+  crearJornadaPorDia,
 } from "../../utils/capacity.js";
-import { cargarJornadasPorPais, hoyUtc, jornadaVigenteDe } from "./workday.routes.js";
+import { hoyUtc } from "./workday.routes.js";
+
+/**
+ * Todas las filas de jornada por país, con su vigencia. Cada día se resuelve con la fila vigente
+ * en esa fecha (`crearJornadaPorDia`), no con la de hoy: un mes anterior a un cambio de ley
+ * (p. ej. Colombia 8 → 8,4 h el 15-jul-2026) conserva su jornada.
+ */
+function cargarFilasJornadaPais() {
+  return prisma.capacityConfig.findMany({ where: { consultantId: null, country: { not: null } } });
+}
 
 /** Tope de meses por consulta: cada día del rango recorre feriados, bloqueos y asignaciones. */
 const MAX_MESES_PERIODO = 24;
@@ -79,9 +88,9 @@ async function buildCapacityRows(
     },
   });
 
-  // Jornada configurada por país (D-5). Se carga una sola vez por consulta y
-  // `resolverJornada` decide, consultor a consultor, cuál se le aplica.
-  const jornadasPorPais = await cargarJornadasPorPais();
+  // Jornada configurada por país (D-5), con todas sus vigencias. Se carga una sola vez por
+  // consulta y `crearJornadaPorDia` decide, consultor a consultor y día a día, cuál aplica.
+  const jornadasPorPais = await cargarFilasJornadaPais();
 
   const consultants = await prisma.consultant.findMany({
     where: {
@@ -99,7 +108,7 @@ async function buildCapacityRows(
       skills: true,
       rateCurrency: true,
       hourlyRate: verTarifas,
-      capacityConfigs: jornadaVigenteDe(),
+      capacityConfigs: true,
       blocks: {
         where: {
           startDate: { lte: period.to },
@@ -137,7 +146,7 @@ async function buildCapacityRows(
       c.id,
       c.assignments,
       c.blocks,
-      resolverJornada(c.capacityConfigs[0] ?? null, c.country, jornadasPorPais),
+      crearJornadaPorDia(c.capacityConfigs, c.country, jornadasPorPais),
       period,
       c.country,
       customHolidaySet,
@@ -354,7 +363,7 @@ export async function capacityRoutes(app: FastifyInstance) {
       const consultant = await prisma.consultant.findUnique({
         where: { id: consultantId },
         include: {
-          capacityConfigs: jornadaVigenteDe(),
+          capacityConfigs: true,
           blocks: true,
           assignments: {
             where: { status: { in: ["ACTIVE", "PARTIAL", "PLANNED", "COMPLETED"] } },
@@ -366,10 +375,12 @@ export async function capacityRoutes(app: FastifyInstance) {
 
       if (!consultant) return reply.status(404).send({ message: "Consultor no encontrado" });
 
-      const jornada = resolverJornada(
-        consultant.capacityConfigs[0] ?? null,
+      // Jornada vigente en cada día del periodo (no la de hoy): cada bloqueo y cada día hábil
+      // se valoran con la jornada de su propia fecha.
+      const jornada = crearJornadaPorDia(
+        consultant.capacityConfigs,
         consultant.country,
-        await cargarJornadasPorPais(),
+        await cargarFilasJornadaPais(),
       );
 
       // Todo en UTC: con hora local el mes cambiaba según la zona del servidor.
@@ -446,7 +457,7 @@ export async function capacityRoutes(app: FastifyInstance) {
       // tarifa ni siquiera se lee de la base y el costo sale `null`.
       const verTarifas = puedeVerTarifas(request.authUser!.roles);
 
-      const jornadasPorPais = await cargarJornadasPorPais();
+      const jornadasPorPais = await cargarFilasJornadaPais();
 
       const assignments = await prisma.assignment.findMany({
         where: { projectId, status: { in: ["ACTIVE", "PARTIAL", "PLANNED", "COMPLETED"] } },
@@ -460,7 +471,7 @@ export async function capacityRoutes(app: FastifyInstance) {
               country: true,
               rateCurrency: true,
               hourlyRate: verTarifas,
-              capacityConfigs: jornadaVigenteDe(),
+              capacityConfigs: true,
               blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } },
             },
           },
@@ -476,7 +487,7 @@ export async function capacityRoutes(app: FastifyInstance) {
           if (overlapTo < overlapFrom) return null;
 
           const overlapPeriod = { from: overlapFrom, to: overlapTo };
-          const jornada = resolverJornada(c.capacityConfigs[0] ?? null, c.country, jornadasPorPais);
+          const jornada = crearJornadaPorDia(c.capacityConfigs, c.country, jornadasPorPais);
           const capacityHours = calculateCapacityHours(overlapPeriod, jornada, c.blocks, c.country);
           const committedHours = calculateCommittedHours([a], overlapPeriod, jornada, c.country);
           const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
@@ -536,7 +547,7 @@ export async function capacityRoutes(app: FastifyInstance) {
       // Mismo criterio que en `/capacity/project/:projectId` (DEP-38).
       const verTarifas = puedeVerTarifas(request.authUser!.roles);
 
-      const jornadasPorPais = await cargarJornadasPorPais();
+      const jornadasPorPais = await cargarFilasJornadaPais();
 
       const projects = await prisma.project.findMany({
         // Las oportunidades (PROSPECT) no son proyectos en ejecución: su carga
@@ -557,7 +568,7 @@ export async function capacityRoutes(app: FastifyInstance) {
                   country: true,
                   rateCurrency: true,
                   hourlyRate: verTarifas,
-                  capacityConfigs: jornadaVigenteDe(),
+                  capacityConfigs: true,
                   blocks: { where: { startDate: { lte: period.to }, endDate: { gte: period.from } } },
                 },
               },
@@ -575,7 +586,7 @@ export async function capacityRoutes(app: FastifyInstance) {
             const overlapTo = a.endDate < period.to ? a.endDate : period.to;
             if (overlapTo < overlapFrom) return null;
             const overlapPeriod = { from: overlapFrom, to: overlapTo };
-            const jornada = resolverJornada(c.capacityConfigs[0] ?? null, c.country, jornadasPorPais);
+            const jornada = crearJornadaPorDia(c.capacityConfigs, c.country, jornadasPorPais);
             const committedHours = calculateCommittedHours([a], overlapPeriod, jornada, c.country);
             const hourlyRate = c.hourlyRate ? Number(c.hourlyRate) : 0;
             return {

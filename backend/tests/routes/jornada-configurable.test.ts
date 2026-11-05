@@ -286,21 +286,24 @@ describe("Jornada laboral configurable (D-5) con vigencia", () => {
   // ── El efecto que justifica todo esto ─────────────────────────────────────
 
   it("cambiar la jornada de un país cambia la capacidad que devuelve la matriz", async () => {
-    // La matriz usa la jornada vigente HOY: la fila del 2026-07-15 en adelante.
+    // Cada día usa la jornada vigente EN ESE DÍA (no la de hoy): la fila del 2026-07-15
+    // solo afecta de esa fecha en adelante.
     await recordarPais("Colombia", "2026-07-15");
 
-    const capacidadDe = async (consultantId: string) => {
+    const capacidadDe = async (consultantId: string, mes: string) => {
       const res = await app.inject({
         method: "GET",
-        url: `/api/capacity/consultant/${consultantId}?from=2026-05-01&to=2026-05-31`,
+        url: `/api/capacity/consultant/${consultantId}?from=${mes}-01&to=${mes}-28`,
         headers: comoRol(AppRole.ADMIN),
       });
       expect(res.statusCode).toBe(200);
       return res.json().data.timeline[0].capacityHours as number;
     };
 
-    // Mayo de 2026 en Colombia: días hábiles × 8,4 h.
-    const conOchoYCuatro = await capacidadDe(colombianoId);
+    // Agosto de 2026 en Colombia: días hábiles × 8,4 h.
+    const conOchoYCuatro = await capacidadDe(colombianoId, "2026-08");
+    // Mayo de 2026 es anterior a la vigencia: se queda en 8 h aunque hoy rija 8,4.
+    const mayoAntes = await capacidadDe(colombianoId, "2026-05");
 
     const bajar = await app.inject({
       method: "PUT",
@@ -310,11 +313,14 @@ describe("Jornada laboral configurable (D-5) con vigencia", () => {
     });
     expect(bajar.statusCode).toBe(200);
 
-    const conOcho = await capacidadDe(colombianoId);
+    const conOcho = await capacidadDe(colombianoId, "2026-08");
 
     // La misma persona, el mismo mes: solo cambió la jornada.
     expect(conOchoYCuatro).toBeGreaterThan(conOcho);
     expect(conOchoYCuatro / conOcho).toBeCloseTo(8.4 / 8, 1);
+    // Mayo no cambia: nunca le aplicó la fila del 15-jul.
+    expect(await capacidadDe(colombianoId, "2026-05")).toBe(mayoAntes);
+    expect(mayoAntes % 8).toBe(0);
   });
 
   it("un ecuatoriano no se ve afectado por la jornada de Colombia", async () => {

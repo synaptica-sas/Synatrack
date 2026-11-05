@@ -92,15 +92,15 @@ describe("createdBy / updatedBy automáticos", () => {
     expect([fila.createdBy, fila.updatedBy]).toEqual([ana, beto]);
   });
 
-  it("extraHourEntry: crear (Ana) y aprobar (PM del proyecto); lo escrito sin petición no se toca", async () => {
+  it("extraHourEntry: crear (el consultor) y aprobar (PM del proyecto); lo escrito sin petición no se toca", async () => {
     const creada = await app.inject({
       method: "POST",
       url: "/api/extra-hours",
-      headers: comoRol(AppRole.ADMIN, ana),
+      headers: comoRol(AppRole.CONSULTANT, escenario.consultorA.email),
       payload: {
         projectId: escenario.projectId,
         consultantId: escenario.consultorA.id,
-        date: "2026-05-04",
+        date: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10),
         startTime: "19:00",
         endTime: "21:00",
       },
@@ -108,7 +108,7 @@ describe("createdBy / updatedBy automáticos", () => {
     expect(creada.statusCode, creada.body).toBe(201);
     const id = creada.json().data.id as string;
     const fila0 = await prisma.extraHourEntry.findUniqueOrThrow({ where: { id } });
-    expect([fila0.createdBy, fila0.updatedBy]).toEqual([ana, ana]);
+    expect([fila0.createdBy, fila0.updatedBy]).toEqual([escenario.consultorA.email, escenario.consultorA.email]);
 
     const manual = await crearHoraExtra({
       consultantId: escenario.consultorA.id,

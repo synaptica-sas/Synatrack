@@ -73,6 +73,9 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
   let proyectoBetoId = "";
   let proyectoSinPmId = "";
   let consultorId = "";
+  const emailConsultor = () => `carlos.${prefijo}@synaptica.test`;
+  /** Solo el consultor solicita horas extra, y no para días pasados. */
+  const diaFuturo = (dias: number) => new Date(Date.now() + dias * 86_400_000).toISOString().slice(0, 10);
   let consultorTravesuraId = "";
 
   /** Fila de configuración tal y como estaba, para restaurarla al terminar. */
@@ -528,11 +531,11 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/extra-hours",
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.CONSULTANT, emailConsultor()),
       payload: {
         projectId: proyectoAnaId,
         consultantId: consultorId,
-        date: "2026-10-03",
+        date: diaFuturo(30),
         startTime: "19:00",
         endTime: "21:00",
       },
@@ -555,11 +558,11 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/extra-hours",
-      headers: comoRol(AppRole.ADMIN),
+      headers: comoRol(AppRole.CONSULTANT, emailConsultor()),
       payload: {
         projectId: proyectoAnaId,
         consultantId: consultorId,
-        date: "2026-10-04",
+        date: diaFuturo(31),
         startTime: "19:00",
         endTime: "21:00",
       },

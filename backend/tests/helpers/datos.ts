@@ -37,6 +37,9 @@ export async function crearEscenarioBasico(etiqueta: string): Promise<EscenarioB
       hourlyRate: 40,
       rateCurrency: "USD",
       country: "Colombia",
+      // Las pruebas corren cualquier día de la semana (el cronómetro imputa a "hoy"): sin esto, un
+      // sábado el tope de R14 rechazaría las horas regulares.
+      allowWeekendWork: true,
     },
   });
 
@@ -52,6 +55,9 @@ export async function crearEscenarioBasico(etiqueta: string): Promise<EscenarioB
       hourlyRate: 999.77,
       rateCurrency: "USD",
       country: "Colombia",
+      // Las pruebas corren cualquier día de la semana (el cronómetro imputa a "hoy"): sin esto, un
+      // sábado el tope de R14 rechazaría las horas regulares.
+      allowWeekendWork: true,
     },
   });
 

@@ -44,6 +44,7 @@ import { WorkdayConfigTab } from "./features/workday/WorkdayConfigTab";
 import { HealthThresholdsTab } from "./features/admin/HealthThresholdsTab";
 import { ApprovalDigestTab } from "./features/admin/ApprovalDigestTab";
 import { FinancialCategoriesTab } from "./features/financial/FinancialCategoriesTab";
+import { TimeEntryTypesTab } from "./features/timesheet/TimeEntryTypesTab";
 import type { TabId, FinancialPanel } from "./types";
 import { FinancialTab } from "./features/financial/FinancialTab";
 import { RagChat } from "./components/RagChat";
@@ -211,6 +212,7 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   healthThresholds: "/health-thresholds",
   approvalDigest: "/approval-digest",
   financialCategories: "/financial-categories",
+  timeEntryTypes: "/time-entry-types",
   audit: "/audit",
   profile: "/profile",
   alerts: "/alerts",
@@ -1865,6 +1867,7 @@ function App() {
                   canWrite={can("time:write")}
                   onReload={timeEntriesHook.reload}
                   onError={handleError}
+                  onNotice={(msg, type) => showToast(msg, type)}
                 />
               )}
 
@@ -2004,6 +2007,14 @@ function App() {
               {activeTab === "financialCategories" && (
                 <FinancialCategoriesTab
                   canWrite={can("finance:categories")}
+                  onError={handleError}
+                  onSuccess={(msg) => showToast(msg, "success")}
+                />
+              )}
+
+              {activeTab === "timeEntryTypes" && (
+                <TimeEntryTypesTab
+                  canWrite={can("time:types")}
                   onError={handleError}
                   onSuccess={(msg) => showToast(msg, "success")}
                 />

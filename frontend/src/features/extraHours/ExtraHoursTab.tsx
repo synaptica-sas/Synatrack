@@ -12,7 +12,11 @@ import {
   resetCountryExtraHoursConfig,
   approveExtraHour,
   rejectExtraHour,
-  getPayrollSummary,
+  getPayrollReport,
+  listExcessPending,
+  approveTimeEntry,
+  rejectTimeEntry,
+  type ExcessPendingEntry,
   deleteExtraHour,
   listCustomHolidays,
   createCustomHoliday,
@@ -30,9 +34,11 @@ import {
   type PayrollConsolidationRow,
   listSupportedCountries,
 } from "../../services/api";
+import { buildPayrollCsv } from "./payrollCsv";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { displayCountryWithFlag } from "../../utils/statusLabels";
 import { CountryFlag } from "../../components/CountryFlag";
+import { formatDuration } from "../timesheet/timesheetUtils";
 
 
 
@@ -145,6 +151,70 @@ const LEGISLATIONS: Record<string, LegislationInfo> = {
   }
 };
 
+/** Horas reales registradas contra una solicitud; "—" si todavía no hay. */
+function HoursReal({ value }: { value: number | undefined }) {
+  if (!value) return <span className="cell-dash">—</span>;
+  return <strong>{formatDuration(value)}</strong>;
+}
+
+/** Horas por encima de lo aprobado, resaltando las que aún espera decidir el PM. */
+function HoursExcess({ value, pending }: { value: number | undefined; pending: number | undefined }) {
+  if (!value) return <span className="cell-dash">—</span>;
+  return (
+    <>
+      <strong className="tone-warning">{formatDuration(value)}</strong>
+      {pending ? <span className="cell-meta">{formatDuration(pending)} pendientes del PM</span> : null}
+    </>
+  );
+}
+
+/**
+ * Horas de una solicitud con su desglose en palabras. Solo salen los tipos
+ * distintos de cero: "Diurnas 02:00", "Festivas nocturnas 01:00".
+ */
+function HoursRequested({ entry }: { entry: ExtraHourEntry }) {
+  const partes: Array<[string, number]> = [
+    ["Diurnas", Number(entry.diurnal)],
+    ["Nocturnas", Number(entry.nocturnal)],
+    ["Festivas diurnas", Number(entry.diurnalHoliday)],
+    ["Festivas nocturnas", Number(entry.nocturnalHoliday)],
+  ];
+  return (
+    <>
+      <strong>{formatDuration(Number(entry.totalHours))}</strong>
+      {partes
+        .filter(([, h]) => Number.isFinite(h) && h > 0)
+        .map(([label, h]) => (
+          <span key={label} className="cell-meta">{label} {formatDuration(h)}</span>
+        ))}
+    </>
+  );
+}
+
+/** Monto de una solicitud; "—" si el backend no lo envió (consultor). */
+function AmountCell({ entry }: { entry: ExtraHourEntry }) {
+  if (entry.totalAmount === undefined || entry.totalAmount === null) {
+    return <span className="cell-dash">—</span>;
+  }
+  return (
+    <>
+      <strong>${Number(entry.totalAmount).toLocaleString("es-CO")}</strong>
+      <span className="cell-meta">{entry.consultant?.rateCurrency || "COP"}</span>
+    </>
+  );
+}
+
+/** "18:00 - 20:30" a partir de dos instantes ISO, en hora local. */
+function formatRange(startedAt: string | null, endedAt: string | null): string {
+  if (!startedAt || !endedAt) return "—";
+  const f = (iso: string) =>
+    new Date(iso).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${f(startedAt)} - ${f(endedAt)}`;
+}
+
+const MENSAJE_SIN_FICHA =
+  "Tu usuario no está vinculado a una ficha de consultor; pide a un administrador que lo enlace en Consultores.";
+
 export function ExtraHoursTab({ projects, consultants, authUser, can, onError, configModeOnly = false }: ExtraHoursTabProps) {
   // Sub-navigation tabs
   const [activeSubTab, setActiveSubTab] = useState<"report" | "pm" | "payroll" | "config" | "holidays">(
@@ -168,6 +238,9 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   // la primera página. Si se paginara, un aprobador dejaría de ver solicitudes
   // sin enterarse.
   const [pmPendingEntries, setPmPendingEntries] = useState<ExtraHourEntry[]>([]);
+  // Excedentes (horas registradas por encima de lo aprobado) que espera el PM (R14).
+  const [excessPending, setExcessPending] = useState<ExcessPendingEntry[]>([]);
+  const [decidingExcessId, setDecidingExcessId] = useState<string | null>(null);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
   // Supported countries from backend
@@ -224,8 +297,24 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     !!myEmail && pmEmail?.trim().toLowerCase() === myEmail;
   const dirijoAlgunProyecto = projects.some((p) => soyPmDe(p.projectManagerEmail));
   const misPendientes = pmPendingEntries.filter((e) => soyPmDe(e.project?.projectManagerEmail));
-  const [reportConsultantId, setReportConsultantId] = useState(authUser?.consultantId || myConsultant?.id || "");
+  // Valor, real y excedente son información del PM (y de ADMIN/FINANCE). `roles`
+  // ya es el rol efectivo (el simulador de rol lo reemplaza). Aquí es la regla
+  // general (formulario); en el historial se decide además por fila: solo ve
+  // esas columnas con contenido en las solicitudes de proyectos que dirige.
+  const veInfoDePm =
+    !!authUser?.roles.some((r) => r === "ADMIN" || r === "FINANCE" || r === "PM");
+  const puedeVerFinanzasDe = (e: ExtraHourEntry) => veInfoDePm || soyPmDe(e.project?.projectManagerEmail);
+  // Las columnas Consultor/Real/Excedente/Monto del historial solo existen si
+  // hay al menos una fila que el usuario puede ver completa; en las demás filas
+  // de una tabla mixta salen con "—".
+  const mostrarFinanzas = veInfoDePm || entries.some(puedeVerFinanzasDe);
+  // Las horas extra solo las solicita el propio consultor (también ADMIN/PM).
+  const reportConsultantId = authUser?.consultantId ?? "";
+  const sinFichaConsultor = !!authUser && !reportConsultantId;
   const [reportProjectId, setReportProjectId] = useState("");
+  // En el formulario, además de ADMIN/FINANCE/PM, ve montos quien dirige el proyecto elegido.
+  const verMontosForm =
+    veInfoDePm || soyPmDe(projects.find((p) => p.id === reportProjectId)?.projectManagerEmail);
   const [reportDate, setReportDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [reportStartTime, setReportStartTime] = useState("18:00");
   const [reportEndTime, setReportEndTime] = useState("20:00");
@@ -240,6 +329,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
   // --- 2. Approvals PM & Finance ---
   const [rejectionTargetId, setRejectionTargetId] = useState<string | null>(null);
+  // Qué se está rechazando: una solicitud de horas extra o un excedente del timesheet.
+  const [rejectionKind, setRejectionKind] = useState<"request" | "excess">("request");
   const [rejectionNote, setRejectionNote] = useState("");
   const [approvingId, setApprovingId] = useState<string | null>(null);
 
@@ -250,6 +341,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   const [payrollYear, setPayrollYear] = useState(() => new Date().getFullYear());
   const [payrollMonth, setPayrollMonth] = useState(() => new Date().getMonth() + 1);
   const [payrollRows, setPayrollRows] = useState<PayrollConsolidationRow[]>([]);
+  const [payrollWarnings, setPayrollWarnings] = useState<string[]>([]);
   const [loadingPayroll, setLoadingPayroll] = useState(false);
 
   // --- 5. Config state (Multi-country) ---
@@ -312,6 +404,12 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     } catch (err) {
       setPmPendingEntries([]);
       onError(err instanceof Error ? err.message : "Error al cargar el buzón de aprobación");
+    }
+    try {
+      setExcessPending(await listExcessPending());
+    } catch (err) {
+      setExcessPending([]);
+      onError(err instanceof Error ? err.message : "Error al cargar los excedentes por aprobar");
     }
   }, [onError]);
 
@@ -432,13 +530,6 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }
   }, [selectedCountryConfig, configsList]);
 
-  // Default consultant ID: directo de la sesión, no depende de que `consultants` traiga la fila.
-  useEffect(() => {
-    if (authUser?.consultantId && !reportConsultantId) {
-      setReportConsultantId(authUser.consultantId);
-    }
-  }, [authUser?.consultantId, reportConsultantId]);
-
   // Real-time backend calculation preview
   useEffect(() => {
     if (!reportConsultantId || !reportDate || !reportStartTime || !reportEndTime) {
@@ -459,7 +550,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
           consultantId: reportConsultantId,
           date: reportDate,
           startTime: `${reportStartTime}:00`,
-          endTime: `${reportEndTime}:00`
+          endTime: `${reportEndTime}:00`,
+          projectId: reportProjectId || undefined,
         });
         if (isMounted) {
           setPreviewResult(result);
@@ -480,7 +572,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
       isMounted = false;
       clearTimeout(delayDebounce);
     };
-  }, [reportConsultantId, reportDate, reportStartTime, reportEndTime]);
+  }, [reportConsultantId, reportProjectId, reportDate, reportStartTime, reportEndTime]);
 
   // Handle report submission
   const handleReportSubmit = async (e: React.FormEvent) => {
@@ -490,17 +582,14 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
       return;
     }
     if (!reportConsultantId) {
-      onError("Por favor selecciona o define un consultor.");
+      onError(MENSAJE_SIN_FICHA);
       return;
     }
 
-    const isManager = authUser?.roles.includes("ADMIN") || authUser?.roles.includes("PM");
-    if (!isManager) {
-      const todayStr = new Date().toLocaleDateString("en-CA");
-      if (reportDate < todayStr) {
-        onError("No se pueden solicitar horas extra para días anteriores al actual.");
-        return;
-      }
+    const todayStr = new Date().toLocaleDateString("en-CA");
+    if (reportDate < todayStr) {
+      onError("No se pueden solicitar horas extra para días anteriores al actual.");
+      return;
     }
 
     setReporting(true);
@@ -561,15 +650,33 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
     }
 
     try {
-      await rejectExtraHour(rejectionTargetId, {
-        rejectionNote: rejectionNote.trim()
-      });
+      if (rejectionKind === "excess") {
+        await rejectTimeEntry(rejectionTargetId, rejectionNote.trim());
+      } else {
+        await rejectExtraHour(rejectionTargetId, {
+          rejectionNote: rejectionNote.trim()
+        });
+      }
       setRejectionTargetId(null);
       setRejectionNote("");
-      triggerSuccess("Solicitud rechazada con éxito.");
+      triggerSuccess(rejectionKind === "excess" ? "Excedente rechazado." : "Solicitud rechazada con éxito.");
       await loadEntries();
     } catch (err) {
       onError(err instanceof Error ? err.message : "Error al rechazar la solicitud");
+    }
+  };
+
+  // Aprueba un excedente: usa la aprobación normal del registro de horas.
+  const handleApproveExcess = async (id: string) => {
+    setDecidingExcessId(id);
+    try {
+      await approveTimeEntry(id);
+      triggerSuccess("Excedente aprobado: se pagará con la nómina del mes.");
+      await loadPendingInboxes();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Error al aprobar el excedente");
+    } finally {
+      setDecidingExcessId(null);
     }
   };
 
@@ -577,8 +684,9 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
   const handleLoadPayroll = async () => {
     setLoadingPayroll(true);
     try {
-      const summary = await getPayrollSummary(payrollYear, payrollMonth);
-      setPayrollRows(summary);
+      const summary = await getPayrollReport(payrollYear, payrollMonth);
+      setPayrollRows(summary.rows);
+      setPayrollWarnings(summary.warnings);
     } catch (err) {
       onError(err instanceof Error ? err.message : "Error al consultar cierre de nómina");
     } finally {
@@ -588,35 +696,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
 
   const handleExportPayrollCSV = () => {
     if (payrollRows.length === 0) return;
-    const headers = [
-      "Consultor",
-      "Identificación DNI/Cédula",
-      "País",
-      "Moneda",
-      "Horas Totales",
-      "Diurnas",
-      "Nocturnas",
-      "Festivas Diurnas",
-      "Festivas Nocturnas",
-      "Monto Local",
-      "Monto USD"
-    ];
-
-    const rows = payrollRows.map((r) => [
-      `"${r.consultantName}"`,
-      `"${r.identification}"`,
-      `"${r.country}"`,
-      `"${r.currency}"`,
-      r.totalHours,
-      r.diurnal,
-      r.nocturnal,
-      r.diurnalHoliday,
-      r.nocturnalHoliday,
-      r.totalAmountLocal.toFixed(2),
-      r.totalAmountUSD.toFixed(2)
-    ]);
-
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const csvContent = buildPayrollCsv(payrollRows);
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -798,7 +878,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   className={activeSubTab === "pm" ? "toolbar-btn" : "toolbar-btn ghost"}
                   onClick={() => setActiveSubTab("pm")}
                 >
-                  👥 Aprobaciones ({misPendientes.length})
+                  👥 Aprobaciones ({misPendientes.length + excessPending.length})
                 </button>
               )}
 
@@ -821,7 +901,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
         <div className="modal-overlay">
           <form onSubmit={handleRejectSubmit} className="modal-card modal-card--sm">
             <div className="modal-header">
-              <h3>Rechazar Solicitud de Horas Extra</h3>
+              <h3>{rejectionKind === "excess" ? "Rechazar Excedente de Horas Extra" : "Rechazar Solicitud de Horas Extra"}</h3>
               <button type="button" className="ghost modal-close" onClick={() => setRejectionTargetId(null)}>✕</button>
             </div>
             <div className="form-grid">
@@ -837,7 +917,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             </div>
             <div className="modal-actions modal-actions--spaced">
               <button type="button" className="ghost" onClick={() => setRejectionTargetId(null)}>Cancelar</button>
-              <button type="submit" className="btn-danger">Rechazar Solicitud</button>
+              <button type="submit" className="btn-danger">{rejectionKind === "excess" ? "Rechazar Excedente" : "Rechazar Solicitud"}</button>
             </div>
           </form>
         </div>,
@@ -868,31 +948,20 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
               </h3>
 
               <form onSubmit={handleReportSubmit} className="form-grid form-grid--tight">
-                {authUser?.roles.includes("ADMIN") ? (
-                  <div>
-                    <label className="form-label form-label--sm">Consultor *</label>
-                    <select
-                      value={reportConsultantId}
-                      onChange={(e) => setReportConsultantId(e.target.value)}
-                      required
-                    >
-                      <option value="">-- Selecciona --</option>
-                      {consultants.map((c) => (
-                        <option key={c.id} value={c.id}>{c.fullName} ({displayCountryWithFlag(c.country || "Default")})</option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="form-label form-label--sm">Consultor</label>
-                    <input
-                      type="text"
-                      readOnly
-                      className="input-readonly"
-                      value={myConsultant ? `${myConsultant.fullName} (${displayCountryWithFlag(myConsultant.country || "Default")})` : authUser?.displayName || ""}
-                    />
+                {sinFichaConsultor && (
+                  <div className="notice notice--warning" role="alert">
+                    {MENSAJE_SIN_FICHA}
                   </div>
                 )}
+                <div>
+                  <label className="form-label form-label--sm">Consultor</label>
+                  <input
+                    type="text"
+                    readOnly
+                    className="input-readonly"
+                    value={myConsultant ? `${myConsultant.fullName} (${displayCountryWithFlag(myConsultant.country || "Default")})` : authUser?.displayName || ""}
+                  />
+                </div>
 
                 <div>
                   <label className="form-label form-label--sm">Proyecto *</label>
@@ -965,7 +1034,7 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                 <button
                   type="submit"
                   className="btn-block"
-                  disabled={reporting || previewLoading}
+                  disabled={reporting || previewLoading || sinFichaConsultor}
                 >
                   {reporting ? "Registrando..." : "Enviar a Aprobación"}
                 </button>
@@ -983,14 +1052,16 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                   <div>Festivas (D / N): <strong>{previewResult.diurnalHoliday} / {previewResult.nocturnalHoliday}</strong></div>
                   
                   {/* Tarifa y Divisor */}
-                  <div>Divisor Mensual: <strong>{previewResult.divisorUsed || "220"} hrs</strong></div>
-                  <div>Tarifa por Hora: <strong>{previewResult.hourlyRate > 0 ? `$${previewResult.hourlyRate.toLocaleString("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr` : "Costo/Mes div."}</strong></div>
+                  {verMontosForm && (
+                    <>
+                      <div>Divisor Mensual: <strong>{previewResult.divisorUsed || "220"} hrs</strong></div>
+                      <div>Tarifa por Hora: <strong>{previewResult.hourlyRate > 0 ? `$${previewResult.hourlyRate.toLocaleString("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr` : "Costo/Mes div."}</strong></div>
+                    </>
+                  )}
                   
                   {/* Legislación aplicada */}
                   {(() => {
-                    const selConsultant = authUser?.roles.includes("ADMIN")
-                      ? consultants.find(c => c.id === reportConsultantId)
-                      : myConsultant;
+                    const selConsultant = myConsultant;
                     const ctry = selConsultant?.country || "Default";
                     if (ctry === "Colombia") {
                       const isAfterLaw = previewResult.divisorUsed === 210;
@@ -1009,9 +1080,11 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     return null;
                   })()}
 
-                  <div className="preview-total">
-                    Valor Estimado Pago: <strong className="preview-total__amount">${previewResult.totalAmount.toLocaleString("es-CO")}</strong>
-                  </div>
+                  {verMontosForm && typeof previewResult.totalAmount === "number" && (
+                    <div className="preview-total">
+                      Valor Estimado Pago: <strong className="preview-total__amount">${previewResult.totalAmount.toLocaleString("es-CO")}</strong>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1051,10 +1124,16 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     <tr>
                       <th>Fecha</th>
                       <th>Proyecto</th>
-                      <th>Consultor</th>
+                      {mostrarFinanzas && <th>Consultor</th>}
                       <th>Horario</th>
-                      <th>Horas</th>
-                      <th>Monto</th>
+                      <th title="Horas pedidas en la solicitud">Horas solicitadas</th>
+                      {mostrarFinanzas && (
+                        <>
+                          <th title="Horas registradas en el timesheet contra la solicitud">Real</th>
+                          <th title="Horas registradas por encima de lo solicitado">Excedente</th>
+                          <th>Monto</th>
+                        </>
+                      )}
                       <th>Estado</th>
                       <th>Acciones</th>
                     </tr>
@@ -1065,23 +1144,30 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                         const stat = getStatusLabel(entry.status);
                         const isOwn = entry.consultantId === authUser?.consultantId || authUser?.roles.includes("ADMIN");
                         const canDelete = isOwn && entry.status !== "APPROVED";
+                        const verFila = puedeVerFinanzasDe(entry);
 
                         return (
                           <tr key={entry.id}>
                             <td>{entry.date.slice(0, 10)}</td>
                             <td><strong>{entry.project?.name || "Sin proyecto"}</strong></td>
-                            <td>{entry.consultant?.fullName}</td>
+                            {mostrarFinanzas && <td>{entry.consultant?.fullName}</td>}
                             <td className="cell-small">{entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}</td>
-                            <td>
-                              <strong>{Number(entry.totalHours).toFixed(1)}</strong>
-                              <span className="cell-meta">
-                                D:{Number(entry.diurnal).toFixed(1)} N:{Number(entry.nocturnal).toFixed(1)} F:{Number(Number(entry.diurnalHoliday) + Number(entry.nocturnalHoliday)).toFixed(1)}
-                              </span>
-                            </td>
-                            <td>
-                              <strong>${Number(entry.totalAmount).toLocaleString("es-CO")}</strong>
-                              <span className="cell-meta">{entry.consultant?.rateCurrency || "COP"}</span>
-                            </td>
+                            <td><HoursRequested entry={entry} /></td>
+                            {mostrarFinanzas && (
+                              verFila ? (
+                                <>
+                                  <td><HoursReal value={entry.realHours} /></td>
+                                  <td><HoursExcess value={entry.excessHours} pending={entry.excessPendingHours} /></td>
+                                  <td><AmountCell entry={entry} /></td>
+                                </>
+                              ) : (
+                                <>
+                                  <td><span className="cell-dash">—</span></td>
+                                  <td><span className="cell-dash">—</span></td>
+                                  <td><span className="cell-dash">—</span></td>
+                                </>
+                              )
+                            )}
                             <td>
                               <span className={`state-chip state-chip--${stat.tone}`}>
                                 {stat.label}
@@ -1167,7 +1253,9 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     <th>Proyecto</th>
                     <th>Fecha</th>
                     <th>Horario</th>
-                    <th>Horas</th>
+                    <th title="Horas pedidas en la solicitud">Horas solicitadas</th>
+                    <th title="Horas registradas en el timesheet contra la solicitud">Real</th>
+                    <th title="Horas registradas por encima de lo solicitado">Excedente</th>
                     <th>Monto Local</th>
                     <th>Observaciones</th>
                     <th>Acciones</th>
@@ -1180,16 +1268,10 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                       <td>{entry.project?.name}</td>
                       <td>{entry.date.slice(0, 10)}</td>
                       <td>{entry.startTime.slice(0, 5)} - {entry.endTime.slice(0, 5)}</td>
-                      <td>
-                        <strong>{Number(entry.totalHours).toFixed(1)}</strong>
-                        <span className="cell-meta">
-                          D:{Number(entry.diurnal).toFixed(1)} N:{Number(entry.nocturnal).toFixed(1)} F:{Number(Number(entry.diurnalHoliday) + Number(entry.nocturnalHoliday)).toFixed(1)}
-                        </span>
-                      </td>
-                      <td>
-                        <strong>${Number(entry.totalAmount).toLocaleString("es-CO")}</strong>
-                        <span className="cell-meta">{entry.consultant?.rateCurrency || "COP"}</span>
-                      </td>
+                      <td><HoursRequested entry={entry} /></td>
+                      <td><HoursReal value={entry.realHours} /></td>
+                      <td><HoursExcess value={entry.excessHours} pending={entry.excessPendingHours} /></td>
+                      <td><AmountCell entry={entry} /></td>
                       <td>
                         <span className="cell-note">{entry.observations || "Sin observaciones"}</span>
                       </td>
@@ -1206,7 +1288,67 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                           <button
                             type="button"
                             className="btn-sm btn-danger-soft"
-                            onClick={() => { setRejectionTargetId(entry.id); setRejectionNote(""); }}
+                            onClick={() => { setRejectionKind("request"); setRejectionTargetId(entry.id); setRejectionNote(""); }}
+                          >
+                            ✕ Rechazar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- EXCEDENTES POR APROBAR (parte del buzón del PM) --- */}
+      {activeSubTab === "pm" && (
+        <div className="card card--roomy">
+          <h3 className="card-title">Excedentes por aprobar</h3>
+          <p className="card-lead">
+            Horas extra que el consultor registró por encima de lo aprobado en la solicitud. Si las apruebas, se pagan con la nómina; si las rechazas, no cuentan.
+          </p>
+          {excessPending.length === 0 ? (
+            <p className="empty-note">No hay excedentes pendientes en los proyectos que diriges.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Consultor</th>
+                    <th>Proyecto</th>
+                    <th>Fecha</th>
+                    <th>Horario</th>
+                    <th>Horas</th>
+                    <th>Descripción</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {excessPending.map((row) => (
+                    <tr key={row.id}>
+                      <td><strong>{row.consultant.fullName}</strong></td>
+                      <td>{row.project.name}</td>
+                      <td>{row.workDate.slice(0, 10)}</td>
+                      <td className="cell-small">{formatRange(row.startedAt, row.endedAt)}</td>
+                      <td><strong>{Number(row.hours).toFixed(2)}</strong></td>
+                      <td><span className="cell-note">{row.description || "Sin descripción"}</span></td>
+                      <td>
+                        <div className="inline-actions">
+                          <button
+                            type="button"
+                            className="btn-sm btn-success"
+                            disabled={decidingExcessId === row.id}
+                            onClick={() => void handleApproveExcess(row.id)}
+                          >
+                            {decidingExcessId === row.id ? "Aprobando..." : "✓ Aprobar"}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-sm btn-danger-soft"
+                            onClick={() => { setRejectionKind("excess"); setRejectionTargetId(row.id); setRejectionNote(""); }}
                           >
                             ✕ Rechazar
                           </button>
@@ -1256,6 +1398,15 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
             )}
           </div>
 
+          {payrollWarnings.length > 0 && (
+            <div className="notice notice--warning" role="alert">
+              <div className="notice__title">Avisos del cierre</div>
+              <ul className="notice__text">
+                {payrollWarnings.map((w) => <li key={w}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+
           {payrollRows.length === 0 ? (
             <p className="empty-note">No se han consultado cierres de nómina para este periodo o no hay horas aprobadas.</p>
           ) : (
@@ -1268,6 +1419,8 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                     <th>País</th>
                     <th>Moneda</th>
                     <th>Total Horas</th>
+                    <th title="Horas extra reales registradas en el timesheet y aprobadas">Real</th>
+                    <th title="Solicitudes aprobadas antes del registro real: se pagan según la solicitud">Anterior (solicitud)</th>
                     <th>Diurnas</th>
                     <th>Nocturnas</th>
                     <th>Festivas Diu.</th>
@@ -1284,6 +1437,16 @@ export function ExtraHoursTab({ projects, consultants, authUser, can, onError, c
                       <td><CountryFlag country={row.country || "Default"} /></td>
                       <td>{row.currency}</td>
                       <td><strong>{row.totalHours}</strong></td>
+                      <td>{row.realHours ?? 0}</td>
+                      <td>
+                        {row.legacy ? (
+                          <span className="state-chip state-chip--warning" title="Pagado según la solicitud aprobada, sin registro real">
+                            {row.legacyHours ?? 0}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td>{row.diurnal}</td>
                       <td>{row.nocturnal}</td>
                       <td>{row.diurnalHoliday}</td>

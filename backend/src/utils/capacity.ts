@@ -106,35 +106,126 @@ export function resolverJornada(
   return { ...JORNADA_GENERAL, origen: "general", paisAplicado: null };
 }
 
-/** Días hábiles entre dos fechas (lunes a viernes, sin feriados) */
-export function countWorkdays(from: Date, to: Date, workDaysPerWeek = 5, country?: string | null, customHolidays?: Set<string>): number {
-  if (to < from) return 0;
-  
-  let workdays = 0;
-  const start = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
-  const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()));
+// ─── Jornada con vigencia, día a día (CONTRATO capacity §2 y §3.5, PLAN D1) ──
 
-  const current = new Date(start);
+/**
+ * Jornada que reciben las funciones de capacidad: una fija (la de antes, para el
+ * periodo completo) o una función que da la jornada vigente en cada día UTC.
+ */
+export type JornadaPorDia = (dia: Date) => Jornada;
+export type JornadaParam = Jornada | JornadaPorDia;
+
+type FilaJornadaVigencia = FilaJornada & { validFrom: Date | string };
+type FilaJornadaPaisVigencia = FilaJornadaVigencia & { country: string | null };
+
+function isoDeFila(validFrom: Date | string): string {
+  return typeof validFrom === "string" ? validFrom.slice(0, 10) : validFrom.toISOString().slice(0, 10);
+}
+
+/** Clave UTC "YYYY-MM-DD" de un día (nunca hora local). */
+function claveDia(dia: Date): string {
+  return dia.toISOString().slice(0, 10);
+}
+
+/**
+ * Construye la jornada vigente **en cada día** para un consultor.
+ *
+ * Regla (CONTRATO capacity §2, `jornada(c,d)`): entre las filas con `validFrom ≤ d` se toma la de
+ * mayor `validFrom`, con la precedencia de `resolverJornada`: consultor > país > `Default` > 8 h.
+ * Ejemplo: Colombia 8 h desde 2000-01-01 y 8,4 h desde 2026-07-15 → el 14-jul aplica 8 y el
+ * 15-jul aplica 8,4, sin importar qué día se consulte.
+ *
+ * Reemplaza a "jornada vigente hoy" (`jornadaVigenteDe()`), que aplicaba la jornada de la fecha de
+ * consulta a todo el periodo: un mes anterior a un cambio de ley se recalculaba con la ley nueva.
+ *
+ * Función pura: el llamador trae todas las filas (con su `validFrom`). Memoiza por día.
+ */
+export function crearJornadaPorDia(
+  filasConsultor: readonly FilaJornadaVigencia[],
+  pais: string | null | undefined,
+  filasPais: readonly FilaJornadaPaisVigencia[],
+): (dia: Date) => JornadaEfectiva {
+  const consultor = [...filasConsultor]
+    .map((f) => ({ fila: f, desde: isoDeFila(f.validFrom) }))
+    .sort((a, b) => (a.desde < b.desde ? 1 : a.desde > b.desde ? -1 : 0));
+  const paises = [...filasPais]
+    .map((f) => ({ fila: f, desde: isoDeFila(f.validFrom) }))
+    .sort((a, b) => (a.desde < b.desde ? 1 : a.desde > b.desde ? -1 : 0));
+  const cache = new Map<string, JornadaEfectiva>();
+
+  return (dia: Date) => {
+    const clave = claveDia(dia);
+    const hit = cache.get(clave);
+    if (hit) return hit;
+
+    const propia = consultor.find((f) => f.desde <= clave)?.fila ?? null;
+    // Una fila por país: la de mayor validFrom ≤ día (la lista ya viene ordenada desc).
+    const vistos = new Set<string>();
+    const vigentesPais: FilaJornadaPaisVigencia[] = [];
+    for (const { fila, desde } of paises) {
+      if (desde > clave || !fila.country) continue;
+      const k = fila.country.trim().toLowerCase();
+      if (vistos.has(k)) continue;
+      vistos.add(k);
+      vigentesPais.push(fila);
+    }
+    const efectiva = resolverJornada(propia, pais, vigentesPais);
+    cache.set(clave, efectiva);
+    return efectiva;
+  };
+}
+
+function jornadaDe(param: JornadaParam): JornadaPorDia {
+  return typeof param === "function" ? param : () => param;
+}
+
+function esFeriado(dia: Date, country?: string | null, customHolidays?: Set<string>): boolean {
+  return (country ? isPublicHoliday(dia, country) : false) || (customHolidays ? customHolidays.has(claveDia(dia)) : false);
+}
+
+/**
+ * Días laborables del rango (a medianoche UTC): lunes a viernes (o lunes a sábado si la jornada de
+ * ese día tiene `workDaysPerWeek ≥ 6`), sin feriados del país ni `CustomHoliday`.
+ */
+function diasLaborables(
+  from: Date,
+  to: Date,
+  jornada: JornadaPorDia,
+  country?: string | null,
+  customHolidays?: Set<string>,
+): Date[] {
+  const dias: Date[] = [];
+  if (to < from) return dias;
+  const current = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()));
+  const end = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()));
   while (current <= end) {
     const day = current.getUTCDay(); // 0=Sun, 6=Sat
+    const { workDaysPerWeek } = jornada(current);
     const isWorkday = workDaysPerWeek >= 6 ? day !== 0 : day !== 0 && day !== 6;
-    
-    if (isWorkday) {
-      const y = current.getUTCFullYear();
-      const m = String(current.getUTCMonth() + 1).padStart(2, "0");
-      const d = String(current.getUTCDate()).padStart(2, "0");
-      const dateStr = `${y}-${m}-${d}`;
-      
-      const isHoliday = (country ? isPublicHoliday(current, country) : false) || (customHolidays ? customHolidays.has(dateStr) : false);
-      if (!isHoliday) {
-        workdays++;
-      }
-    }
-    
+    if (isWorkday && !esFeriado(current, country, customHolidays)) dias.push(new Date(current));
     current.setUTCDate(current.getUTCDate() + 1);
   }
+  return dias;
+}
 
-  return workdays;
+/**
+ * Σ hoursPerDay de los días dados, agrupando por jornada distinta (días × horas) para no acumular
+ * error de coma flotante sumando 8,4 una y otra vez.
+ */
+function sumarJornadas(dias: readonly Date[], jornada: JornadaPorDia): number {
+  const porHoras = new Map<number, number>();
+  for (const dia of dias) {
+    const h = jornada(dia).hoursPerDay;
+    porHoras.set(h, (porHoras.get(h) ?? 0) + 1);
+  }
+  let total = 0;
+  for (const [h, n] of porHoras) total += n * h;
+  return total;
+}
+
+/** Días hábiles entre dos fechas (lunes a viernes, sin feriados) */
+export function countWorkdays(from: Date, to: Date, workDaysPerWeek = 5, country?: string | null, customHolidays?: Set<string>): number {
+  return diasLaborables(from, to, () => ({ hoursPerDay: 0, workDaysPerWeek }), country, customHolidays).length;
 }
 
 /** Solapamiento en días entre un assignment/block y un período */
@@ -153,23 +244,40 @@ export function overlapDays(
   return countWorkdays(start, end, workDaysPerWeek, country, customHolidays);
 }
 
-/** Horas de capacidad de un consultor en un período */
+/**
+ * Horas de capacidad de un consultor en un período ("disponibilidad real": sí descuenta ausencias).
+ *
+ *   capacidad = Σ jornada(d).hoursPerDay  sobre los días d laborables del periodo
+ *               (L-V, sin feriado) que NO están cubiertos por ningún bloqueo
+ *
+ * - Cada día bloqueado resta la jornada vigente en ESE día (con `JornadaPorDia`).
+ * - Un fin de semana o feriado bloqueado no resta nada: ese día ya no sumaba.
+ * - Los bloqueos se unen por día: si dos se solapan (p. ej. vacaciones cargadas a mano y la
+ *   ausencia aprobada de R14 sobre el mismo día), el día se descuenta una sola vez.
+ * - Las fechas del bloqueo se truncan al día UTC.
+ */
 export function calculateCapacityHours(
   period: { from: Date; to: Date },
-  jornada: Jornada,
+  jornada: JornadaParam,
   blocks: Pick<ConsultantBlock, "startDate" | "endDate">[],
   country?: string | null,
   customHolidays?: Set<string>,
 ): number {
-  const { hoursPerDay, workDaysPerWeek } = jornada;
+  const porDia = jornadaDe(jornada);
+  const laborables = diasLaborables(period.from, period.to, porDia, country, customHolidays);
+  if (laborables.length === 0) return 0;
 
-  const totalWorkdays = countWorkdays(period.from, period.to, workDaysPerWeek, country, customHolidays);
+  const bloqueados = new Set<string>();
+  for (const block of blocks) {
+    const desde = claveDia(block.startDate);
+    const hasta = claveDia(block.endDate);
+    for (const dia of laborables) {
+      const k = claveDia(dia);
+      if (k >= desde && k <= hasta) bloqueados.add(k);
+    }
+  }
 
-  const blockedDays = blocks.reduce((sum, block) => {
-    return sum + overlapDays(block.startDate, block.endDate, period.from, period.to, workDaysPerWeek, country, customHolidays);
-  }, 0);
-
-  return Math.max(totalWorkdays - blockedDays, 0) * hoursPerDay;
+  return sumarJornadas(laborables.filter((dia) => !bloqueados.has(claveDia(dia))), porDia);
 }
 
 /**
@@ -183,44 +291,47 @@ type CommittedHoursInput = Pick<Assignment, "startDate" | "endDate" | "allocatio
   hoursPerPeriod: Decimal | number | null;
 };
 
-/** Horas comprometidas de un consultor dadas sus asignaciones en un período */
+/**
+ * Horas comprometidas de un consultor dadas sus asignaciones en un período.
+ *
+ * - PERCENTAGE: Σ jornada(d).hoursPerDay × pct sobre los días laborables del solape (con la jornada
+ *   vigente de cada día, igual que la capacidad, para que un 100 % siga siendo exactamente 100 %).
+ * - HOURS: horas por semana (o mes ≈ 4,33 semanas) prorrateadas por días laborables del solape;
+ *   las semanas se miden con el `workDaysPerWeek` vigente al inicio del solape.
+ * - No descuenta bloqueos (la ausencia reduce capacidad, no compromiso).
+ */
 export function calculateCommittedHours(
   assignments: CommittedHoursInput[],
   period: { from: Date; to: Date },
-  jornada: Jornada,
+  jornada: JornadaParam,
   country?: string | null,
   customHolidays?: Set<string>,
 ): number {
-  const { hoursPerDay, workDaysPerWeek } = jornada;
+  const porDia = jornadaDe(jornada);
 
   return assignments
     .filter((a) => ACTIVE_STATUSES.includes(a.status) && a.endDate >= period.from && a.startDate <= period.to)
     .reduce((sum, assignment) => {
-      const overlapWorkdays = overlapDays(
-        assignment.startDate,
-        assignment.endDate,
-        period.from,
-        period.to,
-        workDaysPerWeek,
-        country,
-        customHolidays,
-      );
+      const start = assignment.startDate > period.from ? assignment.startDate : period.from;
+      const end = assignment.endDate < period.to ? assignment.endDate : period.to;
+      const dias = diasLaborables(start, end, porDia, country, customHolidays);
 
       if (assignment.allocationMode === "PERCENTAGE") {
         const pct = Number(assignment.allocationPct ?? 0) / 100;
-        return sum + overlapWorkdays * hoursPerDay * pct;
+        return sum + sumarJornadas(dias, porDia) * pct;
       }
 
       // HOURS mode: normalize hoursPerPeriod to hours in the overlapping window
       const hoursPerPeriod = Number(assignment.hoursPerPeriod ?? 0);
       const unit = assignment.periodUnit ?? "week";
+      const { workDaysPerWeek } = porDia(start);
 
       // Full period length in workdays
-      const fullWorkdays = countWorkdays(assignment.startDate, assignment.endDate, workDaysPerWeek, country, customHolidays);
+      const fullWorkdays = diasLaborables(assignment.startDate, assignment.endDate, porDia, country, customHolidays).length;
       if (fullWorkdays === 0) return sum;
 
       // Proportional allocation for the overlapping portion
-      const proportion = overlapWorkdays / fullWorkdays;
+      const proportion = dias.length / fullWorkdays;
 
       if (unit === "week") {
         const totalWeeks = fullWorkdays / workDaysPerWeek;
@@ -283,7 +394,7 @@ export function computeAvailability(
   consultantId: string,
   assignments: Pick<Assignment, "startDate" | "endDate" | "allocationMode" | "allocationPct" | "hoursPerPeriod" | "periodUnit" | "status">[],
   blocks: Pick<ConsultantBlock, "startDate" | "endDate">[],
-  jornada: Jornada,
+  jornada: JornadaParam,
   period: { from: Date; to: Date },
   country?: string | null,
   customHolidays?: Set<string>,

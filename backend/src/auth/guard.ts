@@ -199,14 +199,21 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       return reply.status(400).send({ message: resolved.message });
     }
 
-    // La identidad demo/simulada no tiene una fila `User` real detrás (su `id`
-    // es sintético, p.ej. "local-admin"), así que no hay `userId` que buscar:
-    // se resuelve por correo, de solo lectura. Se busca sin importar el rol
-    // simulado -- un ADMIN o PM también puede tener su propia ficha de
-    // consultor (factura horas como cualquier otro).
-    const consultant = await prisma.consultant.findFirst({
+    // La identidad demo/simulada tiene un `id` sintético (p.ej. "local-admin"),
+    // pero puede existir una fila `User` con su correo. Se resuelve primero por
+    // el enlace `Consultant.userId` de ese usuario (el mismo que usa el login
+    // real y que se fija en "Usuario enlazado") y, si no hay, por correo; de
+    // solo lectura. Se busca sin importar el rol simulado -- un ADMIN o PM
+    // también puede tener su propia ficha de consultor.
+    const demoUser = await prisma.user.findFirst({
       where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
+      select: { id: true },
     });
+    const consultant =
+      (demoUser && (await prisma.consultant.findFirst({ where: { userId: demoUser.id } }))) ||
+      (await prisma.consultant.findFirst({
+        where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
+      }));
 
     request.authUser = { ...resolved.identity, consultantId: consultant?.id ?? null };
     setActor(resolved.identity.email);

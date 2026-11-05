@@ -20,6 +20,7 @@ import {
   type RunningTimer,
   type TimeEntry,
 } from "../../services/api";
+import { avisosAlDetener } from "./trackerAvisos";
 import {
   addDays,
   formatClock,
@@ -72,6 +73,7 @@ export function TrackerTab({
   canWrite,
   onReload,
   onError,
+  onNotice,
 }: {
   projects: Project[];
   /** Vacía salvo para ADMIN y PM: son los únicos que pueden llevar el
@@ -81,6 +83,8 @@ export function TrackerTab({
   /** Refresca el listado global de horas que alimenta dashboard y aprobaciones. */
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
+  /** Avisos que no son errores (horas que quedaron fuera, excedente pendiente). */
+  onNotice?: (msg: string, type: "success" | "warning" | "info") => void;
 }) {
   const [myConsultant, setMyConsultant] = useState<Consultant | null>(null);
   const [consultantResolved, setConsultantResolved] = useState(false);
@@ -280,14 +284,17 @@ export function TrackerTab({
   async function handleStop() {
     setBusy(true);
     try {
-      const creada = await stopTimer(targetConsultantId || undefined);
+      const resultado = await stopTimer(targetConsultantId || undefined);
       setTimer(null);
       setDescription("");
       setActivityId("");
       // La entrada se imputa al día en que arrancó el cronómetro; si se estaba
       // mirando otra semana, se salta a la suya para que no "desaparezca".
-      const semanaCreada = startOfWeek(creada.workDate.slice(0, 10));
-      if (semanaCreada !== weekStart) setWeekStart(semanaCreada);
+      if (resultado.data) {
+        const semanaCreada = startOfWeek(resultado.data.workDate.slice(0, 10));
+        if (semanaCreada !== weekStart) setWeekStart(semanaCreada);
+      }
+      for (const aviso of avisosAlDetener(resultado)) onNotice?.(aviso.message, aviso.type);
       await reloadEntries();
       await onReload();
     } catch (err) {
@@ -501,7 +508,8 @@ export function TrackerTab({
           aria-label="Proyecto"
         >
           <option value="">Proyecto…</option>
-          {projects.map((p) => (
+          {/* Ausencias no se cronometra: se registra a mano en el timesheet. */}
+          {projects.filter((p) => !p.isAbsenceProject).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
@@ -652,7 +660,7 @@ export function TrackerTab({
                       {label(TIME_ENTRY_STATUS_LABELS, entry.status)}
                     </span>
                     <span className="tk-entry-hours">{entryDuration(entry)}</span>
-                    {canWrite && (
+                    {canWrite && !entry.project?.isAbsenceProject && (
                       <button
                         type="button"
                         className="ghost tk-resume"

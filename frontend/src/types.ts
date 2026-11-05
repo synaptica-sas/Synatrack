@@ -3,7 +3,7 @@ export type TabId =
   | "reports" | "financial" | "capacity" | "fx" | "admin" | "audit" | "alerts"
   | "extraHours" | "estimations" | "profile" | "activities" | "extraHoursConfig"
   | "workdayConfig" | "holidays" | "financialCategories" | "healthThresholds"
-  | "approvalDigest";
+  | "approvalDigest" | "timeEntryTypes";
 
 /** Sub-panel dentro del tab unificado "financial" (Gastos / Ingresos). */
 export type FinancialPanel = "expenses" | "revenue";

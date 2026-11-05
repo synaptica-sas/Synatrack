@@ -9,6 +9,10 @@ import {
   resolveActivityId,
   resolveTargetConsultantId,
 } from "../../utils/currentConsultant.js";
+import { resolveCountryTimezone } from "../../utils/country.js";
+import { splitTimerSpan } from "../../utils/timesheetRules.js";
+import { loadDayContext, lockDay } from "../time-entries/day-context.service.js";
+import { pickRequest } from "../time-entries/timesheet.service.js";
 
 const WRITE_ROLES = [AppRole.ADMIN, AppRole.PM, AppRole.CONSULTANT];
 
@@ -43,21 +47,12 @@ const timerInclude = {
   consultant: { select: { id: true, fullName: true } },
 } satisfies Prisma.RunningTimerInclude;
 
-/** Un segundo expresado en horas: el valor más pequeño que se registra. */
-const ONE_SECOND_IN_HOURS = 1 / 3600;
+/** Un cronómetro no puede empezar más de 24 h atrás ni registrar un tramo de más de 24 h. */
+const MAX_TIMER_MS = 24 * 3_600_000;
+const MENSAJE_ANTIGUO = "El inicio del cronómetro no puede ser de hace más de 24 horas.";
 
-/**
- * Milisegundos a horas con 4 decimales, que es la precisión de la columna.
- *
- * Antes se redondeaba a 2 decimales con un mínimo de 0.01, y eso convertía un
- * minuto de cronómetro (0.0167 h) en 0.02 h -- un 20 % de más -- y cualquier
- * medición por debajo de 36 segundos en 36 segundos. Ahora el suelo es un
- * segundo y el redondeo conserva la medida real.
- */
-function msToHours(ms: number) {
-  const hours = ms / 3_600_000;
-  return Math.max(ONE_SECOND_IN_HOURS, Math.round(hours * 10_000) / 10_000);
-}
+const MENSAJE_AUSENCIAS =
+  "El proyecto Ausencias no admite cronómetro: registra los permisos y vacaciones desde el timesheet.";
 
 export async function timerRoutes(app: FastifyInstance) {
   // Cronómetro actualmente en marcha (null si no hay ninguno).
@@ -91,9 +86,10 @@ export async function timerRoutes(app: FastifyInstance) {
 
       const project = await prisma.project.findUnique({
         where: { id: payload.projectId },
-        select: { id: true },
+        select: { id: true, isAbsenceProject: true },
       });
       if (!project) return reply.status(400).send({ message: "El proyecto indicado no existe" });
+      if (project.isAbsenceProject) return reply.status(400).send({ message: MENSAJE_AUSENCIAS });
 
       const activity = await resolveActivityId(payload.activityId, target.consultantId);
       if (!activity.ok) {
@@ -103,6 +99,9 @@ export async function timerRoutes(app: FastifyInstance) {
       const startedAt = payload.startedAt ?? new Date();
       if (startedAt.getTime() > Date.now() + 60_000) {
         return reply.status(400).send({ message: "El inicio del cronómetro no puede estar en el futuro" });
+      }
+      if (startedAt.getTime() < Date.now() - MAX_TIMER_MS) {
+        return reply.status(400).send({ message: MENSAJE_ANTIGUO });
       }
 
       const existing = await prisma.runningTimer.findUnique({
@@ -150,9 +149,10 @@ export async function timerRoutes(app: FastifyInstance) {
       if (payload.projectId) {
         const project = await prisma.project.findUnique({
           where: { id: payload.projectId },
-          select: { id: true },
+          select: { id: true, isAbsenceProject: true },
         });
         if (!project) return reply.status(400).send({ message: "El proyecto indicado no existe" });
+        if (project.isAbsenceProject) return reply.status(400).send({ message: MENSAJE_AUSENCIAS });
       }
 
       let activityId: string | null | undefined;
@@ -166,6 +166,9 @@ export async function timerRoutes(app: FastifyInstance) {
 
       if (payload.startedAt && payload.startedAt.getTime() > Date.now() + 60_000) {
         return reply.status(400).send({ message: "El inicio del cronómetro no puede estar en el futuro" });
+      }
+      if (payload.startedAt && payload.startedAt.getTime() < Date.now() - MAX_TIMER_MS) {
+        return reply.status(400).send({ message: MENSAJE_ANTIGUO });
       }
 
       const timer = await prisma.runningTimer.update({
@@ -198,18 +201,25 @@ export async function timerRoutes(app: FastifyInstance) {
       });
       if (!timer) return reply.status(404).send({ message: "No hay ningún cronómetro en marcha" });
 
-      const endedAt = new Date();
-      const hours = msToHours(endedAt.getTime() - timer.startedAt.getTime());
+      // Piso de un segundo, como antes de R14: detener el cronómetro al instante sigue dejando
+      // un registro mínimo en vez de uno de 0 horas que la partición descartaría.
+      const endedAt = new Date(Math.max(Date.now(), timer.startedAt.getTime() + 1000));
 
-      // La entrada se imputa al día en que arrancó el cronómetro, aunque se
-      // detenga pasada la medianoche.
-      const workDate = new Date(
-        Date.UTC(
-          timer.startedAt.getUTCFullYear(),
-          timer.startedAt.getUTCMonth(),
-          timer.startedAt.getUTCDate(),
-        ),
-      );
+      // La entrada se imputa al día LOCAL (zona del país del consultor) en que arrancó el
+      // cronómetro, aunque se detenga pasada la medianoche. Es el mismo criterio con que R14 ata
+      // la franja a `workDate` (SPAN_OUTSIDE_WORKDATE): con el día UTC, un cronómetro iniciado en
+      // Colombia después de las 19:00 caería en el día siguiente.
+      const duenio = await prisma.consultant.findUnique({
+        where: { id: timer.consultantId },
+        select: { country: true },
+      });
+      const diaLocal = new Intl.DateTimeFormat("en-CA", {
+        timeZone: resolveCountryTimezone(duenio?.country).timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(timer.startedAt); // YYYY-MM-DD
+      const workDate = new Date(`${diaLocal}T00:00:00.000Z`);
 
       const closed = await isMonthClosed(timer.projectId, workDate);
       if (closed) {
@@ -218,54 +228,153 @@ export async function timerRoutes(app: FastifyInstance) {
         });
       }
 
-      // Crear la entrada y borrar el cronómetro van juntos: si falla el alta,
-      // el cronómetro sigue en marcha y no se pierde el tiempo trabajado.
-      const entry = await prisma.$transaction(async (tx) => {
-        const created = await tx.timeEntry.create({
-          data: {
-            projectId: timer.projectId,
-            consultantId: timer.consultantId,
-            workDate,
-            hours,
-            description: timer.description,
-            activityId: timer.activityId,
-            // El cronómetro es una forma cómoda de rellenar el timesheet, no
-            // un registro aparte: lo que produce SON horas de timesheet, y por
-            // eso cuentan en el informe como cualquier otra. Que vinieron del
-            // cronómetro se sigue sabiendo porque son las únicas con
-            // `startedAt` y `endedAt`.
-            source: TimeEntrySource.TIMESHEET,
-            startedAt: timer.startedAt,
-            endedAt,
-            status: TimeEntryStatus.PENDING,
-          },
-          include: {
-            project: true,
-            consultant: true,
-            activity: { select: { id: true, title: true } },
-          },
+      const tipos = await prisma.timeEntryType.findMany({
+        where: { code: { in: ["REGULAR", "EXTRA"] } },
+        select: { id: true, code: true },
+      });
+      const regularTypeId = tipos.find((t) => t.code === "REGULAR")?.id;
+      const extraTypeId = tipos.find((t) => t.code === "EXTRA")?.id;
+      if (!regularTypeId || !extraTypeId) {
+        return reply.status(500).send({ message: "El catálogo de tipos de hora no está completo." });
+      }
+
+      // Crear las entradas y borrar el cronómetro van juntos: si falla el alta,
+      // el cronómetro sigue en marcha y no se pierde el tiempo trabajado. La partición
+      // (R14 §2.5) se calcula dentro de la transacción, con el estado del día ya leído.
+      const resultado = await prisma.$transaction(async (tx) => {
+        const proyecto = await tx.project.findUnique({
+          where: { id: timer.projectId },
+          select: { isAbsenceProject: true },
         });
+        if (proyecto?.isAbsenceProject) return { error: MENSAJE_AUSENCIAS } as const;
+
+        await lockDay(tx, timer.consultantId, workDate);
+        const ctx = await loadDayContext(tx, timer.consultantId, workDate);
+        const usadoRegular = ctx.entries
+          .filter((e) => e.status !== "REJECTED" && (e.category === "REGULAR" || e.category === "ABSENCE"))
+          .reduce((acc, e) => acc + e.hours, 0);
+        const extraDelProyecto = ctx.entries.filter(
+          (e) => e.projectId === timer.projectId && e.category === "EXTRA" && e.status !== "REJECTED" && !e.isExcess,
+        );
+        const solicitudes = ctx.approvedRequests.filter((r) => r.projectId === timer.projectId);
+
+        const particion = splitTimerSpan({
+          start: timer.startedAt,
+          end: endedAt,
+          hoursPerDay: ctx.hoursPerDay,
+          alreadyUsedRegular: usadoRegular,
+          regularAllowed: !ctx.isNonWorkingDay || ctx.allowWeekendWork,
+          hasApprovedRequest: solicitudes.length > 0,
+          approvedExtraBalance: ctx.approvedExtraBalance[timer.projectId] ?? 0,
+          alreadyUsedExtra: extraDelProyecto.reduce((acc, e) => acc + e.hours, 0),
+        });
+
+        // Separación de funciones: los tramos EXTRA/excedente solo los puede registrar el propio
+        // consultor. Si ADMIN/PM detienen el cronómetro ajeno y la partición produce EXTRA, no se
+        // crea nada (el cronómetro sigue en marcha) y debe detenerlo su dueño.
+        if (
+          particion.segments.some((seg) => seg.category === "EXTRA") &&
+          request.authUser!.consultantId !== timer.consultantId
+        ) {
+          return {
+            error: "Este cronómetro incluye horas extra, que solo las puede registrar el propio consultor. Pídele que lo detenga él.",
+            forbidden: true,
+          } as const;
+        }
+
+        const consumido = new Map<string, number>();
+        for (const e of extraDelProyecto) {
+          if (e.extraHourEntryId) consumido.set(e.extraHourEntryId, (consumido.get(e.extraHourEntryId) ?? 0) + e.hours);
+        }
+
+        // Tope de 24 h por tramo: lo que exceda se descarta y se informa.
+        let descartadoExtra = 0;
+        const tramos = particion.segments.map((seg) => {
+          const ms = seg.endedAt.getTime() - seg.startedAt.getTime();
+          if (ms <= MAX_TIMER_MS) return seg;
+          descartadoExtra += (ms - MAX_TIMER_MS) / 3_600_000;
+          return { ...seg, endedAt: new Date(seg.startedAt.getTime() + MAX_TIMER_MS), hours: 24 };
+        });
+        const creadas = [];
+        for (const seg of tramos) {
+          let extraHourEntryId: string | null = null;
+          if (seg.category === "EXTRA") {
+            if (seg.isExcess) {
+              extraHourEntryId = solicitudes[0]?.id ?? null;
+            } else {
+              const elegida = pickRequest(solicitudes, consumido, seg.hours);
+              extraHourEntryId = elegida?.id ?? null;
+              if (elegida) consumido.set(elegida.id, (consumido.get(elegida.id) ?? 0) + seg.hours);
+            }
+          }
+          creadas.push(
+            await tx.timeEntry.create({
+              data: {
+                projectId: timer.projectId,
+                consultantId: timer.consultantId,
+                workDate,
+                hours: seg.hours,
+                description: timer.description,
+                activityId: timer.activityId,
+                // El cronómetro es una forma cómoda de rellenar el timesheet, no
+                // un registro aparte: lo que produce SON horas de timesheet, y por
+                // eso cuentan en el informe como cualquier otra. Que vinieron del
+                // cronómetro se sigue sabiendo porque son las únicas con
+                // `startedAt` y `endedAt`.
+                source: TimeEntrySource.TIMESHEET,
+                startedAt: seg.startedAt,
+                endedAt: seg.endedAt,
+                status: TimeEntryStatus.PENDING,
+                typeId: seg.category === "EXTRA" ? extraTypeId : regularTypeId,
+                isExcess: seg.isExcess,
+                extraHourEntryId,
+              },
+              include: {
+                project: true,
+                consultant: true,
+                activity: { select: { id: true, title: true } },
+                type: { select: { id: true, code: true, name: true, category: true } },
+              },
+            }),
+          );
+        }
 
         await tx.runningTimer.delete({ where: { id: timer.id } });
 
-        return created;
+        const descartadas = Math.round((particion.discardedHours + descartadoExtra) * 10_000) / 10_000;
+        return { creadas, particion: { ...particion, discardedHours: descartadas } } as const;
       });
+
+      if ("error" in resultado) {
+        return reply.status("forbidden" in resultado ? 403 : 400).send({ message: resultado.error });
+      }
+      const { creadas, particion } = resultado;
 
       // El cronómetro en sí (RunningTimer) no se audita: es estado efímero que
-      // se crea, edita y descarta decenas de veces al día. Lo que importa es el
-      // TimeEntry que nace aquí, que entra al flujo de aprobación y mueve costos.
+      // se crea, edita y descarta decenas de veces al día. Lo que importa son los
+      // TimeEntry que nacen aquí, que entran al flujo de aprobación y mueven costos.
       // Quién lo registró sale del token, aunque un ADMIN/PM pueda detener el
       // cronómetro de otra persona (entonces el consultor del registro es otro).
-      await writeAudit(prisma, {
-        entity: AUDIT_ENTITIES.timeEntry,
-        entityId: entry.id,
-        action: "CREATE",
-        changedBy: request.authUser!.email,
-        after: { ...(entry as unknown as Record<string, unknown>), origen: "cronometro" },
-        request,
-      });
+      for (const entry of creadas) {
+        await writeAudit(prisma, {
+          entity: AUDIT_ENTITIES.timeEntry,
+          entityId: entry.id,
+          action: "CREATE",
+          changedBy: request.authUser!.email,
+          after: { ...(entry as unknown as Record<string, unknown>), origen: "cronometro" },
+          request,
+        });
+      }
 
-      return reply.status(201).send({ data: entry });
+      // `data` sigue siendo el primer registro creado (compatibilidad); `entries` trae todos
+      // y `discardedHours` lo que no se guardó por no haber solicitud de horas extra aprobada.
+      return reply.status(201).send({
+        data: creadas[0] ?? null,
+        entries: creadas,
+        discardedHours: particion.discardedHours,
+        discardedFrom: particion.discardedFrom,
+        totalHours: particion.totalHours,
+      });
     },
   );
 

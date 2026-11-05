@@ -5,6 +5,7 @@ import { projectCategoriesRoutes } from "../modules/project-categories/project-c
 import { consultantsRoutes } from "../modules/consultants/consultants.routes.js";
 import { blocksRoutes } from "../modules/capacity/blocks.routes.js";
 import { timeEntriesRoutes } from "../modules/time-entries/time-entries.routes.js";
+import { timeEntryTypesRoutes } from "../modules/time-entry-types/time-entry-types.routes.js";
 import { expensesRoutes } from "../modules/expenses/expenses.routes.js";
 import { statsRoutes } from "../modules/stats/stats.routes.js";
 import { authRoutes } from "../modules/auth/auth.routes.js";
@@ -53,6 +54,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(consultantsRoutes, { prefix: "/api/consultants" });
   await app.register(blocksRoutes, { prefix: "/api/consultants" });
   await app.register(timeEntriesRoutes, { prefix: "/api/time-entries" });
+  await app.register(timeEntryTypesRoutes, { prefix: "/api/time-entry-types" });
   await app.register(expensesRoutes, { prefix: "/api/expenses" });
   await app.register(statsRoutes, { prefix: "/api/stats" });
   await app.register(adminUsersRoutes, { prefix: "/api/admin/users" });

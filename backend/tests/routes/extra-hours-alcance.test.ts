@@ -93,10 +93,7 @@ describe("POST /api/extra-hours: no se puede registrar a nombre de otro", () => 
     };
   }
 
-  // Un CONSULTANT (no ADMIN/PM) no puede solicitar horas extra para un día ya
-  // pasado -- ver la validación de fecha más abajo en la ruta -- así que las
-  // pruebas de autoreporte usan una fecha futura; las de ADMIN/PM (que sí
-  // pueden registrar días pasados) no necesitan ese cuidado.
+  // Nadie solicita horas extra para un día ya pasado: las pruebas usan una fecha futura.
   const fechaFutura = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   it("un CONSULTANT que manda el consultantId de otro recibe 403", async () => {
@@ -108,7 +105,7 @@ describe("POST /api/extra-hours: no se puede registrar a nombre de otro", () => 
     });
 
     expect(res.statusCode).toBe(403);
-    expect(res.json().message).toContain("propio nombre");
+    expect(res.json().message).toBe("Las horas extra solo las puede solicitar el propio consultor.");
   });
 
   it("un CONSULTANT registrando a su propio nombre sí puede", async () => {
@@ -122,16 +119,54 @@ describe("POST /api/extra-hours: no se puede registrar a nombre de otro", () => 
     expect(res.statusCode).toBe(201);
   });
 
-  it("ADMIN y PM sí pueden registrar a nombre de otro", async () => {
-    const fechas: Record<string, string> = { [AppRole.ADMIN]: "2026-05-07", [AppRole.PM]: "2026-05-08" };
+  it("ADMIN y PM NO pueden solicitar por otro consultor (403) ni por sí mismos si no tienen ficha (400)", async () => {
     for (const rol of [AppRole.ADMIN, AppRole.PM] as const) {
-      const res = await app.inject({
+      const porOtro = await app.inject({
         method: "POST",
         url: "/api/extra-hours",
         headers: comoRol(rol),
-        payload: cuerpo(escenario.consultorB.id, fechas[rol]),
+        payload: cuerpo(escenario.consultorB.id, fechaFutura),
+      });
+      expect(porOtro.statusCode, rol).toBe(403);
+      expect(porOtro.json().message).toBe("Las horas extra solo las puede solicitar el propio consultor.");
+
+      // Sin consultantId y sin ficha de consultor: 400 con mensaje claro.
+      const { consultantId: _omitido, ...sinConsultor } = cuerpo(escenario.consultorB.id, fechaFutura);
+      const sinFicha = await app.inject({
+        method: "POST",
+        url: "/api/extra-hours",
+        headers: comoRol(rol),
+        payload: sinConsultor,
+      });
+      expect(sinFicha.statusCode, rol).toBe(400);
+      expect(sinFicha.json().message).toContain("ficha de consultor");
+    }
+  });
+
+  it("un ADMIN o PM con ficha de consultor propia sí solicita a su nombre; sin consultantId usa el propio", async () => {
+    for (const rol of [AppRole.ADMIN, AppRole.PM] as const) {
+      const { consultantId: _omitido, ...sinConsultor } = cuerpo(escenario.consultorA.id, fechaFutura);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/extra-hours",
+        headers: comoRol(rol, escenario.consultorA.email),
+        payload: sinConsultor,
       });
       expect(res.statusCode, rol).toBe(201);
+      expect(res.json().data.consultantId).toBe(escenario.consultorA.id);
+    }
+  });
+
+  it("nadie solicita horas extra para un día anterior al actual (tampoco ADMIN/PM)", async () => {
+    for (const rol of [AppRole.CONSULTANT, AppRole.ADMIN, AppRole.PM] as const) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/extra-hours",
+        headers: comoRol(rol, escenario.consultorA.email),
+        payload: cuerpo(escenario.consultorA.id, "2026-05-07"),
+      });
+      expect(res.statusCode, rol).toBe(400);
+      expect(res.json().message).toContain("anteriores al actual");
     }
   });
 });
@@ -186,7 +221,9 @@ describe("POST /api/extra-hours/calculate: no se puede pedir el cálculo de otro
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().data).toHaveProperty("totalAmount");
+    // Sin montos para el consultor: ver extra-hours-montos.test.ts.
+    expect(res.json().data).toHaveProperty("totalHours");
+    expect(res.json().data).not.toHaveProperty("totalAmount");
   });
 
   it("ADMIN y PM sí pueden pedir el cálculo de otro consultor", async () => {

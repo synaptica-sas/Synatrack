@@ -11,6 +11,7 @@ import {
   computeAvailability,
   addDays,
   resolverJornada,
+  crearJornadaPorDia,
   JORNADA_GENERAL,
   PAIS_GENERAL,
 } from "../capacity.js";
@@ -524,5 +525,128 @@ describe("capacidad con la jornada real de cada país (D-5)", () => {
     const mediaJornada = { hoursPerDay: new Decimal(4), workDaysPerWeek: 5 };
     const jornada = resolverJornada(mediaJornada, "Colombia", JORNADAS_PAIS);
     expect(calculateCapacityHours(semana, jornada, [], "Colombia")).toBe(20);
+  });
+});
+
+// ─── Jornada con vigencia día a día y bloqueos (R14 §2.4 + CONTRATO capacity §2) ─
+
+describe("crearJornadaPorDia — jornada vigente en cada fecha", () => {
+  // Colombia: 8 h hasta el 14-jul-2026 y 8,4 h desde el 15-jul-2026 (CONTRATO §1, P1).
+  const FILAS_PAIS = [
+    { country: "Default", hoursPerDay: new Decimal(8), workDaysPerWeek: 5, validFrom: d("2000-01-01") },
+    { country: "Colombia", hoursPerDay: new Decimal(8), workDaysPerWeek: 5, validFrom: d("2000-01-01") },
+    { country: "Colombia", hoursPerDay: new Decimal(8.4), workDaysPerWeek: 5, validFrom: d("2026-07-15") },
+    { country: "Ecuador", hoursPerDay: new Decimal(8), workDaysPerWeek: 5, validFrom: "2000-01-01" },
+  ];
+
+  it("Colombia: 8 h el 14-jul y 8,4 h el 15-jul, sin importar la fecha de consulta", () => {
+    const jornada = crearJornadaPorDia([], "Colombia", FILAS_PAIS);
+    expect(jornada(d("2026-07-14")).hoursPerDay).toBe(8);
+    expect(jornada(d("2026-07-15")).hoursPerDay).toBe(8.4);
+    expect(jornada(d("2027-01-04")).hoursPerDay).toBe(8.4);
+    expect(jornada(d("2026-07-15")).origen).toBe("pais");
+  });
+
+  it("la fila del consultor manda solo desde su validFrom; antes aplica la del país", () => {
+    const propia = [{ hoursPerDay: new Decimal(4), workDaysPerWeek: 5, validFrom: "2026-08-01" }];
+    const jornada = crearJornadaPorDia(propia, "Colombia", FILAS_PAIS);
+    expect(jornada(d("2026-07-31"))).toMatchObject({ hoursPerDay: 8.4, origen: "pais" });
+    expect(jornada(d("2026-08-03"))).toMatchObject({ hoursPerDay: 4, origen: "consultor" });
+  });
+
+  it("país sin filas → Default; sin ninguna fila vigente → 8 h general", () => {
+    expect(crearJornadaPorDia([], "Peru", FILAS_PAIS)(d("2026-07-20"))).toMatchObject({ hoursPerDay: 8, origen: "general" });
+    const futura = [{ country: "Colombia", hoursPerDay: 9, workDaysPerWeek: 5, validFrom: "2030-01-01" }];
+    expect(crearJornadaPorDia([], "Colombia", futura)(d("2026-07-20"))).toMatchObject({
+      hoursPerDay: 8, origen: "general", paisAplicado: null,
+    });
+  });
+});
+
+describe("calculateCapacityHours con jornada por día y bloqueos", () => {
+  const FILAS_CO = [
+    { country: "Default", hoursPerDay: new Decimal(8), workDaysPerWeek: 5, validFrom: d("2000-01-01") },
+    { country: "Colombia", hoursPerDay: new Decimal(8), workDaysPerWeek: 5, validFrom: d("2000-01-01") },
+    { country: "Colombia", hoursPerDay: new Decimal(8.4), workDaysPerWeek: 5, validFrom: d("2026-07-15") },
+  ];
+  const jornadaCO = () => crearJornadaPorDia([], "Colombia", FILAS_CO);
+  // Lunes 13 a viernes 17 de julio de 2026: 13 y 14 a 8 h, 15–17 a 8,4 h.
+  const semanaCambio = { from: d("2026-07-13"), to: d("2026-07-17") };
+  const julio = { from: d("2026-07-01"), to: d("2026-07-31") };
+
+  it("semana que cruza el cambio de vigencia: 2 × 8 + 3 × 8,4 = 41,2 h", () => {
+    expect(calculateCapacityHours(semanaCambio, jornadaCO(), [], "Colombia")).toBeCloseTo(41.2, 10);
+  });
+
+  it("bloqueo de un día laborable resta la jornada de ESE día (8,4 el 16-jul, 8 el 14-jul)", () => {
+    expect(calculateCapacityHours(semanaCambio, jornadaCO(), [makeBlock("2026-07-16", "2026-07-16")], "Colombia"))
+      .toBeCloseTo(32.8, 10);
+    expect(calculateCapacityHours(semanaCambio, jornadaCO(), [makeBlock("2026-07-14", "2026-07-14")], "Colombia"))
+      .toBeCloseTo(33.2, 10);
+  });
+
+  it("bloqueo en fin de semana no resta nada", () => {
+    const semana = { from: d("2026-07-13"), to: d("2026-07-19") };
+    expect(calculateCapacityHours(semana, jornadaCO(), [makeBlock("2026-07-18", "2026-07-19")], "Colombia"))
+      .toBeCloseTo(41.2, 10);
+  });
+
+  it("bloqueo en feriado (CO 20-jul-2026, lunes) no resta dos veces", () => {
+    const semana = { from: d("2026-07-20"), to: d("2026-07-24") };
+    const sin = calculateCapacityHours(semana, jornadaCO(), [], "Colombia");
+    expect(sin).toBeCloseTo(4 * 8.4, 10);
+    expect(calculateCapacityHours(semana, jornadaCO(), [makeBlock("2026-07-20", "2026-07-20")], "Colombia"))
+      .toBeCloseTo(sin, 10);
+  });
+
+  it("bloqueo que cruza la vigencia (14–15 jul) resta 8 + 8,4 = 16,4 h", () => {
+    expect(calculateCapacityHours(semanaCambio, jornadaCO(), [makeBlock("2026-07-14", "2026-07-15")], "Colombia"))
+      .toBeCloseTo(41.2 - 16.4, 10);
+  });
+
+  it("julio 2026 CO: 10 días × 8 + 12 días × 8,4 = 180,8 h (antes, con la jornada de hoy fija, 184,8)", () => {
+    expect(calculateCapacityHours(julio, jornadaCO(), [], "Colombia")).toBeCloseTo(180.8, 10);
+    // Comportamiento anterior (jornada vigente hoy aplicada a todo el mes), que sigue disponible
+    // pasando una jornada fija:
+    expect(calculateCapacityHours(julio, { hoursPerDay: 8.4, workDaysPerWeek: 5 }, [], "Colombia")).toBeCloseTo(184.8, 10);
+  });
+
+  it("mes con varios bloques, uno solapado y otro en sábado: cada día se descuenta una vez", () => {
+    const bloques = [
+      makeBlock("2026-07-01", "2026-07-01"), // miércoles a 8 h
+      makeBlock("2026-07-15", "2026-07-17"), // vacaciones 3 × 8,4
+      makeBlock("2026-07-16", "2026-07-16"), // ausencia aprobada R14 sobre un día ya bloqueado
+      makeBlock("2026-07-25", "2026-07-25"), // sábado
+      makeBlock("2026-07-20", "2026-07-20"), // feriado
+    ];
+    expect(calculateCapacityHours(julio, jornadaCO(), bloques, "Colombia")).toBeCloseTo(180.8 - 8 - 25.2, 10);
+  });
+
+  it("bloqueo con hora (no medianoche) se trunca al día UTC", () => {
+    const bloque = { startDate: new Date("2026-07-16T13:00:00.000Z"), endDate: new Date("2026-07-16T22:00:00.000Z") };
+    expect(calculateCapacityHours(semanaCambio, jornadaCO(), [bloque], "Colombia")).toBeCloseTo(32.8, 10);
+  });
+
+  it("con jornada fija, dos bloqueos solapados ya no se restan dos veces (antes: 24 h, ahora 32 h)", () => {
+    const semana = { from: d("2026-05-04"), to: d("2026-05-08") };
+    const bloques = [makeBlock("2026-05-04", "2026-05-05"), makeBlock("2026-05-05", "2026-05-05")];
+    expect(calculateCapacityHours(semana, defaultConfig, bloques)).toBe(24);
+  });
+
+  it("asignación al 100 % en julio CO compromete lo mismo que la capacidad → FULL, no OVERLOADED", () => {
+    const a = makeAssignment("2026-07-01", "2026-07-31", "PERCENTAGE", 100);
+    const r = computeAvailability("c-co", [a], [], jornadaCO(), julio, "Colombia");
+    expect(r.capacityHours).toBe(180.8);
+    expect(r.committedHours).toBe(180.8);
+    expect(r.utilizationPct).toBe(100);
+    expect(r.availabilityStatus).toBe("FULL");
+  });
+
+  it("40 h/sem en la semana del cambio: 40 / 41,2 = 97,1 %", () => {
+    const a = makeAssignment("2026-07-13", "2026-07-17", "HOURS", 0, 40);
+    const r = computeAvailability("c-co", [a], [], jornadaCO(), semanaCambio, "Colombia");
+    expect(r.capacityHours).toBe(41.2);
+    expect(r.committedHours).toBe(40);
+    expect(r.utilizationPct).toBe(97.1);
   });
 });

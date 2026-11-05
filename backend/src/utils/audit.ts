@@ -20,6 +20,7 @@ export const AUDIT_ENTITIES = {
   project: "project",
   consultant: "consultant",
   timeEntry: "timeEntry",
+  timeEntryType: "timeEntryType",
   extraHourEntry: "extraHourEntry",
   // `Expense` y `RevenueEntry` se fusionaron en el modelo `FinancialEntry` con
   // un discriminador `type`. Se conservan los dos valores separados porque son

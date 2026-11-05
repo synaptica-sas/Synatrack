@@ -236,6 +236,9 @@ model Project {
   // Proyecto interno / stand-by. No es lo mismo que Consultant.isInternal
   // (empleado propio frente a externo).
   isInternal       Boolean              @default(false)
+  // Proyecto interno "Ausencias" (R14): único destino de los tipos de hora
+  // ABSENCE (permiso, vacaciones). Visible a todos los consultores sin asignación.
+  isAbsenceProject Boolean              @default(false)
 }
 
 model Consultant {
@@ -284,36 +287,46 @@ model Consultant {
 }
 
 model TimeEntry {
-  id            String          @id @default(cuid())
-  projectId     String
-  consultantId  String
-  workDate      DateTime
+  id               String          @id @default(cuid())
+  projectId        String
+  consultantId     String
+  workDate         DateTime
   // 4 decimales y no 2: con 2 el valor mas pequeno representable es 0.01 h,
   // o sea 36 segundos, asi que el cronometro no podia registrar un minuto sin
   // inflarlo. Con 4 la resolucion baja a 0.36 s.
-  hours         Decimal         @db.Decimal(8, 4)
-  note          String?
-  status        TimeEntryStatus @default(PENDING)
-  approvedBy    String?
-  approvedAt    DateTime?
-  rejectionNote String?
+  hours            Decimal         @db.Decimal(8, 4)
+  note             String?
+  status           TimeEntryStatus @default(PENDING)
+  approvedBy       String?
+  approvedAt       DateTime?
+  rejectionNote    String?
   // Descripcion libre de la tarea (estilo Clockify). `note` se conserva para el
   // flujo de aprobacion existente; `description` es lo que el consultor escribe
   // en el timesheet o en el tracker.
-  description   String?
-  activityId    String?
-  source        TimeEntrySource @default(MANUAL)
+  description      String?
+  activityId       String?
+  source           TimeEntrySource @default(MANUAL)
   // Solo para entradas creadas por el cronometro: inicio y fin reales.
-  startedAt     DateTime?
-  endedAt       DateTime?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  createdBy     String? // email de quien creó el registro
-  updatedBy     String? // email de quien lo modificó por última vez
+  startedAt        DateTime?
+  endedAt          DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  createdBy        String? // email de quien creó el registro
+  updatedBy        String? // email de quien lo modificó por última vez
+  // Tipo de hora (R14). El DEFAULT es el id fijo del tipo REGULAR sembrado por la
+  // migración, para que inserts que aún no envían typeId sigan siendo válidos.
+  typeId           String          @default("tet_regular")
+  // Solicitud de horas extra aprobada que respalda este registro EXTRA.
+  extraHourEntryId String?
+  // Parte del registro EXTRA que excede el saldo aprobado; la aprueba el PM.
+  isExcess         Boolean         @default(false)
 
-  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
-  activity   Activity?  @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  consultant     Consultant       @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  activity       Activity?        @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  type           TimeEntryType    @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  extraHourEntry ExtraHourEntry?  @relation(fields: [extraHourEntryId], references: [id], onDelete: SetNull)
+  block          ConsultantBlock?
 
   @@index([projectId])
   @@index([consultantId])
@@ -321,6 +334,37 @@ model TimeEntry {
   @@index([workDate])
   @@index([activityId])
   @@index([consultantId, workDate])
+  @@index([typeId])
+  @@index([extraHourEntryId])
+}
+
+enum TimeEntryCategory {
+  REGULAR // cuenta contra la jornada
+  EXTRA // solo con solicitud de horas extra aprobada
+  ABSENCE // permiso / vacaciones; solo en el proyecto Ausencias
+}
+
+/// Catálogo de tipos de hora del timesheet (R14). La categoría es lo que el
+/// código interpreta; el nombre es libre. `code` es estable solo en los tipos
+/// de semilla (REGULAR, EXTRA, PERMISO, VACACIONES); null en los creados por admin.
+model TimeEntryType {
+  id        String            @id @default(cuid())
+  code      String?           @unique
+  name      String            @unique
+  category  TimeEntryCategory
+  // Solo para ABSENCE: tipo de bloqueo de capacidad que genera al aprobarse.
+  blockType BlockType?
+  active    Boolean           @default(true)
+  sortOrder Int               @default(0)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  createdBy String? // email de quien creó el registro
+  updatedBy String? // email de quien lo modificó por última vez
+
+  timeEntries TimeEntry[]
+
+  @@index([category])
+  @@index([active, sortOrder])
 }
 
 // Cronometro en curso. Vive en la BD (no en el navegador) para que siga
@@ -545,12 +589,15 @@ model ConsultantBlock {
   endDate      DateTime
   blockType    BlockType @default(OTHER)
   note         String?
+  // Bloque generado por una ausencia aprobada (R14); se borra con el registro.
+  timeEntryId  String?   @unique
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   createdBy    String? // email de quien creó el registro
   updatedBy    String? // email de quien lo modificó por última vez
 
   consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  timeEntry  TimeEntry? @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
 
   @@index([consultantId, startDate, endDate])
 }
@@ -851,8 +898,9 @@ model ExtraHourEntry {
   createdBy              String? // email de quien creó el registro
   updatedBy              String? // email de quien lo modificó por última vez
 
-  consultant Consultant @relation(fields: [consultantId], references: [id], onDelete: Restrict)
-  project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  consultant  Consultant  @relation(fields: [consultantId], references: [id], onDelete: Restrict)
+  project     Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  timeEntries TimeEntry[]
 
   @@index([consultantId])
   @@index([projectId])

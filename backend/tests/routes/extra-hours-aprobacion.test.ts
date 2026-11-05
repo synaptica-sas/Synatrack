@@ -471,6 +471,12 @@ describe("GET /api/extra-hours/payroll: lo aprobado por el PM entra en el consol
       projectId: escenario.projectId,
       fecha: new Date(Date.UTC(2026, 5, 10)),
     });
+    // R14: la nómina paga lo real; una solicitud aprobada SIN registros vinculados solo se sigue
+    // pagando por su monto si es anterior a la migración (transición, `legacy`).
+    await prisma.extraHourEntry.update({
+      where: { id: entrada.id },
+      data: { createdAt: new Date(Date.UTC(2026, 9, 1)) },
+    });
 
     const nombreConsultor = `Consultor A ${escenario.prefijo}`;
 
@@ -507,5 +513,7 @@ describe("GET /api/extra-hours/payroll: lo aprobado por el PM entra en el consol
     expect(fila).toBeDefined();
     expect(fila.totalHours).toBe(2);
     expect(fila.totalAmountLocal).toBe(100);
+    expect(fila.legacy).toBe(true);
+    expect(fila.realHours).toBe(0);
   });
 });

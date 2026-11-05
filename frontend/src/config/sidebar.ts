@@ -46,6 +46,7 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "holidays", label: "Feriados", icon: "✺", permission: "holidays:write" },
       { id: "healthThresholds", label: "Umbrales de Salud", icon: "♡", permission: "health:thresholds" },
       { id: "approvalDigest", label: "Resumen de Aprobaciones", icon: "✉", permission: "notifications:digest" },
+      { id: "timeEntryTypes", label: "Tipos de Hora", icon: "⌚", permission: "time:types" },
       { id: "financialCategories", label: "Categorías Financieras", icon: "⊞", permission: "finance:categories" },
       { id: "audit", label: "Auditoría", icon: "⊛", permission: "audit:read" },
     ],

@@ -219,6 +219,40 @@ async function main() {
     },
   });
 
+  // Tipos de hora del timesheet (R14). La migración ya los siembra con estos ids
+  // fijos (el DEFAULT de TimeEntry.typeId apunta a tet_regular); esto es para que
+  // una base recién creada quede igual. `update: {}` respeta renombres del admin.
+  const tiposDeHora = [
+    { id: "tet_regular", code: "REGULAR", name: "Horas Regulares", category: "REGULAR", sortOrder: 0 },
+    { id: "tet_extra", code: "EXTRA", name: "Horas Extras", category: "EXTRA", sortOrder: 1 },
+    { id: "tet_permiso", code: "PERMISO", name: "Permiso", category: "ABSENCE", blockType: "OTHER", sortOrder: 2 },
+    { id: "tet_vacaciones", code: "VACACIONES", name: "Vacaciones", category: "ABSENCE", blockType: "VACATION", sortOrder: 3 },
+  ];
+  for (const tipo of tiposDeHora) {
+    await prisma.timeEntryType.upsert({ where: { code: tipo.code }, update: {}, create: tipo });
+  }
+
+  // Proyecto interno "Ausencias" (R14); la migración también lo siembra.
+  const hayProyectoAusencias = await prisma.project.findFirst({ where: { isAbsenceProject: true } });
+  if (!hayProyectoAusencias) {
+    await prisma.project.create({
+      data: {
+        id: "prj_ausencias",
+        name: "Ausencias",
+        company: "Synaptica",
+        country: "Interno",
+        currency: "USD",
+        budget: 0,
+        startDate: new Date(Date.UTC(2026, 0, 1)),
+        endDate: new Date(Date.UTC(2099, 11, 31)),
+        description: "Proyecto interno para registrar permisos y vacaciones.",
+        isInternal: true,
+        isAbsenceProject: true,
+        allowExtraHours: false,
+      },
+    });
+  }
+
   console.log("Database initialized successfully with roles and admin user.");
 }
 
