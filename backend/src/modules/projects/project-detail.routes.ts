@@ -20,6 +20,7 @@ import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 import { cargarLibroDeTasas } from "../fx/rate-book.service.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { riskInclude } from "./risks.routes.js";
+import { SOLO_AUSENCIAS, SOLO_TRABAJADAS } from "../../utils/horasEjecutadas.js";
 
 const idSchema = z.object({ id: z.string().min(1) });
 
@@ -52,7 +53,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
               }
             : {}),
           timeEntries: {
-            where: { status: "APPROVED" },
+            where: { status: "APPROVED", ...SOLO_TRABAJADAS },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           financialEntries: true,
@@ -131,6 +132,13 @@ export async function projectDetailRoutes(app: FastifyInstance) {
         await prisma.project.update({ where: { id }, data: { healthStatus } });
       }
 
+      // Ausencias aprobadas del proyecto: no cuentan como ejecución (decisión 2026-11-05), se exponen aparte.
+      const ausencias = await prisma.timeEntry.aggregate({
+        where: { projectId: id, status: "APPROVED", ...SOLO_AUSENCIAS },
+        _sum: { hours: true },
+      });
+      const absenceHours = Number(ausencias._sum.hours ?? 0);
+
       return {
         data: {
           project: {
@@ -181,6 +189,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
             marginCriticalPct: fin.marginCriticalPct,
             marginLevel: fin.marginLevel,
             approvedHours,
+            absenceHours,
           },
           evm,
           milestones: project.milestones,
@@ -298,7 +307,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
         where: { id },
         include: {
           timeEntries: {
-            where: { status: "APPROVED" },
+            where: { status: "APPROVED", ...SOLO_TRABAJADAS },
             orderBy: { workDate: "asc" },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },

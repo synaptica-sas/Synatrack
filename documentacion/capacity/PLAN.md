@@ -14,7 +14,7 @@
 | D1 | La jornada (horas/día) es **configurable, nunca fija en código**, y cambia en el tiempo (CO: 48 → 42 → 40 h/sem) | Jornada **con vigencia** (`validFrom`) por país y por consultor. La capacidad se calcula **día a día** con la jornada vigente ese día, así que un cambio de ley no reescribe los meses pasados |
 | D2 | Una sola tabla de feriados en BD; horas extra también la usará | `Holiday` con fecha `DATE` reemplaza a `CustomHoliday` y al cálculo en tiempo real de `holidays.ts`. El generador de código queda solo para **precargar** un año |
 | D3 | Feriados **por ciudad** (al menos Quito y Guayaquil) y alta inmediata desde la UI | `Holiday.city` (vacío = nacional) y `Consultant.city`. Pantalla de feriados con alta rápida para decretos |
-| D4 | El capacity (proyección) **no descuenta ausencias** | El cálculo mensual ignora `ConsultantBlock`. El informe real vs proyectado es posterior |
+| D4 | El capacity (proyección) **no descuenta ausencias** | El cálculo mensual ignora `ConsultantBlock`. El informe real vs proyectado es posterior. **Confirmado el 2026-11-05**: el comparativo futuro será "Capacidad real (capacidad − ausencias) vs Ejecutado", con ambos lados sin ausencias (ejecutado = horas trabajadas, excluye categoría ABSENCE; ver R14 §5.1) |
 | D5 | Proyectos internos para el stand-by; sin asignación el % baja de 100 y hay que alertar | `Project.isInternal`; estado `PROSPECT` para oportunidades; alertas de sub y sobreasignación |
 | D6 | Finanzas y Comercial planifican **sobre el capacity** | Capacity cuenta **solo asignaciones**. Se deja de crear el `Forecast` automático y Finanzas consume el capacity (fase 3) |
 | D7 | No hay datos productivos | Se pueden cambiar tipos de columna (timestamp → date) y reglas sin migrar datos |
@@ -299,7 +299,7 @@ librerías ya están instaladas y en chunks separados.
 | 3.1 | Horas extra usa `Holiday`, con país y ciudad del consultor, en lugar de `isPublicHoliday` + `CustomHoliday` (`calculateExtraHours.ts:93-118`, `extra-hours.routes.ts:1169`). Requiere pruebas de recargos en festivo | M |
 | 3.2 | Finanzas: proyección de costo e ingreso desde asignaciones (capacity) × tarifa, en lugar de forecasts autogenerados | L |
 | 3.3 | Retirar `CustomHoliday`, el cálculo de feriados en tiempo real y, si se decide, la "Vista general" antigua | S |
-| 3.4 | Informe real vs proyectado (horas registradas y ausencias contra capacity) | L |
+| 3.4 | Informe real vs proyectado (horas registradas y ausencias contra capacity). Nota 2026-11-05: se define como "Capacidad real (capacidad − ausencias) vs Ejecutado"; el ejecutado excluye ausencias | L |
 | 3.5 | Permisos configurables desde la UI (matriz rol × permiso en BD), si P4 lo pide | L |
 
 ---

@@ -538,11 +538,12 @@ describe("R15 QA: flujos por rutas", () => {
         );
       }
       const [e0] = filas;
-      for (const headers of [como(c), comoPM1()]) {
+      for (const [headers, esDuenio] of [[como(c), true], [comoPM1(), false]] as const) {
         const patch = await app.inject({ method: "PATCH", url: `/api/time-entries/${e0.id}`, headers, payload: { hours: 4 } });
         expect(patch.statusCode).toBe(409);
         const del = await app.inject({ method: "DELETE", url: `/api/time-entries/${e0.id}`, headers });
-        expect(del.statusCode).toBe(409);
+        // El consultor choca con el estado (409); el PM ni siquiera puede borrar horas ajenas (403).
+        expect(del.statusCode).toBe(esDuenio ? 409 : 403);
       }
       // PUT /day apuntando al id aprobado no lo modifica; con lista vacía tampoco lo borra.
       const put = await putDia(como(c), p, lunAVie(lunes)[0], [regular(4, { id: e0.id })]);

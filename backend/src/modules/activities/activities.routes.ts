@@ -5,6 +5,7 @@ import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
 import { consultantSinDatosSensiblesSelect, puedeVerTarifas } from "../../utils/consultant-scope.js";
+import { SOLO_TRABAJADAS } from "../../utils/horasEjecutadas.js";
 
 /**
  * Las horas reales de una actividad se CALCULAN sumando los registros de horas
@@ -28,6 +29,7 @@ async function conHorasReales<T extends { id: string }>(activities: T[]) {
     where: {
       activityId: { in: activities.map((a) => a.id) },
       status: { not: TimeEntryStatus.REJECTED },
+      ...SOLO_TRABAJADAS,
     },
     _sum: { hours: true },
   });

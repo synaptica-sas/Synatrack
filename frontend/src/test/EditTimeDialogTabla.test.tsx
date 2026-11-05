@@ -266,4 +266,23 @@ describe("EditTimeDialog como tabla", () => {
     setup({ entries: [excedente], summary: summary(2) });
     expect(screen.getByText("Excedente — pendiente PM")).toBeTruthy();
   });
+
+  it("sin permiso para eliminar, el registro guardado de otro consultor no se puede borrar", () => {
+    const pendiente = {
+      id: "p9",
+      projectId: "p1",
+      hours: "1",
+      status: "PENDING",
+      isExcess: false,
+      startedAt: "2026-11-03T14:00:00.000Z",
+      endedAt: "2026-11-03T15:00:00.000Z",
+      description: null,
+      type: { id: "reg", code: "REGULAR", name: "Horas Regulares", category: "REGULAR" },
+      typeId: "reg",
+    } as unknown as TimeEntry;
+    setup({ entries: [pendiente], esPropio: false, puedeEliminar: false });
+    const boton = screen.getByLabelText("Eliminar este registro") as HTMLButtonElement;
+    expect(boton.disabled).toBe(true);
+    expect(boton.title).toBe("Solo un administrador puede eliminar horas de otro consultor");
+  });
 });

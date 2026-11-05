@@ -608,7 +608,8 @@ export function DashboardTab({
     approvedHours:    displayProjects.reduce((s, p) => s + p.approvedHours, 0),
     submittedHours:   displayProjects.reduce((s, p) => s + p.submittedHours, 0),
     pendingHours:     displayProjects.reduce((s, p) => s + p.pendingHours, 0),
-    alertCount:       displayProjects.filter((p) => p.alertLevel !== "ok").length,
+    absenceHours:     displayProjects.reduce((s, p) => s + (p.absenceHours ?? 0), 0),
+    alertCount:      displayProjects.filter((p) => p.alertLevel !== "ok").length,
     avgCpi:           stats?.totals.avgCpi           ?? null,
     avgSpi:           stats?.totals.avgSpi           ?? null,
   };
@@ -1107,6 +1108,11 @@ export function DashboardTab({
           error={totalsFailed ? statsErrorMessage : null}
           loading={totalsPending || statsLoading}
         />
+        {totals.absenceHours > 0 && !totalsPending && !statsLoading && !totalsFailed && (
+          <p className="ts-hint" style={{ gridColumn: "1 / -1", margin: 0 }}>
+            Ausencias aprobadas: {totals.absenceHours.toFixed(1)} h (no cuentan como ejecutado)
+          </p>
+        )}
         {/* EVM KPIs (PMBOK) */}
         {portfolioEV > 0 && (
           <DashboardKpi

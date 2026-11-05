@@ -185,7 +185,7 @@ describe("Timesheet R14: endurecimiento", () => {
       await prisma.runningTimer.deleteMany({ where: { consultantId: escenario.consultorA.id } });
     });
 
-    it("al detener, un tramo se topa en 24 h y lo que exceda se suma a discardedHours", async () => {
+    it("al detener, un tramo se topa en 24 h y lo que exceda se suma a discardedHours (sin EXTRA)", async () => {
       await limpiar();
       const consultor = await prisma.consultant.create({
         data: {
@@ -219,9 +219,9 @@ describe("Timesheet R14: endurecimiento", () => {
         const stop = await app.inject({ method: "POST", url: "/api/timer/stop", headers: comoRol(AppRole.CONSULTANT, consultor.email!), payload: { consultantId: consultor.id } });
         expect(stop.statusCode, stop.body).toBe(201);
         const cuerpo = stop.json() as { entries: { hours: string }[]; discardedHours: number };
-        // 8 h regulares + 1 h extra + 31 h de excedente topadas en 24 h => 7 h descartadas.
-        expect(cuerpo.entries.map((e) => Math.round(Number(e.hours)))).toEqual([8, 1, 24]);
-        expect(cuerpo.discardedHours).toBeCloseTo(7, 2);
+        // Solo 8 h regulares (la jornada); las otras 32 h se descartan aunque haya solicitud aprobada.
+        expect(cuerpo.entries.map((e) => Math.round(Number(e.hours)))).toEqual([8]);
+        expect(cuerpo.discardedHours).toBeCloseTo(32, 2);
       } finally {
         await prisma.timeEntry.deleteMany({ where: { consultantId: consultor.id } });
         await prisma.extraHourEntry.deleteMany({ where: { consultantId: consultor.id } });

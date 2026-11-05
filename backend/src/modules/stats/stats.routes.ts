@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { AppRole, TimeEntryStatus } from "@prisma/client";
+import { AppRole, TimeEntryCategory, TimeEntryStatus } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
@@ -16,6 +16,7 @@ import { computeEVM } from "../../utils/evm.js";
 import { computeHealthStatus, countDelayedMilestones, countOpenHighRisks } from "../../utils/health.js";
 import { clasificarIndiceEvm } from "../../utils/healthThresholds.js";
 import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
+import { SOLO_TRABAJADAS } from "../../utils/horasEjecutadas.js";
 
 const statsQuerySchema = z
   .object({
@@ -76,7 +77,10 @@ export async function statsRoutes(app: FastifyInstance) {
         include: {
           timeEntries: {
             where: { workDate: { gte: query.from, lte: query.to } },
-            include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
+            include: {
+              consultant: { select: { hourlyRate: true, rateCurrency: true } },
+              type: { select: { category: true } },
+            },
           },
           // Los gastos se filtran por el rango from/to del tablero (comportamiento
           // propio de /overview); los ingresos se toman completos, como antes de
@@ -95,13 +99,19 @@ export async function statsRoutes(app: FastifyInstance) {
       });
 
       const byProject = projects.map((project) => {
-        const approvedEntries = project.timeEntries.filter(
+        // Ejecutado = horas trabajadas (decisión 2026-11-05): las ausencias (tipo ABSENCE) no entran a
+        // costo, EVM ni a los totales de horas; se exponen aparte en `absenceHours`.
+        const trabajadas = project.timeEntries.filter((e) => e.type.category !== TimeEntryCategory.ABSENCE);
+        const absenceHours = project.timeEntries
+          .filter((e) => e.type.category === TimeEntryCategory.ABSENCE && e.status === TimeEntryStatus.APPROVED)
+          .reduce((s, e) => s + Number(e.hours), 0);
+        const approvedEntries = trabajadas.filter(
           (e) => e.status === TimeEntryStatus.APPROVED,
         );
         // R15: la cifra principal de horas es lo APROBADO; lo enviado (esperando al PM) y lo pendiente
         // (sin enviar) van aparte. `totalHours` se conserva por compatibilidad y vale lo aprobado.
         const hoursOf = (status: TimeEntryStatus) =>
-          project.timeEntries.filter((e) => e.status === status).reduce((s, e) => s + Number(e.hours), 0);
+          trabajadas.filter((e) => e.status === status).reduce((s, e) => s + Number(e.hours), 0);
         const submittedHours = hoursOf(TimeEntryStatus.SUBMITTED);
         const pendingHours = hoursOf(TimeEntryStatus.PENDING);
         const totalHours = hoursOf(TimeEntryStatus.APPROVED);
@@ -188,6 +198,7 @@ export async function statsRoutes(app: FastifyInstance) {
           budgetCriticalPct: fin.budgetCriticalPct,
           // Horas
           totalHours,
+          absenceHours,
           approvedHours: fin.approvedHours,
           submittedHours,
           pendingHours,
@@ -214,6 +225,7 @@ export async function statsRoutes(app: FastifyInstance) {
         revenueRecognized: byProject.reduce((s, p) => s + p.revenueRecognized, 0),
         grossMarginActual: byProject.reduce((s, p) => s + p.grossMarginActual, 0),
         totalHours: byProject.reduce((s, p) => s + p.totalHours, 0),
+        absenceHours: byProject.reduce((s, p) => s + p.absenceHours, 0),
         approvedHours: byProject.reduce((s, p) => s + p.approvedHours, 0),
         submittedHours: byProject.reduce((s, p) => s + p.submittedHours, 0),
         pendingHours: byProject.reduce((s, p) => s + p.pendingHours, 0),
@@ -314,6 +326,7 @@ export async function statsRoutes(app: FastifyInstance) {
         },
         include: {
           timeEntries: {
+            where: SOLO_TRABAJADAS,
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           financialEntries: true,

@@ -14,6 +14,7 @@ import {
   toRiskCostInputs,
 } from "../../utils/financial.js";
 import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
+import { SOLO_TRABAJADAS } from "../../utils/horasEjecutadas.js";
 
 /**
  * Correo del Project Manager del proyecto (DEP-37).
@@ -439,7 +440,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         where: { id },
         include: {
           timeEntries: {
-            where: { status: "APPROVED" },
+            where: { status: "APPROVED", ...SOLO_TRABAJADAS },
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
           },
           financialEntries: true,

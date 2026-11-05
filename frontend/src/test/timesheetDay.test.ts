@@ -376,24 +376,24 @@ describe("formatDayUsage", () => {
 });
 
 describe("avisosAlDetener", () => {
-  const e = (hours: string, isExcess: boolean) => entry({ hours, isExcess });
-
-  it("sin descartes ni excedente no avisa nada", () => {
-    expect(avisosAlDetener({ entries: [e("1", false)], discardedHours: 0 })).toEqual([]);
+  it("sin descartes no avisa nada", () => {
+    expect(avisosAlDetener({ discardedHours: 0, discardedFrom: null })).toEqual([]);
   });
 
-  it("avisa de las horas que quedaron fuera", () => {
-    const a = avisosAlDetener({ entries: [e("1", false)], discardedHours: 1.5 });
+  it("avisa de las horas descartadas con la franja en hora local", () => {
+    const desde = new Date(2026, 10, 5, 18, 0).toISOString();
+    const a = avisosAlDetener({ discardedHours: 2.25, discardedFrom: desde });
     expect(a).toHaveLength(1);
     expect(a[0].type).toBe("warning");
-    expect(a[0].message).toMatch(/01:30:00 quedaron fuera/);
+    expect(a[0].message).toContain("2 h 15 min por encima de tu jornada (18:00 – 20:15)");
+    expect(a[0].message).toMatch(/regístralas manualmente en el timesheet/);
   });
 
-  it("avisa del excedente pendiente de aprobación del PM", () => {
-    const a = avisosAlDetener({ entries: [e("2", false), e("0.5", true)], discardedHours: 0 });
-    expect(a).toHaveLength(1);
-    expect(a[0].message).toMatch(/00:30:00 superan lo aprobado/);
-    expect(a[0].message).toMatch(/PM/);
+  it("usa discardedTo cuando el servidor lo manda", () => {
+    const desde = new Date(2026, 10, 5, 17, 0).toISOString();
+    const hasta = new Date(2026, 10, 5, 17, 45).toISOString();
+    const a = avisosAlDetener({ discardedHours: 0.75, discardedFrom: desde, discardedTo: hasta });
+    expect(a[0].message).toContain("45 min por encima de tu jornada (17:00 – 17:45)");
   });
 });
 

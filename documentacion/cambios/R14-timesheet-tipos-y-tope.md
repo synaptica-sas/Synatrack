@@ -152,15 +152,22 @@ Se respetan: candado de `MonthlySnapshot`, `writeAudit`, `resolveTargetConsultan
 | 4 | Modal con tabla, catálogo, vista aprobado vs. real | frontend-react |
 | 5 | Pruebas de ruta, navegador, permisos | qa-pruebas, revisor-ui, revisor-seguridad |
 
-## 5.1 Decisiones abiertas al cerrar R14 (2026-11-05)
+## 5.1 Decisiones tomadas al cerrar R14 (2026-11-05)
 
-1. Borrado de un EXTRA ajeno: hoy ADMIN y el PM del proyecto pueden borrarlo. Propuesta: solo
-   ADMIN (limpieza); rechazar sigue siendo del PM.
-2. Capacity mensual y ausencias: el cliente decidió el 2026-10-15 que la proyección no descuenta
-   ausencias (`capacity/PLAN.md` D4, `CONTRATO.md` §2). Las ausencias aprobadas sí se descuentan
-   en "Disponibilidad real". Pendiente confirmar si se mantiene.
-3. Sobrante del cronómetro sin solicitud aprobada: hoy se descarta con aviso. Propuesta: ofrecer
-   "Solicitar horas extra por esta franja" (formulario precargado) o descartar.
+1. **Borrado de horas ajenas: solo ADMIN.** Cada quien borra las suyas (PENDING, semana no bloqueada).
+   Borrar horas de otro consultor, de cualquier tipo, exige ADMIN: aplica a `DELETE /api/time-entries/:id`
+   y a `PUT /day` cuando omite filas PENDING de otro (equivale a borrarlas). El PM no borra: si algo está
+   mal, devuelve la semana con una nota o lo gestiona con el consultor. La edición (PUT/PATCH) no cambia.
+2. **Capacity y ausencias.** La proyección sigue sin descontar ausencias (`capacity/PLAN.md` D4). Más
+   adelante habrá un comparativo "Capacidad real (capacidad − ausencias) vs Ejecutado". Por eso **ejecutado
+   = horas trabajadas**: las horas de categoría ABSENCE no entran a costo, EVM, utilización ni totales de
+   horas (se exponen aparte como `absenceHours`). Siguen contando para la jornada: tope diario, envío
+   semanal y "Jornada sin cargar".
+3. **El cronómetro no registra horas extra.** Solo guarda REGULAR hasta el tope de la jornada (descontando
+   lo ya registrado ese día); todo lo que sobre se descarta siempre, haya o no solicitud aprobada, y la
+   respuesta lo informa (`discardedHours`, `discardedFrom`, `discardedTo`). Si eran horas extra, el
+   consultor las registra a mano en el timesheet. Esto reemplaza el punto 2 de §2.5 y el 403 por tramos EXTRA
+   del cronómetro ajeno de §2.3.
 
 ## 6. Fuera de alcance
 

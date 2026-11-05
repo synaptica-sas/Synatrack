@@ -261,6 +261,20 @@ async function canMutateEntry(request: FastifyRequest, entry: { consultantId: st
   return !!mine && mine.id === entry.consultantId;
 }
 
+/**
+ * Borrado de horas (decisión 2026-11-05): cada quien borra solo las suyas; borrar las de otro
+ * consultor exige ADMIN. El PM no borra horas ajenas aunque gestione el proyecto: si algo está mal,
+ * devuelve la semana con una nota. Se aplica a todos los tipos (REGULAR, EXTRA y ABSENCE).
+ */
+const MENSAJE_BORRAR_AJENO =
+  "Solo un administrador puede eliminar horas de otro consultor. Devuelve la semana con una nota o pídele al consultor que las corrija.";
+
+async function canDeleteEntry(request: FastifyRequest, consultantId: string) {
+  if ((request.authUser?.roles ?? []).includes(AppRole.ADMIN)) return true;
+  const mine = await findMyConsultant(request);
+  return !!mine && mine.id === consultantId;
+}
+
 export async function timeEntriesRoutes(app: FastifyInstance) {
   /**
    * Ficha de consultor del usuario autenticado. El timesheet y el tracker la
@@ -742,6 +756,24 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
         if (tocaExtra) return reply.status(403).send({ message: MENSAJE_EXTRA_SOLO_PROPIO });
       }
 
+      // Reemplazar el día borra los PENDING que no vienen en el payload: si son de otro consultor,
+      // eso es borrar horas ajenas y solo lo hace ADMIN (mismo criterio que DELETE /:id).
+      if (!(await canDeleteEntry(request, target.consultantId))) {
+        const idsEnviados = new Set(rows.map((r) => r.id).filter(Boolean));
+        const pendientes = await prisma.timeEntry.findMany({
+          where: {
+            consultantId: target.consultantId,
+            projectId: payload.projectId,
+            workDate,
+            status: TimeEntryStatus.PENDING,
+          },
+          select: { id: true },
+        });
+        if (pendientes.some((e) => !idsEnviados.has(e.id))) {
+          return reply.status(403).send({ message: MENSAJE_BORRAR_AJENO });
+        }
+      }
+
       const result = await prisma.$transaction(async (tx) => {
         // R15: una semana enviada queda bloqueada (salvo el proyecto devuelto).
         const lock = await lockAndCheckWeeks(tx, target.consultantId, [{ projectId: payload.projectId, workDate }]);
@@ -1040,8 +1072,8 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
         return reply.status(404).send({ message: "Time entry not found" });
       }
 
-      if (!(await canMutateEntry(request, existing))) {
-        return reply.status(403).send({ message: "Solo puedes eliminar tus propias horas" });
+      if (!(await canDeleteEntry(request, existing.consultantId))) {
+        return reply.status(403).send({ message: MENSAJE_BORRAR_AJENO });
       }
 
       const roles = request.authUser?.roles ?? [];

@@ -20,7 +20,7 @@ import {
   type RunningTimer,
   type TimeEntry,
 } from "../../services/api";
-import { avisosAlDetener, isWeekLockedError } from "./trackerAvisos";
+import { avisoDescartado, avisosAlDetener, isWeekLockedError } from "./trackerAvisos";
 import {
   addDays,
   formatClock,
@@ -74,6 +74,7 @@ export function TrackerTab({
   onReload,
   onError,
   onNotice,
+  onGoToTimesheet,
 }: {
   projects: Project[];
   /** Vacía salvo para ADMIN y PM: son los únicos que pueden llevar el
@@ -83,9 +84,13 @@ export function TrackerTab({
   /** Refresca el listado global de horas que alimenta dashboard y aprobaciones. */
   onReload: () => Promise<void>;
   onError: (msg: string) => void;
-  /** Avisos que no son errores (horas que quedaron fuera, excedente pendiente). */
+  /** Avisos que no son errores (horas que quedaron fuera por superar la jornada). */
   onNotice?: (msg: string, type: "success" | "warning" | "info") => void;
+  /** Lleva al timesheet para registrar a mano las horas descartadas. */
+  onGoToTimesheet?: () => void;
 }) {
+  // Aviso persistente de horas descartadas: se queda hasta que el consultor lo cierre.
+  const [descartadoAviso, setDescartadoAviso] = useState<string | null>(null);
   const [myConsultant, setMyConsultant] = useState<Consultant | null>(null);
   const [consultantResolved, setConsultantResolved] = useState(false);
   const [timer, setTimer] = useState<RunningTimer | null>(null);
@@ -297,6 +302,7 @@ export function TrackerTab({
         const semanaCreada = startOfWeek(resultado.data.workDate.slice(0, 10));
         if (semanaCreada !== weekStart) setWeekStart(semanaCreada);
       }
+      setDescartadoAviso(avisoDescartado(resultado));
       for (const aviso of avisosAlDetener(resultado)) onNotice?.(aviso.message, aviso.type);
       await reloadEntries();
       await onReload();
@@ -486,6 +492,21 @@ export function TrackerTab({
             ))}
           </select>
           {running && <span className="tk-whofor-lock">bloqueado mientras corre</span>}
+        </div>
+      )}
+
+      {descartadoAviso && (
+        <div role="status" className="notice notice--warning">
+          <p className="notice__title">Horas sin guardar</p>
+          <p className="notice__text">{descartadoAviso}</p>
+          {onGoToTimesheet && (
+            <button type="button" className="ghost" onClick={onGoToTimesheet}>
+              Ir al timesheet
+            </button>
+          )}{" "}
+          <button type="button" className="ghost" onClick={() => setDescartadoAviso(null)}>
+            Cerrar aviso
+          </button>
         </div>
       )}
 

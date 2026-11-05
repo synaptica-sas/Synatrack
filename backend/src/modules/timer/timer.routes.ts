@@ -12,7 +12,6 @@ import {
 import { resolveCountryTimezone } from "../../utils/country.js";
 import { splitTimerSpan } from "../../utils/timesheetRules.js";
 import { loadDayContext, lockDay } from "../time-entries/day-context.service.js";
-import { pickRequest } from "../time-entries/timesheet.service.js";
 import {
   checkWeekEditable,
   localCalendarDay,
@@ -259,18 +258,15 @@ export async function timerRoutes(app: FastifyInstance) {
         });
       }
 
-      const tipos = await prisma.timeEntryType.findMany({
-        where: { code: { in: ["REGULAR", "EXTRA"] } },
-        select: { id: true, code: true },
-      });
-      const regularTypeId = tipos.find((t) => t.code === "REGULAR")?.id;
-      const extraTypeId = tipos.find((t) => t.code === "EXTRA")?.id;
-      if (!regularTypeId || !extraTypeId) {
+      const regularTypeId = (
+        await prisma.timeEntryType.findUnique({ where: { code: "REGULAR" }, select: { id: true } })
+      )?.id;
+      if (!regularTypeId) {
         return reply.status(500).send({ message: "El catálogo de tipos de hora no está completo." });
       }
 
       // Crear las entradas y borrar el cronómetro van juntos: si falla el alta,
-      // el cronómetro sigue en marcha y no se pierde el tiempo trabajado. La partición
+      // el cronómetro sigue en marcha y no se pierde el tiempo trabajado. El corte
       // (R14 §2.5) se calcula dentro de la transacción, con el estado del día ya leído.
       const resultado = await prisma.$transaction(async (tx) => {
         const proyecto = await tx.project.findUnique({
@@ -296,39 +292,17 @@ export async function timerRoutes(app: FastifyInstance) {
         const usadoRegular = ctx.entries
           .filter((e) => e.status !== "REJECTED" && (e.category === "REGULAR" || e.category === "ABSENCE"))
           .reduce((acc, e) => acc + e.hours, 0);
-        const extraDelProyecto = ctx.entries.filter(
-          (e) => e.projectId === timer.projectId && e.category === "EXTRA" && e.status !== "REJECTED" && !e.isExcess,
-        );
-        const solicitudes = ctx.approvedRequests.filter((r) => r.projectId === timer.projectId);
 
+        // Decisión 2026-11-05: el cronómetro solo registra REGULAR hasta el tope de la jornada.
+        // Lo que sobre se descarta siempre (con o sin solicitud de horas extra aprobada); si eran
+        // horas extra, el consultor las registra a mano en el timesheet.
         const particion = splitTimerSpan({
           start: timer.startedAt,
           end: endedAt,
           hoursPerDay: ctx.hoursPerDay,
           alreadyUsedRegular: usadoRegular,
           regularAllowed: !ctx.isNonWorkingDay || ctx.allowWeekendWork,
-          hasApprovedRequest: solicitudes.length > 0,
-          approvedExtraBalance: ctx.approvedExtraBalance[timer.projectId] ?? 0,
-          alreadyUsedExtra: extraDelProyecto.reduce((acc, e) => acc + e.hours, 0),
         });
-
-        // Separación de funciones: los tramos EXTRA/excedente solo los puede registrar el propio
-        // consultor. Si ADMIN/PM detienen el cronómetro ajeno y la partición produce EXTRA, no se
-        // crea nada (el cronómetro sigue en marcha) y debe detenerlo su dueño.
-        if (
-          particion.segments.some((seg) => seg.category === "EXTRA") &&
-          request.authUser!.consultantId !== timer.consultantId
-        ) {
-          return {
-            error: "Este cronómetro incluye horas extra, que solo las puede registrar el propio consultor. Pídele que lo detenga él.",
-            forbidden: true,
-          } as const;
-        }
-
-        const consumido = new Map<string, number>();
-        for (const e of extraDelProyecto) {
-          if (e.extraHourEntryId) consumido.set(e.extraHourEntryId, (consumido.get(e.extraHourEntryId) ?? 0) + e.hours);
-        }
 
         // Tope de 24 h por tramo: lo que exceda se descarta y se informa.
         let descartadoExtra = 0;
@@ -340,16 +314,6 @@ export async function timerRoutes(app: FastifyInstance) {
         });
         const creadas = [];
         for (const seg of tramos) {
-          let extraHourEntryId: string | null = null;
-          if (seg.category === "EXTRA") {
-            if (seg.isExcess) {
-              extraHourEntryId = solicitudes[0]?.id ?? null;
-            } else {
-              const elegida = pickRequest(solicitudes, consumido, seg.hours);
-              extraHourEntryId = elegida?.id ?? null;
-              if (elegida) consumido.set(elegida.id, (consumido.get(elegida.id) ?? 0) + seg.hours);
-            }
-          }
           creadas.push(
             await tx.timeEntry.create({
               data: {
@@ -368,9 +332,7 @@ export async function timerRoutes(app: FastifyInstance) {
                 startedAt: seg.startedAt,
                 endedAt: seg.endedAt,
                 status: TimeEntryStatus.PENDING,
-                typeId: seg.category === "EXTRA" ? extraTypeId : regularTypeId,
-                isExcess: seg.isExcess,
-                extraHourEntryId,
+                typeId: regularTypeId,
               },
               include: {
                 project: true,
@@ -385,16 +347,27 @@ export async function timerRoutes(app: FastifyInstance) {
         await tx.runningTimer.delete({ where: { id: timer.id } });
 
         const descartadas = Math.round((particion.discardedHours + descartadoExtra) * 10_000) / 10_000;
-        return { creadas, particion: { ...particion, discardedHours: descartadas } } as const;
+        // Si el tope de 24 h recortó el tramo, lo descartado empieza donde termina el último guardado.
+        const ultimo = tramos[tramos.length - 1];
+        const descartadoDesde =
+          descartadoExtra > 0 && ultimo ? ultimo.endedAt : particion.discardedFrom;
+        return {
+          creadas,
+          particion: {
+            ...particion,
+            discardedHours: descartadas,
+            discardedFrom: descartadas > 0 ? descartadoDesde : null,
+            discardedTo: descartadas > 0 ? endedAt : null,
+          },
+        } as const;
       });
-
       if ("lock" in resultado && resultado.lock) {
         return reply
           .status(409)
           .send({ ...weekLockedBody(resultado.lock), message: resultado.lock.message + MENSAJE_CRONOMETRO_BLOQUEADO });
       }
       if ("error" in resultado) {
-        return reply.status("forbidden" in resultado ? 403 : 400).send({ message: resultado.error });
+        return reply.status(400).send({ message: resultado.error });
       }
       const { creadas, particion } = resultado;
 
@@ -414,13 +387,15 @@ export async function timerRoutes(app: FastifyInstance) {
         });
       }
 
-      // `data` sigue siendo el primer registro creado (compatibilidad); `entries` trae todos
-      // y `discardedHours` lo que no se guardó por no haber solicitud de horas extra aprobada.
+      // `data` sigue siendo el primer registro creado (compatibilidad, null si no cupo nada); `entries`
+      // trae todos. `discardedHours` (con `discardedFrom`/`discardedTo`) es lo que pasó del tope de la
+      // jornada y NO se guardó: el cronómetro no registra horas extra, el consultor las carga a mano.
       return reply.status(201).send({
         data: creadas[0] ?? null,
         entries: creadas,
         discardedHours: particion.discardedHours,
         discardedFrom: particion.discardedFrom,
+        discardedTo: particion.discardedTo,
         totalHours: particion.totalHours,
       });
     },

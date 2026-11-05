@@ -697,7 +697,7 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       expect(r.entries[0].workDate.slice(0, 10)).toBe(diaLocal);
     });
 
-    it("con solicitud aprobada para ese día local, la noche del cronómetro se registra como EXTRA [QA-R14-1]", async () => {
+    it("con solicitud aprobada y jornada completa, la noche del cronómetro se descarta: no se crea EXTRA [QA-R14-1]", async () => {
       const c = await nuevoConsultor("TimerExtra", { jornadaPropia: 8 });
       const inicio = inicioNocturnoReciente();
       const diaLocal = new Date(inicio.getTime() - 5 * 3_600_000).toISOString().slice(0, 10);
@@ -705,11 +705,12 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       await prisma.timeEntry.create({
         data: { projectId: proyectoOtro, consultantId: c.id, workDate: new Date(`${diaLocal}T00:00:00.000Z`), hours: 8, typeId: tipos.regular },
       });
-      const solicitud = await solicitudAprobada(c.id, diaLocal, 3);
+      await solicitudAprobada(c.id, diaLocal, 3);
 
       const r = await correrCronometro(c, inicio);
-      expect(r.entries[0].type.category).toBe("EXTRA");
-      expect(r.entries[0].extraHourEntryId).toBe(solicitud.id);
+      expect(r.entries).toEqual([]);
+      expect(r.data).toBeNull();
+      expect(r.discardedHours).toBeGreaterThan(0);
     });
 
     it("un registro del cronómetro nocturno se puede editar (descripción) después [QA-R14-1]", async () => {

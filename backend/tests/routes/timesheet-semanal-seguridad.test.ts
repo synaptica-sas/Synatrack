@@ -226,9 +226,9 @@ describe("Aprobación semanal: endurecimiento (R15)", () => {
       await marcarSemanaEnviada(c.id, p, lunes);
       const comoPm = comoRol(AppRole.PM, pm);
 
-      // H4: el PM del proyecto ya no borra aprobados (ni enviados).
-      expect((await app.inject({ method: "DELETE", url: `/api/time-entries/${aprobado.id}`, headers: comoPm })).statusCode).toBe(409);
-      expect((await app.inject({ method: "DELETE", url: `/api/time-entries/${enviado.id}`, headers: comoPm })).statusCode).toBe(409);
+      // H4: el PM del proyecto no borra aprobados ni enviados (ni nada ajeno: 403, solo ADMIN).
+      expect((await app.inject({ method: "DELETE", url: `/api/time-entries/${aprobado.id}`, headers: comoPm })).statusCode).toBe(403);
+      expect((await app.inject({ method: "DELETE", url: `/api/time-entries/${enviado.id}`, headers: comoPm })).statusCode).toBe(403);
       // H3: ni ADMIN borra uno en revisión.
       const adminEnviado = await app.inject({ method: "DELETE", url: `/api/time-entries/${enviado.id}`, headers: comoAdmin() });
       expect(adminEnviado.statusCode).toBe(409);

@@ -20,6 +20,7 @@ import { toIsoDate } from "../../utils/isoDate.js";
 import { lockProjectMonth } from "../timesheet-weeks/timesheet-weeks.service.js";
 import { roundHours } from "../../utils/timesheetRules.js";
 import { weekStartOf } from "../../utils/timesheetWeek.js";
+import { SOLO_TRABAJADAS } from "../../utils/horasEjecutadas.js";
 
 const closePayloadSchema = z.object({
   projectId: z.string().min(1),
@@ -117,6 +118,8 @@ export async function snapshotsRoutes(app: FastifyInstance) {
             projectId,
             status: TimeEntryStatus.APPROVED,
             workDate: { gte: startOfMonth, lte: endOfMonth },
+            // Costo y horas del cierre = horas trabajadas; las ausencias no entran.
+            ...SOLO_TRABAJADAS,
           },
           include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
         }),
@@ -232,7 +235,7 @@ export async function snapshotsRoutes(app: FastifyInstance) {
           },
         });
         const aprobadasAhora = await tx.timeEntry.aggregate({
-          where: { projectId, status: TimeEntryStatus.APPROVED, workDate: { gte: startOfMonth, lte: endOfMonth } },
+          where: { projectId, status: TimeEntryStatus.APPROVED, workDate: { gte: startOfMonth, lte: endOfMonth }, ...SOLO_TRABAJADAS },
           _sum: { hours: true },
         });
         if (sinAprobarAhora > 0 || Math.abs(Number(aprobadasAhora._sum.hours ?? 0) - hoursApproved) > 1e-6) {

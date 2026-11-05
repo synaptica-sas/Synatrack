@@ -173,7 +173,7 @@ describe("Horas extra: solo las solicita y registra el propio consultor", () => 
     expect(await prisma.timeEntry.count({ where: { id: filaExtra.id } })).toBe(1);
   });
 
-  it("cronómetro: ADMIN no puede detener el de otro si produce tramos EXTRA (403, sigue en marcha); el dueño sí", async () => {
+  it("cronómetro: nunca crea horas EXTRA, ni con solicitud aprobada; el sobrante de la jornada se descarta", async () => {
     await limpiarHoras();
     const inicio = new Date(Date.now() - 10 * 3_600_000);
     const diaLocal = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota", year: "numeric", month: "2-digit", day: "2-digit" }).format(inicio);
@@ -187,18 +187,15 @@ describe("Horas extra: solo las solicita y registra el propio consultor", () => 
       data: { consultantId: escenario.consultorA.id, projectId: escenario.projectId, startedAt: inicio },
     });
     try {
-      const ajeno = await app.inject({
-        method: "POST",
-        url: "/api/timer/stop",
-        headers: admin(),
-        payload: { consultantId: escenario.consultorA.id },
-      });
-      expect(ajeno.statusCode, ajeno.body).toBe(403);
-      expect(await prisma.runningTimer.count({ where: { consultantId: escenario.consultorA.id } })).toBe(1);
-      expect(await prisma.timeEntry.count({ where: { consultantId: escenario.consultorA.id } })).toBe(0);
-
-      const propio = await app.inject({ method: "POST", url: "/api/timer/stop", headers: dueno(), payload: {} });
-      expect(propio.statusCode, propio.body).toBe(201);
+      const res = await app.inject({ method: "POST", url: "/api/timer/stop", headers: dueno(), payload: {} });
+      expect(res.statusCode, res.body).toBe(201);
+      const cuerpo = res.json() as { entries: { type: { category: string }; isExcess: boolean }[]; discardedHours: number; discardedFrom: string; discardedTo: string };
+      expect(cuerpo.entries.length).toBeGreaterThan(0);
+      expect(cuerpo.entries.every((e) => e.type.category === "REGULAR" && !e.isExcess)).toBe(true);
+      expect(cuerpo.discardedHours).toBeGreaterThan(0);
+      expect(cuerpo.discardedFrom).toBeTruthy();
+      expect(cuerpo.discardedTo).toBeTruthy();
+      expect(await prisma.timeEntry.count({ where: { consultantId: escenario.consultorA.id, type: { category: "EXTRA" } } })).toBe(0);
     } finally {
       await prisma.runningTimer.deleteMany({ where: { consultantId: escenario.consultorA.id } });
     }

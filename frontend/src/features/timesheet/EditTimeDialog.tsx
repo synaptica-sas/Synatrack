@@ -52,6 +52,8 @@ function formatDay(day: string) {
  *   servidor reemplaza todos los pendientes del día y proyecto.
  * - Guardar es una sola llamada: o queda todo o no queda nada.
  */
+export const MENSAJE_SOLO_ADMIN_BORRA = "Solo un administrador puede eliminar horas de otro consultor";
+
 export function EditTimeDialog({
   day,
   projectId,
@@ -62,6 +64,7 @@ export function EditTimeDialog({
   summary,
   readOnly,
   esPropio = true,
+  puedeEliminar = true,
   readOnlyReason,
   onSave,
   onClose,
@@ -77,6 +80,8 @@ export function EditTimeDialog({
   readOnly: boolean;
   /** `false` si se edita la semana de otro consultor: las horas extra quedan de solo lectura. */
   esPropio?: boolean;
+  /** `false` si quien edita no es ADMIN y mira a otro consultor: los registros ya guardados no se pueden eliminar. */
+  puedeEliminar?: boolean;
   /** Por qué está en solo lectura (semana enviada o aprobada); se muestra como aviso. */
   readOnlyReason?: string;
   /** Ejecuta el guardado contra la API; debe lanzar el error si falla. */
@@ -147,6 +152,7 @@ export function EditTimeDialog({
   function removeRow(index: number) {
     const row = rows[index];
     if (!row || !row.editable || isBlank(row)) return;
+    if (row.id && !puedeEliminar) return;
     const next = withTrailingBlank(
       rows.filter((_, i) => i !== index),
       baseTypeId,
@@ -519,7 +525,12 @@ export function EditTimeDialog({
                           className="ghost ts-day-del"
                           onClick={() => removeRow(i)}
                           aria-label="Eliminar este registro"
-                          title="Eliminar este registro (Ctrl+Supr)"
+                          disabled={!!row.id && !puedeEliminar}
+                          title={
+                            row.id && !puedeEliminar
+                              ? MENSAJE_SOLO_ADMIN_BORRA
+                              : "Eliminar este registro (Ctrl+Supr)"
+                          }
                         >
                           ✕
                         </button>

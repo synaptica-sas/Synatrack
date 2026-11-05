@@ -250,82 +250,56 @@ describe("splitExcess", () => {
 });
 
 describe("splitTimerSpan", () => {
-  const base = {
-    hoursPerDay: 8.4,
-    alreadyUsedRegular: 0,
-    regularAllowed: true,
-    hasApprovedRequest: false,
-    approvedExtraBalance: 0,
-    alreadyUsedExtra: 0,
-  };
+  const base = { hoursPerDay: 8.4, alreadyUsedRegular: 0, regularAllowed: true };
 
-  it("franja dentro de la jornada: un solo tramo REGULAR", () => {
+  it("franja dentro de la jornada: un solo tramo REGULAR y nada descartado", () => {
     const r = splitTimerSpan({ ...base, start: t("2026-11-04T13:00:00Z"), end: t("2026-11-04T15:30:00Z") });
     expect(r.segments).toEqual([
       { category: "REGULAR", isExcess: false, startedAt: t("2026-11-04T13:00:00Z"), endedAt: t("2026-11-04T15:30:00Z"), hours: 2.5 },
     ]);
     expect(r.discardedHours).toBe(0);
+    expect(r.discardedFrom).toBeNull();
+    expect(r.discardedTo).toBeNull();
   });
 
-  it("una sola franja cruza jornada y saldo: REGULAR, EXTRA y excedente contiguos", () => {
-    // Ya hay 6 h; quedan 2.4 (2:24). Saldo 2 h, ya usado 0.5 -> 1.5 de EXTRA. 5 h de franja.
-    const r = splitTimerSpan({
-      ...base,
-      alreadyUsedRegular: 6,
-      hasApprovedRequest: true,
-      approvedExtraBalance: 2,
-      alreadyUsedExtra: 0.5,
-      start: t("2026-11-04T20:00:00Z"),
-      end: t("2026-11-05T01:00:00Z"),
-    });
+  it("lo que pasa de la jornada se descarta, nunca se convierte en EXTRA", () => {
+    // Ya hay 6 h; quedan 2.4 (2:24). Franja de 5 h: 2.4 REGULAR y 2.6 descartadas.
+    const r = splitTimerSpan({ ...base, alreadyUsedRegular: 6, start: t("2026-11-04T20:00:00Z"), end: t("2026-11-05T01:00:00Z") });
     expect(r.segments.map((s) => [s.category, s.isExcess, s.startedAt.toISOString(), s.endedAt.toISOString(), s.hours])).toEqual([
       ["REGULAR", false, "2026-11-04T20:00:00.000Z", "2026-11-04T22:24:00.000Z", 2.4],
-      ["EXTRA", false, "2026-11-04T22:24:00.000Z", "2026-11-04T23:54:00.000Z", 1.5],
-      ["EXTRA", true, "2026-11-04T23:54:00.000Z", "2026-11-05T01:00:00.000Z", 1.1],
     ]);
-    expect(r.discardedHours).toBe(0);
+    expect(r.discardedHours).toBe(2.6);
+    expect(r.discardedFrom).toEqual(t("2026-11-04T22:24:00Z"));
+    expect(r.discardedTo).toEqual(t("2026-11-05T01:00:00Z"));
     expect(r.totalHours).toBe(5);
   });
 
-  it("sin solicitud aprobada: guarda hasta el tope y descarta el resto", () => {
+  it("guarda hasta el tope y descarta el resto", () => {
     const r = splitTimerSpan({ ...base, alreadyUsedRegular: 7.4, start: t("2026-11-04T20:00:00Z"), end: t("2026-11-04T23:00:00Z") });
     expect(r.segments).toHaveLength(1);
     expect(r.segments[0]).toMatchObject({ category: "REGULAR", hours: 1 });
     expect(r.discardedHours).toBe(2);
     expect(r.discardedFrom).toEqual(t("2026-11-04T21:00:00Z"));
+    expect(r.discardedTo).toEqual(t("2026-11-04T23:00:00Z"));
   });
 
-  it("solicitud aprobada con saldo agotado: todo lo sobrante es excedente, no descarte", () => {
-    const r = splitTimerSpan({
-      ...base,
-      alreadyUsedRegular: 8.4,
-      hasApprovedRequest: true,
-      approvedExtraBalance: 2,
-      alreadyUsedExtra: 2,
-      start: t("2026-11-04T23:00:00Z"),
-      end: t("2026-11-05T00:00:00Z"),
-    });
-    expect(r.segments.map((s) => [s.category, s.isExcess, s.hours])).toEqual([["EXTRA", true, 1]]);
-    expect(r.discardedHours).toBe(0);
-  });
-
-  it("jornada ya llena y sin solicitud: no se guarda nada", () => {
+  it("jornada ya llena: no se guarda nada, todo se descarta", () => {
     const r = splitTimerSpan({ ...base, alreadyUsedRegular: 8.4, start: t("2026-11-04T23:00:00Z"), end: t("2026-11-05T00:30:00Z") });
     expect(r.segments).toEqual([]);
     expect(r.discardedHours).toBe(1.5);
   });
 
   it("jornada ya excedida (dato histórico) se trata como llena", () => {
-    const r = splitTimerSpan({ ...base, alreadyUsedRegular: 9, hasApprovedRequest: true, approvedExtraBalance: 1, start: t("2026-11-04T23:00:00Z"), end: t("2026-11-05T00:00:00Z") });
-    expect(r.segments.map((s) => [s.category, s.isExcess, s.hours])).toEqual([["EXTRA", false, 1]]);
+    const r = splitTimerSpan({ ...base, alreadyUsedRegular: 9, start: t("2026-11-04T23:00:00Z"), end: t("2026-11-05T00:00:00Z") });
+    expect(r.segments).toEqual([]);
+    expect(r.discardedHours).toBe(1);
   });
 
-  it("día no laborable sin permiso: nada es REGULAR", () => {
-    const r = splitTimerSpan({ ...base, regularAllowed: false, hasApprovedRequest: true, approvedExtraBalance: 1, start: t("2026-11-07T14:00:00Z"), end: t("2026-11-07T16:00:00Z") });
-    expect(r.segments.map((s) => [s.category, s.isExcess, s.hours])).toEqual([
-      ["EXTRA", false, 1],
-      ["EXTRA", true, 1],
-    ]);
+  it("día no laborable sin permiso: nada se guarda, todo se descarta", () => {
+    const r = splitTimerSpan({ ...base, regularAllowed: false, start: t("2026-11-07T14:00:00Z"), end: t("2026-11-07T16:00:00Z") });
+    expect(r.segments).toEqual([]);
+    expect(r.discardedHours).toBe(2);
+    expect(r.discardedFrom).toEqual(t("2026-11-07T14:00:00Z"));
   });
 
   it("el tramo REGULAR nunca supera la jornada (corte truncado al segundo)", () => {

@@ -5,6 +5,7 @@ import { listAllTimeEntries, type Consultant, type TimeEntry } from "../../servi
 import { addDays, formatWeekRange, startOfWeek, todayIso } from "../timesheet/timesheetUtils";
 import { HoursBarChart } from "./HoursBarChart";
 import {
+  absenceHoursApproved,
   barsByConsultant,
   barsByDay,
   filterByScope,
@@ -66,6 +67,7 @@ export function ReportsTab({
   // cuentan como horas extra.
   const shown = useMemo(() => filterByScope(entries, scope), [entries, scope]);
   const porEstado = useMemo(() => hoursByStatus(entries), [entries]);
+  const ausencias = useMemo(() => absenceHoursApproved(entries), [entries]);
   const bars = useMemo(() => barsByDay(shown, weekStart, jornadaDe), [shown, weekStart, jornadaDe]);
   const porConsultor = useMemo(() => barsByConsultant(shown, jornadaDe), [shown, jornadaDe]);
   const resumen = useMemo(() => totals(bars), [bars]);
@@ -158,6 +160,12 @@ export function ReportsTab({
             <strong>{formatHms(porEstado.pending)}</strong>
           </div>
         </div>
+
+        {ausencias > 0 && (
+          <p className="ts-hint">
+            Ausencias aprobadas: {formatHms(ausencias)} (no cuentan como ejecutado).
+          </p>
+        )}
 
         <div className="report-kpis">
           <div>

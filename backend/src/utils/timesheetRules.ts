@@ -394,29 +394,26 @@ export interface TimerSpanInput {
   alreadyUsedRegular: number;
   /** `false` en fin de semana/festivo sin `allowWeekendWork`: no hay tramo REGULAR. */
   regularAllowed: boolean;
-  /** Existe al menos una solicitud de horas extra APROBADA ese día para el proyecto del cronómetro. */
-  hasApprovedRequest: boolean;
-  /** Σ `totalHours` de esas solicitudes. */
-  approvedExtraBalance: number;
-  /** EXTRA no excedentes no REJECTED ya registradas ese día en ese proyecto. */
-  alreadyUsedExtra: number;
 }
 
 export interface TimerSegment {
-  category: "REGULAR" | "EXTRA";
-  isExcess: boolean;
+  /** El cronómetro solo registra horas regulares (decisión 2026-11-05). */
+  category: "REGULAR";
+  isExcess: false;
   startedAt: Date;
   endedAt: Date;
   hours: number;
 }
 
 export interface TimerSplitResult {
-  /** Tramos contiguos en orden cronológico; solo los que se guardan. */
+  /** A lo sumo un tramo REGULAR; solo lo que se guarda. */
   segments: TimerSegment[];
-  /** Horas que no se guardan (sin solicitud aprobada). */
+  /** Horas que no se guardan (pasan del tope de la jornada o el día no admite regulares). */
   discardedHours: number;
   /** Desde qué instante se descartó (null si no se descartó nada). */
   discardedFrom: Date | null;
+  /** Hasta qué instante llega lo descartado: el fin de la franja (null si no se descartó nada). */
+  discardedTo: Date | null;
   totalHours: number;
 }
 
@@ -427,55 +424,41 @@ function capToMs(capHours: number): number {
 }
 
 /**
- * Partición del cronómetro al detenerse (R14 §2.5), en orden cronológico:
- *   1. REGULAR hasta completar la jornada (descontando lo ya registrado ese día).
- *   2. Con solicitud aprobada: EXTRA hasta el saldo (descontando lo ya usado) y el resto EXTRA
- *      `isExcess` (el PM lo aprueba o rechaza). "Hay solicitud pero el saldo se agotó" es
- *      excedente, no descarte.
- *   3. Sin solicitud aprobada: el resto se descarta y se informa en `discardedHours`.
+ * Corte del cronómetro al detenerse (R14 §2.5, simplificado el 2026-11-05): solo se registra
+ * REGULAR hasta completar la jornada (descontando lo ya registrado ese día). TODO lo que sobre se
+ * descarta, haya o no solicitud de horas extra aprobada: el cronómetro no crea EXTRA ni excedentes;
+ * si eran horas extra, el consultor las registra a mano en el timesheet.
  *
- * Los cortes se truncan al segundo entero (el tramo nunca supera su cupo). Un tramo que redondea
- * a 0 h (< 0.18 s) no se guarda. El día de imputación lo decide el llamador (hoy el timer imputa
- * al día UTC de inicio aunque cruce medianoche); esta función no parte por día.
+ * El corte se trunca al segundo entero (el tramo nunca supera su cupo). Un tramo que redondea a
+ * 0 h (< 0.18 s) no se guarda. El día de imputación lo decide el llamador; esta función no parte
+ * por día.
  */
 export function splitTimerSpan(input: TimerSpanInput): TimerSplitResult {
   const startMs = input.start.getTime();
-  const totalMs = Math.max(0, input.end.getTime() - startMs);
+  const endMs = input.end.getTime();
+  const totalMs = Math.max(0, endMs - startMs);
 
   const regularCap = input.regularAllowed ? Math.max(0, input.hoursPerDay - input.alreadyUsedRegular) : 0;
   const regularMs = Math.min(totalMs, capToMs(regularCap));
-  const rest = totalMs - regularMs;
-
-  let extraMs = 0;
-  let excessMs = 0;
-  let discardedMs = 0;
-  if (input.hasApprovedRequest) {
-    const extraCap = Math.max(0, input.approvedExtraBalance - input.alreadyUsedExtra);
-    extraMs = Math.min(rest, capToMs(extraCap));
-    excessMs = rest - extraMs;
-  } else {
-    discardedMs = rest;
-  }
-
+  const discardedMs = totalMs - regularMs;
 
   const segments: TimerSegment[] = [];
-  let cursor = startMs;
-  const add = (ms: number, category: "REGULAR" | "EXTRA", isExcess: boolean) => {
-    if (ms <= 0) return;
-    const hours = roundHours(ms / MS_PER_HOUR);
-    const from = cursor;
-    cursor += ms;
-    if (hours <= 0) return;
-    segments.push({ category, isExcess, startedAt: new Date(from), endedAt: new Date(cursor), hours });
-  };
-  add(regularMs, "REGULAR", false);
-  add(extraMs, "EXTRA", false);
-  add(excessMs, "EXTRA", true);
+  const hours = roundHours(regularMs / MS_PER_HOUR);
+  if (regularMs > 0 && hours > 0) {
+    segments.push({
+      category: "REGULAR",
+      isExcess: false,
+      startedAt: new Date(startMs),
+      endedAt: new Date(startMs + regularMs),
+      hours,
+    });
+  }
 
   return {
     segments,
     discardedHours: roundHours(discardedMs / MS_PER_HOUR),
     discardedFrom: discardedMs > 0 ? new Date(startMs + regularMs) : null,
+    discardedTo: discardedMs > 0 ? new Date(endMs) : null,
     totalHours: roundHours(totalMs / MS_PER_HOUR),
   };
 }

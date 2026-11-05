@@ -400,7 +400,7 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
       expect((await prisma.timeEntry.findUniqueOrThrow({ where: { id: excedente.id } })).status).toBe("APPROVED");
     });
 
-    it("el cronómetro parte la franja: jornada, extra hasta el saldo y excedente", async () => {
+    it("el cronómetro solo registra la jornada: el resto se descarta aunque haya solicitud aprobada", async () => {
       await limpiarHoras();
       const consultor = await prisma.consultant.create({
         data: {
@@ -446,16 +446,12 @@ describe("Timesheet R14: tope, tipos de hora y horas extra", () => {
         });
         expect(stop.statusCode, stop.body).toBe(201);
         const cuerpo = stop.json() as { entries: Entry[]; discardedHours: number; data: Entry };
-        expect(cuerpo.discardedHours).toBe(0);
-        expect(cuerpo.entries).toHaveLength(3);
-        expect(cuerpo.entries.map((e) => [e.type.category, e.isExcess])).toEqual([
-          ["REGULAR", false],
-          ["EXTRA", false],
-          ["EXTRA", true],
-        ]);
+        expect(cuerpo.discardedHours).toBeCloseTo(2, 3);
+        expect(cuerpo.entries).toHaveLength(1);
+        expect(cuerpo.entries.map((e) => [e.type.category, e.isExcess])).toEqual([["REGULAR", false]]);
         expect(Number(cuerpo.entries[0].hours)).toBeCloseTo(8, 3);
-        expect(Number(cuerpo.entries[1].hours)).toBeCloseTo(1, 3);
-        expect(cuerpo.entries[1].extraHourEntryId).toBe(solicitud.id);
+        expect(cuerpo.entries[0].extraHourEntryId).toBeNull();
+        expect(solicitud.id).toBeTruthy();
         expect(cuerpo.data.id).toBe(cuerpo.entries[0].id);
         expect(await prisma.runningTimer.count({ where: { consultantId: consultor.id } })).toBe(0);
 

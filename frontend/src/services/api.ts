@@ -470,6 +470,8 @@ export type StatsProjectRow = {
   submittedHours: number;
   /** Horas guardadas sin enviar (R15). */
   pendingHours: number;
+  /** Horas de ausencia (Permiso/Vacaciones) aprobadas; no cuentan como ejecutado. */
+  absenceHours?: number;
   // Alert
   alertLevel: AlertLevel;
 };
@@ -519,6 +521,8 @@ export type StatsOverview = {
     approvedHours: number;
     submittedHours: number;
     pendingHours: number;
+    /** Ausencias aprobadas consolidadas (no cuentan como ejecutado). */
+    absenceHours?: number;
     alertCount: number;
     byHealth?: { GREEN: number; YELLOW: number; RED: number };
     avgCpi?: number | null;
@@ -1214,9 +1218,10 @@ export type StopTimerResult = {
   /** Primer registro creado, o `null` si todo quedó fuera del tope. */
   data: TimeEntry | null;
   entries: TimeEntry[];
-  /** Horas que no se guardaron por superar la jornada sin horas extra aprobadas. */
+  /** Horas que no se guardaron por superar el tope de la jornada (el cronómetro nunca crea EXTRA). */
   discardedHours: number;
   discardedFrom: string | null;
+  discardedTo?: string | null;
   totalHours: number;
 };
 
@@ -2190,6 +2195,8 @@ export type ProjectDetailFinancials = {
   projectedPct: number;
   projectedTotal: number;
   approvedHours: number;
+  /** Ausencias aprobadas del proyecto; no cuentan como ejecutado. */
+  absenceHours?: number;
 };
 
 export type ProjectDetailSummary = {

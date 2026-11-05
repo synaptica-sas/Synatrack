@@ -220,6 +220,7 @@ export type HoursByStatus = { approved: number; submitted: number; pending: numb
 export function hoursByStatus(entries: readonly TimeEntry[]): HoursByStatus {
   const out: HoursByStatus = { approved: 0, submitted: 0, pending: 0 };
   for (const e of entries) {
+    if (esAusencia(e)) continue; // "ejecutado" = horas trabajadas, sin ausencias
     const h = Number(e.hours) || 0;
     if (e.status === "APPROVED") out.approved += h;
     else if (e.status === "SUBMITTED") out.submitted += h;
@@ -231,8 +232,21 @@ export function hoursByStatus(entries: readonly TimeEntry[]): HoursByStatus {
 /** Qué registros alimentan la gráfica: solo lo aprobado, o todo lo registrado vigente. */
 export type ReportScope = "approved" | "all";
 
+/** Permiso/Vacaciones: completan la jornada pero no cuentan como horas ejecutadas. */
+export function esAusencia(e: Pick<TimeEntry, "type">): boolean {
+  return e.type?.category === "ABSENCE";
+}
+
+/** Horas de ausencia aprobadas, que se muestran aparte de lo ejecutado. */
+export function absenceHoursApproved(entries: readonly TimeEntry[]): number {
+  return entries
+    .filter((e) => esAusencia(e) && e.status === "APPROVED")
+    .reduce((s, e) => s + (Number(e.hours) || 0), 0);
+}
+
 export function filterByScope(entries: readonly TimeEntry[], scope: ReportScope): TimeEntry[] {
-  return entries.filter((e) =>
-    scope === "approved" ? e.status === "APPROVED" : e.status !== "REJECTED",
+  return entries.filter(
+    (e) =>
+      !esAusencia(e) && (scope === "approved" ? e.status === "APPROVED" : e.status !== "REJECTED"),
   );
 }

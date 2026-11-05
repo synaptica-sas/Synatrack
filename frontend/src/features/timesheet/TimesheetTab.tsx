@@ -45,7 +45,7 @@ import {
   projectsToCopy,
   type ProjectRow,
 } from "./timesheetGrid";
-import { EditTimeDialog } from "./EditTimeDialog";
+import { EditTimeDialog, MENSAJE_SOLO_ADMIN_BORRA } from "./EditTimeDialog";
 import { cellDefaultTypeId, formatDayUsage, isCellTypable } from "./timesheetDay";
 import {
   REVIEW_STATUS_LABELS,
@@ -347,6 +347,12 @@ export function TimesheetTab({
       return;
     }
 
+    if (hours === 0 && existing && !puedeBorrar) {
+      onError(MENSAJE_SOLO_ADMIN_BORRA);
+      clearCellDraft(key);
+      return;
+    }
+
     setSavingCells((prev) => ({ ...prev, [key]: true }));
     try {
       if (hours === 0 && existing) {
@@ -530,6 +536,8 @@ export function TimesheetTab({
   const viewingOther = !!consultantId && consultantId !== myConsultant?.id;
   // Un ADMIN puede enviar la semana de otro; los demás roles solo la propia.
   const onBehalf = isAdmin && viewingOther;
+  // Borrar horas de otro consultor es solo del ADMIN (el servidor responde 403 al resto).
+  const puedeBorrar = isAdmin || !viewingOther;
   const canSubmitWeek = canWrite && !!consultantId && (!viewingOther || isAdmin);
   const consultantLabel = consultants.find((c) => c.id === consultantId)?.fullName ?? "el consultor";
   const nothingToSubmit = !!status && status.submission.projectsToSubmit.length === 0 && !submission.canSubmit;
@@ -843,7 +851,12 @@ export function TimesheetTab({
                                   : setDraftProjects((prev) => prev.filter((id) => id !== row.projectId))
                               }
                               aria-label="Quitar fila"
-                              title="Quitar el proyecto y sus horas pendientes de esta semana"
+                              disabled={rowTotal(row) > 0 && !puedeBorrar}
+                              title={
+                                rowTotal(row) > 0 && !puedeBorrar
+                                  ? MENSAJE_SOLO_ADMIN_BORRA
+                                  : "Quitar el proyecto y sus horas pendientes de esta semana"
+                              }
                             >
                               ✕
                             </button>
@@ -948,6 +961,7 @@ export function TimesheetTab({
               readOnly={!projectEditable(editing.projectId)}
               readOnlyReason={weekLocked ? "Esta semana ya fue enviada: no se puede modificar hasta que un PM la devuelva." : undefined}
               esPropio={!!myConsultant && consultantId === myConsultant.id}
+              puedeEliminar={puedeBorrar}
               onSave={handleSaveEdit}
               onClose={() => setEditing(null)}
             />

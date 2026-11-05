@@ -382,7 +382,7 @@ function ResumenTab({ project, financials, evm, canWrite, onReload, projectId }:
         <KpiCard label="CPI" value={evm?.cpi != null ? pct(evm.cpi) : "—"} sub="≥1 bajo presupuesto" />
         <KpiCard label="SPI" value={evm?.spi != null ? pct(evm.spi) : "—"} sub="≥1 adelantado" />
         <KpiCard label="Presupuesto" value={fmt(financials.budget, financials.displayCurrency)} sub={financials.displayCurrency} />
-        <KpiCard label="Ejecutado" value={fmt(financials.spent, financials.displayCurrency)} sub={`${financials.usedBudgetPercent.toFixed(1)}% del presupuesto`} />
+        <KpiCard label="Ejecutado" value={fmt(financials.spent, financials.displayCurrency)} sub={`${financials.usedBudgetPercent.toFixed(1)}% del presupuesto${(financials.absenceHours ?? 0) > 0 ? ` · Ausencias aprobadas: ${Number(financials.absenceHours).toFixed(1)} h (no cuentan como ejecutado)` : ""}`} />
         <KpiCard
           label="Exposición a riesgos"
           value={fmt(financials.riskExposure, financials.displayCurrency)}

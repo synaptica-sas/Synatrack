@@ -14,6 +14,7 @@ import { cargarUmbralesSalud } from "../admin/health-thresholds.routes.js";
 import { getLogger } from "../../infra/logger.js";
 import { cargarLibroDeTasas } from "../fx/rate-book.service.js";
 import type { DbClient } from "../../infra/prisma.js";
+import { SOLO_TRABAJADAS } from "../../utils/horasEjecutadas.js";
 
 async function upsertAlert(
   prisma: DbClient,
@@ -99,7 +100,7 @@ export async function runAlertEngine(prisma: DbClient): Promise<void> {
     where: { status: "ACTIVE" },
     include: {
       timeEntries: {
-        where: { status: "APPROVED" },
+        where: { status: "APPROVED", ...SOLO_TRABAJADAS },
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
       financialEntries: { where: { type: "EXPENSE" } },
@@ -185,7 +186,7 @@ export async function runAlertEngine(prisma: DbClient): Promise<void> {
     where: { status: "ACTIVE" },
     include: {
       timeEntries: {
-        where: { status: "APPROVED" },
+        where: { status: "APPROVED", ...SOLO_TRABAJADAS },
         include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
       },
       financialEntries: true,

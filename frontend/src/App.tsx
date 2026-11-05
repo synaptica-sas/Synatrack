@@ -1885,6 +1885,7 @@ function App() {
                   onReload={timeEntriesHook.reload}
                   onError={handleError}
                   onNotice={(msg, type) => showToast(msg, type)}
+                  onGoToTimesheet={() => setActiveTab("timeEntries")}
                 />
               )}
 
