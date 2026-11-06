@@ -1,6 +1,7 @@
 import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { invalidarCacheAlResponder } from "../../auth/authCache.js";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
@@ -104,6 +105,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     "/",
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN])],
+      onSend: invalidarCacheAlResponder,
     },
     async (request, reply) => {
       await ensureRoles();
@@ -169,6 +171,7 @@ export async function adminUsersRoutes(app: FastifyInstance) {
     "/:id",
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN])],
+      onSend: invalidarCacheAlResponder,
     },
     async (request, reply) => {
       await ensureRoles();

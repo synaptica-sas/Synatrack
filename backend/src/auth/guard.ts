@@ -5,6 +5,7 @@ import { env } from "../config/env.js";
 import { setActor } from "../infra/actorContext.js";
 import { prisma } from "../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../utils/audit.js";
+import { authCache, buildAuthCacheKey, type AuthResolution } from "./authCache.js";
 import { resolvePermissions, type Permission } from "./roles.js";
 
 /**
@@ -192,55 +193,17 @@ function resolveDemoIdentity(
   };
 }
 
-export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
-  if (!env.AUTH_ENABLED || env.AUTH_DEMO_BYPASS) {
-    const resolved = resolveDemoIdentity(request);
-    if (!resolved.ok) {
-      return reply.status(400).send({ message: resolved.message });
-    }
-
-    // La identidad demo/simulada tiene un `id` sintético (p.ej. "local-admin"),
-    // pero puede existir una fila `User` con su correo. Se resuelve primero por
-    // el enlace `Consultant.userId` de ese usuario (el mismo que usa el login
-    // real y que se fija en "Usuario enlazado") y, si no hay, por correo; de
-    // solo lectura. Se busca sin importar el rol simulado -- un ADMIN o PM
-    // también puede tener su propia ficha de consultor.
-    const demoUser = await prisma.user.findFirst({
-      where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
-      select: { id: true },
-    });
-    const consultant =
-      (demoUser && (await prisma.consultant.findFirst({ where: { userId: demoUser.id } }))) ||
-      (await prisma.consultant.findFirst({
-        where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
-      }));
-
-    request.authUser = { ...resolved.identity, consultantId: consultant?.id ?? null };
-    setActor(resolved.identity.email);
-    return;
-  }
-
-  const token = getBearerToken(request);
-  if (!token) {
-    return reply.status(401).send({ message: "Missing bearer token" });
-  }
-
-  let claims: MicrosoftClaims;
-  try {
-    claims = await verifyMicrosoftToken(token);
-  } catch (err) {
-    request.log.warn(
-      { reason: err instanceof Error ? err.name : "unknown" },
-      "Token de Microsoft rechazado",
-    );
-    return reply.status(401).send({ message: "Invalid Microsoft token" });
-  }
-
-  const email = resolveEmail(claims)?.toLowerCase();
-  if (!email) {
-    return reply.status(401).send({ message: "Token does not include a valid email" });
-  }
-
+/**
+ * Resolución en base de datos de la identidad Entra ID: alta JIT, sincronización
+ * de roles y enlace del Consultant. Es lo costoso, y por eso `authenticate` la
+ * ejecuta a través de `authCache` (una vez por sesión, no por petición). Devuelve
+ * un resultado discriminado: los rechazos nunca se cachean.
+ */
+async function resolveEntraIdentity(
+  request: FastifyRequest,
+  claims: MicrosoftClaims,
+  email: string,
+): Promise<AuthResolution> {
   // Todo lo que se escribe en este bloque (alta del usuario, roles, consultor)
   // lo origina Entra ID, no una acción del usuario: createdBy/updatedBy quedan
   // como `sistema:entra-id`, igual que la bitácora. Al final se reemplaza por el
@@ -297,9 +260,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   }
 
   if (!user.active) {
-    return reply.status(403).send({
-      message: "Tu usuario esta inactivo. Contacta a un administrador.",
-    });
+    return { ok: false, status: 403, message: "Tu usuario esta inactivo. Contacta a un administrador." };
   }
 
   // Sincronizar roles desde el token:
@@ -393,9 +354,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
 
   const roles = userWithRoles.roles.map((item) => item.role.name);
   if (roles.length === 0) {
-    return reply.status(403).send({
-      message: "Tu usuario no tiene roles asignados. Contacta a un administrador.",
-    });
+    return { ok: false, status: 403, message: "Tu usuario no tiene roles asignados. Contacta a un administrador." };
   }
 
   // JIT sincronización: enlazar (y, solo para un CONSULTANT puro, crear si
@@ -479,14 +438,81 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     });
   }
 
-  request.authUser = {
-    id: user.id,
-    email: user.email,
-    displayName: user.displayName,
-    roles,
-    consultantId,
+  return {
+    ok: true,
+    authUser: {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      roles,
+      consultantId,
+    },
   };
-  setActor(user.email);
+}
+
+export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
+  if (!env.AUTH_ENABLED || env.AUTH_DEMO_BYPASS) {
+    const resolved = resolveDemoIdentity(request);
+    if (!resolved.ok) {
+      return reply.status(400).send({ message: resolved.message });
+    }
+
+    // La identidad demo/simulada tiene un `id` sintético (p.ej. "local-admin"),
+    // pero puede existir una fila `User` con su correo. Se resuelve primero por
+    // el enlace `Consultant.userId` de ese usuario (el mismo que usa el login
+    // real y que se fija en "Usuario enlazado") y, si no hay, por correo; de
+    // solo lectura. Se busca sin importar el rol simulado -- un ADMIN o PM
+    // también puede tener su propia ficha de consultor.
+    const demoUser = await prisma.user.findFirst({
+      where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
+      select: { id: true },
+    });
+    const consultant =
+      (demoUser && (await prisma.consultant.findFirst({ where: { userId: demoUser.id } }))) ||
+      (await prisma.consultant.findFirst({
+        where: { email: { equals: resolved.identity.email, mode: "insensitive" } },
+      }));
+
+    request.authUser = { ...resolved.identity, consultantId: consultant?.id ?? null };
+    setActor(resolved.identity.email);
+    return;
+  }
+
+  const token = getBearerToken(request);
+  if (!token) {
+    return reply.status(401).send({ message: "Missing bearer token" });
+  }
+
+  let claims: MicrosoftClaims;
+  try {
+    claims = await verifyMicrosoftToken(token);
+  } catch (err) {
+    request.log.warn(
+      { reason: err instanceof Error ? err.name : "unknown" },
+      "Token de Microsoft rechazado",
+    );
+    return reply.status(401).send({ message: "Invalid Microsoft token" });
+  }
+
+  const email = resolveEmail(claims)?.toLowerCase();
+  if (!email) {
+    return reply.status(401).send({ message: "Token does not include a valid email" });
+  }
+
+  // Los roles crudos del token forman parte de la clave: si cambian en Entra ID, se vuelve a resolver.
+  const tokenRoles = Array.isArray(claims.roles)
+    ? (claims.roles as unknown[]).filter((r): r is string => typeof r === "string")
+    : [];
+  const key = buildAuthCacheKey(email, tokenRoles);
+
+  const result = await authCache.get(key, email, claims.exp, () => resolveEntraIdentity(request, claims, email));
+  if (!result.ok) {
+    return reply.status(result.status).send({ message: result.message });
+  }
+
+  // Por petición, también en acierto de caché (copia de roles: nadie muta la entrada compartida).
+  request.authUser = { ...result.authUser, roles: [...result.authUser.roles] };
+  setActor(result.authUser.email);
 }
 
 /**

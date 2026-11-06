@@ -13,7 +13,9 @@ const msalConfig: Configuration = {
 };
 
 export const loginRequest = {
-  scopes: ["openid", "profile", "email"],
+  // Con el scope de la API en el login, el token queda en caché y
+  // `acquireTokenSilent` no necesita ir a la red al volver del redirect.
+  scopes: ["openid", "profile", "email", ...(env.azureApiScope ? [env.azureApiScope] : [])],
 };
 
 export const apiTokenRequest = {

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { invalidateAuthCache } from "../../auth/authCache.js";
 import { authenticate } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 
@@ -79,6 +80,9 @@ export async function profileRoutes(app: FastifyInstance) {
           skills: payload.skills || [],
         },
       });
+
+      // displayName viaja en el authUser cacheado.
+      invalidateAuthCache(authUser.email);
 
       return {
         data: {

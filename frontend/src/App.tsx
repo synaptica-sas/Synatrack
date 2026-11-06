@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
+import { InteractionStatus } from "@azure/msal-browser";
 import { env } from "./config/env";
-import { apiTokenRequest, loginRequest } from "./auth/msal";
+import { loginRequest } from "./auth/msal";
+import { getAccessToken } from "./auth/accessToken";
+import { getRedirectError, setRedirectError } from "./auth/redirectError";
 import {
   getHealth, getMe, getRolePermissions, setApiAccessToken, sendFeedback,
   type AuthUser, type HealthResponse, type FxConfig, type RolePermissionsMap,
@@ -58,23 +61,6 @@ import "./features/reports/reports.css";
 
 
 // ── Auth helpers ────────────────────────────────────────────────────────────
-
-async function getAccessToken(
-  instance: ReturnType<typeof useMsal>["instance"],
-  account: ReturnType<typeof useMsal>["accounts"][number],
-): Promise<string | null> {
-  const preferAccessToken = Boolean(env.azureApiScope);
-  try {
-    const result = await instance.acquireTokenSilent({ ...apiTokenRequest, account });
-    return preferAccessToken ? result.accessToken || result.idToken : result.idToken || result.accessToken;
-  } catch {
-    await instance.acquireTokenRedirect({
-      ...apiTokenRequest, account,
-      redirectStartPage: `${window.location.origin}/dashboard`,
-    });
-    return null;
-  }
-}
 
 // ── FX Converter (drawer content) ──────────────────────────────────────────
 
@@ -938,8 +924,12 @@ function LandingPage({ darkMode, toggleDarkMode, onLoginClick, errorMessage }: {
 function App() {
   const microsoftConfigured = Boolean(env.azureClientId && env.azureTenantId);
   const authWithMicrosoftEnabled = microsoftConfigured && !env.forceLocalAuth;
-  const { instance, accounts } = useMsal();
+  const { instance, accounts, inProgress } = useMsal();
   const isAuthenticated = useIsAuthenticated();
+  // Identidad estable: `accounts` cambia de referencia sin que cambie la cuenta.
+  // Se prefiere la cuenta activa que fija `main.tsx`; si no hay, la primera de la caché.
+  const accountId = (instance.getActiveAccount() ?? accounts[0])?.homeAccountId ?? null;
+  const msalBusy = inProgress !== InteractionStatus.None;
   const [currentPath, setCurrentPath] = useState(() => (window.location.pathname || "/").toLowerCase());
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     const path = (window.location.pathname || "/").toLowerCase();
@@ -1268,14 +1258,20 @@ function App() {
   }, [activeTab, openProjectId]);
 
   const bootstrap = useCallback(async () => {
+    // Verdadero si MSAL está redirigiendo a Microsoft: `loading` se mantiene hasta salir de la página.
+    let redirigiendo = false;
     try {
       setLoading(true);
       setError(null);
-      const healthResult = await getHealth();
-      setHealth(healthResult);
+      // Fuera del camino crítico: ni bloquea la entrada ni propaga errores.
+      void getHealth().then(setHealth).catch(() => undefined);
       if (authWithMicrosoftEnabled) {
-        if (!isAuthenticated || !accounts[0]) {
+        const account = accountId ? instance.getAllAccounts().find((a) => a.homeAccountId === accountId) : undefined;
+        if (!isAuthenticated || !account) {
           setAuthUser(null);
+          // Error al volver del login de Microsoft (lo guarda main.tsx).
+          const redirectError = getRedirectError();
+          if (redirectError) setError(redirectError);
           const path = window.location.pathname.toLowerCase();
           const isPublic = ["/", "/landing", "/login"].includes(path);
           if (!isPublic) {
@@ -1287,8 +1283,12 @@ function App() {
           setLoading(false);
           return;
         }
-        const token = await getAccessToken(instance, accounts[0]);
-        if (!token) return;
+        const token = await getAccessToken(instance, account);
+        if (!token) {
+          // MSAL está redirigiendo a Microsoft: se deja "Inicializando…" hasta salir de la página.
+          redirigiendo = true;
+          return;
+        }
         setApiAccessToken(token);
       } else {
         const path = window.location.pathname.toLowerCase();
@@ -1306,17 +1306,14 @@ function App() {
       setAuthUser(me);
 
       // La matriz de permisos solo hace falta para el selector de vista, que es
-      // exclusivo de administradores. Si falla, el selector queda deshabilitado
-      // pero el arranque continúa: es una ayuda de previsualización, no una
-      // dependencia del funcionamiento normal.
+      // exclusivo de administradores. Se carga en segundo plano: si falla, el
+      // selector queda deshabilitado pero la entrada no se bloquea.
       if (me.roles.includes("ADMIN")) {
-        try {
-          setRolePermissionsMap(await getRolePermissions());
-        } catch {
-          setRolePermissionsMap(null);
-        }
+        void getRolePermissions()
+          .then(setRolePermissionsMap)
+          .catch(() => setRolePermissionsMap(null));
       }
-      
+
       if (!authWithMicrosoftEnabled) {
         sessionStorage.setItem("bypass_auth", "true");
       }
@@ -1340,11 +1337,27 @@ function App() {
       setAuthUser(null);
       setError(err instanceof Error ? err.message : "Error inicializando la aplicación");
     } finally {
-      setLoading(false);
+      if (!redirigiendo) setLoading(false);
     }
-  }, [accounts, authWithMicrosoftEnabled, instance, isAuthenticated]);
+  }, [accountId, authWithMicrosoftEnabled, instance, isAuthenticated]);
 
-  useEffect(() => { void bootstrap(); }, [bootstrap, microsoftConfigured]);
+  useEffect(() => {
+    // Mientras MSAL procesa el redirect o un login, no hay cuenta ni token fiables.
+    if (authWithMicrosoftEnabled && msalBusy) return;
+    void bootstrap();
+  }, [bootstrap, microsoftConfigured, authWithMicrosoftEnabled, msalBusy]);
+
+  // Aviso de arranque en frío si la pantalla de carga se alarga.
+  const [slowInit, setSlowInit] = useState(false);
+  const initializing = loading || (authWithMicrosoftEnabled && msalBusy);
+  useEffect(() => {
+    if (!initializing) {
+      setSlowInit(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlowInit(true), 5000);
+    return () => clearTimeout(timer);
+  }, [initializing]);
 
   async function logout() {
     setApiAccessToken(null);
@@ -1399,7 +1412,7 @@ function App() {
 
   // ── Not authenticated ────────────────────────────────────────────────────
   if (!authUser) {
-    if (loading) {
+    if (initializing) {
       return (
         <main className="auth-shell">
           <section className="auth-card">
@@ -1408,12 +1421,16 @@ function App() {
             </div>
             <h1>SynaTrack</h1>
             <p>Inicializando sesión…</p>
+            {slowInit && <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>El servidor está iniciando; puede tardar hasta un minuto.</p>}
           </section>
         </main>
       );
     }
 
-    if (currentPath === "/" || currentPath === "/landing") {
+    // Con sesión Microsoft activa y un fallo al arrancar, se muestra el error con
+    // "Reintentar" aunque la ruta sea la portada (si no, el error queda en la landing).
+    const falloConSesion = authWithMicrosoftEnabled && isAuthenticated && Boolean(error);
+    if (!falloConSesion && (currentPath === "/" || currentPath === "/landing")) {
       return (
         <LandingPage
           darkMode={darkMode}
@@ -1452,7 +1469,7 @@ function App() {
                 <p>Ingresa con Microsoft para continuar.</p>
                 <div className="inline-actions" style={{ flexDirection: "column", gap: "0.5rem" }}>
                   <button type="button"
-                    onClick={() => void instance.loginRedirect({ ...loginRequest, redirectStartPage: `${window.location.origin}/home` })}>
+                    onClick={() => { setRedirectError(null); setError(null); void instance.loginRedirect({ ...loginRequest, redirectStartPage: `${window.location.origin}/home` }); }}>
                     Iniciar sesión con Microsoft
                   </button>
                   <button type="button" className="ghost" onClick={() => goTo("/")}>Volver al Inicio</button>

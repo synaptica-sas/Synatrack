@@ -581,8 +581,27 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, method: HttpMethod = "GET", body?: unknown): Promise<T> {
+interface RequestOptions {
+  /** Tiempo máximo de espera por llamada. Sin valor no hay límite (exportaciones y cargas largas). */
+  timeoutMs?: number;
+}
+
+async function request<T>(
+  path: string,
+  method: HttpMethod = "GET",
+  body?: unknown,
+  options: RequestOptions = {},
+): Promise<T> {
   const baseUrl = ensureApiUrl();
+
+  const controller = options.timeoutMs ? new AbortController() : null;
+  let timedOut = false;
+  const timer = controller
+    ? setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, options.timeoutMs)
+    : null;
 
   let response: Response;
   try {
@@ -593,11 +612,17 @@ async function request<T>(path: string, method: HttpMethod = "GET", body?: unkno
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
+      signal: controller?.signal,
     });
   } catch {
+    if (timedOut) {
+      throw new Error("El servidor tardó demasiado en responder. Puede estar iniciando; intenta de nuevo en unos segundos.");
+    }
     // `fetch` solo rechaza por fallo de red (servidor caído, CORS, DNS). El
     // navegador da un "Failed to fetch" en inglés que no dice nada al usuario.
     throw new Error("No se pudo contactar con el servidor. Verifica que el backend esté disponible.");
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   if (!response.ok) {
@@ -722,7 +747,8 @@ export async function getHealth(): Promise<HealthResponse> {
 }
 
 export async function getMe(): Promise<AuthUser> {
-  const response = await request<ApiEnvelope<AuthUser>>("/api/auth/me");
+  // 25 s: cubre el arranque en frío de Render sin dejar al usuario colgado para siempre.
+  const response = await request<ApiEnvelope<AuthUser>>("/api/auth/me", "GET", undefined, { timeoutMs: 25_000 });
   return response.data;
 }
 

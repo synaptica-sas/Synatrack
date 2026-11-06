@@ -1,6 +1,7 @@
 import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { invalidarCacheAlResponder } from "../../auth/authCache.js";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
@@ -123,6 +124,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
     "/",
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
+      onSend: invalidarCacheAlResponder,
     },
     async (request, reply) => {
     const payload = consultantPayloadSchema.parse(request.body);
@@ -174,6 +176,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
     "/:id",
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
+      onSend: invalidarCacheAlResponder,
     },
     async (request, reply) => {
     const { id } = consultantParamsSchema.parse(request.params);
@@ -250,6 +253,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
     "/:id/link-user",
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN])],
+      onSend: invalidarCacheAlResponder,
     },
     async (request, reply) => {
       const { id } = consultantParamsSchema.parse(request.params);
@@ -293,6 +297,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
     "/:id",
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN])],
+      onSend: invalidarCacheAlResponder,
     },
     async (request, reply) => {
       const { id } = consultantParamsSchema.parse(request.params);
@@ -354,6 +359,7 @@ export async function consultantsRoutes(app: FastifyInstance) {
     "/by-name",
     {
       preHandler: [authenticate, authorize([AppRole.ADMIN])],
+      onSend: invalidarCacheAlResponder,
     },
     async (request, reply) => {
       const { name } = z.object({ name: z.string().trim().min(1) }).parse(request.query);
