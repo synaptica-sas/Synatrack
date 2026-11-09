@@ -2118,7 +2118,7 @@ function App() {
       <AppFooter
         onNavigate={setActiveTab}
         backendOk={health?.ok === true}
-        appVersion="2.1.0"
+        appVersion="2.3.0"
         environment={import.meta.env.MODE === "production" ? "Producción" : "Demo"}
         onOpenFeedback={() => setFeedbackOpen(true)}
         darkMode={darkMode}
