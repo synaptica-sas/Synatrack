@@ -42,12 +42,14 @@ import { healthThresholdsRoutes } from "../modules/admin/health-thresholds.route
 import { timesheetWeeksRoutes } from "../modules/timesheet-weeks/timesheet-weeks.routes.js";
 import { timesheetReviewsRoutes } from "../modules/timesheet-weeks/timesheet-reviews.routes.js";
 import { approvalDigestRoutes } from "../modules/admin/approval-digest.routes.js";
+import { companiesRoutes } from "../modules/companies/companies.routes.js";
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(healthRoutes);
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(projectsRoutes, { prefix: "/api/projects" });
   await app.register(projectCategoriesRoutes, { prefix: "/api/project-categories" });
+  await app.register(companiesRoutes, { prefix: "/api/companies" });
   await app.register(projectDetailRoutes, { prefix: "/api/projects" });
   await app.register(milestonesRoutes, { prefix: "/api/projects" });
   await app.register(risksRoutes, { prefix: "/api/projects" });

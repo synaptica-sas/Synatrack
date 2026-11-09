@@ -75,12 +75,12 @@ describe("actorContext", () => {
 
 describe("modelos con trazabilidad (derivados del esquema)", () => {
   it("incluye los modelos con columnas y excluye los que no las tienen", () => {
-    for (const m of ["Project", "TimeEntry", "ExtraHourEntry", "Assignment", "Milestone", "User"]) {
+    for (const m of ["Project", "Company", "TimeEntry", "ExtraHourEntry", "Assignment", "Milestone", "User"]) {
       expect(camposDeTrazabilidadPorModelo.get(m)).toEqual(new Set(["createdBy", "updatedBy"]));
     }
     for (const m of ["JobRun", "AuditLog", "RunningTimer", "UserRole"]) {
       expect(camposDeTrazabilidadPorModelo.has(m)).toBe(false);
     }
-    expect(camposDeTrazabilidadPorModelo.size).toBe(33);
+    expect(camposDeTrazabilidadPorModelo.size).toBe(34);
   });
 });

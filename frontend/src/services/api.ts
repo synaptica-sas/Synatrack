@@ -83,7 +83,10 @@ export type ProjectStatus = "PROSPECT" | "ACTIVE" | "PAUSED" | "CLOSED";
 export type Project = {
   id: string;
   name: string;
+  /** Nombre de la empresa (cliente). Las pantallas lo siguen leyendo de aquí. */
   company: string;
+  /** Id de la empresa del catálogo "Gestión de empresas". */
+  companyId: string;
   country: string;
   currency: string;
   /**
@@ -822,7 +825,7 @@ export async function listProjectCategories(): Promise<ProjectCategory[]> {
 
 export async function createProject(payload: {
   name: string;
-  company: string;
+  companyId: string;
   country: string;
   currency: string;
   budget: number;
@@ -861,7 +864,7 @@ export async function updateProject(
   id: string,
   payload: {
     name: string;
-    company: string;
+    companyId: string;
     country: string;
     currency: string;
     budget: number;
@@ -891,6 +894,76 @@ export async function updateProject(
 
 export async function deleteProject(id: string): Promise<void> {
   await request<void>(`/api/projects/${id}`, "DELETE");
+}
+
+// ── Empresas (clientes de los proyectos) ────────────────────────────────────
+
+export type Company = {
+  id: string;
+  name: string;
+  nit: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+  updatedBy: string | null;
+  projectCount: number;
+};
+
+export type CompanyProject = {
+  id: string;
+  name: string;
+  status: ProjectStatus;
+  country: string;
+  currency: string;
+  startDate: string;
+  endDate: string;
+  projectManagerEmail: string | null;
+  isInternal: boolean;
+};
+
+export type CompanyDetail = Company & { projects: CompanyProject[] };
+
+export type CompanyPayload = {
+  name?: string;
+  nit?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  active?: boolean;
+};
+
+export type CompanyFilters = { active?: boolean; search?: string };
+
+export async function listCompanies(filters?: CompanyFilters): Promise<Company[]> {
+  const query = new URLSearchParams();
+  if (filters?.active !== undefined) query.set("active", String(filters.active));
+  if (filters?.search) query.set("search", filters.search);
+  const qs = query.toString();
+  const response = await request<ApiEnvelope<Company[]>>(`/api/companies${qs ? `?${qs}` : ""}`);
+  return response.data;
+}
+
+export async function getCompany(id: string): Promise<CompanyDetail> {
+  const response = await request<ApiEnvelope<CompanyDetail>>(`/api/companies/${id}`);
+  return response.data;
+}
+
+export async function createCompany(payload: CompanyPayload & { name: string }): Promise<Company> {
+  const response = await request<ApiEnvelope<Company>>("/api/companies", "POST", payload);
+  return response.data;
+}
+
+export async function updateCompany(id: string, payload: CompanyPayload): Promise<Company> {
+  const response = await request<ApiEnvelope<Company>>(`/api/companies/${id}`, "PUT", payload);
+  return response.data;
+}
+
+export async function deleteCompany(id: string): Promise<void> {
+  await request<void>(`/api/companies/${id}`, "DELETE");
 }
 
 export async function listConsultants(): Promise<Consultant[]> {

@@ -174,7 +174,9 @@ enum AlertType {
 model Project {
   id                  String        @id @default(cuid())
   name                String
-  company             String
+  // Cliente del proyecto (catálogo `Company`). Reemplaza al antiguo texto libre.
+  companyId           String
+  company             Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
   country             String
   currency            String
   budget              Decimal       @db.Decimal(14, 2)
@@ -242,6 +244,32 @@ model Project {
   // Proyecto interno "Ausencias" (R14): único destino de los tipos de hora
   // ABSENCE (permiso, vacaciones). Visible a todos los consultores sin asignación.
   isAbsenceProject Boolean               @default(false)
+
+  @@index([companyId])
+}
+
+/// Empresa cliente del proyecto (catálogo). NO es `Consultant.company`, que es
+/// el empleador del consultor y se usa en los filtros del capacity.
+/// El nombre es único sin distinguir mayúsculas: además del `@unique`, la
+/// migración crea el índice `Company_name_lower_key` sobre lower(name), que
+/// Prisma no puede expresar. El NIT es siempre opcional, pero si viene es único.
+/// Restrict: no se puede borrar una empresa con proyectos (historia contable).
+model Company {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  nit          String?  @unique
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String? // email de quien creó el registro
+  updatedBy    String? // email de quien lo modificó por última vez
+
+  projects Project[]
+
+  @@index([active])
 }
 
 model Consultant {

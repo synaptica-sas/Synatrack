@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -47,7 +48,7 @@ describe("/api/capacity/reports y includeAssignments", () => {
     const p = await prisma.project.create({
       data: {
         name: `Proyecto ${prefijo}`,
-        company: "Cliente X",
+        companyId: await idEmpresa("Cliente X"),
         country: "Colombia",
         currency: "USD",
         budget: 1000,

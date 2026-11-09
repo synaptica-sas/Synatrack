@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -31,7 +32,7 @@ describe("GET /api/projects: un CONSULTANT puro no recibe campos monetarios del 
     const project = await prisma.project.create({
       data: {
         name: `Proyecto monetario ${Date.now()}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 123456,

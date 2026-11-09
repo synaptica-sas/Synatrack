@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -116,7 +117,7 @@ describe("Resumen semanal de aprobaciones (R-020 + R-022)", () => {
     });
 
     const proyectoBase = {
-      company: `Empresa ${prefijo}`,
+      companyId: await idEmpresa(`Empresa ${prefijo}`),
       country: "Colombia",
       budget: 100_000,
       currency: "USD",

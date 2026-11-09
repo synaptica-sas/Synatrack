@@ -72,9 +72,10 @@ export async function statsRoutes(app: FastifyInstance) {
           id: query.projectId || undefined,
           // Un PROSPECT (oportunidad no ganada) no entra en KPIs ni en el portafolio (CONTRATO 3.7).
           status: { not: "PROSPECT" },
-          company: query.company ? { equals: query.company, mode: "insensitive" } : undefined,
+          company: query.company ? { name: { equals: query.company, mode: "insensitive" } } : undefined,
         },
         include: {
+          company: { select: { id: true, name: true } },
           timeEntries: {
             where: { workDate: { gte: query.from, lte: query.to } },
             include: {
@@ -160,7 +161,8 @@ export async function statsRoutes(app: FastifyInstance) {
         return {
           projectId: project.id,
           projectName: project.name,
-          company: project.company,
+          company: project.company.name,
+          companyId: project.companyId,
           currency: project.currency,
           projectType: project.projectType,
           status: project.status,
@@ -322,9 +324,10 @@ export async function statsRoutes(app: FastifyInstance) {
           id: query.projectId || undefined,
           // Un PROSPECT (oportunidad no ganada) no entra en KPIs ni en el portafolio (CONTRATO 3.7).
           status: { not: "PROSPECT" },
-          company: query.company ? { equals: query.company, mode: "insensitive" } : undefined,
+          company: query.company ? { name: { equals: query.company, mode: "insensitive" } } : undefined,
         },
         include: {
+          company: { select: { id: true, name: true } },
           timeEntries: {
             where: SOLO_TRABAJADAS,
             include: { consultant: { select: { hourlyRate: true, rateCurrency: true } } },
@@ -390,7 +393,8 @@ export async function statsRoutes(app: FastifyInstance) {
         return {
           projectId: project.id,
           projectName: project.name,
-          company: project.company,
+          company: project.company.name,
+          companyId: project.companyId,
           projectType: project.projectType,
           status: project.status,
           phase: project.phase,

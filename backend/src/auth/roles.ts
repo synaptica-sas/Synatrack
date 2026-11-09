@@ -3,6 +3,8 @@ import { AppRole } from "@prisma/client";
 export type Permission =
   | "projects:read"
   | "projects:write"
+  | "companies:read"
+  | "companies:write"
   | "consultants:read"
   | "consultants:write"
   | "time:read"
@@ -50,6 +52,8 @@ const allPermissions: Permission[] = [
   "activities:manage",
   "projects:read",
   "projects:write",
+  "companies:read",
+  "companies:write",
   "consultants:read",
   "consultants:write",
   "time:read",
@@ -106,6 +110,8 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
   PM: [
     "projects:read",
     "projects:write",
+    "companies:read",
+    "companies:write",
     "consultants:read",
     "consultants:write",
     "time:read",
@@ -159,6 +165,7 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "snapshots:close",
     "audit:read",
     "projects:read",
+    "companies:read",
     "stats:read",
     "estimations:read",
   ],
@@ -172,6 +179,7 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
   ],
   VIEWER: [
     "projects:read",
+    "companies:read",
     "consultants:read",
     "time:read",
     "expenses:read",

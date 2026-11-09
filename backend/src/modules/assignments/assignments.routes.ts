@@ -180,7 +180,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
             : {}),
         },
         include: {
-          project: { select: { id: true, name: true, company: true, currency: true } },
+          project: { select: { id: true, name: true, company: { select: { id: true, name: true } }, currency: true } },
           consultant: { select: { id: true, fullName: true, role: true, country: true } },
         },
         orderBy: [{ startDate: "asc" }, { createdAt: "desc" }],
@@ -236,7 +236,7 @@ export async function assignmentsRoutes(app: FastifyInstance) {
       const assignment = await prisma.assignment.findUnique({
         where: { id },
         include: {
-          project: { select: { id: true, name: true, company: true } },
+          project: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
           consultant: { select: { id: true, fullName: true, role: true, country: true, seniority: true } },
         },
       });

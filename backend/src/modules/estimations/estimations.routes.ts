@@ -29,7 +29,7 @@ export async function estimationsRoutes(app: FastifyInstance) {
     async () => {
       const estimations = await prisma.estimation.findMany({
         include: {
-          project: true,
+          project: { include: { company: true } },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -48,7 +48,7 @@ export async function estimationsRoutes(app: FastifyInstance) {
       const estimations = await prisma.estimation.findMany({
         where: { projectId },
         include: {
-          project: true,
+          project: { include: { company: true } },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -85,7 +85,7 @@ export async function estimationsRoutes(app: FastifyInstance) {
           rawDataJson: payload.rawDataJson,
         },
         include: {
-          project: true,
+          project: { include: { company: true } },
         },
       });
 

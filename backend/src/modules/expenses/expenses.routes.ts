@@ -68,7 +68,7 @@ export async function expensesRoutes(app: FastifyInstance) {
 
       const expenses = await prisma.financialEntry.findMany({
         where: { type: "EXPENSE" },
-        include: { project: true },
+        include: { project: { include: { company: true } } },
         orderBy: { entryDate: "desc" },
       });
 

@@ -13,6 +13,7 @@ const mockProject = (id: string, name: string, budget: string): Project => ({
   id,
   name,
   company: "ACME",
+  companyId: "c1",
   country: "",
   currency: "USD",
   projectType: "TIME_AND_MATERIAL",

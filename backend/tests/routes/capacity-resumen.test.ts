@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -102,7 +103,7 @@ describe("runCapacityDigest", () => {
     const p = await prisma.project.create({
       data: {
         name: `Proyecto ${prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 1000,

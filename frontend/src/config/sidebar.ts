@@ -22,6 +22,7 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
       { id: "dashboard",  label: "Dashboard",   icon: "▦",  permission: "stats:read" },
       { id: "portfolio",  label: "Portafolio",  icon: "◈",  permission: "stats:read" },
       { id: "projects",   label: "Proyectos",   icon: "◻",  permission: "projects:read" },
+      { id: "companies",  label: "Empresas",    icon: "▣",  permission: "companies:read" },
       { id: "capacity",   label: "Capacidad",   icon: "◉",  permission: "capacity:read" },
     ],
   },

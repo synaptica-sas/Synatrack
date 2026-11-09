@@ -105,7 +105,8 @@ async function resolverOInsertarCategoria(
 
 const projectPayloadBaseSchema = z.object({
   name: z.string().trim().min(1),
-  company: z.string().trim().min(1),
+  // Obligatorio al crear; en el PUT es opcional (si no viene se conserva la empresa actual).
+  companyId: z.string().trim().min(1, "companyId no puede estar vacío").optional(),
   country: z.string().trim().min(1),
   currency: z
     .string()
@@ -137,7 +138,17 @@ const projectPayloadBaseSchema = z.object({
  * crítico 40 y dejar la advertencia en blanco es incoherente contra el 30 por
  * defecto, aunque el formulario no haya escrito nada.
  */
-const projectPayloadSchema = projectPayloadBaseSchema.superRefine((body, ctx) => {
+const projectPayloadSchema = projectPayloadBaseSchema.superRefine(validarUmbralesCoherentes);
+
+/** POST: igual que el PUT pero `companyId` es obligatorio. */
+const projectCreateSchema = projectPayloadBaseSchema
+  .extend({ companyId: z.string().trim().min(1, "companyId es obligatorio") })
+  .superRefine(validarUmbralesCoherentes);
+
+function validarUmbralesCoherentes(
+  body: { marginWarningPct?: number | null; marginCriticalPct?: number | null },
+  ctx: z.RefinementCtx,
+) {
   if (!marginThresholdsAreCoherent(body.marginWarningPct, body.marginCriticalPct)) {
     ctx.addIssue({
       code: "custom",
@@ -147,10 +158,29 @@ const projectPayloadSchema = projectPayloadBaseSchema.superRefine((body, ctx) =>
         `(advertencia por defecto: ${DEFAULT_MARGIN_WARNING_PCT}%, crítico por defecto: ${DEFAULT_MARGIN_CRITICAL_PCT}%)`,
     });
   }
-});
+}
+
+const INCLUIR_EMPRESA = { company: { select: { id: true, name: true } } } as const;
+
+/** Compatibilidad: `company` sigue siendo el nombre (string) y se agrega `companyId` (ya viene en la fila). */
+function aplanarEmpresa<T extends { company: { name: string } }>(project: T): Omit<T, "company"> & { company: string } {
+  return { ...project, company: project.company.name };
+}
+
+/**
+ * La empresa debe existir y estar activa. `empresaActualId` permite conservar la empresa que el
+ * proyecto ya tiene aunque se haya desactivado después (editar un proyecto no debe obligar a moverlo).
+ */
+async function validarEmpresa(companyId: string, empresaActualId?: string): Promise<string | null> {
+  const empresa = await prisma.company.findUnique({ where: { id: companyId }, select: { active: true } });
+  if (!empresa) return "La empresa indicada no existe";
+  if (!empresa.active && companyId !== empresaActualId) return "La empresa indicada está inactiva; elige una empresa activa";
+  return null;
+}
 
 const listProjectsQuerySchema = z.object({
   company: z.string().trim().optional(),
+  companyId: z.string().trim().optional(),
   country: z.string().trim().optional(),
   search: z.string().trim().optional(),
 });
@@ -213,22 +243,25 @@ export async function projectsRoutes(app: FastifyInstance) {
 
     const projects = await prisma.project.findMany({
       where: {
-        company: query.company ? { equals: query.company, mode: "insensitive" } : undefined,
+        company: query.company ? { name: { equals: query.company, mode: "insensitive" } } : undefined,
+        companyId: query.companyId || undefined,
         country: query.country ? { equals: query.country, mode: "insensitive" } : undefined,
         OR: query.search
           ? [
               { name: { contains: query.search, mode: "insensitive" } },
-              { company: { contains: query.search, mode: "insensitive" } },
+              { company: { name: { contains: query.search, mode: "insensitive" } } },
             ]
           : undefined,
       },
+      include: INCLUIR_EMPRESA,
       orderBy: { createdAt: "desc" },
     });
+    const filas = projects.map(aplanarEmpresa);
 
       const roles = request.authUser!.roles;
       const data = esSoloConsultant(roles)
-        ? projects.map(ocultarDatosMonetariosProyecto)
-        : projects;
+        ? filas.map(ocultarDatosMonetariosProyecto)
+        : filas;
 
       return { data };
     },
@@ -240,7 +273,7 @@ export async function projectsRoutes(app: FastifyInstance) {
       preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM])],
     },
     async (request, reply) => {
-    const body = projectPayloadSchema.parse(request.body);
+    const body = projectCreateSchema.parse(request.body);
 
     // R15: el PM del proyecto decide quién aprueba horas. Quien no es ADMIN solo puede ponerse a sí
     // mismo (o dejarlo vacío).
@@ -257,12 +290,16 @@ export async function projectsRoutes(app: FastifyInstance) {
       return reply.status(400).send({ message: (error as Error).message });
     }
 
+    const errorEmpresa = await validarEmpresa(body.companyId);
+    if (errorEmpresa) return reply.status(400).send({ message: errorEmpresa });
+
     const category = await resolverOInsertarCategoria(body.category);
 
-    const project = await prisma.project.create({
+    const creado = await prisma.project.create({
+      include: INCLUIR_EMPRESA,
       data: {
         name: body.name,
-        company: body.company,
+        companyId: body.companyId,
         country: body.country,
         currency: body.currency,
         budget: body.budget,
@@ -281,6 +318,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         budgetAlertPct: body.budgetAlertPct,
       },
     });
+
+    const project = aplanarEmpresa(creado);
 
     await writeAudit(prisma, {
       entity: AUDIT_ENTITIES.project,
@@ -303,10 +342,11 @@ export async function projectsRoutes(app: FastifyInstance) {
     async (request, reply) => {
     const { id } = projectParamsSchema.parse(request.params);
 
-    const project = await prisma.project.findUnique({ where: { id } });
-    if (!project) {
+    const encontrado = await prisma.project.findUnique({ where: { id }, include: INCLUIR_EMPRESA });
+    if (!encontrado) {
       return reply.status(404).send({ message: "Project not found" });
     }
+    const project = aplanarEmpresa(encontrado);
 
       const roles = request.authUser!.roles;
       const data = esSoloConsultant(roles) ? ocultarDatosMonetariosProyecto(project) : project;
@@ -348,13 +388,19 @@ export async function projectsRoutes(app: FastifyInstance) {
       }
     }
 
+    if (body.companyId !== undefined) {
+      const errorEmpresa = await validarEmpresa(body.companyId, existing.companyId);
+      if (errorEmpresa) return reply.status(400).send({ message: errorEmpresa });
+    }
+
     const category = await resolverOInsertarCategoria(body.category);
 
-    const project = await prisma.project.update({
+    const actualizado = await prisma.project.update({
       where: { id },
+      include: INCLUIR_EMPRESA,
       data: {
         name: body.name,
-        company: body.company,
+        companyId: body.companyId,
         country: body.country,
         currency: body.currency,
         budget: body.budget,
@@ -373,6 +419,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         budgetAlertPct: body.budgetAlertPct,
       },
     });
+
+    const project = aplanarEmpresa(actualizado);
 
     await writeAudit(prisma, {
       entity: AUDIT_ENTITIES.project,

@@ -526,7 +526,7 @@ export async function timeEntriesRoutes(app: FastifyInstance) {
         prisma.timeEntry.findMany({
           where,
           include: {
-            project: true,
+            project: { include: { company: true } },
             consultant: ocultarDatosSensibles
               ? { select: consultantSinDatosSensiblesSelect }
               : true,

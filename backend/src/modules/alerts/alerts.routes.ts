@@ -45,7 +45,7 @@ export async function alertsRoutes(app: FastifyInstance) {
           ...filtroSinCapacity(request.authUser!.roles),
         },
         include: {
-          project: { select: { id: true, name: true, company: true } },
+          project: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
           consultant: { select: { id: true, fullName: true } },
         },
         orderBy: [{ severity: "asc" }, { createdAt: "desc" }],

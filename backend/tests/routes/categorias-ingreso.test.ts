@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -41,7 +42,7 @@ describe("Categorías de ingreso configurables (D-4)", () => {
       await prisma.project.create({
         data: {
           name: `Proyecto ${prefijo}`,
-          company: "Synaptica",
+          companyId: await idEmpresa("Synaptica"),
           country: "Colombia",
           budget: 100000,
           status: "ACTIVE",

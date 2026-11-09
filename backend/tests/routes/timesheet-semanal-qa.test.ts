@@ -6,7 +6,7 @@ import { addDaysIso, fromIsoDate } from "../../src/utils/isoDate.js";
 import { localCalendarDay } from "../../src/modules/timesheet-weeks/timesheet-weeks.service.js";
 import { weekStartOf } from "../../src/utils/timesheetWeek.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
-import { crearHoraExtra } from "../helpers/datos.js";
+import { crearHoraExtra , idEmpresa } from "../helpers/datos.js";
 import { aprobarSemana, devolverSemana, marcarSemanaEnviada } from "../helpers/semana.js";
 
 // El aviso de devolución por correo se intercepta (no hay SMTP en pruebas).
@@ -76,7 +76,7 @@ describe("R15 QA: flujos por rutas", () => {
     const p = await prisma.project.create({
       data: {
         name: `${nombre} ${prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 100000,

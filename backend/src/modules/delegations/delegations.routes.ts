@@ -30,14 +30,14 @@ export async function delegationsRoutes(app: FastifyInstance) {
       let delegations;
       if (isAdminOrFinance) {
         delegations = await prisma.approvalDelegation.findMany({
-          include: { project: true },
+          include: { project: { include: { company: true } } },
           orderBy: { createdAt: "desc" },
         });
       } else {
         // PM only sees delegations they created
         delegations = await prisma.approvalDelegation.findMany({
           where: { fromUserEmail: email },
-          include: { project: true },
+          include: { project: { include: { company: true } } },
           orderBy: { createdAt: "desc" },
         });
       }
@@ -137,7 +137,7 @@ export async function delegationsRoutes(app: FastifyInstance) {
           startDate: payload.startDate,
           endDate: payload.endDate,
         },
-        include: { project: true },
+        include: { project: { include: { company: true } } },
       });
 
       await writeAudit(prisma, {

@@ -152,7 +152,7 @@ export async function cargarYCalcular(opts: OpcionesCalculo): Promise<CalculoMen
         startDate: { lte: finDate },
         endDate: { gte: inicioDate },
       },
-      include: { project: { select: { id: true, name: true, company: true, status: true, isInternal: true } } },
+      include: { project: { select: { id: true, name: true, company: { select: { id: true, name: true } }, status: true, isInternal: true } } },
       orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
     }),
   ]);
@@ -190,7 +190,7 @@ export async function cargarYCalcular(opts: OpcionesCalculo): Promise<CalculoMen
       consultantId: a.consultantId,
       projectId: a.projectId,
       projectName: a.project.name,
-      client: a.project.company,
+      client: a.project.company.name,
       projectStatus: a.project.status,
       isInternal: a.project.isInternal,
       certainty: a.certainty,

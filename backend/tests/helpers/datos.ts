@@ -1,6 +1,26 @@
 import { prisma } from "../../src/infra/prisma.js";
 
 /**
+ * Id de una empresa del catálogo por nombre (la crea si no existe). Los proyectos exigen `companyId`.
+ * Tolera carreras entre archivos de prueba que usan el mismo nombre ("Synaptica").
+ */
+export async function idEmpresa(nombre: string): Promise<string> {
+  const buscar = () =>
+    prisma.company.findFirst({ where: { name: { equals: nombre, mode: "insensitive" } }, select: { id: true } });
+  const existente = await buscar();
+  if (existente) return existente.id;
+  try {
+    return (await prisma.company.create({ data: { name: nombre }, select: { id: true } })).id;
+  } catch (err) {
+    if ((err as { code?: string }).code === "P2002") {
+      const ya = await buscar();
+      if (ya) return ya.id;
+    }
+    throw err;
+  }
+}
+
+/**
  * Datos mínimos para las pruebas de ruta. Todo se crea con un prefijo único por
  * ejecución y se borra al final, para no depender del estado previo de la base
  * ni dejar basura.
@@ -19,7 +39,7 @@ export async function crearEscenarioBasico(etiqueta: string): Promise<EscenarioB
   const project = await prisma.project.create({
     data: {
       name: `Proyecto ${prefijo}`,
-      company: "Synaptica",
+      companyId: await idEmpresa("Synaptica"),
       country: "Colombia",
       currency: "USD",
       budget: 10000,

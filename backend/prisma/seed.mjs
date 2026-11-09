@@ -235,11 +235,14 @@ async function main() {
   // Proyecto interno "Ausencias" (R14); la migración también lo siembra.
   const hayProyectoAusencias = await prisma.project.findFirst({ where: { isAbsenceProject: true } });
   if (!hayProyectoAusencias) {
+    // Empresa dueña del proyecto interno (la migración del catálogo ya la crea si había datos).
+    let empresaInterna = await prisma.company.findFirst({ where: { name: { equals: "Synaptica", mode: "insensitive" } } });
+    if (!empresaInterna) empresaInterna = await prisma.company.create({ data: { name: "Synaptica" } });
     await prisma.project.create({
       data: {
         id: "prj_ausencias",
         name: "Ausencias",
-        company: "Synaptica",
+        companyId: empresaInterna.id,
         country: "Interno",
         currency: "USD",
         budget: 0,

@@ -172,13 +172,13 @@ export async function activitiesRoutes(app: FastifyInstance) {
       const entries = verTarifas
         ? await prisma.activity.findMany({
             where: whereClause,
-            include: { project: true, consultant: true },
+            include: { project: { include: { company: true } }, consultant: true },
             orderBy,
           })
         : await prisma.activity.findMany({
             where: whereClause,
             include: {
-              project: true,
+              project: { include: { company: true } },
               consultant: { select: consultantSinDatosSensiblesSelect },
             },
             orderBy,
@@ -237,7 +237,7 @@ export async function activitiesRoutes(app: FastifyInstance) {
           comments: payload.comments,
         },
         include: {
-          project: true,
+          project: { include: { company: true } },
           consultant: true,
         },
       });
@@ -315,7 +315,7 @@ export async function activitiesRoutes(app: FastifyInstance) {
           comments: payload.comments,
         },
         include: {
-          project: true,
+          project: { include: { company: true } },
           consultant: true,
         },
       });

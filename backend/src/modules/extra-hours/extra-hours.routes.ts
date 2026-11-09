@@ -403,7 +403,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       // ADMIN y FINANCE reciben el proyecto completo; el resto, solo la proyección mínima
       // (sin presupuesto ni tarifas).
-      const proyectoInclude = veProyectoCompleto(roles) ? (true as const) : { select: PROYECTO_MINIMO_SELECT };
+      const proyectoInclude = veProyectoCompleto(roles) ? ({ include: { company: true } } as const) : { select: PROYECTO_MINIMO_SELECT };
 
       const [entries, total] = await Promise.all([
         puedeVerTarifas(roles) || soloPropias
@@ -942,7 +942,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       const existing = await prisma.extraHourEntry.findUnique({
         where: { id },
-        include: { project: true },
+        include: { project: { include: { company: true } } },
       });
 
       if (!existing) {
@@ -1062,7 +1062,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
 
       const existing = await prisma.extraHourEntry.findUnique({
         where: { id },
-        include: { project: true },
+        include: { project: { include: { company: true } } },
       });
 
       if (!existing) {
@@ -1190,7 +1190,7 @@ export async function extraHoursRoutes(app: FastifyInstance) {
             createdAt: { lt: PAYROLL_REAL_HOURS_SINCE },
             timeEntries: { none: { status: { not: TimeEntryStatus.REJECTED } } },
           },
-          include: { consultant: true, project: true },
+          include: { consultant: true, project: { include: { company: true } } },
         }),
         prisma.fxConfig.findMany(),
         prisma.extraHoursConfig.findMany(),

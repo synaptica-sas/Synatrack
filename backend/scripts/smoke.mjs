@@ -39,12 +39,19 @@ async function main() {
 
   const suffix = randomSuffix();
 
+  const company = (
+    await http("/api/companies", {
+      method: "POST",
+      body: JSON.stringify({ name: `Empresa smoke ${suffix}` }),
+    })
+  ).data;
+
   const project = (
     await http("/api/projects", {
       method: "POST",
       body: JSON.stringify({
         name: `Proyecto ${suffix}`,
-        company: "Synaptica",
+        companyId: company.id,
         country: "Colombia",
         currency: "USD",
         budget: 25000,

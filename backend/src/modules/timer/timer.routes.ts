@@ -48,7 +48,7 @@ const targetConsultantSchema = z.object({
 });
 
 const timerInclude = {
-  project: true,
+  project: { include: { company: true } },
   activity: { select: { id: true, title: true } },
   consultant: { select: { id: true, fullName: true } },
 } satisfies Prisma.RunningTimerInclude;
@@ -335,7 +335,7 @@ export async function timerRoutes(app: FastifyInstance) {
                 typeId: regularTypeId,
               },
               include: {
-                project: true,
+                project: { include: { company: true } },
                 consultant: true,
                 activity: { select: { id: true, title: true } },
                 type: { select: { id: true, code: true, name: true, category: true } },

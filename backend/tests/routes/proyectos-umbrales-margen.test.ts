@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -20,7 +21,7 @@ describe("Umbrales de margen por proyecto (D-2)", () => {
 
   const cuerpoBase = {
     name: "Proyecto umbrales",
-    company: "Synaptica",
+    companyId: "", // se resuelve en beforeAll (idEmpresa es asíncrono)
     country: "Colombia",
     currency: "USD",
     budget: 200_000,
@@ -29,6 +30,7 @@ describe("Umbrales de margen por proyecto (D-2)", () => {
   };
 
   beforeAll(async () => {
+    cuerpoBase.companyId = await idEmpresa("Synaptica");
     app = await crearAppDePrueba();
   });
 

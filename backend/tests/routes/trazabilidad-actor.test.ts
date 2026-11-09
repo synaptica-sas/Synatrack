@@ -5,7 +5,7 @@ import { prisma } from "../../src/infra/prisma.js";
 import { runMaintenanceCycle } from "../../src/modules/jobs/jobs.service.js";
 import { addDaysIso, fromIsoDate, toIsoDate } from "../../src/utils/isoDate.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
-import { crearEscenarioBasico, crearHoraExtra, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
+import { crearEscenarioBasico, crearHoraExtra, limpiarEscenario, type EscenarioBasico , idEmpresa } from "../helpers/datos.js";
 
 /**
  * Trazabilidad automática: `createdBy` / `updatedBy` se llenan solos (extensión
@@ -38,7 +38,7 @@ describe("createdBy / updatedBy automáticos", () => {
   it("project: crear con Ana y editar con Beto cambia updatedBy y conserva createdBy", async () => {
     const cuerpo = {
       name: "Proyecto traza",
-      company: "Synaptica",
+      companyId: await idEmpresa("Synaptica"),
       country: "Colombia",
       currency: "USD",
       budget: 1000,
@@ -168,6 +168,7 @@ describe("createdBy / updatedBy automáticos", () => {
 
   it("peticiones concurrentes con usuarios distintos no se cruzan", async () => {
     const correos = Array.from({ length: 12 }, (_, i) => `concurrente${i}.traza@synaptica.test`);
+    const empresaId = await idEmpresa("Synaptica");
     const respuestas = await Promise.all(
       correos.map((email, i) =>
         app.inject({
@@ -176,7 +177,7 @@ describe("createdBy / updatedBy automáticos", () => {
           headers: comoRol(AppRole.ADMIN, email),
           payload: {
             name: `Concurrente ${i}`,
-            company: "Synaptica",
+            companyId: empresaId,
             country: "Colombia",
             currency: "USD",
             budget: 10,

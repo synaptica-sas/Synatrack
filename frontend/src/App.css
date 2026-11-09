@@ -7108,3 +7108,23 @@ body.dark .cap-detail th.cap-sticky, body.dark .cap-detail td.cap-sticky { backg
   .cap-publish-summary { grid-template-columns: 1fr; }
   .cap-publish-summary dd { margin-bottom: var(--space-2); }
 }
+
+/* ── Gestión de empresas ── */
+.company-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.company-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.company-detail dt { font-size: 0.75rem; color: var(--text-muted); }
+.company-detail dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }

@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -23,7 +24,7 @@ describe("Costo estimado de un riesgo (R-009)", () => {
       headers: comoRol(AppRole.ADMIN),
       payload: {
         name: `Proyecto Riesgo Costo ${Date.now()}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 100000,

@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
 import { lunesDe, marcarSemanaEnviada } from "../helpers/semana.js";
-import { crearEscenarioBasico, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
+import { crearEscenarioBasico, limpiarEscenario, type EscenarioBasico , idEmpresa } from "../helpers/datos.js";
 
 /**
  * ALCANCE POR ROL DE `/api/time-entries` (comportamiento CORRECTO).
@@ -36,7 +36,7 @@ describe("GET /api/time-entries: alcance por rol", () => {
     const proyectoAjeno = await prisma.project.create({
       data: {
         name: `Proyecto ajeno ${escenario.prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 5000,

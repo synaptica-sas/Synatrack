@@ -32,6 +32,7 @@ import {
 import { ValidationErrorBox } from "../../components/ValidationErrorBox";
 import { isValidationError } from "../../utils/validation";
 import { CurrencyInput } from "../../components/CurrencyInput";
+import { useCompanies } from "../../hooks/useCompanies";
 
 function RagBadge({
   status,
@@ -154,6 +155,59 @@ function numberish(value: string | null | undefined) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** Con el formato que entiende `ValidationErrorBox`. */
+const MENSAJE_SIN_EMPRESA = ["Error de validación:", "Selecciona una empresa."].join("\n");
+
+/** Selector de empresa (catálogo). Avisa si no hay empresas o si falló la carga. */
+function CompanyField({
+  options,
+  value,
+  onChange,
+  sinEmpresas,
+  error,
+  onRetry,
+  onOpenCompanies,
+}: {
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  sinEmpresas: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onOpenCompanies?: () => void;
+}) {
+  return (
+    <div className="proy-company-field">
+      <SearchableSelect
+        options={options}
+        value={value}
+        onChange={onChange}
+        placeholder="Buscar empresa..."
+        emptyLabel="-- Empresa --"
+      />
+      {sinEmpresas && options.length === 0 && (
+        <p className="field-help" role="alert">
+          Primero debes crear una empresa en Gestión de empresas.
+          {onOpenCompanies && (
+            <>
+              {" "}
+              <button type="button" className="ghost btn-sm" onClick={onOpenCompanies}>
+                Ir a Gestión de empresas
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {error && (
+        <p className="field-help" role="alert">
+          No se pudieron cargar las empresas: {error}{" "}
+          <button type="button" className="ghost btn-sm" onClick={onRetry}>Reintentar</button>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function toDateInput(value: string) {
   return value.slice(0, 10);
 }
@@ -161,7 +215,8 @@ function toDateInput(value: string) {
 type EditForm = {
   id: string;
   name: string;
-  company: string;
+  /** Id de la empresa del catálogo; el nombre lo resuelve el backend. */
+  companyId: string;
   country: string;
   currency: string;
   budget: string;
@@ -183,7 +238,7 @@ type EditForm = {
 
 const emptyForm = {
   name: "",
-  company: "",
+  companyId: "",
   country: "",
   currency: "",
   budget: "",
@@ -236,6 +291,7 @@ export function ProjectsTab({
   statsProjects,
   onOpenProject,
   authUser,
+  onOpenCompanies,
 }: {
   /** Usuario efectivo (respeta el simulador de rol). Sin él se asume ADMIN: el backend decide igual. */
   authUser?: AuthUser | null;
@@ -246,6 +302,8 @@ export function ProjectsTab({
   onError: (msg: string) => void;
   statsProjects?: StatsProjectRowEnriched[];
   onOpenProject?: (id: string) => void;
+  /** Lleva a Gestión de empresas. Ausente si el usuario no puede verla. */
+  onOpenCompanies?: () => void;
 }) {
   const [companyFilter, setCompanyFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
@@ -290,6 +348,26 @@ export function ProjectsTab({
     void reloadCategories();
   }, []);
 
+  // Empresas activas para el selector. A diferencia de las categorías, aquí un
+  // fallo se muestra: sin catálogo no se puede guardar un proyecto.
+  const {
+    companies: activeCompanies,
+    loading: companiesLoading,
+    error: companiesError,
+    reload: reloadCompanies,
+  } = useCompanies(true, { active: true });
+
+  // Opciones del selector. Al editar, si la empresa actual está inactiva sigue
+  // apareciendo (el backend permite conservarla) para no perder el valor.
+  function companySelectOptions(current?: { id: string; name: string }) {
+    const opts = activeCompanies.map((c) => ({ value: c.id, label: c.name }));
+    if (current && current.id && !opts.some((o) => o.value === current.id)) {
+      opts.push({ value: current.id, label: `${current.name} (inactiva)` });
+    }
+    return opts;
+  }
+  const sinEmpresas = !companiesLoading && !companiesError && activeCompanies.length === 0;
+
   // R-007: país como lista desplegable, mismo catálogo y patrón que Consultores.
   const [countryOptions, setCountryOptions] = useState<string[]>([]);
   useEffect(() => {
@@ -326,6 +404,10 @@ export function ProjectsTab({
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setFormError("");
+    if (!form.companyId) {
+      setFormError(MENSAJE_SIN_EMPRESA);
+      return;
+    }
     setSubmitting(true);
     try {
       await createProject({
@@ -335,7 +417,7 @@ export function ProjectsTab({
       });
       setForm(formVacio);
       setCategoryCustom(false);
-      await Promise.all([onReload(), reloadCategories()]);
+      await Promise.all([onReload(), reloadCategories(), reloadCompanies()]);
     } catch (err) {
       const msg = mensajeErrorPermiso(err, "No se pudo crear proyecto");
       if (isValidationError(msg)) {
@@ -352,11 +434,15 @@ export function ProjectsTab({
     e.preventDefault();
     if (!editForm) return;
     setEditError("");
+    if (!editForm.companyId) {
+      setEditError(MENSAJE_SIN_EMPRESA);
+      return;
+    }
     setEditSubmitting(true);
     try {
       await updateProject(editForm.id, {
         name: editForm.name,
-        company: editForm.company,
+        companyId: editForm.companyId,
         country: editForm.country,
         currency: editForm.currency,
         budget: Number(editForm.budget),
@@ -380,7 +466,7 @@ export function ProjectsTab({
       });
       setEditForm(null);
       setEditCategoryCustom(false);
-      await Promise.all([onReload(), reloadCategories()]);
+      await Promise.all([onReload(), reloadCategories(), reloadCompanies()]);
     } catch (err) {
       const msg = mensajeErrorPermiso(err, "No se pudo actualizar proyecto");
       if (isValidationError(msg)) {
@@ -458,7 +544,15 @@ export function ProjectsTab({
           <form onSubmit={(e) => void handleCreate(e)} className="form-inline">
             <ValidationErrorBox message={formError} />
             <input placeholder="Nombre" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
-            <input placeholder="Empresa" value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))} required />
+            <CompanyField
+              options={companySelectOptions()}
+              value={form.companyId}
+              onChange={(v) => setForm((p) => ({ ...p, companyId: v }))}
+              sinEmpresas={sinEmpresas}
+              error={companiesError}
+              onRetry={() => void reloadCompanies()}
+              onOpenCompanies={onOpenCompanies}
+            />
             <select value={form.country} onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))} required>
               <option value="" disabled hidden>País...</option>
               {countryOptions.map((c) => <option key={c} value={c}>{displayCountryWithFlag(c)}</option>)}
@@ -571,7 +665,7 @@ export function ProjectsTab({
               />
               Proyecto interno (stand-by)
             </label>
-            <button type="submit" disabled={submitting}>{submitting ? "Creando…" : "Crear proyecto"}</button>
+            <button type="submit" disabled={submitting || sinEmpresas}>{submitting ? "Creando…" : "Crear proyecto"}</button>
           </form>
         }
         table={
@@ -736,7 +830,7 @@ export function ProjectsTab({
                                       setEditForm({
                                         id: project.id,
                                         name: project.name,
-                                        company: project.company,
+                                        companyId: project.companyId,
                                         country: project.country,
                                         currency: project.currency,
                                         budget: String(numberish(project.budget)),
@@ -794,7 +888,15 @@ export function ProjectsTab({
             <form className="form-grid" onSubmit={(e) => void handleUpdate(e)}>
               <ValidationErrorBox message={editError} />
               <input value={editForm.name} onChange={(e) => setEditForm((p) => p && { ...p, name: e.target.value })} placeholder="Nombre" required />
-              <input value={editForm.company} onChange={(e) => setEditForm((p) => p && { ...p, company: e.target.value })} placeholder="Empresa" required />
+              <CompanyField
+                options={companySelectOptions({ id: editForm.companyId, name: projects.find((p) => p.id === editForm.id)?.company ?? "Empresa actual" })}
+                value={editForm.companyId}
+                onChange={(v) => setEditForm((p) => p && { ...p, companyId: v })}
+                sinEmpresas={sinEmpresas}
+                error={companiesError}
+                onRetry={() => void reloadCompanies()}
+                onOpenCompanies={onOpenCompanies}
+              />
               <select value={editForm.country} onChange={(e) => setEditForm((p) => p && { ...p, country: e.target.value })} required>
                 <option value="" disabled hidden>País...</option>
                 {countryOptions.map((c) => <option key={`edit-country-${c}`} value={c}>{displayCountryWithFlag(c)}</option>)}
@@ -912,7 +1014,7 @@ export function ProjectsTab({
                 </label>
               </div>
               <div className="modal-actions">
-                <button type="submit" disabled={editSubmitting}>{editSubmitting ? "Guardando…" : "Guardar cambios"}</button>
+                <button type="submit" disabled={editSubmitting || (sinEmpresas && !editForm.companyId)}>{editSubmitting ? "Guardando…" : "Guardar cambios"}</button>
                 <button type="button" className="ghost" onClick={() => { setEditForm(null); setEditError(""); setEditCategoryCustom(false); }}>Cancelar</button>
               </div>
             </form>

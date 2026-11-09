@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
-import { crearEscenarioBasico, crearHoraExtra, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
+import { crearEscenarioBasico, crearHoraExtra, limpiarEscenario, type EscenarioBasico , idEmpresa } from "../helpers/datos.js";
 import { aprobarSemana, aprobarSemanaDeRegistro, devolverSemanaDeRegistro, lunesDe, marcarSemanaEnviada } from "../helpers/semana.js";
 
 // El cronómetro imputa al día LOCAL del país (Colombia, UTC-5 sin horario de verano).
@@ -50,7 +50,7 @@ describe("Timesheet R14: endurecimiento", () => {
       await prisma.project.create({
         data: {
           name: `Proyecto B ${escenario.prefijo}`,
-          company: "Synaptica",
+          companyId: await idEmpresa("Synaptica"),
           country: "Colombia",
           currency: "USD",
           budget: 1000,

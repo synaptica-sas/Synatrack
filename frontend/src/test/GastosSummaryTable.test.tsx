@@ -17,7 +17,7 @@ const expense: Expense = {
   baseAmount: 500,
   baseCurrency: "USD",
   conversionQuality: "dated",
-  project: { id: "p1", name: "Proyecto Alpha", company: "ACME", country: "", currency: "USD", projectType: "TIME_AND_MATERIAL", status: "ACTIVE", budget: "10000", startDate: "", endDate: "", description: null, sellPrice: null, sellCurrency: "", createdAt: "", updatedAt: "" },
+  project: { id: "p1", name: "Proyecto Alpha", company: "ACME", companyId: "c1", country: "", currency: "USD", projectType: "TIME_AND_MATERIAL", status: "ACTIVE", budget: "10000", startDate: "", endDate: "", description: null, sellPrice: null, sellCurrency: "", createdAt: "", updatedAt: "" },
 };
 
 const groups: GroupedGasto[] = [

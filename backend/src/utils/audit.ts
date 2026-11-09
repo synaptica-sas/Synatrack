@@ -18,6 +18,7 @@ type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REJECT" | "CLOS
  */
 export const AUDIT_ENTITIES = {
   project: "project",
+  company: "company",
   consultant: "consultant",
   timeEntry: "timeEntry",
   timeEntryType: "timeEntryType",

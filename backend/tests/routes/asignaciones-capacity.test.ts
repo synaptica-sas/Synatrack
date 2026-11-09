@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -64,7 +65,7 @@ describe("Asignaciones: permisos, fechas y avisos", () => {
     const proyecto = await prisma.project.create({
       data: {
         name: `Proyecto ${prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 1000,
@@ -236,7 +237,7 @@ describe("Proyectos: PROSPECT e isInternal (CONTRATO §3.7)", () => {
   const admin = comoRol(AppRole.ADMIN);
 
   const cuerpoBase = {
-    company: "Synaptica",
+    companyId: "", // se resuelve en beforeAll (idEmpresa es asíncrono)
     country: "Colombia",
     currency: "USD",
     budget: 1000,
@@ -245,6 +246,7 @@ describe("Proyectos: PROSPECT e isInternal (CONTRATO §3.7)", () => {
   };
 
   beforeAll(async () => {
+    cuerpoBase.companyId = await idEmpresa("Synaptica");
     app = await crearAppDePrueba();
   });
 

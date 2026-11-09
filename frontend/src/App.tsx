@@ -23,6 +23,7 @@ import { useAlerts } from "./hooks/useAlerts";
 import { useToastController } from "./hooks/useToast";
 import { DashboardTab } from "./features/dashboard/DashboardTab";
 import { ProjectsTab } from "./features/projects/ProjectsTab";
+import { CompaniesTab } from "./features/companies/CompaniesTab";
 import { ProjectDetailTab } from "./features/projects/ProjectDetailTab";
 import { ConsultantsTab } from "./features/consultants/ConsultantsTab";
 import { TimesheetTab } from "./features/timesheet/TimesheetTab";
@@ -183,6 +184,7 @@ const TAB_PATH_MAP: Record<TabId, string> = {
   dashboard: "/dashboard",
   portfolio: "/portfolio",
   projects: "/projects",
+  companies: "/companies",
   capacity: "/capacity",
   consultants: "/consultants",
   timeEntries: "/timesheet",
@@ -1873,8 +1875,19 @@ function App() {
                     statsProjects={statsHook.stats?.projects}
                     onOpenProject={setOpenProjectId}
                     authUser={authUser}
+                    onOpenCompanies={can("companies:read") ? () => drillTo("companies") : undefined}
                   />
                 )
+              )}
+
+              {activeTab === "companies" && (
+                <CompaniesTab
+                  canWrite={can("companies:write")}
+                  onError={handleError}
+                  onSuccess={(msg) => showToast(msg, "success")}
+                  onOpenProject={openProject}
+                  onCompaniesChanged={projectsHook.reload}
+                />
               )}
 
               {activeTab === "consultants" && (

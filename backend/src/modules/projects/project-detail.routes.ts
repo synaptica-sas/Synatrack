@@ -40,6 +40,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const project = await prisma.project.findUnique({
         where: { id },
         include: {
+          company: { select: { id: true, name: true } },
           milestones: { orderBy: { plannedDate: "asc" } },
           risks: { orderBy: [{ riskScore: "desc" }, { createdBy: "asc" }], include: riskInclude },
           issues: { orderBy: [{ severity: "desc" }, { createdAt: "desc" }] },
@@ -144,7 +145,8 @@ export async function projectDetailRoutes(app: FastifyInstance) {
           project: {
             id: project.id,
             name: project.name,
-            company: project.company,
+            company: project.company.name,
+            companyId: project.companyId,
             country: project.country,
             currency: project.currency,
             status: project.status,
@@ -223,7 +225,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const { healthStatus } = z.object({ healthStatus: z.nativeEnum(HealthStatus) }).parse(request.body);
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
-      const updated = await prisma.project.update({ where: { id }, data: { healthStatus } });
+      const updated = await prisma.project.update({ where: { id }, include: { company: { select: { id: true, name: true } } }, data: { healthStatus } });
       await writeAudit(prisma, {
         entity: AUDIT_ENTITIES.project,
         entityId: id,
@@ -246,7 +248,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const { completionPct } = z.object({ completionPct: z.coerce.number().min(0).max(100) }).parse(request.body);
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
-      const updated = await prisma.project.update({ where: { id }, data: { completionPct } });
+      const updated = await prisma.project.update({ where: { id }, include: { company: { select: { id: true, name: true } } }, data: { completionPct } });
       await writeAudit(prisma, {
         entity: AUDIT_ENTITIES.project,
         entityId: id,
@@ -274,6 +276,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
 
       const updated = await prisma.project.update({
         where: { id },
+        include: { company: { select: { id: true, name: true } } },
         data: {
           baselineBudget: project.budget,
           baselineStartDate: project.startDate,
@@ -428,7 +431,7 @@ export async function projectDetailRoutes(app: FastifyInstance) {
       const { phase } = z.object({ phase: z.nativeEnum(ProjectPhase) }).parse(request.body);
       const project = await prisma.project.findUnique({ where: { id } });
       if (!project) return reply.status(404).send({ message: "Proyecto no encontrado" });
-      const updated = await prisma.project.update({ where: { id }, data: { phase } });
+      const updated = await prisma.project.update({ where: { id }, include: { company: { select: { id: true, name: true } } }, data: { phase } });
       await writeAudit(prisma, {
         entity: AUDIT_ENTITIES.project,
         entityId: id,

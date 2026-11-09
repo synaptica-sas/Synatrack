@@ -289,7 +289,7 @@ export async function snapshotsRoutes(app: FastifyInstance) {
           year: query.year,
           month: query.month,
         },
-        include: { project: { select: { id: true, name: true, company: true } } },
+        include: { project: { select: { id: true, name: true, company: { select: { id: true, name: true } } } } },
         orderBy: [{ year: "desc" }, { month: "desc" }],
       });
       return { data: snapshots };

@@ -1,4 +1,5 @@
 import { AppRole, TimeEntryStatus } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -13,6 +14,7 @@ import { aprobarSemana, devolverSemana, marcarSemanaEnviada } from "../helpers/s
 describe("Aprobación semanal: endurecimiento (R15)", () => {
   let app: FastifyInstance;
   const prefijo = `r15s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let empresaId = "";
   const adminEmail = "admin@synaptica.local";
   const consultores: string[] = [];
   const proyectos: string[] = [];
@@ -27,7 +29,7 @@ describe("Aprobación semanal: endurecimiento (R15)", () => {
     const p = await prisma.project.create({
       data: {
         name: `${nombre} ${prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 1000,
@@ -74,6 +76,7 @@ describe("Aprobación semanal: endurecimiento (R15)", () => {
     prisma.timeEntry.create({ data: { consultantId, projectId, workDate: fromIsoDate(fecha), hours, typeId: regularId, ...extra } });
 
   beforeAll(async () => {
+    empresaId = await idEmpresa("Synaptica");
     app = await crearAppDePrueba();
     regularId = (await prisma.timeEntryType.findFirstOrThrow({ where: { code: "REGULAR" } })).id;
   });
@@ -145,7 +148,7 @@ describe("Aprobación semanal: endurecimiento (R15)", () => {
   describe("quién cambia el PM de un proyecto o el correo de una ficha (H2)", () => {
     const cuerpo = (nombre: string, pm?: string | null) => ({
       name: nombre,
-      company: "Synaptica",
+      companyId: empresaId,
       country: "Colombia",
       currency: "USD",
       budget: 1000,

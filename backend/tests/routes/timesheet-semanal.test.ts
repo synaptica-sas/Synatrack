@@ -1,4 +1,5 @@
 import { AppRole, TimeEntryStatus } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -72,7 +73,7 @@ describe("Aprobación semanal del timesheet (R15)", () => {
     const p = await prisma.project.create({
       data: {
         name: `${nombre} ${prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 10000,

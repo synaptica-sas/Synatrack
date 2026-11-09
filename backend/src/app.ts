@@ -1,3 +1,4 @@
+import { aplanarEmpresaDeProyecto } from "./utils/projectCompany.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -88,6 +89,9 @@ export async function buildApp() {
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   });
+
+  // `Project.company` es ahora una relación; las respuestas siguen trayendo el nombre como string.
+  app.addHook("preSerialization", async (_request, _reply, payload) => aplanarEmpresaDeProyecto(payload));
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {

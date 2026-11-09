@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -76,7 +77,7 @@ describe("Umbrales del semáforo configurables (D-7)", () => {
       await prisma.project.create({
         data: {
           name: `Proyecto ${prefijo}`,
-          company: `Empresa ${prefijo}`,
+          companyId: await idEmpresa(`Empresa ${prefijo}`),
           country: "Colombia",
           budget: 100_000,
           currency: "USD",

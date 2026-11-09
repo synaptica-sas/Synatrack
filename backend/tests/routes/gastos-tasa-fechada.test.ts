@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../src/app.js";
 import { prisma } from "../../src/infra/prisma.js";
@@ -41,7 +42,7 @@ beforeAll(async () => {
   const project = await prisma.project.create({
     data: {
       name: `${RUN} Proyecto`,
-      company: "Test",
+      companyId: await idEmpresa("Test"),
       country: "Colombia",
       currency: "USD",
       budget: 1_000_000,

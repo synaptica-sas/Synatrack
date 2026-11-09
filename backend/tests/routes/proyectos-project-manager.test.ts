@@ -8,6 +8,7 @@ import {
   crearHoraExtra,
   limpiarEscenario,
   type EscenarioBasico,
+  idEmpresa,
 } from "../helpers/datos.js";
 
 /**
@@ -25,7 +26,7 @@ describe("Asignación del Project Manager en proyectos", () => {
 
   const cuerpoBase = {
     name: "Proyecto PM",
-    company: "Synaptica",
+    companyId: "", // se resuelve en beforeAll (idEmpresa es asíncrono)
     country: "Colombia",
     currency: "USD",
     budget: 1000,
@@ -34,6 +35,7 @@ describe("Asignación del Project Manager en proyectos", () => {
   };
 
   beforeAll(async () => {
+    cuerpoBase.companyId = await idEmpresa("Synaptica");
     app = await crearAppDePrueba();
   });
 
@@ -175,7 +177,7 @@ describe("Un PM asignado puede aprobar horas extra de nivel 1", () => {
       headers: comoRol(AppRole.ADMIN),
       payload: {
         name: `Proyecto ${escenario.prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 10000,

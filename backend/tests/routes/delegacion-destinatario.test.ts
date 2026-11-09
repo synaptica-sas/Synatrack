@@ -8,6 +8,7 @@ import {
   crearHoraExtra,
   limpiarEscenario,
   type EscenarioBasico,
+  idEmpresa,
 } from "../helpers/datos.js";
 
 /**
@@ -57,7 +58,7 @@ describe("POST /api/delegations: a quién se puede nombrar delegado (R-024 + D-1
     const proyecto = await prisma.project.create({
       data: {
         name: `Proyecto ${sufijo} ${escenario.prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 1000,

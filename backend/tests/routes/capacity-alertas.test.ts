@@ -1,4 +1,5 @@
 import { AppRole } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -100,7 +101,7 @@ describe("Alertas de capacity y parámetros nuevos", () => {
       const p = await prisma.project.create({
         data: {
           name: `${nombre} ${prefijo}`,
-          company: "Synaptica",
+          companyId: await idEmpresa("Synaptica"),
           country: "Colombia",
           currency: "USD",
           budget: 1000,

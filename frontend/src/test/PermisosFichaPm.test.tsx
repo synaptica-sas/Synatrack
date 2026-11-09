@@ -15,6 +15,7 @@ vi.mock("../services/api", async () => {
   return {
     ...actual,
     listProjectCategories: vi.fn().mockResolvedValue([]),
+    listCompanies: vi.fn().mockResolvedValue([]),
     listSupportedCountries: vi.fn().mockResolvedValue([]),
     updateProject: vi.fn().mockResolvedValue({}),
     updateConsultant: vi.fn().mockResolvedValue({}),
@@ -38,6 +39,7 @@ function proyecto(id: string, nombre: string, pm: string | null): Project {
     id,
     name: nombre,
     company: "Empresa",
+    companyId: "c1",
     country: "Colombia",
     currency: "USD",
     budget: "1000",

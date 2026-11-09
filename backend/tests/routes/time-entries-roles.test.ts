@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
 import { comoRol, crearAppDePrueba } from "../helpers/app.js";
-import { crearEscenarioBasico, limpiarEscenario, type EscenarioBasico } from "../helpers/datos.js";
+import { crearEscenarioBasico, limpiarEscenario, type EscenarioBasico , idEmpresa } from "../helpers/datos.js";
 import { aprobarSemana, borrarRevisiones, devolverSemana, lunesDe, marcarSemanaEnviada } from "../helpers/semana.js";
 
 /**
@@ -297,7 +297,7 @@ describe("/api/time-entries: alcance por proyecto del PM y autoaprobación (R-05
     const proyectoAjeno = await prisma.project.create({
       data: {
         name: `Proyecto ajeno ${escenario.prefijo}`,
-        company: "Synaptica",
+        companyId: await idEmpresa("Synaptica"),
         country: "Colombia",
         currency: "USD",
         budget: 5000,

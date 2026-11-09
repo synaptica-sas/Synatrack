@@ -1,4 +1,5 @@
 import { AppRole, ExtraHourStatus } from "@prisma/client";
+import { idEmpresa } from "../helpers/datos.js";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "../../src/infra/prisma.js";
@@ -215,12 +216,13 @@ describe("Timesheet R14: flujos de punta a punta (QA)", () => {
       if (t.code === "PERMISO") tipos.permiso = t.id;
       if (t.code === "VACACIONES") tipos.vacaciones = t.id;
     }
+    const empresaId = await idEmpresa("Synaptica");
     ausencias = (await prisma.project.findFirstOrThrow({ where: { isAbsenceProject: true } })).id;
     const crearProyecto = (nombre: string, pm: string | null) =>
       prisma.project.create({
         data: {
           name: `${nombre} ${prefijo}`,
-          company: "Synaptica",
+          companyId: empresaId,
           country: "Colombia",
           currency: "USD",
           budget: 10000,
