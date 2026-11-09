@@ -169,7 +169,7 @@ que comprobar que `failed` venga vacío.
 Con el backend ya desplegado:
 
 ```bash
-curl -X POST https://app-gestion-demo.onrender.com/api/fx/sync \
+curl -X POST https://synatrack.onrender.com/api/fx/sync \
   -H "Authorization: Bearer $FX_SYNC_TOKEN"
 ```
 
@@ -241,7 +241,7 @@ AZURE_AD_AUDIENCE=api://<backend-app-id-uri-or-client-id>
 | Output Directory | `dist` |
 
 ```env
-VITE_API_URL=https://app-gestion-demo.onrender.com
+VITE_API_URL=https://synatrack.onrender.com
 VITE_FORCE_LOCAL_AUTH=true
 VITE_AZURE_TENANT_ID=<entra-tenant-id>
 VITE_AZURE_CLIENT_ID=<entra-app-client-id>
@@ -268,7 +268,13 @@ frescura de cada trabajo (§4). Si pasada una hora `assignment-maintenance` y `a
 siguen en `nunca`, el cron `app-gestion-jobs` no se creó; si pasado un día `fx-sync` sigue en
 `nunca`, no se creó el de FX. En `obsoleto` significa que existen pero dejaron de correr.
 
-**Ojo con el host.** El cron de FX apuntaba a `app-gestion-backend.onrender.com`, que **no
+**Producción real (verificado el 2026-11-09):** el backend de producción es
+`https://synatrack.onrender.com` (con autenticación, base Supabase `nugvde...`).
+`app-gestion-demo.onrender.com` es otro servicio con otra base y sin autenticación. Los cron
+de la tabla de arriba y de `render.yaml` todavía apuntan a `app-gestion-demo`: revisa en Render
+a qué host llaman los cron reales y con qué token antes de cambiarlos.
+
+**Ojo con el host (histórico).** El cron de FX apuntaba a `app-gestion-backend.onrender.com`, que **no
 existe** —se comprobó que no responde en 150 segundos, mientras `app-gestion-demo` devuelve
 200—, y por eso la sincronización de tasas nunca funcionó. El `name` del servicio en
 `render.yaml` sigue diciendo `app-gestion-backend`, pero la URL pública real es
@@ -282,22 +288,22 @@ servicio, y renombrarlo en un blueprint crea uno nuevo sin las variables marcada
 
 ```bash
 # La aplicación responde y ve la base
-curl https://app-gestion-demo.onrender.com/health
+curl https://synatrack.onrender.com/health
 # Esperado: {"ok":true,"database":"up",...}
 
 # El planificador quedó bien configurado
 curl -H "Authorization: Bearer $JOBS_RUN_TOKEN" \
-  https://app-gestion-demo.onrender.com/api/jobs/status
+  https://synatrack.onrender.com/api/jobs/status
 # Esperado: tokenConfigurado: true
 
 # Los trabajos periódicos están vivos (bloque `jobs` del health)
-curl https://app-gestion-demo.onrender.com/health
+curl https://synatrack.onrender.com/health
 # Recién desplegado los tres saldrán en `nunca`: es lo esperado.
 # Vuelve a mirarlo pasada una hora (ciclo) y al día siguiente (FX).
 # Si siguen en `nunca`, los cron jobs no se crearon: volver a §3.3.
 
 # Prueba de humo end-to-end
-API_BASE_URL=https://app-gestion-demo.onrender.com npm run smoke
+API_BASE_URL=https://synatrack.onrender.com npm run smoke
 # Con autenticación real, añade SMOKE_BEARER_TOKEN=<access-token>
 ```
 

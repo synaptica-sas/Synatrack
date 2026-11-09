@@ -177,8 +177,12 @@ de `GET /api/auth/permissions` (ya no es una copia).
 ## 6. Despliegue (estado confuso — verificar antes de tocar)
 
 - `render.yaml`: backend como Web Service (`app-gestion-backend`) + cron job diario de FX.
-- `frontend/vercel.json`: rewrite de `/api` a **`app-gestion-demo.onrender.com`** (nombre distinto
-  al de `render.yaml`), hardcodeado.
+- **Producción** (verificado el 2026-11-09): backend `https://synatrack.onrender.com` (Render,
+  base Supabase `nugvde...`), frontend en Vercel desplegado desde el repo alterno
+  `alejandroespinosa03/synatrack` (rama `main`). `app-gestion-demo.onrender.com` es otro servicio,
+  con otra base y sin autenticación: no es producción.
+- `frontend/vercel.json`: rewrite de `/api` a `synatrack.onrender.com`, hardcodeado. El frontend
+  en realidad llama al backend por `VITE_API_URL`; el rewrite es solo respaldo.
 - `.github/workflows/azure-static-web-apps-*.yml`: en cada push a `main` corre type-check, tests y build
   del frontend y lo despliega a Azure Static Web Apps (`output_location: "dist"`).
 - `.github/workflows/backend-ci.yml`: type-check, tests unitarios y de ruta del backend (Postgres de
