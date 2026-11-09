@@ -59,7 +59,7 @@ describe("trazabilidad: casos borde", () => {
     const email = "qa.borde.login@synaptica.test";
     const headers = comoRol(AppRole.VIEWER, email);
     const respuestas = await Promise.all(
-      Array.from({ length: 4 }, () => app.inject({ method: "GET", url: "/api/auth/me", headers })),
+      Array.from({ length: 12 }, () => app.inject({ method: "GET", url: "/api/auth/me", headers })),
     );
     respuestas.forEach((r) => expect(r.statusCode).toBe(200));
     const userId = respuestas[0].json().data.id as string;

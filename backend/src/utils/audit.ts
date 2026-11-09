@@ -200,27 +200,39 @@ export async function registrarLogin(
     // extra se evalúan sobre las filas que ya acota el índice (entity, entityId).
     const ipAddress = options.request?.ip ?? null;
     const userAgent = options.request?.headers["user-agent"] ?? null;
-    const reciente = await prisma.auditLog.findFirst({
-      where: {
-        entity: AUDIT_ENTITIES.user,
-        entityId: options.userId,
-        action: "LOGIN",
-        ipAddress,
-        userAgent,
-        createdAt: { gte: desde },
-      },
-      select: { id: true },
-    });
-    if (reciente) return false;
 
-    await writeAudit(prisma, {
-      entity: AUDIT_ENTITIES.user,
-      entityId: options.userId,
-      action: "LOGIN",
-      changedBy: options.email,
-      request: options.request,
+    // Comprobar y escribir es atómico: el frontend dispara varias `/me` a la
+    // vez al arrancar, y sin el candado todas veían "no hay LOGIN reciente" y
+    // escribían una fila cada una. El candado de transacción de Postgres se
+    // libera solo al terminar y sirve aunque haya varias instancias del backend.
+    const clave = `login:${options.userId}`;
+    return await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${clave}))`;
+      const reciente = await tx.auditLog.findFirst({
+        where: {
+          entity: AUDIT_ENTITIES.user,
+          entityId: options.userId,
+          action: "LOGIN",
+          ipAddress,
+          userAgent,
+          createdAt: { gte: desde },
+        },
+        select: { id: true },
+      });
+      if (reciente) return false;
+
+      await tx.auditLog.create({
+        data: {
+          entity: AUDIT_ENTITIES.user,
+          entityId: options.userId,
+          action: "LOGIN",
+          changedBy: options.email,
+          ipAddress,
+          userAgent,
+        },
+      });
+      return true;
     });
-    return true;
   } catch (err) {
     options.request?.log.error({ err }, "No se pudo registrar el inicio de sesión");
     return false;
