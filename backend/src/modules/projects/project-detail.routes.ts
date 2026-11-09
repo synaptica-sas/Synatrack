@@ -8,6 +8,8 @@ import {
   conversionStatus,
   createConversionLedger,
   convertAmountFallbackOnDate,
+  convertContractAmount,
+  negotiatedFxFromProject,
   describeMissingRates,
   hasMissingRates,
   missingRatePairs,
@@ -330,8 +332,10 @@ export async function projectDetailRoutes(app: FastifyInstance) {
 
       // El presupuesto se valora a la fecha de contratación (R-033), no a la de
       // hoy: si no, la línea base de la curva EVM se movía sola cada mañana.
-      const budget = convertAmountFallbackOnDate(
-        Number(project.budget), project.currency, baseCurrency, project.startDate ?? ahora, rateBook, ledger,
+      // Con tasa negociada, el presupuesto se valora con ella.
+      const budget = convertContractAmount(
+        Number(project.budget), project.currency, baseCurrency, project.startDate ?? ahora, rateBook,
+        negotiatedFxFromProject(project), ledger,
       );
       const bac = budget;
       const start = project.startDate;

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { authenticate, authorize } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
-import { describeMissingRates } from "../../utils/currency.js";
+import { MONEDA_TASA_NEGOCIADA, describeMissingRates, negotiatedFxFromProject } from "../../utils/currency.js";
 import {
   DEFAULT_MARGIN_CRITICAL_PCT,
   DEFAULT_MARGIN_WARNING_PCT,
@@ -124,6 +124,10 @@ const projectPayloadBaseSchema = z.object({
   category: categorySchema,
   sellPrice: z.coerce.number().positive().optional(),
   sellCurrency: z.string().trim().toUpperCase().length(3).default("USD"),
+  // Tasa negociada con el cliente: "1 USD = X" en la moneda del proyecto (o la
+  // de venta si el proyecto está en USD). null = quitarla; omitida en el PUT =
+  // conservar la actual. La moneda la deduce el servidor (`resolverTasaNegociada`).
+  negotiatedFxRate: z.coerce.number().positive("la tasa negociada debe ser mayor que 0").nullable().optional(),
   projectManagerEmail: projectManagerEmailSchema,
   marginWarningPct: umbralNulableSchema,
   marginCriticalPct: umbralNulableSchema,
@@ -161,6 +165,43 @@ function validarUmbralesCoherentes(
 }
 
 const INCLUIR_EMPRESA = { company: { select: { id: true, name: true } } } as const;
+
+/**
+ * Moneda a la que se refiere la tasa negociada ("1 USD = X <moneda>"): la del
+ * proyecto, o la de venta si el proyecto está en USD. `null` si ambas son USD,
+ * en cuyo caso no hay nada que negociar.
+ */
+function monedaTasaNegociada(currency: string, sellCurrency: string): string | null {
+  if (currency !== MONEDA_TASA_NEGOCIADA) return currency;
+  if (sellCurrency !== MONEDA_TASA_NEGOCIADA) return sellCurrency;
+  return null;
+}
+
+/**
+ * Valida y resuelve las dos columnas de la tasa negociada. En el PUT, si la tasa
+ * no viene se conserva la actual, pero solo si sigue refiriéndose a la misma
+ * moneda: si el proyecto cambió de moneda, una tasa de COP no puede pasar a
+ * leerse como de MXN sin que nadie lo decida.
+ */
+function resolverTasaNegociada(
+  body: { negotiatedFxRate?: number | null; currency: string; sellCurrency: string },
+  existente?: { negotiatedFxRate: unknown; negotiatedFxCurrency: string | null },
+): { error: string } | { negotiatedFxRate: number | null; negotiatedFxCurrency: string | null } {
+  const moneda = monedaTasaNegociada(body.currency, body.sellCurrency);
+  let tasa = body.negotiatedFxRate;
+  if (tasa === undefined) {
+    if (!existente || existente.negotiatedFxRate == null) return { negotiatedFxRate: null, negotiatedFxCurrency: null };
+    if (existente.negotiatedFxCurrency !== moneda) {
+      return { error: "La moneda del proyecto cambió: vuelve a indicar la tasa negociada o quítala." };
+    }
+    tasa = Number(existente.negotiatedFxRate);
+  }
+  if (tasa === null) return { negotiatedFxRate: null, negotiatedFxCurrency: null };
+  if (!moneda) {
+    return { error: "El proyecto está en USD: no necesita tasa negociada." };
+  }
+  return { negotiatedFxRate: tasa, negotiatedFxCurrency: moneda };
+}
 
 /** Compatibilidad: `company` sigue siendo el nombre (string) y se agrega `companyId` (ya viene en la fila). */
 function aplanarEmpresa<T extends { company: { name: string } }>(project: T): Omit<T, "company"> & { company: string } {
@@ -206,6 +247,7 @@ function ensureDateRange(startDate: Date, endDate: Date) {
 const CAMPOS_MONETARIOS_PROYECTO = [
   "budget",
   "sellPrice",
+  "negotiatedFxRate",
   "marginWarningPct",
   "marginCriticalPct",
   "budgetAlertPct",
@@ -293,6 +335,9 @@ export async function projectsRoutes(app: FastifyInstance) {
     const errorEmpresa = await validarEmpresa(body.companyId);
     if (errorEmpresa) return reply.status(400).send({ message: errorEmpresa });
 
+    const tasaNegociada = resolverTasaNegociada(body);
+    if ("error" in tasaNegociada) return reply.status(400).send({ message: tasaNegociada.error });
+
     const category = await resolverOInsertarCategoria(body.category);
 
     const creado = await prisma.project.create({
@@ -312,6 +357,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         category,
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
+        negotiatedFxRate: tasaNegociada.negotiatedFxRate,
+        negotiatedFxCurrency: tasaNegociada.negotiatedFxCurrency,
         projectManagerEmail: body.projectManagerEmail,
         marginWarningPct: body.marginWarningPct,
         marginCriticalPct: body.marginCriticalPct,
@@ -393,6 +440,9 @@ export async function projectsRoutes(app: FastifyInstance) {
       if (errorEmpresa) return reply.status(400).send({ message: errorEmpresa });
     }
 
+    const tasaNegociada = resolverTasaNegociada(body, existing);
+    if ("error" in tasaNegociada) return reply.status(400).send({ message: tasaNegociada.error });
+
     const category = await resolverOInsertarCategoria(body.category);
 
     const actualizado = await prisma.project.update({
@@ -413,6 +463,8 @@ export async function projectsRoutes(app: FastifyInstance) {
         category,
         sellPrice: body.sellPrice,
         sellCurrency: body.sellCurrency,
+        negotiatedFxRate: tasaNegociada.negotiatedFxRate,
+        negotiatedFxCurrency: tasaNegociada.negotiatedFxCurrency,
         projectManagerEmail: body.projectManagerEmail,
         marginWarningPct: body.marginWarningPct,
         marginCriticalPct: body.marginCriticalPct,
@@ -538,6 +590,7 @@ export async function projectsRoutes(app: FastifyInstance) {
         fxHistory,
         // R-033: presupuesto y precio de venta, a la fecha de contratación.
         valuationDate: project.startDate ?? new Date(),
+        negotiatedFx: negotiatedFxFromProject(project),
         baseCurrency,
       });
 

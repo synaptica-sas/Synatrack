@@ -487,6 +487,74 @@ export function convertAmountFallbackOnDate(
   return converted;
 }
 
+// ─── Tasa negociada por proyecto ─────────────────────────────────────────────
+
+/** Moneda contra la que se negocia la tasa de un proyecto ("tasa de dólar"). */
+export const MONEDA_TASA_NEGOCIADA = "USD";
+
+/**
+ * Tasa pactada con el cliente: "1 USD = `rate` `currency`". La guardan los
+ * proyectos que se negociaron antes de cargarse en la app (`Project.negotiatedFx*`).
+ */
+export type NegotiatedFx = { currency: string; rate: number };
+
+/** Lee la tasa negociada de una fila de proyecto; `null` si no tiene o es inválida. */
+export function negotiatedFxFromProject(project: {
+  negotiatedFxRate?: unknown;
+  negotiatedFxCurrency?: string | null;
+}): NegotiatedFx | null {
+  if (project.negotiatedFxRate == null || !project.negotiatedFxCurrency) return null;
+  const rate = Number(project.negotiatedFxRate);
+  if (!Number.isFinite(rate) || rate <= 0) return null;
+  return { currency: project.negotiatedFxCurrency, rate };
+}
+
+/**
+ * Conversión de un importe **contractual** (presupuesto, precio de venta).
+ *
+ * Sin tasa negociada, o si el importe no está en la moneda de la tasa, es
+ * exactamente `convertAmountFallbackOnDate`. Con ella, el par USD <-> moneda
+ * negociada se toma de la tasa pactada en vez del histórico; si la moneda base
+ * no es USD, el tramo USD -> base sigue saliendo del libro a esa fecha.
+ *
+ * Solo se usa para el contrato: horas, gastos e ingresos siguen con la tasa de
+ * su propia fecha, para que el margen muestre la diferencia cambiaria real
+ * frente a lo negociado.
+ */
+export function convertContractAmount(
+  amount: number,
+  from: string,
+  to: string,
+  date: Date,
+  book: RateBook,
+  negotiated: NegotiatedFx | null,
+  ledger?: ConversionLedger,
+): number {
+  if (!negotiated || from === to || (from !== negotiated.currency && to !== negotiated.currency)) {
+    return convertAmountFallbackOnDate(amount, from, to, date, book, ledger);
+  }
+
+  const { rates, dated } = rateMapForDate(book, date);
+  const pactadas = new Map(rates);
+  const ida = `${MONEDA_TASA_NEGOCIADA}->${negotiated.currency}`;
+  const vuelta = `${negotiated.currency}->${MONEDA_TASA_NEGOCIADA}`;
+  pactadas.set(ida, negotiated.rate);
+  pactadas.set(vuelta, 1 / negotiated.rate);
+
+  const path = findConversionPath(from, to, pactadas);
+  if (path === null) {
+    if (ledger && amount !== 0) recordMissingRate(ledger, from, to);
+    return amount;
+  }
+
+  // La tasa pactada es fija por definición: solo los otros tramos (si los hay)
+  // pueden venir del respaldo de "hoy".
+  if (ledger && amount !== 0 && path.some((k) => k !== ida && k !== vuelta && !dated.has(k))) {
+    recordUndatedRate(ledger, from, to);
+  }
+  return applyConversionPath(amount, path, pactadas);
+}
+
 /** Anota en el libro la calidad con la que se valoró un importe. */
 export function recordDatedQuality(
   ledger: ConversionLedger,

@@ -11,6 +11,8 @@ import {
   conversionStatus,
   createConversionLedger,
   convertAmountFallbackOnDate,
+  convertContractAmount,
+  negotiatedFxFromProject,
   describeMissingRates,
   hasMissingRates,
   missingRatePairs,
@@ -170,12 +172,13 @@ export async function snapshotsRoutes(app: FastifyInstance) {
       // a la del cierre. Si no, cada cierre mensual reexpresaba el mismo
       // contrato con una tasa distinta y la serie de meses no era comparable.
       const contractValue = project.sellPrice
-        ? convertAmountFallbackOnDate(
+        ? convertContractAmount(
             Number(project.sellPrice),
             project.sellCurrency,
             baseCurrency,
             project.startDate ?? endOfMonth,
             rateBook,
+            negotiatedFxFromProject(project),
             ledger,
           )
         : 0;

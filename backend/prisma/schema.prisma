@@ -172,55 +172,63 @@ enum AlertType {
 // ─── Modelos de negocio ────────────────────────────────────────────────────────
 
 model Project {
-  id                  String        @id @default(cuid())
-  name                String
+  id                   String        @id @default(cuid())
+  name                 String
   // Cliente del proyecto (catálogo `Company`). Reemplaza al antiguo texto libre.
-  companyId           String
-  company             Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
-  country             String
-  currency            String
-  budget              Decimal       @db.Decimal(14, 2)
-  startDate           DateTime
-  endDate             DateTime
-  description         String?
-  projectType         ProjectType   @default(TIME_AND_MATERIAL)
-  status              ProjectStatus @default(ACTIVE)
+  companyId            String
+  company              Company       @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  country              String
+  currency             String
+  budget               Decimal       @db.Decimal(14, 2)
+  startDate            DateTime
+  endDate              DateTime
+  description          String?
+  projectType          ProjectType   @default(TIME_AND_MATERIAL)
+  status               ProjectStatus @default(ACTIVE)
   // Categoría de proyecto (R-010). Texto libre por nombre, no llave foránea —
   // mismo criterio que `FinancialEntry.category` tras D-4: renombrar una
   // categoría no debe dejar proyectos huérfanos, y una categoría nueva escrita
   // aquí se agrega sola al catálogo (`ProjectCategory`) para quedar disponible
   // en el desplegable de los próximos proyectos. Nulo = sin categorizar.
-  category            String?
-  sellPrice           Decimal?      @db.Decimal(14, 2)
-  sellCurrency        String        @default("USD")
+  category             String?
+  sellPrice            Decimal?      @db.Decimal(14, 2)
+  sellCurrency         String        @default("USD")
+  // Tasa de cambio negociada con el cliente: "1 USD = negotiatedFxRate
+  // negotiatedFxCurrency". Para proyectos negociados antes de cargarse en la
+  // app. Si está, presupuesto y precio de venta se valoran con ella en vez de
+  // con el histórico de tasas; horas, gastos e ingresos siguen con la tasa de
+  // su fecha. Los dos nulos = sin tasa negociada. La moneda es la del proyecto
+  // o la de venta (validado en la ruta), nunca USD.
+  negotiatedFxRate     Decimal?      @db.Decimal(18, 6)
+  negotiatedFxCurrency String?
   // Dos umbrales de margen bruto (decisión de negocio D-2). Nulos = "sin umbral
   // propio": se aplican los valores por defecto de la empresa declarados en
   // `utils/financial.ts` (30 % advertencia, 15 % crítico). Se mantienen nulables
   // a propósito para que cambiar el criterio de la empresa no obligue a reescribir
   // todas las filas. Invariante: crítico <= advertencia (validado en la ruta).
-  marginWarningPct    Decimal?      @db.Decimal(5, 2)
-  marginCriticalPct   Decimal?      @db.Decimal(5, 2)
+  marginWarningPct     Decimal?      @db.Decimal(5, 2)
+  marginCriticalPct    Decimal?      @db.Decimal(5, 2)
   // Umbral de AVISO de presupuesto del proyecto (%). Nulo = "sin umbral
   // propio": se aplica `HealthThresholdConfig.budgetWarningPct`, el valor
   // general de la empresa (D-7). Antes era `@default(90)` NOT NULL, con lo que
   // ninguna fila podía heredar nada y el valor general nunca llegaba a usarse.
   // El nivel CRÍTICO ("presupuesto excedido") no es por proyecto: es general.
-  budgetAlertPct      Decimal?      @db.Decimal(5, 2)
+  budgetAlertPct       Decimal?      @db.Decimal(5, 2)
   // Gestión de proyecto
-  healthStatus        HealthStatus  @default(GREEN)
-  completionPct       Decimal?      @db.Decimal(5, 2)
-  phase               ProjectPhase  @default(EXECUTION)
-  projectManagerEmail String?
+  healthStatus         HealthStatus  @default(GREEN)
+  completionPct        Decimal?      @db.Decimal(5, 2)
+  phase                ProjectPhase  @default(EXECUTION)
+  projectManagerEmail  String?
   // Baseline
-  baselineBudget      Decimal?      @db.Decimal(14, 2)
-  baselineStartDate   DateTime?
-  baselineEndDate     DateTime?
-  baselineSetAt       DateTime?
-  baselineSetBy       String?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  createdBy           String? // email de quien creó el registro
-  updatedBy           String? // email de quien lo modificó por última vez
+  baselineBudget       Decimal?      @db.Decimal(14, 2)
+  baselineStartDate    DateTime?
+  baselineEndDate      DateTime?
+  baselineSetAt        DateTime?
+  baselineSetBy        String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  createdBy            String? // email de quien creó el registro
+  updatedBy            String? // email de quien lo modificó por última vez
 
   timeEntries      TimeEntry[]
   financialEntries FinancialEntry[]

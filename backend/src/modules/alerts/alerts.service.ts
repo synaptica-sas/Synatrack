@@ -3,6 +3,8 @@ import {
   conversionStatus,
   createConversionLedger,
   convertAmountFallbackOnDate,
+  convertContractAmount,
+  negotiatedFxFromProject,
   describeMissingRates,
   type ConversionStatus,
 } from "../../utils/currency.js";
@@ -113,8 +115,10 @@ export async function runAlertEngine(prisma: DbClient): Promise<void> {
 
     // Presupuesto a la fecha de contratación (R-033): una alerta no debe
     // dispararse porque la tasa de hoy encogió el presupuesto de un contrato.
-    const budget = convertAmountFallbackOnDate(
-      Number(project.budget), project.currency, baseCurrency, project.startDate ?? ahora, rateBook, ledger,
+    // Con tasa negociada, el presupuesto se valora con ella.
+    const budget = convertContractAmount(
+      Number(project.budget), project.currency, baseCurrency, project.startDate ?? ahora, rateBook,
+      negotiatedFxFromProject(project), ledger,
     );
     if (budget === 0) continue;
 

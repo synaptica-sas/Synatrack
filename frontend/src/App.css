@@ -6854,6 +6854,10 @@ body.dark .card .proy-bar-pct.proy-bar-pct { color: var(--text-muted); }
   white-space: nowrap;
 }
 .proy-check-input.proy-check-input { width: auto; height: auto; margin: 0; }
+/* Tasa de cambio negociada del proyecto: casilla + "1 USD = [ ] COP". */
+.proy-tasa-negociada { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; align-self: center; }
+.proy-tasa-negociada__campo { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.proy-tasa-negociada__campo input { width: 110px; }
 .proy-check-box.proy-check-box { width: 16px; height: 16px; cursor: pointer; }
 .proy-check-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; }
 .proy-check-text { font-size: 0.85rem; font-weight: 700; color: var(--text-soft); cursor: pointer; }

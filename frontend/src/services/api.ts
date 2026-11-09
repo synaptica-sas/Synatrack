@@ -109,6 +109,13 @@ export type Project = {
   /** Mismo criterio que `budget`: ausente para un CONSULTANT puro. */
   sellPrice?: string | null;
   sellCurrency: string;
+  /**
+   * Tasa negociada con el cliente: "1 USD = negotiatedFxRate negotiatedFxCurrency".
+   * Si está, presupuesto y precio de venta se valoran con ella. Ausente para un
+   * CONSULTANT puro, igual que `budget`.
+   */
+  negotiatedFxRate?: string | null;
+  negotiatedFxCurrency?: string | null;
   createdAt: string;
   updatedAt: string;
   allowExtraHours?: boolean;
@@ -662,6 +669,7 @@ async function request<T>(
           projectType: "Tipo de proyecto",
           sellPrice: "Precio de venta",
           sellCurrency: "Moneda de venta",
+          negotiatedFxRate: "Tasa negociada",
           category: "Categoría",
           amount: "Monto",
           expenseDate: "Fecha del gasto",
@@ -840,6 +848,8 @@ export async function createProject(payload: {
   isInternal?: boolean;
   sellPrice?: number;
   sellCurrency?: string;
+  /** "1 USD = X" en la moneda del proyecto (o la de venta si el proyecto es USD). null = sin tasa. */
+  negotiatedFxRate?: number | null;
   allowExtraHours?: boolean;
   /** Cadena vacía = sin PM. El backend la normaliza a minúsculas y a `null`. */
   projectManagerEmail?: string | null;
@@ -878,6 +888,8 @@ export async function updateProject(
     isInternal?: boolean;
     sellPrice?: number;
     sellCurrency?: string;
+    /** null = quitar la tasa negociada; `undefined` = no tocar. */
+    negotiatedFxRate?: number | null;
     allowExtraHours?: boolean;
     /** Cadena vacía = desasignar el PM. */
     projectManagerEmail?: string | null;

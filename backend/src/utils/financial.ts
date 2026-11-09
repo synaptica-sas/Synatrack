@@ -6,6 +6,8 @@
 
 import {
   convertAmountFallbackOnDate,
+  convertContractAmount,
+  negotiatedFxFromProject,
   conversionStatus,
   createConversionLedger,
   mergeConversionLedger,
@@ -15,6 +17,7 @@ import {
   type FxRateRecord,
   type FxHistoryRecord,
   type RateBook,
+  type NegotiatedFx,
 } from "./currency.js";
 import {
   clasificarUsoPresupuesto,
@@ -292,6 +295,12 @@ export type ProjectFinancialsInput = {
    * `computeProjectFinancials`).
    */
   valuationDate: Date;
+  /**
+   * Tasa negociada del proyecto ("1 USD = X moneda"). Si está, presupuesto y
+   * precio de venta se valoran con ella en vez de con el histórico a
+   * `valuationDate`. Nula u omitida = comportamiento de siempre.
+   */
+  negotiatedFx?: NegotiatedFx | null;
   baseCurrency: string;
   /**
    * Libro de faltantes compartido (DEP-32). Opcional: el cálculo siempre lleva
@@ -392,6 +401,7 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
     valuationDate,
     baseCurrency,
   } = input;
+  const negotiatedFx = input.negotiatedFx ?? null;
 
   const marginThresholds = resolveMarginThresholds(input.marginWarningPct, input.marginCriticalPct);
   const budgetAlertPct = resolveBudgetAlertPct(input.budgetAlertPct, input.healthThresholds);
@@ -426,11 +436,12 @@ export function computeProjectFinancials(input: ProjectFinancialsInput): Project
   // como `undated`: el importe está convertido, pero se revalúa cada día.
 
   // Presupuesto y valor contractual en moneda base, a la fecha de contratación
-  const budgetBase = convertAmountFallbackOnDate(
-    budget, budgetCurrency, baseCurrency, valuationDate, rateBook, ledger,
+  // (o con la tasa negociada del proyecto, si la tiene).
+  const budgetBase = convertContractAmount(
+    budget, budgetCurrency, baseCurrency, valuationDate, rateBook, negotiatedFx, ledger,
   );
   const contractValue = sellPrice
-    ? convertAmountFallbackOnDate(sellPrice, sellCurrency, baseCurrency, valuationDate, rateBook, ledger)
+    ? convertContractAmount(sellPrice, sellCurrency, baseCurrency, valuationDate, rateBook, negotiatedFx, ledger)
     : 0;
 
   // Ingresos reconocidos, cada uno a la tasa de su fecha de reconocimiento
@@ -614,6 +625,9 @@ type ProjectRowForFinancials = {
   startDate: Date | null;
   sellPrice: unknown;
   sellCurrency: string;
+  /** Tasa negociada (`Project.negotiatedFx*`). Obligatorios para que ningún `select` los olvide. */
+  negotiatedFxRate: unknown;
+  negotiatedFxCurrency: string | null;
   marginWarningPct: unknown;
   marginCriticalPct: unknown;
   budgetAlertPct: unknown;
@@ -655,6 +669,7 @@ export function toFinancialsInput(
     // (§6.2, R-034): si el negocio quiere separar firma de inicio, hace falta
     // un campo nuevo. Sin `startDate` no hay nada mejor que el presente.
     valuationDate: project.startDate ?? now,
+    negotiatedFx: negotiatedFxFromProject(project),
     sellPrice: project.sellPrice != null ? Number(project.sellPrice) : null,
     sellCurrency: project.sellCurrency,
     marginWarningPct: project.marginWarningPct != null ? Number(project.marginWarningPct) : null,
@@ -737,6 +752,8 @@ export type ProfitabilityInput = {
   fxHistory?: FxHistoryRecord[];
   /** Fecha de contratación con la que se valoran presupuesto y precio de venta. */
   valuationDate: Date;
+  /** Tasa negociada del proyecto. Ver `ProjectFinancialsInput`. */
+  negotiatedFx?: NegotiatedFx | null;
   baseCurrency: string;
   /** Libro de faltantes compartido (DEP-32). Ver `ProjectFinancialsInput`. */
   ledger?: ConversionLedger;
@@ -760,6 +777,7 @@ export function calculateProfitability(input: ProfitabilityInput): Profitability
     risks: input.risks,
     rateBook: buildRateBook(input.fxConfigs, input.fxHistory ?? []),
     valuationDate: input.valuationDate,
+    negotiatedFx: input.negotiatedFx ?? null,
     baseCurrency: input.baseCurrency,
     ledger: input.ledger,
   });

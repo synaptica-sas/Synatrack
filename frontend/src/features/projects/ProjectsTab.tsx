@@ -98,6 +98,76 @@ const currencyOptions = ["COP", "USD", "EUR", "MXN", "PEN", "CLP"];
  */
 const CATEGORY_CUSTOM = "__custom__";
 
+/** Moneda a la que se refiere la tasa negociada: la del proyecto, o la de venta si el proyecto es USD. */
+function monedaTasaNegociada(currency: string, sellCurrency: string): string | null {
+  if (currency && currency !== "USD") return currency;
+  if (sellCurrency && sellCurrency !== "USD") return sellCurrency;
+  return null;
+}
+
+/**
+ * Casilla "Usar tasa negociada" + campo "1 USD = X <moneda>". Para proyectos
+ * negociados antes de cargarse en la app: presupuesto y precio de venta se
+ * valoran con esta tasa en vez de con el histórico.
+ */
+function TasaNegociadaField({
+  idPrefix,
+  currency,
+  sellCurrency,
+  usar,
+  tasa,
+  onUsar,
+  onTasa,
+}: {
+  idPrefix: string;
+  currency: string;
+  sellCurrency: string;
+  usar: boolean;
+  tasa: string;
+  onUsar: (v: boolean) => void;
+  onTasa: (v: string) => void;
+}) {
+  const moneda = monedaTasaNegociada(currency, sellCurrency);
+  const sinMoneda = !moneda;
+  return (
+    <div className="span-2 proy-tasa-negociada">
+      <label
+        className="proy-check-label"
+        title={sinMoneda
+          ? "El proyecto y la venta están en USD: no hace falta tasa de cambio."
+          : "Para proyectos negociados antes de cargarlos en la app: el presupuesto y el precio de venta se valoran con esta tasa en vez de con la del histórico."}
+      >
+        <input
+          type="checkbox"
+          id={`${idPrefix}-usar-tasa`}
+          className="proy-check-input"
+          checked={usar && !sinMoneda}
+          disabled={sinMoneda}
+          onChange={(e) => onUsar(e.target.checked)}
+        />
+        Usar tasa de cambio negociada
+      </label>
+      {usar && moneda && (
+        <label className="proy-tasa-negociada__campo" htmlFor={`${idPrefix}-tasa`}>
+          <span>1 USD =</span>
+          <input
+            id={`${idPrefix}-tasa`}
+            type="number"
+            min={0}
+            step="any"
+            required
+            aria-label={`Tasa negociada: ${moneda} por 1 USD`}
+            placeholder="Ej. 3900"
+            value={tasa}
+            onChange={(e) => onTasa(e.target.value)}
+          />
+          <span>{moneda}</span>
+        </label>
+      )}
+    </div>
+  );
+}
+
 function CategoryField({
   idPrefix,
   value,
@@ -228,6 +298,8 @@ type EditForm = {
   category: string;
   sellPrice: string;
   sellCurrency: string;
+  usarTasaNegociada: boolean;
+  negotiatedFxRate: string;
   allowExtraHours: boolean;
   isInternal: boolean;
   projectManagerEmail: string;
@@ -250,6 +322,9 @@ const emptyForm = {
   category: "",
   sellPrice: "",
   sellCurrency: "USD",
+  // Tasa negociada: apagada por defecto (se usa el histórico de tasas).
+  usarTasaNegociada: false,
+  negotiatedFxRate: "",
   allowExtraHours: true,
   // Proyecto interno (stand-by): sus horas no son facturables.
   isInternal: false,
@@ -410,10 +485,13 @@ export function ProjectsTab({
     }
     setSubmitting(true);
     try {
+      const { usarTasaNegociada, negotiatedFxRate, ...resto } = form;
+      const conTasa = usarTasaNegociada && monedaTasaNegociada(form.currency, form.sellCurrency) !== null;
       await createProject({
-        ...form,
+        ...resto,
         budget: Number(form.budget),
         sellPrice: form.sellPrice ? Number(form.sellPrice) : undefined,
+        negotiatedFxRate: conTasa ? Number(negotiatedFxRate) : null,
       });
       setForm(formVacio);
       setCategoryCustom(false);
@@ -454,6 +532,10 @@ export function ProjectsTab({
         category: editForm.category,
         sellPrice: editForm.sellPrice ? Number(editForm.sellPrice) : undefined,
         sellCurrency: editForm.sellCurrency,
+        negotiatedFxRate:
+          editForm.usarTasaNegociada && monedaTasaNegociada(editForm.currency, editForm.sellCurrency) !== null
+            ? Number(editForm.negotiatedFxRate)
+            : null,
         allowExtraHours: editForm.allowExtraHours,
         isInternal: editForm.isInternal,
         // Un no-ADMIN no puede cambiar el PM: no se envía para no tocarlo.
@@ -596,6 +678,15 @@ export function ProjectsTab({
             <select value={form.sellCurrency} onChange={(e) => setForm((p) => ({ ...p, sellCurrency: e.target.value }))}>
               {currencyOptions.map((c) => <option key={`sell-${c}`} value={c}>{`Venta: ${c}`}</option>)}
             </select>
+            <TasaNegociadaField
+              idPrefix="nuevo"
+              currency={form.currency}
+              sellCurrency={form.sellCurrency}
+              usar={form.usarTasaNegociada}
+              tasa={form.negotiatedFxRate}
+              onUsar={(v) => setForm((p) => ({ ...p, usarTasaNegociada: v }))}
+              onTasa={(v) => setForm((p) => ({ ...p, negotiatedFxRate: v }))}
+            />
             <input
               type="email"
               placeholder="Correo del Project Manager (opcional)"
@@ -842,6 +933,9 @@ export function ProjectsTab({
                                         category: categoriaActual,
                                         sellPrice: project.sellPrice ? String(numberish(project.sellPrice)) : "",
                                         sellCurrency: project.sellCurrency ?? "USD",
+                                        usarTasaNegociada: project.negotiatedFxRate != null,
+                                        negotiatedFxRate:
+                                          project.negotiatedFxRate != null ? String(Number(project.negotiatedFxRate)) : "",
                                         projectManagerEmail: project.projectManagerEmail ?? "",
                                         marginWarningPct:
                                           project.marginWarningPct != null
@@ -940,6 +1034,15 @@ export function ProjectsTab({
               <select value={editForm.sellCurrency} onChange={(e) => setEditForm((p) => p && { ...p, sellCurrency: e.target.value })}>
                 {currencyOptions.map((c) => <option key={`edit-sell-${c}`} value={c}>{`Moneda venta: ${c}`}</option>)}
               </select>
+              <TasaNegociadaField
+                idPrefix="editar"
+                currency={editForm.currency}
+                sellCurrency={editForm.sellCurrency}
+                usar={editForm.usarTasaNegociada}
+                tasa={editForm.negotiatedFxRate}
+                onUsar={(v) => setEditForm((p) => p && { ...p, usarTasaNegociada: v })}
+                onTasa={(v) => setEditForm((p) => p && { ...p, negotiatedFxRate: v })}
+              />
               <input
                 type="email"
                 placeholder="Correo del Project Manager (opcional)"
