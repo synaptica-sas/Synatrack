@@ -71,6 +71,8 @@ export function AlertsPanel({
       await onReload();
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo resolver la alerta");
+      // La alerta pudo cambiar de estado o dejar de ser visible: se refresca la lista.
+      try { await onReload(); } catch { /* el error de resolución ya se mostró */ }
     }
   }
 
@@ -142,7 +144,7 @@ export function AlertsPanel({
           {groups.length === 0 ? (
             <div className="empty-state">
               <div className="empty-state__icon" aria-hidden="true">✅</div>
-              <p className="empty-state__title">Sin alertas activas</p>
+              <p className="empty-state__title">No tienes alertas pendientes</p>
             </div>
           ) : (
             groups.map((group) => (
@@ -177,11 +179,13 @@ export function AlertsPanel({
                             </div>
                             <p className="alert-item__message">{alert.message}</p>
                           </div>
-                          <div className="alert-item__actions">
-                            <button type="button" className="ghost alert-item__resolve" onClick={() => void handleResolve(alert.id)}>
-                              Resolver
-                            </button>
-                          </div>
+                          {alert.canResolve && (
+                            <div className="alert-item__actions">
+                              <button type="button" className="ghost alert-item__resolve" onClick={() => void handleResolve(alert.id)}>
+                                Resolver
+                              </button>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

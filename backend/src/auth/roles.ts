@@ -156,6 +156,8 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "extrahours:review",
     "capacity:read",
     "holidays:read",
+    "alerts:read",
+    "alerts:resolve",
     "expenses:read",
     "expenses:write",
     "revenue:read",
@@ -176,6 +178,8 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
   COMMERCIAL: [
     "capacity:read",
     "holidays:read",
+    "alerts:read",
+    "alerts:resolve",
   ],
   VIEWER: [
     "projects:read",
@@ -188,7 +192,6 @@ export const rolePermissions: Record<AppRole, Permission[]> = {
     "stats:read",
     // Sin `capacity:read` (P3): la ocupación por consultor es confidencial (D8).
     "holidays:read",
-    "alerts:read",
     "extrahours:read",
   ],
 };

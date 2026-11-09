@@ -193,33 +193,42 @@ describe("Confidencialidad de capacity (D8)", () => {
   });
 
   describe("Alertas de capacidad", () => {
-    const alertasDe = async (rol: AppRole) => {
+    // Desde la regla por destinatario (alertas-destinatario.test.ts) el PM solo ve lo de sus
+    // proyectos: se identifica con el correo del PM del proyecto sembrado.
+    const alertasDe = async (rol: AppRole, email?: string) => {
       const res = await app.inject({
         method: "GET",
         url: `/api/alerts?consultantId=${escenario.consultorB.id}`,
-        headers: comoRol(rol),
+        headers: comoRol(rol, email),
       });
       expect(res.statusCode, rol).toBe(200);
       return (res.json().data as Array<{ type: string }>).map((a) => a.type);
     };
+    const pmEmail = async () =>
+      (await prisma.project.findUniqueOrThrow({ where: { id: escenario.projectId } })).projectManagerEmail!;
 
-    it("VIEWER no ve ASSIGNMENT_ENDING pero sí el resto", async () => {
-      const tipos = await alertasDe(AppRole.VIEWER);
+    it("VIEWER no recibe alertas: 403 en el listado", async () => {
+      const res = await app.inject({ method: "GET", url: "/api/alerts", headers: comoRol(AppRole.VIEWER) });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("FINANCE no ve ASSIGNMENT_ENDING pero sí las financieras", async () => {
+      const tipos = await alertasDe(AppRole.FINANCE);
       expect(tipos).not.toContain("ASSIGNMENT_ENDING");
       expect(tipos).toContain("BUDGET_WARNING");
     });
 
-    it("PM ve ambas", async () => {
-      const tipos = await alertasDe(AppRole.PM);
+    it("PM del proyecto ve ambas", async () => {
+      const tipos = await alertasDe(AppRole.PM, await pmEmail());
       expect(tipos).toContain("ASSIGNMENT_ENDING");
       expect(tipos).toContain("BUDGET_WARNING");
     });
 
-    it("unread-count del VIEWER excluye las alertas de capacidad", async () => {
+    it("unread-count del FINANCE excluye las alertas de capacidad", async () => {
       const contar = async (rol: AppRole) =>
         (await app.inject({ method: "GET", url: "/api/alerts/unread-count", headers: comoRol(rol) })).json().data
           .count as number;
-      expect(await contar(AppRole.PM)).toBeGreaterThan(await contar(AppRole.VIEWER));
+      expect(await contar(AppRole.ADMIN)).toBeGreaterThan(await contar(AppRole.FINANCE));
     });
   });
 });

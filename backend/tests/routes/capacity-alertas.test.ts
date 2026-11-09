@@ -381,23 +381,24 @@ describe("Alertas de capacity y parámetros nuevos", () => {
   });
 
   describe("visibilidad en GET /api/alerts", () => {
-    it("VIEWER no ve CONSULTANT_UNDERUTILIZED ni CONSULTANT_OVERLOADED; ADMIN y PM sí", async () => {
+    it("FINANCE no ve CONSULTANT_UNDERUTILIZED ni CONSULTANT_OVERLOADED; ADMIN y COMMERCIAL sí; VIEWER recibe 403", async () => {
       await runCapacityAlerts(prisma, AHORA);
       const consulta = (rol: AppRole, consultantId: string) =>
         app.inject({ method: "GET", url: `/api/alerts?consultantId=${consultantId}`, headers: comoRol(rol) });
 
-      const viewerC3 = await consulta(AppRole.VIEWER, ids.C3);
-      expect(viewerC3.statusCode).toBe(200);
-      expect(viewerC3.json().data).toEqual([]);
-      const viewerC1 = await consulta(AppRole.VIEWER, ids.C1);
-      expect(viewerC1.json().data).toEqual([]);
+      const financeC3 = await consulta(AppRole.FINANCE, ids.C3);
+      expect(financeC3.statusCode).toBe(200);
+      expect(financeC3.json().data).toEqual([]);
+      const financeC1 = await consulta(AppRole.FINANCE, ids.C1);
+      expect(financeC1.json().data).toEqual([]);
+      expect((await consulta(AppRole.VIEWER, ids.C3)).statusCode).toBe(403);
 
-      for (const rol of [AppRole.ADMIN, AppRole.PM]) {
+      for (const rol of [AppRole.ADMIN, AppRole.COMMERCIAL]) {
         const res = await consulta(rol, ids.C3);
         expect(res.json().data.some((a: { type: string }) => a.type === "CONSULTANT_UNDERUTILIZED"), rol).toBe(true);
       }
 
-      const contador = await app.inject({ method: "GET", url: "/api/alerts/unread-count", headers: comoRol(AppRole.VIEWER) });
+      const contador = await app.inject({ method: "GET", url: "/api/alerts/unread-count", headers: comoRol(AppRole.FINANCE) });
       const contadorAdmin = await app.inject({ method: "GET", url: "/api/alerts/unread-count", headers: comoRol(AppRole.ADMIN) });
       expect(contadorAdmin.json().data.count).toBeGreaterThan(contador.json().data.count);
     });

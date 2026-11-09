@@ -2027,6 +2027,8 @@ export type AppAlert = {
   resolvedAt: string | null;
   resolvedBy: string | null;
   createdAt: string;
+  /** El backend indica si el usuario actual puede resolver esta alerta. */
+  canResolve: boolean;
   project?: { id: string; name: string; company: string } | null;
   consultant?: { id: string; fullName: string } | null;
 };

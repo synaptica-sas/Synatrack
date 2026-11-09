@@ -25,10 +25,10 @@ Los roles salen del `authorize([...])` real de cada ruta. Las rutas que usan
 | GET | `/api/admin/users` | ADMIN | [backend/src/modules/admin/users.routes.ts](backend/src/modules/admin/users.routes.ts) |
 | POST | `/api/admin/users` | ADMIN | [backend/src/modules/admin/users.routes.ts](backend/src/modules/admin/users.routes.ts) |
 | PATCH | `/api/admin/users/:id` | ADMIN | [backend/src/modules/admin/users.routes.ts](backend/src/modules/admin/users.routes.ts) |
-| GET | `/api/alerts` | ADMIN, PM, FINANCE, VIEWER | [backend/src/modules/alerts/alerts.routes.ts](backend/src/modules/alerts/alerts.routes.ts) |
-| PATCH | `/api/alerts/:id/resolve` | ADMIN, PM, FINANCE | [backend/src/modules/alerts/alerts.routes.ts](backend/src/modules/alerts/alerts.routes.ts) |
+| GET | `/api/alerts` | ADMIN, PM, CONSULTANT, FINANCE, COMMERCIAL — permiso `alerts:read` | [backend/src/modules/alerts/alerts.routes.ts](backend/src/modules/alerts/alerts.routes.ts) |
+| PATCH | `/api/alerts/:id/resolve` | ADMIN, PM, FINANCE, COMMERCIAL — permiso `alerts:resolve` | [backend/src/modules/alerts/alerts.routes.ts](backend/src/modules/alerts/alerts.routes.ts) |
 | POST | `/api/alerts/run` | ADMIN | [backend/src/modules/alerts/alerts.routes.ts](backend/src/modules/alerts/alerts.routes.ts) |
-| GET | `/api/alerts/unread-count` | ADMIN, PM, FINANCE, VIEWER | [backend/src/modules/alerts/alerts.routes.ts](backend/src/modules/alerts/alerts.routes.ts) |
+| GET | `/api/alerts/unread-count` | ADMIN, PM, CONSULTANT, FINANCE, COMMERCIAL — permiso `alerts:read` | [backend/src/modules/alerts/alerts.routes.ts](backend/src/modules/alerts/alerts.routes.ts) |
 | GET | `/api/approval-digest` | (cualquier autenticado) | [backend/src/modules/admin/approval-digest.routes.ts](backend/src/modules/admin/approval-digest.routes.ts) |
 | PUT | `/api/approval-digest` | ADMIN | [backend/src/modules/admin/approval-digest.routes.ts](backend/src/modules/admin/approval-digest.routes.ts) |
 | GET | `/api/assignments` | ADMIN, PM, FINANCE, COMMERCIAL — permiso `capacity:read` | [backend/src/modules/assignments/assignments.routes.ts](backend/src/modules/assignments/assignments.routes.ts) |
@@ -262,6 +262,7 @@ graph LR
   n14["routes"] -->|6| n2["modules/projects"]
   n14["routes"] -->|6| n0["modules/capacity"]
   n9["modules/admin"] -->|4| n7["auth"]
+  n8["modules/alerts"] -->|4| n4["infra"]
   n15["modules/assignments"] -->|4| n1["utils"]
   n16["modules/consultants"] -->|4| n1["utils"]
   n17["modules/fx"] -->|4| n4["infra"]
@@ -270,7 +271,6 @@ graph LR
   n1["utils"] -->|4| n4["infra"]
   n19["modules/activities"] -->|3| n1["utils"]
   n9["modules/admin"] -->|3| n4["infra"]
-  n8["modules/alerts"] -->|3| n4["infra"]
   n20["modules/approvals"] -->|3| n1["utils"]
   n15["modules/assignments"] -->|3| n4["infra"]
   n17["modules/fx"] -->|3| n1["utils"]
@@ -278,7 +278,6 @@ graph LR
   n14["routes"] -->|3| n9["modules/admin"]
   n21["app"] -->|2| n4["infra"]
   n7["auth"] -->|2| n4["infra"]
-  n8["modules/alerts"] -->|2| n7["auth"]
   n20["modules/approvals"] -->|2| n4["infra"]
   n22["modules/auth"] -->|2| n7["auth"]
   n16["modules/consultants"] -->|2| n7["auth"]
@@ -306,6 +305,7 @@ graph LR
   n7["auth"] -->|1| n1["utils"]
   n19["modules/activities"] -->|1| n7["auth"]
   n19["modules/activities"] -->|1| n4["infra"]
+  n8["modules/alerts"] -->|1| n7["auth"]
   n8["modules/alerts"] -->|1| n9["modules/admin"]
   n8["modules/alerts"] -->|1| n17["modules/fx"]
   n15["modules/assignments"] -->|1| n7["auth"]
@@ -405,7 +405,7 @@ graph LR
 
 ```mermaid
 graph LR
-  n0["test"] -->|22| n1["services"]
+  n0["test"] -->|23| n1["services"]
   n2["hooks"] -->|21| n1["services"]
   n0["test"] -->|15| n3["features/capacity"]
   n3["features/capacity"] -->|14| n1["services"]
@@ -538,6 +538,8 @@ graph LR
   n29["main"] -->|1| n4["App"]
   n29["main"] -->|1| n6["components"]
   n1["services"] -->|1| n21["config"]
+  n0["test"] -->|1| n6["components"]
+  n0["test"] -->|1| n30["features/alerts"]
   n0["test"] -->|1| n11["features/dashboard"]
   n0["test"] -->|1| n18["features/companies"]
   n0["test"] -->|1| n14["features/extraHours"]

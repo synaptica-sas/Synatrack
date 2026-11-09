@@ -1,10 +1,10 @@
 import { AppRole } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { authenticate, authorize } from "../../auth/guard.js";
-import { hasPermission } from "../../auth/roles.js";
+import { authenticate, authorize, requirePermission } from "../../auth/guard.js";
 import { prisma } from "../../infra/prisma.js";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
+import { buildAlertWhere, canResolveAlert, loadAudienceUser } from "./alert-audience.js";
 import { runAlertEngine } from "./alerts.service.js";
 
 const listQuerySchema = z.object({
@@ -19,51 +19,53 @@ const listQuerySchema = z.object({
 const idSchema = z.object({ id: z.string().min(1) });
 
 /**
- * D8: las alertas de asignaciones por vencer y de sobrecarga revelan la carga
- * del equipo; solo las ve quien tiene `capacity:read`. Para el resto se
- * excluyen en la consulta, no después.
+ * Las alertas se filtran por destinatario (ver `alert-audience.ts`): el mismo
+ * `where` alimenta el listado y el contador, y resolver exige ver la alerta y
+ * que el rol pueda resolverla.
  */
-const TIPOS_DE_CAPACITY = ["ASSIGNMENT_ENDING", "CONSULTANT_OVERLOADED", "CONSULTANT_UNDERUTILIZED"] as const;
-
-function filtroSinCapacity(roles: AppRole[]) {
-  return hasPermission(roles, "capacity:read") ? {} : { type: { notIn: [...TIPOS_DE_CAPACITY] } };
-}
-
 export async function alertsRoutes(app: FastifyInstance) {
   // GET /api/alerts
-  app.get(
-    "/",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
-    async (request) => {
-      const query = listQuerySchema.parse(request.query);
+  app.get("/", { preHandler: [authenticate, requirePermission("alerts:read")] }, async (request) => {
+    const query = listQuerySchema.parse(request.query);
+    const audiencia = await loadAudienceUser(request.authUser!);
 
-      const alerts = await prisma.alert.findMany({
-        where: {
-          projectId: query.projectId,
-          consultantId: query.consultantId,
-          resolvedAt: query.resolved ? { not: null } : null,
-          ...filtroSinCapacity(request.authUser!.roles),
-        },
-        include: {
-          project: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
-          consultant: { select: { id: true, fullName: true } },
-        },
-        orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
-        take: 200,
-      });
+    const alerts = await prisma.alert.findMany({
+      where: {
+        AND: [
+          {
+            projectId: query.projectId,
+            consultantId: query.consultantId,
+            resolvedAt: query.resolved ? { not: null } : null,
+          },
+          buildAlertWhere(audiencia),
+        ],
+      },
+      include: {
+        project: { select: { id: true, name: true, company: { select: { id: true, name: true } } } },
+        consultant: { select: { id: true, fullName: true } },
+      },
+      orderBy: [{ severity: "asc" }, { createdAt: "desc" }],
+      take: 200,
+    });
 
-      return { data: alerts };
-    },
-  );
+    return { data: alerts.map((a) => ({ ...a, canResolve: canResolveAlert(audiencia, a) })) };
+  });
 
   // PATCH /api/alerts/:id/resolve
   app.patch(
     "/:id/resolve",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE])] },
+    { preHandler: [authenticate, requirePermission("alerts:resolve")] },
     async (request, reply) => {
       const { id } = idSchema.parse(request.params);
-      const alert = await prisma.alert.findUnique({ where: { id } });
+
+      // Una alerta que el usuario no ve responde 404, igual que una inexistente:
+      // no se revela que existe.
+      const audiencia = await loadAudienceUser(request.authUser!);
+      const alert = await prisma.alert.findFirst({ where: { AND: [{ id }, buildAlertWhere(audiencia)] } });
       if (!alert) return reply.status(404).send({ message: "Alerta no encontrada" });
+      if (!canResolveAlert(audiencia, alert)) {
+        return reply.status(403).send({ message: "No tienes permiso para resolver esta alerta" });
+      }
       if (alert.resolvedAt) return reply.status(409).send({ message: "La alerta ya está resuelta" });
 
       const updated = await prisma.alert.update({
@@ -85,17 +87,14 @@ export async function alertsRoutes(app: FastifyInstance) {
     },
   );
 
-  // GET /api/alerts/unread-count — conteo de alertas activas (sin resolver)
-  app.get(
-    "/unread-count",
-    { preHandler: [authenticate, authorize([AppRole.ADMIN, AppRole.PM, AppRole.FINANCE, AppRole.VIEWER])] },
-    async (request) => {
-      const count = await prisma.alert.count({
-        where: { resolvedAt: null, ...filtroSinCapacity(request.authUser!.roles) },
-      });
-      return { data: { count } };
-    },
-  );
+  // GET /api/alerts/unread-count — conteo de alertas activas (sin resolver) que el usuario ve
+  app.get("/unread-count", { preHandler: [authenticate, requirePermission("alerts:read")] }, async (request) => {
+    const audiencia = await loadAudienceUser(request.authUser!);
+    const count = await prisma.alert.count({
+      where: { AND: [{ resolvedAt: null }, buildAlertWhere(audiencia)] },
+    });
+    return { data: { count } };
+  });
 
   // POST /api/alerts/run — ejecutar motor de alertas manualmente
   app.post(

@@ -1158,7 +1158,7 @@ function App() {
   const fxHook          = useFxConfigs(!!authUser && can("fx:read"));
   const adminHook       = useAdminUsers(!!authUser && can("users:manage"));
   const statsHook       = useStats(!!authUser && can("stats:read"));
-  const alertsHook      = useAlerts(!!authUser && (can("stats:read") || can("projects:read")));
+  const alertsHook      = useAlerts(!!authUser && can("alerts:read"));
 
   // Cola de revisión semanal (R15): la visibilidad la decide el backend, no el rol.
   const reviewQueue     = useReviewQueue(!!authUser);
@@ -1592,13 +1592,15 @@ function App() {
             title="Conversor de divisas" style={{ fontSize: "0.82rem" }}>
             ⊗ FX
           </button>
-          <AlertsPanel
-            alerts={alertsHook.alerts}
-            unreadCount={alertsHook.unreadCount}
-            canRun={can("users:manage")}
-            onReload={alertsHook.reload}
-            onError={handleError}
-          />
+          {can("alerts:read") && (
+            <AlertsPanel
+              alerts={alertsHook.alerts}
+              unreadCount={alertsHook.unreadCount}
+              canRun={can("users:manage")}
+              onReload={alertsHook.reload}
+              onError={handleError}
+            />
+          )}
           
           {/* Avatar interactivo dropdown */}
           <div ref={profileDropdownRef} style={{ position: "relative", display: "inline-block" }}>
@@ -2098,7 +2100,7 @@ function App() {
                 />
               )}
 
-              {activeTab === "alerts" && (
+              {activeTab === "alerts" && can("alerts:read") && (
                 <AlertsTab
                   alerts={alertsHook.alerts}
                   unreadCount={alertsHook.unreadCount}

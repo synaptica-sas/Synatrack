@@ -81,6 +81,8 @@ export function AlertsTab({
       await onReload();
     } catch (err) {
       onError(err instanceof Error ? err.message : "No se pudo resolver la alerta");
+      // La alerta pudo cambiar de estado o dejar de ser visible: se refresca la lista.
+      try { await onReload(); } catch { /* el error de resolución ya se mostró */ }
     }
   }
 
@@ -195,7 +197,11 @@ export function AlertsTab({
           <div className="empty-state">
             <div className="empty-state__icon" aria-hidden="true">🎉</div>
             <h3 className="empty-state__title">¡Todo al día!</h3>
-            <p className="empty-state__text">No hay alertas activas que coincidan con la búsqueda.</p>
+            <p className="empty-state__text">
+              {alerts.length === 0
+                ? "No tienes alertas pendientes."
+                : "Ninguna de tus alertas coincide con la búsqueda."}
+            </p>
           </div>
         ) : (
           groups.map((group) => (
@@ -228,15 +234,17 @@ export function AlertsTab({
                         </div>
                         <p className="alert-item__message">{alert.message}</p>
                       </div>
-                      <div className="alert-item__actions">
-                        <button
-                          type="button"
-                          className="ghost alert-item__resolve"
-                          onClick={() => void handleResolve(alert.id)}
-                        >
-                          ✓ Resolver
-                        </button>
-                      </div>
+                      {alert.canResolve && (
+                        <div className="alert-item__actions">
+                          <button
+                            type="button"
+                            className="ghost alert-item__resolve"
+                            onClick={() => void handleResolve(alert.id)}
+                          >
+                            ✓ Resolver
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
