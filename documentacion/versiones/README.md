@@ -26,7 +26,8 @@ El tipo de cambio es obligatorio, no tiene default: hay que mirar los commits y 
 
 El script junta los commits desde el último tag `v<version>` hasta `HEAD`, escribe
 `v<version-nueva>.md` con esa lista, y actualiza `VERSION`, `backend/package.json`,
-`frontend/package.json` y el `appVersion` del pie de página. No hace commit, no crea el
+`frontend/package.json` (la app muestra la versión de este último en el pie de página y
+la portada, vía `__APP_VERSION__` de Vite). No hace commit, no crea el
 tag y no hace push — el script mismo imprime los comandos exactos al terminar.
 
 **Antes de subir el changelog generado, reescríbelo.** El script deja los mensajes de

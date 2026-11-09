@@ -15,9 +15,10 @@ alguien que no vio los commits.
 - `documentacion/versiones/` — el historial de versiones públicas de la app. Lee
   `documentacion/versiones/README.md` antes de tu primera corrida: ahí está el porqué y
   cómo se diferencia de `documentacion/cambios/` (eso es de otro agente, no lo toques).
-- Los tres lugares donde se ve la versión: `VERSION`, `backend/package.json`,
-  `frontend/package.json` y el pie de página (`appVersion` en `frontend/src/App.tsx`).
-  Los cuatro los actualiza el script; tu trabajo es revisar que haya quedado consistente,
+- Los lugares donde vive la versión: `VERSION`, `backend/package.json` y
+  `frontend/package.json`. El pie de página y la portada de la app la leen de
+  `frontend/package.json` al compilar (`__APP_VERSION__` en `vite.config.ts`).
+  Los tres los actualiza el script; tu trabajo es revisar que haya quedado consistente,
   no editarlos a mano.
 
 ## Cómo decides el tipo de cambio

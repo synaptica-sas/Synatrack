@@ -8,8 +8,9 @@
  *      (sin merges).
  *   3. Calcula la versión nueva (semver) según el tipo de cambio que le des.
  *   4. Escribe `documentacion/versiones/v<nueva>.md` con esos commits.
- *   5. Actualiza `VERSION`, `backend/package.json`, `frontend/package.json` y el
- *      `appVersion` que se ve en el pie de página del frontend.
+ *   5. Actualiza `VERSION`, `backend/package.json` y `frontend/package.json`. La
+ *      versión visible en la app (pie de página y portada) la lee Vite de
+ *      `frontend/package.json` al compilar (`__APP_VERSION__`).
  *
  * No hace commit, no crea el tag y no hace push: eso lo decide quien lo corre.
  *
@@ -144,16 +145,8 @@ function bumpPackageJson(relPath) {
 bumpPackageJson("backend/package.json");
 bumpPackageJson("frontend/package.json");
 
-const appTsxPath = join(ROOT, "frontend", "src", "App.tsx");
-if (existsSync(appTsxPath)) {
-  const raw = readFileSync(appTsxPath, "utf8");
-  const updated = raw.replace(/appVersion="[^"]*"/, `appVersion="${nextVersion}"`);
-  if (updated === raw) {
-    console.warn(`Aviso: no encontré appVersion="..." en ${appTsxPath}, lo dejé igual.`);
-  } else {
-    writeFileSync(appTsxPath, updated, "utf8");
-  }
-}
+// La versión visible en la app (pie de página y portada) ya no se edita aquí:
+// Vite la lee de frontend/package.json al compilar (`__APP_VERSION__`).
 
 writeFileSync(versionPath, `${nextVersion}\n`, "utf8");
 
@@ -161,7 +154,7 @@ console.log(`Versión ${currentVersion} -> ${nextVersion}`);
 console.log(`Changelog: documentacion/versiones/v${nextVersion}.md (${commits.length} commits, revísalo y reescríbelo antes de publicar)`);
 console.log("");
 console.log("Siguiente paso (no lo hace este script):");
-console.log(`  git add VERSION backend/package.json frontend/package.json frontend/src/App.tsx documentacion/versiones/v${nextVersion}.md`);
+console.log(`  git add VERSION backend/package.json frontend/package.json documentacion/versiones/v${nextVersion}.md`);
 console.log(`  git commit -m "Versión ${nextVersion}"`);
 console.log(`  git tag v${nextVersion}`);
 console.log(`  git push && git push origin v${nextVersion}`);

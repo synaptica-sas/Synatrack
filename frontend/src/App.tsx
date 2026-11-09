@@ -690,7 +690,7 @@ function LandingPage({ darkMode, toggleDarkMode, onLoginClick, errorMessage }: {
         {/* Flotante Header */}
         <header className="landing-header">
           <div className="landing-version">
-            <span className="landing-badge">v1.1.0 (Demo)</span>
+            <span className="landing-badge">v{__APP_VERSION__}</span>
           </div>
           <div className="landing-logo">
             <div className="logo-slot" style={{ height: "clamp(62px, 8vw, 92px)", display: "flex", alignItems: "center" }}>
@@ -912,7 +912,7 @@ function LandingPage({ darkMode, toggleDarkMode, onLoginClick, errorMessage }: {
           </div>
 
           <div className="landing-footer__meta">
-            <span className="landing-footer__badge">v1.1.0 Demo</span>
+            <span className="landing-footer__badge">v{__APP_VERSION__}</span>
             <p className="landing-footer__small">Bogotá, Colombia · Synaptica 2026</p>
           </div>
         </footer>
@@ -2118,7 +2118,7 @@ function App() {
       <AppFooter
         onNavigate={setActiveTab}
         backendOk={health?.ok === true}
-        appVersion="2.3.0"
+        appVersion={__APP_VERSION__}
         environment={import.meta.env.MODE === "production" ? "Producción" : "Demo"}
         onOpenFeedback={() => setFeedbackOpen(true)}
         darkMode={darkMode}
