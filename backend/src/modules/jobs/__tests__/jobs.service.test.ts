@@ -1,10 +1,13 @@
 import type { PrismaClient } from "@prisma/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // El servicio solo lee `env.JOBS_INTERVAL_MINUTES` como valor por defecto; se
 // simula para no depender de un `.env` real al correr las pruebas unitarias.
+// `FX_SYNC_IN_CYCLE` se cambia en las pruebas de FX; el objeto es el mismo que
+// lee el servicio, así que basta con mutarlo.
+const envFalso: { JOBS_INTERVAL_MINUTES: number; FX_SYNC_IN_CYCLE?: boolean } = { JOBS_INTERVAL_MINUTES: 0 };
 vi.mock("../../../config/env.js", () => ({
-  env: { JOBS_INTERVAL_MINUTES: 0 },
+  env: envFalso,
 }));
 
 const mantenimientoAsignaciones = vi.fn<() => Promise<void>>();
@@ -31,6 +34,12 @@ vi.mock("../../capacity/capacity-alerts.service.js", () => ({
 
 vi.mock("../../capacity/capacity-digest.service.js", () => ({
   runCapacityDigest: () => resumenCapacity(),
+}));
+
+const fxDiario = vi.fn<() => Promise<unknown>>();
+vi.mock("../../fx/fx-sync.service.js", () => ({
+  JOB_FX_SYNC: "fx-sync",
+  runFxSyncDiario: () => fxDiario(),
 }));
 
 // El registro persistente se simula: aquí solo interesa QUÉ se manda a guardar.
@@ -166,6 +175,62 @@ describe("runMaintenanceCycle", () => {
     expect(resultado.omitido).toBe(false);
     expect(resultado.trabajos).toHaveLength(5);
     expect(motorDeAlertas).toHaveBeenCalledTimes(1);
+    expect(hayCicloEnCurso()).toBe(false);
+  });
+});
+
+describe("runMaintenanceCycle con FX en el ciclo", () => {
+  beforeEach(() => {
+    mantenimientoAsignaciones.mockReset().mockResolvedValue(undefined);
+    motorDeAlertas.mockReset().mockResolvedValue(undefined);
+    resumenSemanal.mockReset().mockResolvedValue(undefined);
+    alertasCapacity.mockReset().mockResolvedValue(undefined);
+    resumenCapacity.mockReset().mockResolvedValue(undefined);
+    registrarEjecucion.mockReset().mockResolvedValue(true);
+    fxDiario.mockReset();
+    envFalso.FX_SYNC_IN_CYCLE = true;
+  });
+
+  afterEach(() => {
+    envFalso.FX_SYNC_IN_CYCLE = undefined;
+  });
+
+  it("sin FX_SYNC_IN_CYCLE, fx-sync no entra en el ciclo (Render)", async () => {
+    envFalso.FX_SYNC_IN_CYCLE = false;
+    const resultado = await runMaintenanceCycle(prismaFalso, "intervalo");
+    expect(resultado.trabajos.map((t) => t.nombre)).not.toContain("fx-sync");
+    expect(fxDiario).not.toHaveBeenCalled();
+  });
+
+  it("con la compuerta abierta, sincroniza y deja rastro en JobRun", async () => {
+    fxDiario.mockResolvedValue({ updated: ["COP"], failed: [] });
+    const resultado = await runMaintenanceCycle(prismaFalso, "intervalo");
+
+    expect(resultado.trabajos.at(-1)).toMatchObject({ nombre: "fx-sync", ok: true });
+    expect(resultado.trabajos.at(-1)?.omitido).toBeUndefined();
+    const nombres = registrarEjecucion.mock.calls.map(([, e]) => (e as { jobName: string }).jobName);
+    expect(nombres).toContain("fx-sync");
+  });
+
+  it("si la compuerta lo omite, NO escribe en JobRun (no cuenta como éxito)", async () => {
+    fxDiario.mockResolvedValue({ omitido: true, motivo: "Ya hubo una sincronización correcta hoy (UTC)" });
+    const resultado = await runMaintenanceCycle(prismaFalso, "intervalo");
+
+    expect(resultado.trabajos.at(-1)).toMatchObject({ nombre: "fx-sync", ok: true, omitido: true });
+    const nombres = registrarEjecucion.mock.calls.map(([, e]) => (e as { jobName: string }).jobName);
+    expect(nombres).not.toContain("fx-sync");
+    expect(registrarEjecucion).toHaveBeenCalledTimes(5);
+  });
+
+  it("si falla, se registra como ok=false y el ciclo termina igual", async () => {
+    fxDiario.mockRejectedValue(new Error("Sin tasa para: CLP"));
+    const resultado = await runMaintenanceCycle(prismaFalso, "intervalo");
+
+    expect(resultado.trabajos.at(-1)).toMatchObject({ nombre: "fx-sync", ok: false, error: "Sin tasa para: CLP" });
+    const fx = registrarEjecucion.mock.calls
+      .map(([, e]) => e as { jobName: string; ok: boolean })
+      .find((e) => e.jobName === "fx-sync");
+    expect(fx).toMatchObject({ ok: false });
     expect(hayCicloEnCurso()).toBe(false);
   });
 });

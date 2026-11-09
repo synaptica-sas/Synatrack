@@ -12,6 +12,13 @@ dist/
 !**/.env.example
 !**/.env.*.example
 
+# Configuración real de Azure (identificadores de la suscripción). Se versiona
+# solo la plantilla infra/azure.config.example.psd1. Ver infra/README.md.
+infra/azure.config.psd1
+infra/*.local.*
+# Salidas de despliegue de scripts/azure.ps1
+infra/.out/
+
 # Grafo generado por graphify (se reconstruye con: graphify extract . --code-only)
 graphify-out/
 

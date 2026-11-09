@@ -1,0 +1,161 @@
+# Infraestructura de Azure (Bicep).
+#
+# - Pull request que toca infra/**: what-if contra STAGE y comentario en el PR.
+#   Corre sin GitHub Environment, con la credencial federada `pull_request` de la
+#   identidad de stage (prod no tiene esa credencial a propósito).
+# - workflow_dispatch: what-if o despliegue del entorno elegido. prod pasa por
+#   los revisores obligatorios del Environment.
+#
+# El PRIMER despliegue de cada entorno se hace desde la PC
+# (scripts/azure.ps1 -Command infra), que genera la contraseña de Postgres y la
+# deja en Key Vault; desde ahí este workflow solo la relee.
+#
+# Guard: no hace nada mientras la variable de repositorio AZURE_DEPLOY_ENABLED
+# no sea 'true' (para poder fusionar esto antes de que exista Azure).
+# Guía: infra/README.md.
+name: Infra Azure (Bicep)
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-azure.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Entorno"
+        type: choice
+        options: [stage, prod]
+        default: stage
+        required: true
+      mode:
+        description: "what-if (solo muestra) o deploy (aplica)"
+        type: choice
+        options: [what-if, deploy]
+        default: what-if
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  what-if-pr:
+    name: What-if stage (PR)
+    if: >-
+      github.event_name == 'pull_request' &&
+      vars.AZURE_DEPLOY_ENABLED == 'true' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: infra-whatif-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login en Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_STAGE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-if
+        env:
+          INFRA_PARAMS_B64: ${{ vars.AZURE_STAGE_INFRA_PARAMS_B64 }}
+          RESOURCE_GROUP: ${{ vars.AZURE_STAGE_RESOURCE_GROUP }}
+          ENV_NAME: stage
+          ALLOW_TEMP_PASSWORD: "1"
+        run: |
+          source infra/ci/infra-env.sh
+          set +e
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "synatrack-stage-whatif-pr${{ github.event.pull_request.number }}" \
+            --parameters infra/params/stage.bicepparam \
+            --only-show-errors > whatif.raw 2>&1
+          code=$?
+          set -e
+          # Quita los códigos de color ANSI para el comentario.
+          sed -r 's/\x1B\[[0-9;]*[mK]//g' whatif.raw > whatif.txt
+          cat whatif.txt
+          echo "WHATIF_EXIT=$code" >> "$GITHUB_ENV"
+
+      - name: Comentar en el PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- infra-azure-whatif -->';
+            let text = fs.existsSync('whatif.txt') ? fs.readFileSync('whatif.txt', 'utf8') : 'No se generó salida.';
+            if (text.length > 60000) text = text.slice(0, 60000) + '\n... (recortado)';
+            const ok = process.env.WHATIF_EXIT === '0';
+            const body = `${marker}\n### What-if de infraestructura (stage) ${ok ? '✅' : '❌'}\n\n` +
+              `Commit \`${context.sha.slice(0, 7)}\`. No se aplicó ningún cambio.\n\n` +
+              '<details><summary>Resultado</summary>\n\n```\n' + text + '\n```\n</details>';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const previous = comments.find(c => c.body && c.body.includes(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fallar si el what-if falló
+        if: env.WHATIF_EXIT != '0'
+        run: |
+          echo "::error::El what-if falló (ver el paso anterior)."
+          exit 1
+
+  infra:
+    name: ${{ inputs.mode }} ${{ inputs.environment }}
+    if: github.event_name == 'workflow_dispatch' && vars.AZURE_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: infra-${{ inputs.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login en Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ${{ inputs.mode }}
+        env:
+          INFRA_PARAMS_B64: ${{ vars.AZURE_INFRA_PARAMS_B64 }}
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          ENV_NAME: ${{ inputs.environment }}
+          MODE: ${{ inputs.mode }}
+          ALLOW_TEMP_PASSWORD: ${{ inputs.mode == 'what-if' && '1' || '0' }}
+        run: |
+          source infra/ci/infra-env.sh
+          name="synatrack-${ENV_NAME}-gh${GITHUB_RUN_ID}"
+          if [[ "$MODE" == "what-if" ]]; then
+            az deployment group what-if --resource-group "$RESOURCE_GROUP" --name "$name" \
+              --parameters "infra/params/${ENV_NAME}.bicepparam" --only-show-errors
+          else
+            az deployment group create --resource-group "$RESOURCE_GROUP" --name "$name" \
+              --parameters "infra/params/${ENV_NAME}.bicepparam" --only-show-errors \
+              --query properties.outputs -o json > outputs.json
+            {
+              echo "### Infraestructura ${ENV_NAME} desplegada"
+              echo ""
+              echo "| Salida | Valor |"
+              echo "|---|---|"
+              jq -r 'to_entries[] | "| \(.key) | \(.value.value) |"' outputs.json
+              echo ""
+              echo "Si cambió algún nombre o URL, ejecuta \`scripts/azure.ps1 -Command infra -Env ${ENV_NAME}\` desde la PC para actualizar las variables de GitHub (este workflow no puede escribirlas)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

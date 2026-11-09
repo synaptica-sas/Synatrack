@@ -1,5 +1,10 @@
 generator client {
   provider = "prisma-client-js"
+  // `native`: el motor de la máquina donde se genera (Windows/macOS en local).
+  // `debian-openssl-3.0.x`: Azure App Service Linux (imágenes Node sobre Debian
+  // con OpenSSL 3) y node:24-slim del Dockerfile/Render. Si el paquete se genera
+  // en un runner Linux, ambos motores quedan dentro de node_modules/.prisma/client.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

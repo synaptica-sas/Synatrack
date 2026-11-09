@@ -1,0 +1,157 @@
+# Despliegue del frontend a Azure Static Web Apps.
+#
+#   push a dev   -> SWA de stage
+#   push a main  -> SWA de prod SOLO si la variable de repositorio
+#                   AZURE_FRONTEND_PROD_ENABLED == 'true'. Hasta el corte, prod
+#                   sigue en Vercel (synatrack.synaptica.co) y este workflow no
+#                   la toca. Ver documentacion/azure/PLAN.md, fase 4.
+#   workflow_dispatch(environment, ref) -> cualquier commit (rollback).
+#
+# Las VITE_* se fijan en el BUILD (Vite las incrusta en el bundle); los App
+# Settings de la SWA no llegan a Vite. El token de despliegue de la SWA se pide
+# en cada ejecución con `az staticwebapp secrets list` tras el login OIDC: no
+# hay secreto guardado en GitHub.
+#
+# SIN backend enlazado: el bundle llama directo al App Service (VITE_API_URL)
+# con su propio `Authorization: Bearer <JWT de Entra>`.
+#
+# Guard: no corre mientras AZURE_DEPLOY_ENABLED no sea 'true'.
+name: Deploy frontend (Azure)
+run-name: >-
+  Frontend ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
+  @ ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend-azure.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Entorno"
+        type: choice
+        options: [stage, prod]
+        required: true
+        default: stage
+      ref:
+        description: "Commit (SHA), tag o rama a desplegar. Vacío = la rama desde la que se lanza."
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-frontend-${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build y deploy
+    if: >-
+      vars.AZURE_DEPLOY_ENABLED == 'true' &&
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage')) != 'prod' ||
+        vars.AZURE_FRONTEND_PROD_ENABLED == 'true'
+      )
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
+      url: ${{ vars.AZURE_FRONTEND_URL }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # `tsc -b` (modo build): el tsconfig.json raíz solo tiene referencias.
+      - name: Type-check
+        run: npx tsc -b --noEmit
+
+      - name: Pruebas
+        run: npm test
+
+      - name: Build
+        env:
+          VITE_API_URL: ${{ vars.AZURE_API_URL }}
+          VITE_AZURE_TENANT_ID: ${{ vars.VITE_AZURE_TENANT_ID }}
+          VITE_AZURE_CLIENT_ID: ${{ vars.VITE_AZURE_CLIENT_ID }}
+          VITE_AZURE_API_SCOPE: ${{ vars.VITE_AZURE_API_SCOPE }}
+          # VITE_AZURE_REDIRECT_URI se deja SIN definir a propósito: el frontend
+          # usa entonces window.location.origin, así el mismo bundle sirve en el
+          # hostname *.azurestaticapps.net y en el dominio propio (ambos deben
+          # estar registrados como "SPA redirect URI" en Entra ID).
+          VITE_FORCE_LOCAL_AUTH: "false"
+        run: |
+          for v in VITE_API_URL VITE_AZURE_TENANT_ID VITE_AZURE_CLIENT_ID VITE_AZURE_API_SCOPE; do
+            if [[ -z "${!v}" ]]; then
+              echo "::error::Falta la variable de GitHub para $v en el Environment. Ejecuta scripts/azure.ps1 bootstrap/infra."
+              exit 1
+            fi
+          done
+          npm run build
+          test -f dist/index.html
+
+      - name: Login en Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Token de despliegue de la SWA
+        id: swa
+        working-directory: .
+        run: |
+          token="$(az staticwebapp secrets list \
+            --name "${{ vars.AZURE_SWA_NAME }}" \
+            --resource-group "${{ vars.AZURE_SWA_RESOURCE_GROUP }}" \
+            --query properties.apiKey -o tsv)"
+          if [[ -z "$token" ]]; then echo "::error::No se obtuvo el token de la SWA"; exit 1; fi
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+          host="$(az staticwebapp show \
+            --name "${{ vars.AZURE_SWA_NAME }}" \
+            --resource-group "${{ vars.AZURE_SWA_RESOURCE_GROUP }}" \
+            --query defaultHostname -o tsv)"
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar en Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa.outputs.token }}
+          action: upload
+          # Ya compilado arriba (con las VITE_* del entorno): la acción solo sube.
+          app_location: frontend/dist
+          output_location: ""
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Comprobar que responde
+        working-directory: .
+        env:
+          # Hostname propio de la SWA (no el dominio: antes del corte apunta a Vercel).
+          FRONTEND_URL: https://${{ steps.swa.outputs.host }}
+        run: |
+          for i in $(seq 1 12); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$FRONTEND_URL/" || true)"
+            if [[ "$code" == "200" ]]; then echo "OK ($FRONTEND_URL)"; exit 0; fi
+            echo "Intento $i: HTTP $code"; sleep 10
+          done
+          echo "::error::$FRONTEND_URL no respondió 200"
+          exit 1

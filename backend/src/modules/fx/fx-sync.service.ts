@@ -1,7 +1,8 @@
 import { AlertSeverity, AlertType } from "@prisma/client";
 import { AUDIT_ENTITIES, writeAudit } from "../../utils/audit.js";
-import { runWithActor } from "../../infra/actorContext.js";
+import { getActor, runWithActor } from "../../infra/actorContext.js";
 import type { DbClient } from "../../infra/prisma.js";
+import { decidirSincronizacionFx, type DecisionCompuertaFx } from "../../utils/fxSyncGate.js";
 
 /**
  * Sincronización automática de tasas FX contra exchangerate-api.com (endpoint
@@ -38,6 +39,61 @@ export function runFxSync(
 ): Promise<FxSyncResult> {
   // El mismo actor va a createdBy/updatedBy de lo que se escriba (contexto de Prisma).
   return runWithActor(actor, () => ejecutarFxSync(prisma, actor));
+}
+
+/** Nombre del trabajo en `JobRun`; el mismo que registra `POST /api/fx/sync`. */
+export const JOB_FX_SYNC = "fx-sync";
+
+/** Lo que devuelve un trabajo del ciclo cuando decide no hacer nada. */
+export type TrabajoOmitido = { omitido: true; motivo: string };
+
+/**
+ * Sincronización FX como trabajo del ciclo de mantenimiento, con compuerta
+ * diaria (`utils/fxSyncGate.ts`): como mucho una sincronización correcta por día
+ * UTC, venga del ciclo, del cron de Render o del botón del frontend, porque
+ * todos registran `fx-sync` en `JobRun`.
+ *
+ * - Si la compuerta dice que no, devuelve `{ omitido: true }` y el ciclo NO
+ *   escribe en `JobRun` (si lo hiciera, la omisión contaría como éxito).
+ * - Si alguna moneda falla, lanza: el ciclo lo registra como `ok = false`, igual
+ *   que hace la ruta HTTP, y la compuerta reintenta pasadas 3 h.
+ *
+ * Idempotente: si dos disparos coinciden (cron de Render y ciclo a la vez, o dos
+ * instancias), ambos escriben la misma tasa en `FxConfig`; lo único que se
+ * duplica es una fila de `FxRateHistory` con el mismo valor.
+ */
+export async function runFxSyncDiario(
+  prisma: DbClient,
+  ahora: Date = new Date(),
+): Promise<TrabajoOmitido | FxSyncResult> {
+  const [ultimoExito, ultimoIntento] = await Promise.all([
+    prisma.jobRun.findFirst({
+      where: { jobName: JOB_FX_SYNC, ok: true },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true },
+    }),
+    prisma.jobRun.findFirst({
+      where: { jobName: JOB_FX_SYNC },
+      orderBy: { startedAt: "desc" },
+      select: { startedAt: true },
+    }),
+  ]);
+
+  const decision: DecisionCompuertaFx = decidirSincronizacionFx({
+    ultimoExito: ultimoExito?.startedAt ?? null,
+    ultimoIntento: ultimoIntento?.startedAt ?? null,
+    ahora,
+  });
+  if (!decision.ejecutar) return { omitido: true, motivo: decision.motivo };
+
+  // Si un ADMIN disparó el ciclo a mano, su correo queda como actor; si no, el
+  // del sistema (el ciclo ya abre `sistema:<trabajo>`, pero se fija el de FX).
+  const actor = getActor() ?? ACTOR_FX_SYNC;
+  const resultado = await runFxSync(prisma, actor.startsWith("sistema:") ? ACTOR_FX_SYNC : actor);
+  if (resultado.failed.length > 0) {
+    throw new Error(`Sin tasa para: ${resultado.failed.join(", ")}`);
+  }
+  return resultado;
 }
 
 async function ejecutarFxSync(prisma: DbClient, actor: string): Promise<FxSyncResult> {

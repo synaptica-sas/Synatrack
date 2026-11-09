@@ -39,12 +39,27 @@ async function main() {
     void runWithActor("sistema:arranque", () => ensureDefaultConfigs()).catch((e) => app.log.error(e, "[ExtraHoursConfig]"));
 
     // Apagado ordenado: sin esto, el temporizador mantiene vivo el proceso y
-    // Render/Docker terminan matándolo a la fuerza en cada redespliegue.
+    // Render/Docker/Azure App Service terminan matándolo a la fuerza en cada
+    // redespliegue. Orden: parar el intervalo, dejar de aceptar conexiones y
+    // terminar las peticiones en curso (`app.close`), y cerrar el pool de Prisma
+    // para no dejar conexiones colgadas en PostgreSQL. Si algo se queda trabado,
+    // el temporizador de seguridad sale igual antes de que la plataforma mate el
+    // proceso (App Service espera ~30 s tras SIGTERM).
     for (const senal of ["SIGINT", "SIGTERM"] as const) {
       process.once(senal, () => {
         app.log.info({ senal }, "Señal de apagado recibida; cerrando");
         stopJobsScheduler();
-        void app.close().then(() => process.exit(0));
+        setTimeout(() => process.exit(1), 20_000).unref();
+        void app
+          .close()
+          .then(() => prisma.$disconnect())
+          .then(
+            () => process.exit(0),
+            (error: unknown) => {
+              app.log.error(error, "Error durante el apagado ordenado");
+              process.exit(1);
+            },
+          );
       });
     }
   } catch (error) {

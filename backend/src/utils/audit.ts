@@ -1,5 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import type { DbClient } from "../infra/prisma.js";
+import { ipDelCliente } from "./clientIp.js";
 
 type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "APPROVE" | "REJECT" | "CLOSE" | "CANCEL" | "COMPLETE" | "LOGIN";
 
@@ -144,7 +145,7 @@ export async function writeAudit(
         before: options.before ? JSON.parse(JSON.stringify(options.before)) : undefined,
         after: options.after ? JSON.parse(JSON.stringify(options.after)) : undefined,
         diff: diff ? JSON.parse(JSON.stringify(diff)) : undefined,
-        ipAddress: options.request?.ip ?? null,
+        ipAddress: ipDelCliente(options.request),
         userAgent: options.request?.headers["user-agent"] ?? null,
       },
     });
@@ -198,7 +199,7 @@ export async function registrarLogin(
     // La llave del umbral es (usuario, IP, user-agent): un token usado desde
     // otro equipo o navegador dentro de la ventana SÍ deja rastro. Los filtros
     // extra se evalúan sobre las filas que ya acota el índice (entity, entityId).
-    const ipAddress = options.request?.ip ?? null;
+    const ipAddress = ipDelCliente(options.request);
     const userAgent = options.request?.headers["user-agent"] ?? null;
 
     // Comprobar y escribir es atómico: el frontend dispara varias `/me` a la

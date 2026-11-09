@@ -8,6 +8,7 @@ import { env } from "./config/env.js";
 import { registerRoutes } from "./routes/index.js";
 import { abrirContextoDeActor } from "./infra/actorContext.js";
 import { setAppLogger } from "./infra/logger.js";
+import { ipDelCliente } from "./utils/clientIp.js";
 
 function normalizeOrigin(value: string) {
   return value.trim().replace(/\/$/, "");
@@ -16,6 +17,10 @@ function normalizeOrigin(value: string) {
 export async function buildApp() {
   const app = Fastify({
     logger: env.NODE_ENV !== "test",
+    // Detrás de Render o del front end de Azure App Service la conexión TCP la
+    // abre el proxy; con `TRUST_PROXY` Fastify toma la IP real de
+    // X-Forwarded-For. Sin definir queda en `false`, como antes.
+    trustProxy: env.TRUST_PROXY,
   });
 
   // Los módulos sin acceso a `request` (notificaciones, alertas, jobs) escriben aquí.
@@ -59,9 +64,16 @@ export async function buildApp() {
   await app.register(rateLimit, {
     max: env.RATE_LIMIT_MAX,
     timeWindow: "1 minute",
-    // El health check lo consulta Render cada pocos segundos; si lo bloqueamos,
-    // el servicio se reinicia solo.
-    allowList: (request) => request.url === "/health" || request.url === "/",
+    // El health check lo consultan Render y Azure App Service cada pocos
+    // segundos; si lo bloqueamos, el servicio se reinicia solo. Se compara la
+    // ruta sin query string para que `/health?x=1` tampoco cuente.
+    allowList: (request) => {
+      const ruta = request.url.split("?")[0];
+      return ruta === "/health" || ruta === "/";
+    },
+    // Azure App Service escribe la IP del cliente con puerto (`1.2.3.4:5678`);
+    // sin normalizarla, cada conexión nueva tendría su propio cupo.
+    keyGenerator: (request) => ipDelCliente(request) ?? request.ip,
     // El plugin LANZA este objeto, así que debe llevar `statusCode`: sin él, el
     // error handler lo trataba como un fallo interno y respondía 500.
     errorResponseBuilder: (_request, context) => ({

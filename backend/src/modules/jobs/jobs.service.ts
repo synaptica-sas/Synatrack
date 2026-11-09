@@ -6,6 +6,7 @@ import { runWeeklyApprovalDigest } from "../approvals/weekly-digest.job.js";
 import { runAssignmentMaintenance } from "../assignments/assignments.job.js";
 import { runCapacityAlerts } from "../capacity/capacity-alerts.service.js";
 import { runCapacityDigest } from "../capacity/capacity-digest.service.js";
+import { JOB_FX_SYNC, runFxSyncDiario } from "../fx/fx-sync.service.js";
 import { registrarEjecucion } from "./job-runs.service.js";
 import type { DbClient } from "../../infra/prisma.js";
 
@@ -17,6 +18,8 @@ export interface ResultadoTrabajo {
   ok: boolean;
   duracionMs: number;
   error?: string;
+  /** `true` cuando el trabajo decidió no hacer nada (p. ej. FX ya sincronizado hoy). */
+  omitido?: boolean;
 }
 
 export interface ResultadoCiclo {
@@ -28,9 +31,23 @@ export interface ResultadoCiclo {
   trabajos: ResultadoTrabajo[];
 }
 
+/**
+ * Un trabajo puede devolver `{ omitido: true }` cuando su propia compuerta
+ * decide que no toca correr. En ese caso el ciclo NO escribe en `JobRun`: la
+ * omisión no es una ejecución y contarla como éxito falsearía tanto la frescura
+ * de `/health` como la propia compuerta.
+ */
+type SalidaTrabajo = void | { omitido: true; motivo: string } | object;
+
 interface Trabajo {
   nombre: string;
-  ejecutar: (prisma: DbClient) => Promise<void>;
+  ejecutar: (prisma: DbClient) => Promise<SalidaTrabajo>;
+  /** Si existe y devuelve `false`, el trabajo no entra en el ciclo. */
+  habilitado?: () => boolean;
+}
+
+function esOmitido(salida: SalidaTrabajo): salida is { omitido: true; motivo: string } {
+  return typeof salida === "object" && salida !== null && (salida as { omitido?: unknown }).omitido === true;
 }
 
 /**
@@ -70,6 +87,15 @@ const TRABAJOS: Trabajo[] = [
     ejecutar: async (prisma) => {
       await runCapacityDigest(prisma);
     },
+  },
+  // Tasas FX: en Render las trae un cron diario propio (POST /api/fx/sync); en
+  // Azure no hay ese cron, así que el ciclo las trae con compuerta diaria
+  // (`utils/fxSyncGate.ts`). Solo con FX_SYNC_IN_CYCLE=true, para que Render y
+  // las pruebas de ruta (que no deben salir a internet) sigan igual.
+  {
+    nombre: JOB_FX_SYNC,
+    habilitado: () => env.FX_SYNC_IN_CYCLE === true,
+    ejecutar: (prisma) => runFxSyncDiario(prisma),
   },
 ];
 
@@ -119,19 +145,30 @@ export async function runMaintenanceCycle(
   const trabajos: ResultadoTrabajo[] = [];
 
   try {
-    for (const trabajo of TRABAJOS) {
+    for (const trabajo of TRABAJOS.filter((t) => !t.habilitado || t.habilitado())) {
       const inicioTrabajo = new Date();
       let resultado: ResultadoTrabajo;
+      let omitido = false;
 
       try {
         // Actor de createdBy/updatedBy: si un usuario disparó el ciclo a mano
         // (POST /api/jobs/run con sesión) se conserva su correo; en el arranque,
         // el intervalo o el cron con token compartido es `sistema:<trabajo>`.
-        await runWithActor(getActor() ?? `sistema:${trabajo.nombre}`, () => trabajo.ejecutar(prisma));
+        const salida = await runWithActor(getActor() ?? `sistema:${trabajo.nombre}`, () => trabajo.ejecutar(prisma));
         const duracionMs = Date.now() - inicioTrabajo.getTime();
-        resultado = { nombre: trabajo.nombre, ok: true, duracionMs };
+        omitido = esOmitido(salida);
+        resultado = omitido
+          ? { nombre: trabajo.nombre, ok: true, duracionMs, omitido: true }
+          : { nombre: trabajo.nombre, ok: true, duracionMs };
         trabajos.push(resultado);
-        log.info({ trabajo: trabajo.nombre, duracionMs, origen }, "[Jobs] Trabajo completado");
+        if (omitido) {
+          log.info(
+            { trabajo: trabajo.nombre, origen, motivo: (salida as { motivo: string }).motivo },
+            "[Jobs] Trabajo omitido por su compuerta",
+          );
+        } else {
+          log.info({ trabajo: trabajo.nombre, duracionMs, origen }, "[Jobs] Trabajo completado");
+        }
       } catch (err) {
         const duracionMs = Date.now() - inicioTrabajo.getTime();
         const error = err instanceof Error ? err.message : String(err);
@@ -149,6 +186,8 @@ export async function runMaintenanceCycle(
       // del trabajo no dependa de si se pudo guardar. `registrarEjecucion` ya
       // se traga sus propios errores; el try es el último cerrojo para que
       // observar no pueda romper lo observado ni hacer que este ciclo rechace.
+      // Una omisión no deja rastro (ver `SalidaTrabajo`).
+      if (omitido) continue;
       try {
         await registrarEjecucion(prisma, {
           jobName: resultado.nombre,

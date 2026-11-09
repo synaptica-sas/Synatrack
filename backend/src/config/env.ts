@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { AppRole } from "@prisma/client";
 import { z } from "zod";
+import { AUDIENCIA_POR_DEFECTO, parseAudiences } from "../auth/audience.js";
+import { parseTrustProxy } from "../utils/clientIp.js";
 
 /**
  * Las variables de entorno llegan siempre como cadena. Una variable "presente pero
@@ -45,6 +47,13 @@ const envSchema = z.object({
   // Peticiones por IP y minuto. Configurable para poder relajarlo si una
   // oficina con NAT empieza a chocar contra el limite.
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  // Proxies inversos de confianza delante del proceso, para que `request.ip`
+  // (límite de peticiones y bitácora de auditoría) sea la IP real del cliente.
+  // Acepta `false` (por defecto: comportamiento histórico, la IP es la del
+  // proxy), `true`, un número de saltos o una lista de IPs/CIDR (ver
+  // `utils/clientIp.ts`). En Azure App Service: `1` (un solo front end, que
+  // añade la IP del cliente a X-Forwarded-For).
+  TRUST_PROXY: optionalString.transform(parseTrustProxy),
   DATABASE_URL: z.string().min(1),
   // Conexión directa (no pooled) que Prisma usa para `migrate`. Es OPCIONAL a propósito:
   // en runtime la API solo necesita DATABASE_URL, y hay entornos (local, Docker, CI) donde
@@ -61,10 +70,18 @@ const envSchema = z.object({
   AUTH_ENABLED: z.preprocess((val) => val === "true" || val === "1" || val === true, z.boolean()).default(false),
   AUTH_DEMO_BYPASS: z.preprocess((val) => val === "true" || val === "1" || val === true, z.boolean()).default(false),
   AZURE_AD_TENANT_ID: z.string().min(1).default("common"),
-  AZURE_AD_AUDIENCE: z.string().min(1).default("api://app-gestion-backend"),
+  // Una o varias audiencias separadas por coma (ver `auth/audience.ts`): con
+  // tokens v2 `aud` es el client id (GUID), con v1 el App ID URI. Llega a
+  // `jwtVerify` como arreglo; vacía o sin definir, el valor por defecto.
+  AZURE_AD_AUDIENCE: optionalString.transform((value) => {
+    const audiencias = parseAudiences(value);
+    return audiencias.length > 0 ? audiencias : [AUDIENCIA_POR_DEFECTO];
+  }),
   ADMIN_EMAIL: z.string().email().default("admin@synaptica.local"),
-  SUPPORT_EMAIL: z.string().email().optional(),
-  PAYROLL_EMAIL: z.string().email().optional(),
+  // Vacías (`SUPPORT_EMAIL=`) cuentan como no definidas: antes una app setting
+  // vacía hacía fallar el arranque. Sin valor, los correos van a ADMIN_EMAIL.
+  SUPPORT_EMAIL: optionalString.pipe(z.string().email("SUPPORT_EMAIL debe ser un correo válido").optional()),
+  PAYROLL_EMAIL: optionalString.pipe(z.string().email("PAYROLL_EMAIL debe ser un correo válido").optional()),
   FX_SYNC_TOKEN: z.string().min(1).optional(),
 
   // --- Trabajos periódicos de mantenimiento (POST /api/jobs/run) --------------
@@ -83,6 +100,14 @@ const envSchema = z.object({
     .min(0, "JOBS_INTERVAL_MINUTES no puede ser negativa")
     .max(1440, "JOBS_INTERVAL_MINUTES no puede superar 1440 (24 h)")
     .default(0),
+  // Incluye la sincronización diaria de tasas FX en el ciclo de mantenimiento
+  // (con compuerta: como mucho una sincronización correcta por día UTC). En
+  // Render va apagado porque la dispara su propio cron (`app-gestion-fx-sync`);
+  // en Azure, donde no existe ese cron, se enciende. Encenderlo con el cron
+  // activo es seguro: la compuerta ve la sincronización del cron y no repite.
+  FX_SYNC_IN_CYCLE: z
+    .preprocess((val) => val === "true" || val === "1" || val === true, z.boolean())
+    .default(false),
 
   // --- Simulador de rol para desarrollo ---------------------------------------
   // Solo tienen efecto cuando el bypass de demo ya está activo
