@@ -184,7 +184,15 @@ de `GET /api/auth/permissions` (ya no es una copia).
 - `frontend/vercel.json`: rewrite de `/api` a `synatrack.onrender.com`, hardcodeado. El frontend
   en realidad llama al backend por `VITE_API_URL`; el rewrite es solo respaldo.
 - `.github/workflows/azure-static-web-apps-*.yml`: en cada push a `main` corre type-check, tests y build
-  del frontend y lo despliega a Azure Static Web Apps (`output_location: "dist"`).
+  del frontend y lo despliega a la SWA `victorious-glacier-0d52b010f`. **Esa SWA no es producción**
+  (nadie la usa; `synatrack.synaptica.co` apunta por CNAME a Vercel). Se retira tras el corte.
+- **Migración a Azure en curso** (App Service + PostgreSQL Flexible 17 + SWA, stage y prod en East
+  US 2): `infra/` (Bicep), `scripts/azure.ps1` y los workflows `*-azure.yml`, inactivos mientras la
+  variable de repositorio `AZURE_DEPLOY_ENABLED` no sea `true`. GitHub es plan Free: prod se
+  despliega sin aprobación y la identidad OIDC de cada entorno confía solo en su rama (`main` →
+  prod, `dev` → stage). Paso a paso en `documentacion/azure/ANTES_DE_MIGRAR.md`; guía de
+  operación en `infra/README.md`. Los agentes **no** leen `infra/azure.config.psd1`, los archivos
+  de secretos ni `C:\secretos\`.
 - `.github/workflows/backend-ci.yml`: type-check, tests unitarios y de ruta del backend (Postgres de
   servicio) en `main` y `dev`. No despliega.
 - `frontend/server.mjs`: servidor estático propio que inyecta `/env.js` con `window.__APP_CONFIG__`

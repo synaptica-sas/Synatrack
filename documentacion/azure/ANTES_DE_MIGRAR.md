@@ -329,7 +329,7 @@ se crea presupuesto-synatrack
 - [ ] Fusionar en `dev`. Es seguro: los workflows de Azure no hacen nada mientras la variable
   `AZURE_DEPLOY_ENABLED` no sea `true`, y Render sigue igual porque `TRUST_PROXY` sin definir se
   comporta como antes.
-- [ ] Corregir CLAUDE.md §6, que hoy dice que el frontend se despliega en Azure Static Web Apps
+- [X] Corregir CLAUDE.md §6, que hoy dice que el frontend se despliega en Azure Static Web Apps
   cuando en realidad está en Vercel.
 
 ### C2. Decisiones a cerrar
