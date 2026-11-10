@@ -17,7 +17,7 @@ infra/
   main.bicep                  # orquesta los módulos (scope: resource group)
   modules/
     monitoring.bicep          # Log Analytics + Application Insights
-    postgres.bicep            # Flexible Server PG16 + base synatrack + TLS obligatorio
+    postgres.bicep            # Flexible Server PG17 + base synatrack + TLS obligatorio
     postgres-firewall.bicep   # reglas = IPs salientes posibles del App Service
     keyvault.bicep            # Key Vault RBAC + postgres-admin-password + database-url
     keyvault-access.bicep     # "Key Vault Secrets User" para la identidad del Web App
@@ -42,11 +42,16 @@ La plataforma la opera un equipo, no una persona. Cada tarea de esta guía indic
 | **Administrador de Azure** | quien sea Owner de la suscripción (normalmente TI) | `bootstrap` (registra proveedores, crea el resource group, la identidad del pipeline y asigna roles). Se usa una vez por entorno y al cambiar permisos. |
 | **Administrador de Entra** | TI | crear el grupo de seguridad de operadores y administrar sus miembros; redirect URIs de la app. |
 | **Operador** | miembros del grupo `OperatorsGroup` (p. ej. `Synatrack-Operadores`) | todos los demás comandos: `plan`, `infra`, `secret-set`, `deploy`, `rollback`, `status`, `health`, `logs`, `access`. Roles exactos en §8. |
-| **Administrador del repositorio** | operadores con rol *Admin* en GitHub | variables y Environments de GitHub (`bootstrap`, `infra` al sincronizar variables, `AZURE_DEPLOY_ENABLED`, revisores). |
-| **Revisor de prod** | operadores listados como *Required reviewers* del Environment `prod` | aprobar cada despliegue a producción. Con *Prevent self-review*, nunca el mismo que lo disparó. |
+| **Administrador del repositorio** | operadores con rol *Admin* en GitHub | variables de GitHub (`bootstrap`, `infra` al sincronizar variables, `AZURE_DEPLOY_ENABLED`). |
 
-Una misma persona puede tener varios roles, pero conviene que haya **al menos dos revisores de
-prod** para que un despliegue a producción siempre lo apruebe alguien distinto de quien lo lanza.
+Una misma persona puede tener varios roles.
+
+> **GitHub Free (repositorio privado)**: no hay Environments con variables ni revisores
+> obligatorios. Por eso **prod se despliega sin aprobación**: todo lo que llega a `main` se publica.
+> El control es que la identidad de Azure de prod **solo confía en la rama `main`** (OIDC por
+> rama) y que pasar a `main` es un paso deliberado (versión + merge de `dev`). Si algún día se
+> necesita aprobación, las alternativas son GitHub Enterprise o Azure Pipelines (gratis hasta 5
+> usuarios); ver PLAN.md.
 
 ---
 
@@ -99,9 +104,10 @@ y v2; el backend admite una lista separada por comas). Defínelo solo para restr
 3. Crea el resource group.
 4. Crea (o reutiliza) la identidad del pipeline **`gh-synatrack-<env>`** (app registration +
    service principal, **sin secretos**) con credenciales federadas:
-   - `repo:<GitHubRepo>:environment:<env>`: los jobs que declaran `environment: <env>`.
-   - `repo:<GitHubRepo>:pull_request`: **solo en stage**, para el what-if de los PR (que corre sin
-     environment). Prod no la tiene: si la tuviera, cualquier PR obtendría permisos sobre producción.
+   - `repo:<GitHubRepo>:ref:refs/heads/<GitBranch>`: solo los workflows que corren en la rama del
+     entorno (`dev` → stage, `main` → prod). Un workflow lanzado desde otra rama no obtiene token.
+   - `repo:<GitHubRepo>:pull_request`: **solo en stage**, para el what-if de los PR. Prod no la
+     tiene: si la tuviera, cualquier PR obtendría permisos sobre producción.
 5. Asigna a esa identidad, **solo sobre su resource group**:
 
    | Rol | Para qué |
@@ -113,7 +119,7 @@ y v2; el backend admite una lista separada por comas). Defínelo solo para restr
 6. Asigna al **grupo de operadores** los roles de operador sobre el resource group (§8). Si la config
    no define `OperatorsGroup`, se los asigna solo a la cuenta que ejecuta `bootstrap` y avisa de que
    ningún otro operador podrá usar `plan`, `infra` ni `secret-set`.
-7. Crea el GitHub Environment `<env>` y carga las variables (§6).
+7. Carga las variables de GitHub a nivel de repositorio, con sufijo `_STAGE` o `_PROD` (§6).
 
 ### 3.4 Infraestructura (Operador)
 
@@ -138,8 +144,29 @@ Administrador del repositorio debe repetirlo.
 
 ### 3.5 Secretos de la aplicación (Operador)
 
-Ninguno es obligatorio para arrancar. Cada uno se pide oculto (`Read-Host -AsSecureString`) y se
-escribe con la API REST de Key Vault: no pasa por argumentos, historial ni disco.
+Ninguno es obligatorio para arrancar. Hay dos formas de cargarlos; en ambas el valor se escribe con
+la API REST de Key Vault y nunca pasa por argumentos de proceso ni por el historial.
+
+**Todos de una vez, desde un archivo (recomendado):**
+
+```powershell
+Copy-Item infra/azure.secrets.example.psd1 infra/azure.secrets.psd1   # llenar valores en tu PC
+.\scripts\azure.ps1 secret-sync -Env stage
+.\scripts\azure.ps1 secret-sync -Env prod
+```
+
+- El archivo tiene una sección por entorno. Un valor vacío se ignora; `"<generar>"` en los tokens
+  crea uno aleatorio solo si aún no existe.
+- `secret-sync` compara con Key Vault y escribe **solo lo que cambió** (muestra nombres y acción,
+  nunca valores), agrega las referencias que falten al Web App y, en prod, pide confirmación.
+  Se puede repetir sin riesgo: es el comando a usar cada vez que cambie un valor.
+- `infra/azure.secrets.psd1` está en `.gitignore` y bloqueado para los agentes de Claude Code.
+- **El archivo sí vive en disco, en texto plano.** Si el repositorio está en una carpeta que se
+  sincroniza (OneDrive, Dropbox…), guárdalo fuera, p. ej. `%USERPROFILE%\.synatrack\`, y apunta
+  `SecretsFile` en `azure.config.psd1`; el script avisa si lo detecta dentro de OneDrive. Ruta
+  puntual: `-SecretsFile <ruta>`.
+
+**Uno a uno, sin archivo** (pedido oculto con `Read-Host -AsSecureString`; no toca el disco):
 
 ```powershell
 .\scripts\azure.ps1 secret-set -Env stage -Name smtp-pass
@@ -151,11 +178,14 @@ escribe con la API REST de Key Vault: no pasa por argumentos, historial ni disco
 
 Solo los secretos que **existen** en Key Vault se referencian en los App Settings: una referencia a
 un secreto inexistente dejaría en la variable el texto literal `@Microsoft.KeyVault(...)`, que en el
-caso de un token sería un valor conocido. `secret-set` agrega la referencia al Web App en el
-momento, y el siguiente `infra` la mantiene.
+caso de un token sería un valor conocido. `secret-set` y `secret-sync` agregan la referencia al Web
+App en el momento, y el siguiente `infra` la mantiene.
 
-Los valores de los secretos **no se comparten entre operadores por chat ni correo**: viven solo en
-Key Vault, y cualquier operador puede rotarlos con `secret-set`.
+Los valores de los secretos **no se comparten entre operadores por chat ni correo**: viven en Key
+Vault, y cualquier operador puede rotarlos con `secret-set` o `secret-sync`. Cada operador que use
+archivo tiene el suyo; si otro cambió un secreto, actualiza tu archivo antes de correr `secret-sync`
+o volverás a escribir el valor viejo (el comando dice `actualizar` en vez de `sin cambios`: esa es
+la señal para detenerse a revisar).
 
 ### 3.6 Entra ID (Administrador de Entra, una vez por entorno)
 
@@ -170,13 +200,9 @@ sirve en el hostname de Azure y en el dominio propio.
 
 ### 3.7 GitHub (Administrador del repositorio)
 
-1. **Revisores de prod**: *Settings > Environments > prod > Required reviewers*: agregar a los
-   operadores que aprueban producción (al menos dos).
-2. **Activar *Prevent self-review*** en esa misma regla: así un despliegue a producción lo aprueba
-   una persona distinta de quien lo disparó (o de quien hizo el push a `main`).
-3. Recomendado: *Deployment branches and tags* de `prod` = `main`.
-4. **Activar los despliegues**: variable de **repositorio** (no de environment: el `if` del job se
-   evalúa antes de cargar el environment):
+No hay nada que configurar en *Settings > Environments* (GitHub Free). Lo único:
+
+1. **Activar los despliegues** con una variable de repositorio:
 
    ```powershell
    gh variable set AZURE_DEPLOY_ENABLED --body true --repo <GitHubRepo>
@@ -184,7 +210,8 @@ sirve en el hostname de Azure y en el dominio propio.
 
    Mientras no exista, los tres workflows terminan en *skipped* (no en error).
 
-`.\scripts\azure.ps1 access -Env prod` muestra los revisores y si *Prevent self-review* está activo.
+`.\scripts\azure.ps1 access -Env prod` muestra qué ramas pueden desplegar a prod (debe ser solo
+`main`).
 
 ### 3.8 Primer despliegue y verificación (Operador)
 
@@ -208,12 +235,12 @@ prod NO se publica desde aquí: hace falta además `AZURE_FRONTEND_PROD_ENABLED=
 | Quiero... | Cómo |
 |---|---|
 | Publicar en stage | commit/merge a `dev` → `deploy-backend-azure.yml` y/o `deploy-frontend-azure.yml` (según qué carpeta cambió) |
-| Publicar en prod | merge de `dev` a `main` → mismos workflows; un Revisor de prod distinto de quien lo disparó aprueba en el Environment `prod` |
-| Volver a una versión anterior | `.\scripts\azure.ps1 rollback -Env prod` → elegir el despliegue → redepliega ese SHA con `skip_migrations=true` (también pasa por la aprobación de prod) |
+| Publicar en prod | merge de `dev` a `main` → mismos workflows, **sin aprobación** (GitHub Free) |
+| Volver a una versión anterior | `.\scripts\azure.ps1 rollback -Env prod` → elegir el despliegue → redepliega ese SHA con `skip_migrations=true` (el script lo lanza desde `main`, la única rama que puede tocar prod) |
 | Desplegar un commit concreto | `.\scripts\azure.ps1 deploy -Env stage -Ref <sha> -App backend` (o `frontend`, `all`) |
 | Ver si está vivo | `.\scripts\azure.ps1 health -Env prod` (HTTP, latencia, estado de los jobs, prueba de disponibilidad por ubicación, alertas disparadas) |
 | Ver logs en vivo | `.\scripts\azure.ps1 logs -Env prod` |
-| Auditar accesos | `.\scripts\azure.ps1 access -Env prod` (roles sobre el resource group, miembros del grupo de operadores, revisores de GitHub) |
+| Auditar accesos | `.\scripts\azure.ps1 access -Env prod` (roles sobre el resource group, miembros del grupo de operadores, ramas de GitHub que pueden desplegar) |
 | Cambiar infraestructura | PR que toca `infra/**` → el workflow comenta el what-if de stage en el PR → al fusionar, `.\scripts\azure.ps1 infra -Env stage` (o *Actions > Infra Azure > Run workflow*) |
 | Rotar un secreto | `secret-set` de nuevo; ofrece reiniciar el Web App para que lo tome ya (si no, App Service lo refresca en ≤ 24 h) |
 
@@ -255,7 +282,7 @@ Dimensionamiento por entorno (en `params/<env>.bicepparam`):
 | | stage | prod |
 |---|---|---|
 | App Service | B1 Linux, Always On, Node 24 LTS (`linuxFxVersion`) | igual |
-| Postgres | Standard_B1ms (Burstable), 32 GB, PG16 | igual |
+| Postgres | Standard_B1ms (Burstable), 32 GB, PG17 (igual que Supabase) | igual |
 | Backups de Postgres | 7 días | 14 días |
 | Key Vault: protección contra purga | no | sí (irreversible) |
 | Retención de logs | 30 días | 90 días |
@@ -276,7 +303,7 @@ Dimensionamiento por entorno (en `params/<env>.bicepparam`):
 | `AZURE_AD_AUDIENCE` | `ApiAudience` o, por defecto, `api://<AppClientId>,<AppClientId>` (tokens v1 y v2) |
 | `ADMIN_EMAIL`, `SUPPORT_EMAIL`, `PAYROLL_EMAIL` | de la config (los vacíos no se envían: el backend rechaza correos vacíos) |
 | `JOBS_INTERVAL_MINUTES` | `60`: con Always On el proceso no se duerme y el ciclo corre en proceso (reemplaza el cron horario de Render) |
-| `FX_SYNC_IN_CYCLE` | `true`: sincronización FX diaria dentro del ciclo de trabajos (reemplaza el cron diario de Render; sin ella las tasas no se actualizan) |
+| `FX_SYNC_IN_CYCLE` | parámetro `fxSyncInCycle`, hoy `false`: las tasas se actualizan solo con el botón "Actualizar ahora". Con `true`, el ciclo de trabajos las trae una vez al día (reemplazo del cron de Render) |
 | `JOBS_RUN_TOKEN`, `FX_SYNC_TOKEN`, `SMTP_PASS`, `TEAMS_*_WEBHOOK_URL` | Key Vault, solo si el secreto existe |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_FROM` | de la config |
 | `SCM_DO_BUILD_DURING_DEPLOYMENT`, `ENABLE_ORYX_BUILD` | `false` (el zip ya viene construido) |
@@ -286,25 +313,27 @@ Dimensionamiento por entorno (en `params/<env>.bicepparam`):
 
 ## 6. Variables de GitHub
 
-Ninguna es secreta: los workflows se autentican por OIDC y leen los secretos de Key Vault.
+Ninguna es secreta: los workflows se autentican por OIDC y leen los secretos de Key Vault. Todas son
+de **repositorio** (GitHub Free no tiene variables por Environment en repos privados).
 
-**Repositorio**
+**Comunes**
 
 | Variable | La define | Uso |
 |---|---|---|
 | `AZURE_DEPLOY_ENABLED` | Administrador del repositorio, a mano (§3.7) | `true` activa los tres workflows |
 | `AZURE_FRONTEND_PROD_ENABLED` | Administrador del repositorio, a mano, en el corte | `true` publica el frontend de prod desde `main` |
 | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | bootstrap | login OIDC |
-| `AZURE_STAGE_CLIENT_ID`, `AZURE_STAGE_RESOURCE_GROUP`, `AZURE_STAGE_INFRA_PARAMS_B64` | bootstrap stage / infra stage | what-if de los PR (corre sin environment) |
+| `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_TENANT_ID`, `VITE_AZURE_API_SCOPE` | bootstrap | build del frontend (la misma app de Entra en los dos entornos) |
 
-**Environment (`stage` y `prod`)**
+**Por entorno**: cada una existe dos veces, con sufijo `_STAGE` y `_PROD` (p. ej.
+`AZURE_WEBAPP_NAME_PROD`). Los workflows eligen el sufijo según el entorno de la ejecución.
 
-| Variable | La define | Uso |
+| Variable (sin sufijo) | La define | Uso |
 |---|---|---|
 | `AZURE_CLIENT_ID` | bootstrap | identidad `gh-synatrack-<env>` |
-| `AZURE_RESOURCE_GROUP`, `AZURE_ENV_BRANCH` | bootstrap | |
-| `AZURE_INFRA_PARAMS_B64` | bootstrap / infra | parámetros no sensibles del Bicep (JSON en base64) para `infra-azure.yml` |
-| `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_TENANT_ID`, `VITE_AZURE_API_SCOPE` | bootstrap | build del frontend |
+| `AZURE_RESOURCE_GROUP` | bootstrap | |
+| `AZURE_ENV_BRANCH` | bootstrap | rama desde la que se permite desplegar (los workflows lo verifican al empezar) |
+| `AZURE_INFRA_PARAMS_B64` | bootstrap / infra | parámetros no sensibles del Bicep (JSON en base64) para `infra-azure.yml`; la de stage también la usa el what-if de los PR |
 | `AZURE_WEBAPP_NAME`, `AZURE_API_URL` | infra | deploy del backend; `VITE_API_URL` del frontend |
 | `AZURE_KEYVAULT_NAME`, `AZURE_POSTGRES_SERVER` | infra | migraciones |
 | `AZURE_SWA_NAME`, `AZURE_SWA_RESOURCE_GROUP`, `AZURE_FRONTEND_URL` | infra | deploy del frontend |
@@ -319,9 +348,9 @@ repositorio debe correr `.\scripts\azure.ps1 infra` desde su PC para sincronizar
 
 | Workflow | Disparo | Qué hace |
 |---|---|---|
-| `infra-azure.yml` | PR que toca `infra/**`; manual | PR: what-if de stage + comentario fijo en el PR. Manual: what-if o deploy del entorno elegido (prod con revisores). El **primer** deploy de cada entorno se hace con el script (genera la contraseña). |
+| `infra-azure.yml` | PR que toca `infra/**`; manual | PR: what-if de stage + comentario fijo en el PR. Manual: what-if o deploy del entorno elegido, lanzado desde la rama de ese entorno (prod = `main`). El **primer** deploy de cada entorno se hace con el script (genera la contraseña). |
 | `deploy-backend-azure.yml` | push a `dev`/`main` en `backend/**`; manual (`environment`, `ref`, `skip_migrations`) | build y pruebas **sin** permiso de Azure → zip (`dist/`, `node_modules` podado, `package.json`, …) → firewall temporal para la IP del runner → `prisma migrate deploy` → cierra el firewall (`if: always()`) → `azure/webapps-deploy` → espera `/health` 200 hasta 5 min |
-| `deploy-frontend-azure.yml` | push a `dev`/`main` en `frontend/**`; manual | type-check, pruebas y build con las `VITE_*` del environment → token de la SWA con `az staticwebapp secrets list` → `static-web-apps-deploy` (solo subida; `staticwebapp.config.json` viene de `frontend/public/`) → comprueba que responde |
+| `deploy-frontend-azure.yml` | push a `dev`/`main` en `frontend/**`; manual | type-check, pruebas y build con las `VITE_*` y la URL de la API del entorno → token de la SWA con `az staticwebapp secrets list` → `static-web-apps-deploy` (solo subida; `staticwebapp.config.json` viene de `frontend/public/`) → comprueba que responde |
 
 El workflow viejo `azure-static-web-apps-victorious-glacier-0d52b010f.yml` no se tocó; su SWA no es
 la que sirve producción (prod está en Vercel) y es candidata a retirarse tras el corte.
@@ -350,7 +379,6 @@ Además de Azure, los comandos usan GitHub:
 |---|---|
 | *Write* en el repositorio | `deploy`, `rollback`, `status` (disparar y ver workflows) |
 | *Admin* en el repositorio | `bootstrap`, y que `infra` sincronice variables (sin él, `infra` despliega igual y avisa) |
-| Revisor del Environment `prod` | aprobar despliegues a producción |
 
 ---
 
@@ -361,10 +389,7 @@ Además de Azure, los comandos usan GitHub:
    reflejarse; la persona debe cerrar y abrir sesión en `az` después.
 2. **GitHub** (Administrador del repositorio): darle acceso al repositorio con rol *Write* (o
    *Admin* si va a correr `bootstrap` o sincronizar variables).
-3. **Environment `prod`** (Administrador del repositorio): si va a aprobar despliegues, agregarla
-   en *Settings > Environments > prod > Required reviewers*. Verificar que *Prevent self-review*
-   siga activo.
-4. **Config en su PC**: clonar el repositorio y copiar la plantilla:
+3. **Config en su PC**: clonar el repositorio y copiar la plantilla:
 
    ```powershell
    Copy-Item infra/azure.config.example.psd1 infra/azure.config.psd1
@@ -373,8 +398,8 @@ Además de Azure, los comandos usan GitHub:
    Pedir los valores (TenantId, SubscriptionId, AppClientId, etc.) a otro operador **por un canal
    interno de Synaptica** (Teams o correo corporativo), nunca por canales externos. El archivo no
    lleva secretos y los secretos no se comparten: viven en Key Vault.
-5. **Herramientas**: Azure CLI con Bicep, GitHub CLI (`gh auth login`), PowerShell 5.1 o 7 (§2).
-6. **Verificar**:
+4. **Herramientas**: Azure CLI con Bicep, GitHub CLI (`gh auth login`), PowerShell 5.1 o 7 (§2).
+5. **Verificar**:
 
    ```powershell
    .\scripts\azure.ps1 login
@@ -383,7 +408,7 @@ Además de Azure, los comandos usan GitHub:
    .\scripts\azure.ps1 plan   -Env stage     # confirma Contributor + lectura de Key Vault
    ```
 
-**Baja de un operador**: quitarlo del grupo en Entra, del repositorio y de los revisores de `prod`.
+**Baja de un operador**: quitarlo del grupo en Entra y del repositorio.
 Si se sospecha que conoció el valor de algún secreto, rotarlo con `secret-set`. `access` permite
 comprobar que ya no aparece.
 

@@ -20,7 +20,7 @@ param serverName string
   '16'
   '17'
 ])
-param postgresVersion string = '16'
+param postgresVersion string = '17'
 
 @description('SKU de cómputo, p. ej. Standard_B1ms.')
 param skuName string = 'Standard_B1ms'

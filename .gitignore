@@ -15,7 +15,16 @@ dist/
 # Configuración real de Azure (identificadores de la suscripción). Se versiona
 # solo la plantilla infra/azure.config.example.psd1. Ver infra/README.md.
 infra/azure.config.psd1
+# Secretos de la aplicación para secret-sync (plantilla: azure.secrets.example.psd1)
+infra/azure.secrets.psd1
+**/azure.secrets.psd1
 infra/*.local.*
+# Cualquier variante o copia ("azure.config - copia.psd1", "... copy.psd1"):
+# solo se versionan las plantillas .example.psd1.
+infra/azure.config*.psd1
+!infra/azure.config.example.psd1
+infra/azure.secrets*.psd1
+!infra/azure.secrets.example.psd1
 # Salidas de despliegue de scripts/azure.ps1
 infra/.out/
 

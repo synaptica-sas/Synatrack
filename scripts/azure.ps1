@@ -13,7 +13,7 @@
     Comandos:
       login       az login con el tenant y selección de la suscripción.
       bootstrap   Una vez por entorno: resource group, identidad OIDC del pipeline,
-                  roles, GitHub Environment y variables. Idempotente.
+                  roles y variables de GitHub. Idempotente.
       plan        what-if del Bicep (no cambia nada).
       infra       Despliega el Bicep, guarda las salidas en infra/.out/<env>.json y
                   actualiza las variables de GitHub que dependen de ellas.
@@ -23,8 +23,10 @@
       logs        Log stream del backend.
       rollback    Elige un despliegue exitoso anterior y lo vuelve a desplegar.
       secret-set  Carga un secreto en Key Vault pidiéndolo de forma oculta.
+      secret-sync Carga en Key Vault los secretos de infra/azure.secrets.psd1 (solo
+                  los que cambiaron) y agrega sus referencias al Web App.
       access      Solo lectura: quién tiene qué rol sobre el entorno, miembros del
-                  grupo de operadores y revisores del Environment de GitHub.
+                  grupo de operadores y ramas de GitHub que pueden desplegar.
 
 .EXAMPLE
     .\scripts\azure.ps1 login
@@ -33,6 +35,7 @@
     .\scripts\azure.ps1 infra -Env stage
     .\scripts\azure.ps1 secret-set -Env stage -Name smtp-pass
     .\scripts\azure.ps1 secret-set -Env stage -Name jobs-run-token -Generate
+    .\scripts\azure.ps1 secret-sync -Env stage
     .\scripts\azure.ps1 deploy -Env stage
     .\scripts\azure.ps1 deploy -Env prod -Ref 1a2b3c4 -App backend
     .\scripts\azure.ps1 rollback -Env prod
@@ -41,7 +44,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet('login', 'bootstrap', 'plan', 'infra', 'deploy', 'status', 'health', 'logs', 'rollback', 'secret-set', 'access')]
+    [ValidateSet('login', 'bootstrap', 'plan', 'infra', 'deploy', 'status', 'health', 'logs', 'rollback', 'secret-set', 'secret-sync', 'access')]
     [string]$Command,
 
     # Entorno. Se llama -Environment para no chocar con la unidad env: de
@@ -65,7 +68,11 @@ param(
     [string]$Name,
 
     # secret-set: generar un valor aleatorio en vez de pedirlo (solo tokens).
-    [switch]$Generate
+    [switch]$Generate,
+
+    # secret-sync: archivo de secretos (por defecto infra/azure.secrets.psd1, o la
+    # clave SecretsFile de la config).
+    [string]$SecretsFile
 )
 
 Set-StrictMode -Version 2.0
@@ -89,6 +96,9 @@ $InfraDir = Join-Path $RepoRoot 'infra'
 $ConfigPath = Join-Path $InfraDir 'azure.config.psd1'
 $ExampleConfigPath = Join-Path $InfraDir 'azure.config.example.psd1'
 $OutDir = Join-Path $InfraDir '.out'
+$DefaultSecretsPath = Join-Path $InfraDir 'azure.secrets.psd1'
+# Valor especial en el archivo de secretos: generar el token si no existe.
+$GenerateKeyword = '<generar>'
 
 $BackendWorkflow = 'deploy-backend-azure.yml'
 $FrontendWorkflow = 'deploy-frontend-azure.yml'
@@ -529,32 +539,29 @@ function Invoke-WithInfraEnv($Cfg, $Res, [switch]$ForWhatIf, [scriptblock]$Body)
 # GitHub
 # =============================================================================
 
-function Set-GhVariable($Cfg, [string]$VarName, [string]$Value, [string]$GhEnvironment) {
-    $base = @('variable')
+# GitHub Free con repositorio privado NO tiene variables por Environment (ni
+# revisores obligatorios). Por eso todas las variables van a nivel de
+# repositorio y las de cada entorno llevan sufijo: AZURE_WEBAPP_NAME_STAGE,
+# AZURE_WEBAPP_NAME_PROD... Los workflows eligen el sufijo según el entorno.
+function Set-GhVariable($Cfg, [string]$VarName, [string]$Value) {
     $scope = @('--repo', $Cfg.GitHubRepo)
-    if ($GhEnvironment) { $scope += @('--env', $GhEnvironment) }
     if ([string]::IsNullOrEmpty($Value)) {
         # GitHub no admite variables vacías: si no hay valor, se borra.
-        $null = Invoke-Gh -Arguments ($base + @('delete', $VarName) + $scope) -AllowFailure
+        $null = Invoke-Gh -Arguments (@('variable', 'delete', $VarName) + $scope) -AllowFailure
         Write-Note "$VarName (vacía, se borra si existía)"
         return
     }
-    Invoke-Gh -Arguments ($base + @('set', $VarName, '--body', $Value) + $scope) | Out-Null
-    $where = 'repo'
-    if ($GhEnvironment) { $where = "env $GhEnvironment" }
-    Write-Ok "$VarName ($where)"
+    Invoke-Gh -Arguments (@('variable', 'set', $VarName, '--body', $Value) + $scope) | Out-Null
+    Write-Ok $VarName
+}
+
+# Variable propia del entorno actual: <Base>_STAGE o <Base>_PROD.
+function Set-GhEnvVariable($Cfg, [string]$BaseName, [string]$Value) {
+    Set-GhVariable $Cfg ("{0}_{1}" -f $BaseName, $Environment.ToUpperInvariant()) $Value
 }
 
 function Set-GhInfraVariables($Cfg) {
-    $envCfg = Get-EnvCfg $Cfg
-    $b64 = ConvertTo-Base64Json (Get-InfraParams $Cfg)
-    Set-GhVariable $Cfg 'AZURE_INFRA_PARAMS_B64' $b64 $Environment
-    if ($Environment -eq 'stage') {
-        # El what-if de los PR corre SIN environment (credencial pull_request),
-        # así que necesita su copia a nivel de repositorio.
-        Set-GhVariable $Cfg 'AZURE_STAGE_INFRA_PARAMS_B64' $b64 ''
-        Set-GhVariable $Cfg 'AZURE_STAGE_RESOURCE_GROUP' $envCfg.ResourceGroup ''
-    }
+    Set-GhEnvVariable $Cfg 'AZURE_INFRA_PARAMS_B64' (ConvertTo-Base64Json (Get-InfraParams $Cfg))
 }
 
 function Set-GhOutputVariables($Cfg, $Outputs) {
@@ -565,13 +572,13 @@ function Set-GhOutputVariables($Cfg, $Outputs) {
         $swaName = [string](Get-Opt $Cfg 'ExistingSwaName' '')
         $swaRg = [string](Get-Opt $Cfg 'ExistingSwaResourceGroup' $envCfg.ResourceGroup)
     }
-    Set-GhVariable $Cfg 'AZURE_WEBAPP_NAME' ([string]$Outputs.webAppName) $Environment
-    Set-GhVariable $Cfg 'AZURE_API_URL' ([string]$Outputs.apiUrl) $Environment
-    Set-GhVariable $Cfg 'AZURE_KEYVAULT_NAME' ([string]$Outputs.keyVaultName) $Environment
-    Set-GhVariable $Cfg 'AZURE_POSTGRES_SERVER' ([string]$Outputs.postgresServerName) $Environment
-    Set-GhVariable $Cfg 'AZURE_SWA_NAME' $swaName $Environment
-    Set-GhVariable $Cfg 'AZURE_SWA_RESOURCE_GROUP' $swaRg $Environment
-    Set-GhVariable $Cfg 'AZURE_FRONTEND_URL' ([string]$Outputs.frontendUrl) $Environment
+    Set-GhEnvVariable $Cfg 'AZURE_WEBAPP_NAME' ([string]$Outputs.webAppName)
+    Set-GhEnvVariable $Cfg 'AZURE_API_URL' ([string]$Outputs.apiUrl)
+    Set-GhEnvVariable $Cfg 'AZURE_KEYVAULT_NAME' ([string]$Outputs.keyVaultName)
+    Set-GhEnvVariable $Cfg 'AZURE_POSTGRES_SERVER' ([string]$Outputs.postgresServerName)
+    Set-GhEnvVariable $Cfg 'AZURE_SWA_NAME' $swaName
+    Set-GhEnvVariable $Cfg 'AZURE_SWA_RESOURCE_GROUP' $swaRg
+    Set-GhEnvVariable $Cfg 'AZURE_FRONTEND_URL' ([string]$Outputs.frontendUrl)
 }
 
 # =============================================================================
@@ -708,10 +715,15 @@ function Invoke-Bootstrap($Cfg) {
     }
 
     Write-Step 'Credenciales federadas (OIDC de GitHub Actions)'
-    $subjects = [ordered]@{ "gh-env-$Environment" = "repo:$($repo):environment:$Environment" }
+    # Confianza por RAMA (GitHub Free no ofrece Environments útiles en repos
+    # privados): solo los workflows que corren en la rama del entorno obtienen
+    # un token. prod = main; un workflow lanzado desde dev u otra rama no puede
+    # autenticarse contra prod.
+    $branch = [string]$envCfg.GitBranch
+    $subjects = [ordered]@{ "gh-branch-$branch" = "repo:$($repo):ref:refs/heads/$branch" }
     if ($Environment -eq 'stage') {
-        # Solo stage: el what-if de los PR corre sin environment. Dársela a prod
-        # permitiría que cualquier PR obtuviera permisos sobre producción.
+        # Solo stage: el what-if de los PR. Dársela a prod permitiría que
+        # cualquier PR obtuviera permisos sobre producción.
         $subjects['gh-pull-request'] = "repo:$($repo):pull_request"
     }
     $existingSubjects = @()
@@ -779,25 +791,19 @@ function Invoke-Bootstrap($Cfg) {
         }
     }
 
-    Write-Step "GitHub Environment '$Environment' en $repo"
-    Invoke-Gh -Arguments @('api', '--method', 'PUT', "repos/$repo/environments/$Environment", '--silent') | Out-Null
-    Write-Ok 'Environment creado/actualizado.'
-    if ($Environment -eq 'prod') {
-        Write-Note 'Configura los revisores obligatorios de prod a mano: Settings > Environments > prod > Required reviewers.'
-        Write-Note "Recomendado: limitar 'Deployment branches' de prod a la rama $($envCfg.GitBranch)."
-    }
-
-    Write-Step 'Variables de GitHub'
-    Set-GhVariable $Cfg 'AZURE_TENANT_ID' $Cfg.TenantId ''
-    Set-GhVariable $Cfg 'AZURE_SUBSCRIPTION_ID' $Cfg.SubscriptionId ''
-    if ($Environment -eq 'stage') { Set-GhVariable $Cfg 'AZURE_STAGE_CLIENT_ID' $appId '' }
-    Set-GhVariable $Cfg 'AZURE_CLIENT_ID' $appId $Environment
-    Set-GhVariable $Cfg 'AZURE_RESOURCE_GROUP' $rg $Environment
-    Set-GhVariable $Cfg 'AZURE_ENV_BRANCH' $envCfg.GitBranch $Environment
-    Set-GhVariable $Cfg 'VITE_AZURE_CLIENT_ID' $Cfg.AppClientId $Environment
-    Set-GhVariable $Cfg 'VITE_AZURE_TENANT_ID' $Cfg.TenantId $Environment
-    Set-GhVariable $Cfg 'VITE_AZURE_API_SCOPE' $Cfg.AppApiScope $Environment
+    Write-Step "Variables de GitHub en $repo (nivel repositorio)"
+    Set-GhVariable $Cfg 'AZURE_TENANT_ID' $Cfg.TenantId
+    Set-GhVariable $Cfg 'AZURE_SUBSCRIPTION_ID' $Cfg.SubscriptionId
+    Set-GhVariable $Cfg 'VITE_AZURE_CLIENT_ID' $Cfg.AppClientId
+    Set-GhVariable $Cfg 'VITE_AZURE_TENANT_ID' $Cfg.TenantId
+    Set-GhVariable $Cfg 'VITE_AZURE_API_SCOPE' $Cfg.AppApiScope
+    Set-GhEnvVariable $Cfg 'AZURE_CLIENT_ID' $appId
+    Set-GhEnvVariable $Cfg 'AZURE_RESOURCE_GROUP' $rg
+    Set-GhEnvVariable $Cfg 'AZURE_ENV_BRANCH' $branch
     Set-GhInfraVariables $Cfg
+    if ($Environment -eq 'prod') {
+        Write-Note "prod NO pide aprobación (GitHub Free): despliega todo lo que llegue a $branch."
+    }
 
     Write-Host ''
     Write-Ok "Bootstrap de $Environment terminado."
@@ -915,7 +921,6 @@ function Invoke-Deploy($Cfg, [string]$DeployRef, [string]$Which, [bool]$NoMigrat
             continue
         }
         Write-Note "Ejecución: $($run.url)"
-        if ($Environment -eq 'prod') { Write-Note 'prod exige aprobación de un revisor en GitHub antes de desplegar.' }
         $ErrorActionPreference = 'Continue'
         & gh run watch $run.databaseId --repo $Cfg.GitHubRepo --exit-status
         $code = $LASTEXITCODE
@@ -1128,27 +1133,131 @@ function Invoke-SecretSet($Cfg, [string]$SecretName, [bool]$GenerateValue) {
         $plain = $null
     }
 
-    if (-not $res.WebApp) { return }
-    $settingName = $OptionalSecrets[$SecretName]
-    $current = Invoke-Az -Arguments @('webapp', 'config', 'appsettings', 'list', '-g', $rg, '-n', $res.WebApp, '--query', "[?name=='$settingName'] | length(@)", '-o', 'tsv') -AllowFailure
-    if ($current -and [int]$current -gt 0) {
-        # La referencia ya existe: App Service cachea el valor hasta 24 h; reiniciar lo relee.
-        $answer = Read-Host "¿Reiniciar $($res.WebApp) para que tome el valor nuevo ya? (s/N)"
-        if ($answer -match '^[sS]') {
-            Invoke-Az -Arguments @('webapp', 'restart', '-g', $rg, '-n', $res.WebApp) | Out-Null
-            Write-Ok 'Web App reiniciado.'
-        } else {
-            Write-Note 'Sin reinicio: el valor nuevo se toma en el próximo reinicio o despliegue (máx. 24 h).'
+    Update-SecretReferences $res @($SecretName)
+}
+
+# Tras escribir secretos en Key Vault: agrega al Web App las referencias que
+# falten (eso lo reinicia solo) y, si todas existían, ofrece reiniciar para que
+# tome los valores nuevos (App Service los cachea hasta 24 h).
+function Update-SecretReferences($Res, [string[]]$SecretNames) {
+    if (-not $Res.WebApp -or $SecretNames.Count -eq 0) { return }
+    $rg = $Res.ResourceGroup
+    $existing = @(Invoke-AzJson -Arguments @('webapp', 'config', 'appsettings', 'list', '-g', $rg, '-n', $Res.WebApp, '--query', '[].name') -AllowFailure)
+    $toAdd = @()
+    foreach ($s in $SecretNames) {
+        $settingName = $OptionalSecrets[$s]
+        if ($existing -notcontains $settingName) {
+            # Solo la referencia, no el valor: el archivo temporal no tiene nada sensible.
+            $toAdd += @{ name = $settingName; value = "@Microsoft.KeyVault(VaultName=$($Res.KeyVault);SecretName=$s)"; slotSetting = $false }
         }
-    } else {
-        # Se agrega solo la referencia (no el valor). El archivo no tiene nada sensible.
-        $file = New-TempJsonFile @(@{ name = $settingName; value = "@Microsoft.KeyVault(VaultName=$($res.KeyVault);SecretName=$SecretName)"; slotSetting = $false })
-        try {
-            Invoke-Az -Arguments @('webapp', 'config', 'appsettings', 'set', '-g', $rg, '-n', $res.WebApp, '--settings', "@$file", '-o', 'none') | Out-Null
-        } finally { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue }
-        Write-Ok "App Setting $settingName agregado como referencia a Key Vault (el Web App se reinicia solo)."
-        Write-Note 'El próximo `infra` la mantiene, porque el script detecta los secretos presentes.'
     }
+    if ($toAdd.Count -gt 0) {
+        $file = New-TempJsonFile $toAdd
+        try {
+            Invoke-Az -Arguments @('webapp', 'config', 'appsettings', 'set', '-g', $rg, '-n', $Res.WebApp, '--settings', "@$file", '-o', 'none') | Out-Null
+        } finally { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue }
+        foreach ($a in $toAdd) { Write-Ok "App Setting $($a.name) agregado como referencia a Key Vault." }
+        Write-Note 'El Web App se reinicia solo y toma todos los valores. El próximo `infra` mantiene las referencias.'
+        return
+    }
+    $answer = Read-Host "¿Reiniciar $($Res.WebApp) para que tome los valores nuevos ya? (s/N)"
+    if ($answer -match '^[sS]') {
+        Invoke-Az -Arguments @('webapp', 'restart', '-g', $rg, '-n', $Res.WebApp) | Out-Null
+        Write-Ok 'Web App reiniciado.'
+    } else {
+        Write-Note 'Sin reinicio: los valores nuevos se toman en el próximo reinicio o despliegue (máx. 24 h).'
+    }
+}
+
+function Get-SecretsFilePath($Cfg) {
+    if ($SecretsFile) { return $SecretsFile }
+    $fromCfg = [string](Get-Opt $Cfg 'SecretsFile' '')
+    if ($fromCfg) { return [Environment]::ExpandEnvironmentVariables($fromCfg) }
+    return $DefaultSecretsPath
+}
+
+# Lee la sección del entorno del archivo de secretos y la valida. Devuelve un
+# diccionario nombre -> valor solo con los secretos que tienen valor.
+function Read-SecretsFile($Cfg) {
+    $path = Get-SecretsFilePath $Cfg
+    if (-not (Test-Path -LiteralPath $path)) {
+        Stop-WithError ("No existe el archivo de secretos: $path`n" +
+            "  Cópialo desde la plantilla y llena los valores:`n" +
+            "    Copy-Item infra/azure.secrets.example.psd1 infra/azure.secrets.psd1")
+    }
+    $full = (Resolve-Path -LiteralPath $path).Path
+    foreach ($cloud in @($env:OneDrive, $env:OneDriveCommercial, $env:OneDriveConsumer)) {
+        if ($cloud -and $full.StartsWith($cloud, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Warn "El archivo de secretos está dentro de OneDrive ($cloud): se copia a la nube."
+            Write-Warn 'Muévelo fuera (p. ej. $env:USERPROFILE\.synatrack\) y apunta SecretsFile en la config.'
+            break
+        }
+    }
+    # Import-PowerShellDataFile no ejecuta código: solo admite literales.
+    $data = Import-PowerShellDataFile -LiteralPath $full
+    foreach ($envName in $data.Keys) {
+        if (@('stage', 'prod') -notcontains $envName) { Stop-WithError "Sección desconocida '$envName' en el archivo de secretos (solo stage y prod)." }
+    }
+    if (-not $data.ContainsKey($Environment)) { Stop-WithError "El archivo de secretos no tiene la sección '$Environment'." }
+    $section = $data[$Environment]
+    $result = [ordered]@{}
+    foreach ($key in $section.Keys) {
+        if (-not $OptionalSecrets.Contains($key)) {
+            Stop-WithError ("Secreto desconocido '$key' en la sección $Environment. Válidos: " + ($OptionalSecrets.Keys -join ', '))
+        }
+        $value = [string]$section[$key]
+        if ([string]::IsNullOrWhiteSpace($value)) { continue }
+        if ($value -eq $GenerateKeyword -and $GeneratableSecrets -notcontains $key) {
+            Stop-WithError "'$GenerateKeyword' solo aplica a: $($GeneratableSecrets -join ', ')"
+        }
+        if ($key -like 'teams-*' -and $value -ne $GenerateKeyword -and $value -notlike 'https://*') {
+            Stop-WithError "El valor de '$key' debe ser una URL https:// (no se muestra cuál es)."
+        }
+        $result[$key] = $value
+    }
+    return $result
+}
+
+function Invoke-SecretSync($Cfg) {
+    $null = Assert-AzContext $Cfg
+    $rg = (Get-EnvCfg $Cfg).ResourceGroup
+    $res = Get-EnvResources $Cfg
+    if (-not $res.KeyVault) { Stop-WithError "No hay Key Vault en $rg. Ejecuta primero infra." }
+    $wanted = Read-SecretsFile $Cfg
+    if ($wanted.Count -eq 0) { Write-Note "La sección $Environment no tiene valores: nada que cargar."; return }
+
+    # Plan: comparar con Key Vault sin mostrar valores.
+    Write-Step "Comparando con $($res.KeyVault)"
+    $plan = @()
+    foreach ($name in $wanted.Keys) {
+        $current = Get-KeyVaultSecretValue $res.KeyVault $name
+        $value = $wanted[$name]
+        if ($value -eq $GenerateKeyword) {
+            if ($current) { Write-Note "$name  ya existe (los tokens generados no se rotan solos)"; continue }
+            $plan += [pscustomobject]@{ Name = $name; Generate = $true; Action = 'generar' }
+        } elseif ($current -ceq $value) {
+            Write-Note "$name  sin cambios"
+        } else {
+            $action = 'actualizar'
+            if (-not $current) { $action = 'crear' }
+            $plan += [pscustomobject]@{ Name = $name; Generate = $false; Action = $action }
+        }
+        $current = $null
+    }
+    if ($plan.Count -eq 0) { Write-Ok 'Key Vault ya está al día.'; return }
+    foreach ($p in $plan) { Write-Note "$($p.Name)  -> $($p.Action)" }
+    Confirm-ProdChange ("cargar " + $plan.Count + " secreto(s)")
+
+    foreach ($p in $plan) {
+        $plain = $null
+        try {
+            if ($p.Generate) { $plain = New-RandomSecret 48 } else { $plain = $wanted[$p.Name] }
+            Set-KeyVaultSecretValue $res.KeyVault $p.Name $plain
+            Write-Ok "$($p.Name) guardado."
+        } finally { $plain = $null }
+    }
+    $wanted = $null
+    Update-SecretReferences $res @($plan | ForEach-Object { $_.Name })
 }
 
 function Invoke-Access($Cfg) {
@@ -1203,36 +1312,22 @@ function Invoke-Access($Cfg) {
         }
     }
 
-    if (Get-Command gh -ErrorAction SilentlyContinue) {
-        Write-Step "Protección del Environment '$Environment' en GitHub"
-        $raw = Invoke-Gh -Arguments @('api', "repos/$($Cfg.GitHubRepo)/environments/$Environment") -AllowFailure
-        if (-not $raw) {
-            Write-Warn 'No se pudo leer el Environment (no existe o falta acceso al repositorio).'
-        } else {
-            $envInfo = $raw | ConvertFrom-Json
-            $rules = @()
-            if ($envInfo.PSObject.Properties['protection_rules']) { $rules = @($envInfo.protection_rules) }
-            $reviewRule = @($rules | Where-Object { $_.type -eq 'required_reviewers' }) | Select-Object -First 1
-            if (-not $reviewRule) {
-                if ($Environment -eq 'prod') { Write-Warn 'prod NO tiene revisores obligatorios.' } else { Write-Note 'Sin revisores obligatorios.' }
-            } else {
-                $selfReview = $false
-                if ($reviewRule.PSObject.Properties['prevent_self_review']) { $selfReview = [bool]$reviewRule.prevent_self_review }
-                $selfText = 'NO'
-                if ($selfReview) { $selfText = 'sí' }
-                Write-Note "Prevent self-review: $selfText"
-                if (-not $selfReview -and $Environment -eq 'prod') {
-                    Write-Warn 'Activa "Prevent self-review" en prod: así aprueba una persona distinta de quien despliega.'
-                }
-                foreach ($r in @($reviewRule.reviewers)) {
-                    if ($null -eq $r) { continue }
-                    $who = ''
-                    if ($r.reviewer.PSObject.Properties['login']) { $who = $r.reviewer.login }
-                    elseif ($r.reviewer.PSObject.Properties['name']) { $who = $r.reviewer.name }
-                    Write-Note ("  - revisor ({0}): {1}" -f $r.type, $who)
-                }
-            }
-        }
+    # Qué ramas de GitHub pueden obtener un token de este entorno (OIDC).
+    Write-Step "Quién puede desplegar a $Environment desde GitHub (credenciales federadas)"
+    $appName = "gh-synatrack-$Environment"
+    $appId = Invoke-Az -Arguments @('ad', 'app', 'list', '--display-name', $appName, '--query', '[0].appId', '-o', 'tsv') -AllowFailure
+    if (-not $appId) {
+        Write-Warn "No existe la identidad $appName (o falta permiso para leerla en Entra)."
+    } else {
+        $fc = @(Invoke-AzJson -Arguments @('ad', 'app', 'federated-credential', 'list', '--id', $appId, '--query', '[].subject') -AllowFailure)
+        foreach ($s in $fc) { if ($s) { Write-Note "  - $s" } }
+        $expected = "repo:$($Cfg.GitHubRepo):ref:refs/heads/$((Get-EnvCfg $Cfg).GitBranch)"
+        if ($fc -notcontains $expected) { Write-Warn "Falta $expected : ejecuta bootstrap -Env $Environment." }
+        $extra = @($fc | Where-Object { $_ -and $_ -ne $expected -and -not ($Environment -eq 'stage' -and $_ -like '*:pull_request') })
+        if ($extra.Count -gt 0) { Write-Warn ("Credenciales que sobran (revisar y borrar): " + ($extra -join ', ')) }
+    }
+    if ($Environment -eq 'prod') {
+        Write-Note 'GitHub Free: prod no pide aprobación. Lo que llega a main se despliega.'
     }
 }
 
@@ -1253,5 +1348,6 @@ switch ($Command) {
     'logs' { Invoke-Logs $cfg }
     'rollback' { Invoke-Rollback $cfg $App }
     'secret-set' { Invoke-SecretSet $cfg $Name ([bool]$Generate) }
+    'secret-sync' { Invoke-SecretSync $cfg }
     'access' { Invoke-Access $cfg }
 }

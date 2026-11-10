@@ -6,7 +6,7 @@
 >
 > Los pasos indican el **rol** que los ejecuta (README §1): *Administrador de Azure* (Owner de la
 > suscripción, corre `bootstrap`), *Administrador de Entra* (TI), *Operador* (miembro del grupo
-> `OperatorsGroup`), *Administrador del repositorio* y *Revisor de prod*. La plataforma la operan al
+> `OperatorsGroup`) y *Administrador del repositorio*. La plataforma la operan al
 > menos dos personas de Synaptica; ningún paso depende de una cuenta personal.
 
 ## Situación de partida
@@ -27,7 +27,7 @@
 
 1. *Administrador de Entra*: crear el grupo de seguridad de operadores y agregar a los operadores.
 2. *Administrador de Azure*: `login` → `bootstrap -Env stage` (README §3.3).
-3. *Operador*: `plan` → `infra -Env stage`; cargar los secretos que apliquen con `secret-set`
+3. *Operador*: `plan` → `infra -Env stage`; cargar los secretos que apliquen con `secret-sync` (o `secret-set` uno a uno)
    (SMTP, webhooks de Teams, tokens).
 4. *Administrador de Entra*: registrar el hostname de la SWA de stage como *SPA redirect URI*.
 5. *Administrador del repositorio*: fusionar `migracion-azure` en `dev`; crear
@@ -47,7 +47,7 @@ backend.
   provisioning crea el `User` y, para consultores, su `Consultant`.
 - Confirmar que la claim `aud` real está en `AZURE_AD_AUDIENCE` (por defecto
   `api://<AppClientId>,<AppClientId>`; si todo devuelve 401, es esto).
-- Confirmar que la tasa FX se sincroniza sola (`FX_SYNC_IN_CYCLE=true`): `fx-sync` en
+- Si se activa `fxSyncInCycle` (hoy `false`: tasas solo a demanda), confirmar: `fx-sync` en
   `jobs.trabajos[]` de `/health` pasa a `ok` en ≤ 1 día.
 - Recargar una ruta profunda (p. ej. `/portafolio`) en la SWA: debe cargar la app
   (`frontend/public/staticwebapp.config.json`, `navigationFallback`).
@@ -78,7 +78,7 @@ pg_restore --dbname "$STAGE_DATABASE_URL" --no-owner --no-privileges --clean --i
 psql "$STAGE_DATABASE_URL" -c "select count(*) from _prisma_migrations where finished_at is not null"
 ```
 
-- Usar `pg_dump`/`pg_restore` **16.x o más nuevos** (el destino es PG16).
+- Usar `pg_dump`/`pg_restore` **17.x** (origen Supabase PG 17.11, destino PG17).
 - `--schema=public` evita los esquemas propios de Supabase (`auth`, `storage`, `realtime`,
   `extensions`...). La app no usa extensiones (no hay `CREATE EXTENSION` en las migraciones).
 - `--no-owner --no-privileges`: los roles de Supabase (`postgres`, `authenticated`, `anon`) no existen
@@ -96,8 +96,8 @@ psql "$STAGE_DATABASE_URL" -c "select count(*) from _prisma_migrations where fin
 
 - [ ] *Administrador de Azure*: `bootstrap -Env prod`. *Operador*: `infra -Env prod` y secretos
       de prod cargados.
-- [ ] *Administrador del repositorio*: al menos dos *Required reviewers* en el Environment `prod` y
-      **Prevent self-review** activo (`access -Env prod` lo comprueba).
+- [ ] *Operador*: `access -Env prod` muestra que solo la rama `main` puede desplegar a prod
+      (GitHub Free: no hay aprobación de despliegues; la revisión es del PR antes del merge).
 - [ ] Hostname `*.azurestaticapps.net` de la SWA de prod y `https://synatrack.synaptica.co`
       registrados como *SPA redirect URI* en Entra.
 - [ ] Primer deploy del backend a prod (push a `main` con `AZURE_DEPLOY_ENABLED=true`): crea el
@@ -110,8 +110,8 @@ psql "$STAGE_DATABASE_URL" -c "select count(*) from _prisma_migrations where fin
       todavía el CNAME**. Bajar el TTL del CNAME actual a 300 s con al menos un día de antelación.
 - [ ] Ensayo de la fase 3 hecho y cronometrado.
 - [ ] Aviso a los usuarios de la ventana.
-- [ ] Asignar los roles de la ventana: un operador ejecuta y otro verifica y aprueba los despliegues
-      a prod (por *Prevent self-review*, no puede ser el mismo).
+- [ ] Asignar los roles de la ventana: un operador ejecuta y otro verifica cada paso (sin
+      aprobación en GitHub, la verificación cruzada es un acuerdo del equipo).
 
 **Ventana**
 
@@ -160,9 +160,9 @@ Tras 2-4 semanas estables:
 | **Sin "linked backend"** de Static Web Apps; el frontend llama directo al App Service con CORS | la app manda su propio `Authorization: Bearer <JWT de Entra>`. Con un backend enlazado, SWA se interpone en `/api` y gestiona ese encabezado con su propia autenticación, rompiendo la validación del token en el backend. Además el enlace exige SWA Standard. |
 | Secretos en **Key Vault (RBAC)** + referencias `@Microsoft.KeyVault(...)` + identidad administrada del Web App | ningún secreto en App Settings en claro ni en GitHub; rotación sin redeploy. |
 | Pipeline con **OIDC** (credencial federada) | sin secretos de Azure en GitHub. |
-| Trabajos periódicos **en proceso** (`JOBS_INTERVAL_MINUTES=60`, `FX_SYNC_IN_CYCLE=true`) | con Always On el proceso no se duerme (el motivo de los crons externos de Render era el plan free). El ciclo tiene candado anti-solapamiento en `JobRun` e incluye la sincronización FX diaria. |
+| Trabajos periódicos **en proceso** (`JOBS_INTERVAL_MINUTES=60`; `FX_SYNC_IN_CYCLE` hoy `false`, tasas a demanda) | con Always On el proceso no se duerme (el motivo de los crons externos de Render era el plan free). El ciclo tiene candado anti-solapamiento en `JobRun` y puede incluir la sincronización FX diaria si se activa `fxSyncInCycle`. |
 | Operación por **grupo de seguridad** (`OperatorsGroup`), no por personas | lo operan al menos dos personas; altas y bajas se hacen en Entra sin tocar Azure RBAC. Los operadores tienen solo Contributor + Key Vault Secrets Officer + RBAC Administrator condicionado sobre su resource group; `bootstrap` queda para el Owner de la suscripción. |
-| Aprobación de prod por **otra persona** (*Prevent self-review*) | quien dispara un despliegue a producción no puede aprobarlo él mismo. |
+| Prod **sin aprobación** de despliegues (GitHub Free, repo privado) y **OIDC por rama** | GitHub Free no ofrece revisores ni variables por Environment en repos privados. La identidad de prod solo confía en `main` y la de stage en `dev`; la revisión cruzada se hace en el PR antes del merge. Si se necesita aprobación formal: GitHub Enterprise o Azure Pipelines (gratis hasta 5 usuarios, con approvals). |
 | Migraciones en el pipeline, antes de publicar, con firewall temporal | el arranque no migra (`node dist/server.js`), así un fallo de migración no deja el sitio caído en bucle de reinicios. |
 | La contraseña de Postgres se genera una vez y se relee de Key Vault | no cambia en cada despliegue, no queda en disco ni en el historial. |
 | Solo se referencian los secretos opcionales que existen | una referencia rota deja el texto literal en la variable; para un token sería un valor público. |
@@ -210,9 +210,9 @@ Pensado para que sea un cambio acotado:
 | Riesgo | Mitigación |
 |---|---|
 | La claim `aud` del token no está en `AZURE_AD_AUDIENCE` → todos los logins dan 401 | el backend acepta una lista; por defecto se configuran `api://<AppClientId>` y `<AppClientId>` (v1 y v2). Validar en la fase 2. |
-| Sincronización FX en el ciclo (`FX_SYNC_IN_CYCLE=true`) recién incorporada | validar en la fase 2 que `fx-sync` pasa a `ok`; si falla, las tasas se congelan sin que el sitio caiga. |
+| Tasas FX a demanda (`fxSyncInCycle = false`): si nadie pulsa "Actualizar ahora", las tasas envejecen | decisión de negocio por ahora; para automatizarlas basta `fxSyncInCycle = true` y `infra`. |
 | Un solo operador con conocimiento real de la plataforma | alta del segundo operador en la fase 1 (README §9) y ensayo/corte con un operador que ejecuta y otro que verifica. |
-| Un operador que deja la empresa conserva acceso | baja = quitarlo del grupo, del repositorio y de los revisores (README §9); `access` para auditar periódicamente. |
+| Un operador que deja la empresa conserva acceso | baja = quitarlo del grupo y del repositorio (README §9); `access` para auditar periódicamente. |
 | `workflow_dispatch` solo existe cuando el workflow está en `main` | los primeros despliegues de stage salen de pushes a `dev`; rollback por dispatch disponible tras fusionar en `main`. |
 | Migraciones solo hacia adelante; un rollback de código no revierte el esquema | migraciones compatibles hacia atrás; ante daño de datos, *point-in-time restore* de Postgres (7 días stage / 14 prod) a un servidor nuevo. |
 | Despliegue sin slots: reinicio breve en cada deploy | aceptado (B1); si molesta, pasar a S1 con slot de staging. |

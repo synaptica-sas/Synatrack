@@ -1,10 +1,12 @@
 # Infraestructura de Azure (Bicep).
 #
-# - Pull request que toca infra/**: what-if contra STAGE y comentario en el PR.
-#   Corre sin GitHub Environment, con la credencial federada `pull_request` de la
-#   identidad de stage (prod no tiene esa credencial a propósito).
-# - workflow_dispatch: what-if o despliegue del entorno elegido. prod pasa por
-#   los revisores obligatorios del Environment.
+# - Pull request que toca infra/**: what-if contra STAGE y comentario en el PR,
+#   con la credencial federada `pull_request` de la identidad de stage (prod no
+#   tiene esa credencial a propósito).
+# - workflow_dispatch: what-if o despliegue del entorno elegido. Debe lanzarse
+#   desde la rama del entorno (prod = main): la identidad de Azure confía solo
+#   en esa rama. Sin aprobación (GitHub Free + repo privado). Variables de
+#   repositorio con sufijo _STAGE/_PROD.
 #
 # El PRIMER despliegue de cada entorno se hace desde la PC
 # (scripts/azure.ps1 -Command infra), que genera la contraseña de Postgres y la
@@ -60,14 +62,14 @@ jobs:
       - name: Login en Azure (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_STAGE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID_STAGE }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: What-if
         env:
-          INFRA_PARAMS_B64: ${{ vars.AZURE_STAGE_INFRA_PARAMS_B64 }}
-          RESOURCE_GROUP: ${{ vars.AZURE_STAGE_RESOURCE_GROUP }}
+          INFRA_PARAMS_B64: ${{ vars.AZURE_INFRA_PARAMS_B64_STAGE }}
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP_STAGE }}
           ENV_NAME: stage
           ALLOW_TEMP_PASSWORD: "1"
         run: |
@@ -118,24 +120,34 @@ jobs:
     name: ${{ inputs.mode }} ${{ inputs.environment }}
     if: github.event_name == 'workflow_dispatch' && vars.AZURE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
     concurrency:
       group: infra-${{ inputs.environment }}
       cancel-in-progress: false
+    env:
+      SFX: ${{ inputs.environment == 'prod' && 'PROD' || 'STAGE' }}
     steps:
+      - name: Verificar rama
+        env:
+          REQUIRED_BRANCH: ${{ vars[format('AZURE_ENV_BRANCH_{0}', inputs.environment == 'prod' && 'PROD' || 'STAGE')] }}
+        run: |
+          if [[ "$GITHUB_REF_NAME" != "$REQUIRED_BRANCH" ]]; then
+            echo "::error::La infraestructura de ${{ inputs.environment }} solo se aplica desde la rama '${REQUIRED_BRANCH:-?}' (esta ejecución corre en '${GITHUB_REF_NAME}'). Lánzalo desde esa rama."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Login en Azure (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars[format('AZURE_CLIENT_ID_{0}', env.SFX)] }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: ${{ inputs.mode }}
         env:
-          INFRA_PARAMS_B64: ${{ vars.AZURE_INFRA_PARAMS_B64 }}
-          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          INFRA_PARAMS_B64: ${{ vars[format('AZURE_INFRA_PARAMS_B64_{0}', env.SFX)] }}
+          RESOURCE_GROUP: ${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.SFX)] }}
           ENV_NAME: ${{ inputs.environment }}
           MODE: ${{ inputs.mode }}
           ALLOW_TEMP_PASSWORD: ${{ inputs.mode == 'what-if' && '1' || '0' }}

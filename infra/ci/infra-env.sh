@@ -8,7 +8,7 @@
 # Entradas (variables de entorno):
 #   INFRA_PARAMS_B64     JSON en base64 con los parámetros no sensibles
 #                        (lo publica scripts/azure.ps1 en la variable de GitHub
-#                        AZURE_INFRA_PARAMS_B64 / AZURE_STAGE_INFRA_PARAMS_B64).
+#                        AZURE_INFRA_PARAMS_B64_STAGE / AZURE_INFRA_PARAMS_B64_PROD).
 #   RESOURCE_GROUP       resource group del entorno.
 #   ENV_NAME             stage | prod.
 #   ALLOW_TEMP_PASSWORD  1 = si Key Vault aún no tiene la contraseña, usar una

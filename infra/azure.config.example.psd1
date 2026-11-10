@@ -55,8 +55,13 @@
     # PayrollEmail = "nomina@synaptica.co"
     # SmtpHost     = "smtp.office365.com"
     # SmtpPort     = "587"
-    # SmtpUser     = "noreply@synaptica.co"   # la contraseña va a Key Vault: secret-set -Name smtp-pass
+    # SmtpUser     = "noreply@synaptica.co"   # la contraseña va en azure.secrets.psd1 (secret-sync)
     # SmtpFrom     = "Synatrack <noreply@synaptica.co>"
+
+    # --- Archivo de secretos para secret-sync (opcional) ----------------------
+    # Por defecto infra/azure.secrets.psd1. Si el repo está en OneDrive, guárdalo
+    # fuera para que no se suba a la nube (ver infra/azure.secrets.example.psd1).
+    # SecretsFile = "%USERPROFILE%\.synatrack\azure.secrets.psd1"
 
     # --- Runtime (opcional) ---------------------------------------------------
     # LinuxFxVersion = "NODE|24-lts"   # ver: az webapp list-runtimes --os linux

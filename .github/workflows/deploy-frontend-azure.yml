@@ -7,6 +7,10 @@
 #                   la toca. Ver documentacion/azure/PLAN.md, fase 4.
 #   workflow_dispatch(environment, ref) -> cualquier commit (rollback).
 #
+# Sin GitHub Environments ni aprobación (GitHub Free + repo privado): variables
+# de repositorio con sufijo (_STAGE/_PROD) y OIDC por rama. Ver el encabezado de
+# deploy-backend-azure.yml.
+#
 # Las VITE_* se fijan en el BUILD (Vite las incrusta en el bundle); los App
 # Settings de la SWA no llegan a Vite. El token de despliegue de la SWA se pide
 # en cada ejecución con `az staticwebapp secrets list` tras el login OIDC: no
@@ -49,6 +53,10 @@ concurrency:
   group: deploy-frontend-${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
   cancel-in-progress: false
 
+env:
+  TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
+  SFX: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage')) == 'prod' && 'PROD' || 'STAGE' }}
+
 jobs:
   deploy:
     name: Build y deploy
@@ -59,13 +67,31 @@ jobs:
         vars.AZURE_FRONTEND_PROD_ENABLED == 'true'
       )
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
-      url: ${{ vars.AZURE_FRONTEND_URL }}
     defaults:
       run:
         working-directory: frontend
     steps:
+      - name: Verificar rama y variables del entorno
+        working-directory: .
+        env:
+          REQUIRED_BRANCH: ${{ vars[format('AZURE_ENV_BRANCH_{0}', env.SFX)] }}
+          V_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', env.SFX)] }}
+          V_API_URL: ${{ vars[format('AZURE_API_URL_{0}', env.SFX)] }}
+          V_SWA_NAME: ${{ vars[format('AZURE_SWA_NAME_{0}', env.SFX)] }}
+          V_SWA_RESOURCE_GROUP: ${{ vars[format('AZURE_SWA_RESOURCE_GROUP_{0}', env.SFX)] }}
+        run: |
+          if [[ "$GITHUB_REF_NAME" != "$REQUIRED_BRANCH" ]]; then
+            echo "::error::${TARGET_ENV} solo se despliega desde la rama '${REQUIRED_BRANCH:-?}' y esta ejecución corre en '${GITHUB_REF_NAME}'. Para otro commit: scripts/azure.ps1 deploy -Env ${TARGET_ENV} -Ref <sha>"
+            exit 1
+          fi
+          for v in V_CLIENT_ID V_API_URL V_SWA_NAME V_SWA_RESOURCE_GROUP; do
+            if [[ -z "${!v}" ]]; then
+              echo "::error::Falta la variable de repositorio AZURE_${v#V_}_${SFX}. Ejecuta scripts/azure.ps1 bootstrap/infra -Env ${TARGET_ENV}."
+              exit 1
+            fi
+            echo "AZ_${v#V_}=${!v}" >> "$GITHUB_ENV"
+          done
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
@@ -88,7 +114,7 @@ jobs:
 
       - name: Build
         env:
-          VITE_API_URL: ${{ vars.AZURE_API_URL }}
+          VITE_API_URL: ${{ env.AZ_API_URL }}
           VITE_AZURE_TENANT_ID: ${{ vars.VITE_AZURE_TENANT_ID }}
           VITE_AZURE_CLIENT_ID: ${{ vars.VITE_AZURE_CLIENT_ID }}
           VITE_AZURE_API_SCOPE: ${{ vars.VITE_AZURE_API_SCOPE }}
@@ -100,7 +126,7 @@ jobs:
         run: |
           for v in VITE_API_URL VITE_AZURE_TENANT_ID VITE_AZURE_CLIENT_ID VITE_AZURE_API_SCOPE; do
             if [[ -z "${!v}" ]]; then
-              echo "::error::Falta la variable de GitHub para $v en el Environment. Ejecuta scripts/azure.ps1 bootstrap/infra."
+              echo "::error::Falta la variable de repositorio para $v. Ejecuta scripts/azure.ps1 bootstrap/infra."
               exit 1
             fi
           done
@@ -110,7 +136,7 @@ jobs:
       - name: Login en Azure (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ env.AZ_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -119,15 +145,15 @@ jobs:
         working-directory: .
         run: |
           token="$(az staticwebapp secrets list \
-            --name "${{ vars.AZURE_SWA_NAME }}" \
-            --resource-group "${{ vars.AZURE_SWA_RESOURCE_GROUP }}" \
+            --name "${{ env.AZ_SWA_NAME }}" \
+            --resource-group "${{ env.AZ_SWA_RESOURCE_GROUP }}" \
             --query properties.apiKey -o tsv)"
           if [[ -z "$token" ]]; then echo "::error::No se obtuvo el token de la SWA"; exit 1; fi
           echo "::add-mask::$token"
           echo "token=$token" >> "$GITHUB_OUTPUT"
           host="$(az staticwebapp show \
-            --name "${{ vars.AZURE_SWA_NAME }}" \
-            --resource-group "${{ vars.AZURE_SWA_RESOURCE_GROUP }}" \
+            --name "${{ env.AZ_SWA_NAME }}" \
+            --resource-group "${{ env.AZ_SWA_RESOURCE_GROUP }}" \
             --query defaultHostname -o tsv)"
           echo "host=$host" >> "$GITHUB_OUTPUT"
 

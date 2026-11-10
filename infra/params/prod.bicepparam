@@ -13,7 +13,7 @@ param environmentName = 'prod'
 // --- Dimensionamiento -------------------------------------------------------
 param appServicePlanSku = 'B1'
 param linuxFxVersion = readEnvironmentVariable('SYNATRACK_LINUX_FX_VERSION', 'NODE|24-lts')
-param postgresVersion = '16'
+param postgresVersion = '17'
 param postgresSkuName = 'Standard_B1ms'
 param postgresSkuTier = 'Burstable'
 param postgresStorageGB = 32
@@ -23,6 +23,8 @@ param keyVaultPurgeProtection = true
 param staticWebAppSku = 'Free'
 param logRetentionDays = 90
 param jobsIntervalMinutes = 60
+// Tasas FX solo a demanda por ahora (decisión 2026-11-09). true = diaria automática.
+param fxSyncInCycle = false
 param availabilityLocationCount = 3
 param availabilityFrequencySeconds = 300
 param http5xxThreshold = 5

@@ -1,9 +1,18 @@
 # Despliegue del backend a Azure App Service.
 #
 #   push a dev   -> stage
-#   push a main  -> prod (con revisores obligatorios del Environment `prod`)
+#   push a main  -> prod (SIN aprobación: GitHub Free no tiene revisores en
+#                   repos privados)
 #   workflow_dispatch(environment, ref) -> cualquier commit; es el ROLLBACK:
 #     scripts/azure.ps1 -Command rollback -Env prod
+#
+# Sin GitHub Environments (GitHub Free + repo privado no tiene variables por
+# Environment). En su lugar:
+#   - Variables de repositorio con sufijo del entorno (AZURE_WEBAPP_NAME_PROD...).
+#   - La identidad de Azure de cada entorno confía SOLO en su rama (OIDC
+#     `ref:refs/heads/main` para prod, `dev` para stage). Un dispatch a prod
+#     debe lanzarse desde main (lo hace scripts/azure.ps1); desde otra rama
+#     falla en "Verificar rama" y, aunque no fallara, Azure negaría el token.
 #
 # Sin deployment slots (plan B1): cada despliegue reemplaza el código en el
 # mismo Web App y el health check de la plataforma espera a que arranque.
@@ -56,6 +65,8 @@ concurrency:
 env:
   TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
   TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+  # Sufijo de las variables de repositorio del entorno.
+  SFX: ${{ (github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage')) == 'prod' && 'PROD' || 'STAGE' }}
 
 jobs:
   build:
@@ -73,6 +84,20 @@ jobs:
       run:
         working-directory: backend
     steps:
+      - name: Verificar rama
+        working-directory: .
+        env:
+          REQUIRED_BRANCH: ${{ vars[format('AZURE_ENV_BRANCH_{0}', env.SFX)] }}
+        run: |
+          if [[ -z "$REQUIRED_BRANCH" ]]; then
+            echo "::error::Falta la variable de repositorio AZURE_ENV_BRANCH_${SFX}. Ejecuta scripts/azure.ps1 bootstrap -Env ${TARGET_ENV}."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_NAME" != "$REQUIRED_BRANCH" ]]; then
+            echo "::error::${TARGET_ENV} solo se despliega desde la rama '${REQUIRED_BRANCH}' y esta ejecución corre en '${GITHUB_REF_NAME}'. Para otro commit: scripts/azure.ps1 deploy -Env ${TARGET_ENV} -Ref <sha>"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_REF }}
@@ -133,10 +158,24 @@ jobs:
     needs: build
     if: vars.AZURE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_name == 'main' && 'prod' || 'stage') }}
-      url: ${{ vars.AZURE_API_URL }}/health
     steps:
+      - name: Variables del entorno
+        env:
+          V_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', env.SFX)] }}
+          V_RESOURCE_GROUP: ${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.SFX)] }}
+          V_POSTGRES_SERVER: ${{ vars[format('AZURE_POSTGRES_SERVER_{0}', env.SFX)] }}
+          V_KEYVAULT_NAME: ${{ vars[format('AZURE_KEYVAULT_NAME_{0}', env.SFX)] }}
+          V_WEBAPP_NAME: ${{ vars[format('AZURE_WEBAPP_NAME_{0}', env.SFX)] }}
+          V_API_URL: ${{ vars[format('AZURE_API_URL_{0}', env.SFX)] }}
+        run: |
+          for v in V_CLIENT_ID V_RESOURCE_GROUP V_POSTGRES_SERVER V_KEYVAULT_NAME V_WEBAPP_NAME V_API_URL; do
+            if [[ -z "${!v}" ]]; then
+              echo "::error::Falta la variable de repositorio AZURE_${v#V_}_${SFX}. Ejecuta scripts/azure.ps1 bootstrap/infra -Env ${TARGET_ENV}."
+              exit 1
+            fi
+            echo "AZ_${v#V_}=${!v}" >> "$GITHUB_ENV"
+          done
+
       - name: Checkout (solo prisma/)
         uses: actions/checkout@v4
         with:
@@ -154,7 +193,7 @@ jobs:
       - name: Login en Azure (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ env.AZ_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -166,8 +205,8 @@ jobs:
           rule="gh-runner-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "rule=$rule" >> "$GITHUB_OUTPUT"
           az postgres flexible-server firewall-rule create \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AZURE_POSTGRES_SERVER }}" \
+            --resource-group "${{ env.AZ_RESOURCE_GROUP }}" \
+            --name "${{ env.AZ_POSTGRES_SERVER }}" \
             --rule-name "$rule" \
             --start-ip-address "$ip" --end-ip-address "$ip" \
             --only-show-errors -o none
@@ -179,7 +218,7 @@ jobs:
         env:
           PRISMA_VERSION: ${{ needs.build.outputs.prisma_version }}
         run: |
-          DATABASE_URL="$(az keyvault secret show --vault-name "${{ vars.AZURE_KEYVAULT_NAME }}" -n database-url --query value -o tsv)"
+          DATABASE_URL="$(az keyvault secret show --vault-name "${{ env.AZ_KEYVAULT_NAME }}" -n database-url --query value -o tsv)"
           echo "::add-mask::$DATABASE_URL"
           export DATABASE_URL
           export DIRECT_URL="$DATABASE_URL"
@@ -190,15 +229,15 @@ jobs:
         if: always() && steps.fw.outputs.rule != ''
         run: |
           az postgres flexible-server firewall-rule delete \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --name "${{ vars.AZURE_POSTGRES_SERVER }}" \
+            --resource-group "${{ env.AZ_RESOURCE_GROUP }}" \
+            --name "${{ env.AZ_POSTGRES_SERVER }}" \
             --rule-name "${{ steps.fw.outputs.rule }}" \
             --yes --only-show-errors
 
       - name: Publicar en App Service
         uses: azure/webapps-deploy@v3
         with:
-          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          app-name: ${{ env.AZ_WEBAPP_NAME }}
           package: backend.zip
           type: zip
           clean: true
@@ -208,7 +247,7 @@ jobs:
         # backend/scripts/smoke.mjs crea proyectos y consultores de prueba y
         # necesita un token: no sirve contra stage/prod. Aquí solo /health.
         env:
-          API_URL: ${{ vars.AZURE_API_URL }}
+          API_URL: ${{ env.AZ_API_URL }}
         run: |
           for i in $(seq 1 30); do
             code="$(curl -s -o health.json -w '%{http_code}' --max-time 15 "$API_URL/health" || true)"

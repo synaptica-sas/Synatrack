@@ -82,6 +82,9 @@ param linuxFxVersion string = 'NODE|24-lts'
 @maxValue(1440)
 param jobsIntervalMinutes int = 60
 
+@description('FX_SYNC_IN_CYCLE: sincronizar las tasas FX una vez al día dentro del ciclo de trabajos. false = solo a demanda (botón "Actualizar ahora").')
+param fxSyncInCycle bool = false
+
 @description('Zona horaria del proceso (TZ). El backend calcula en UTC; Render también corría en UTC.')
 param timeZone string = 'UTC'
 
@@ -100,7 +103,7 @@ param smtpFrom string = ''
 // --- Postgres ----------------------------------------------------------------
 
 @description('Versión mayor de PostgreSQL.')
-param postgresVersion string = '16'
+param postgresVersion string = '17'
 
 @description('SKU de Postgres.')
 param postgresSkuName string = 'Standard_B1ms'
@@ -293,9 +296,9 @@ var baseSettings = [
   { name: 'SUPPORT_EMAIL', value: supportEmail }
   { name: 'PAYROLL_EMAIL', value: payrollEmail }
   { name: 'JOBS_INTERVAL_MINUTES', value: string(jobsIntervalMinutes) }
-  // Sincronización FX diaria DENTRO del ciclo de trabajos (en Render la hacía un
-  // cron externo). Sin esto las tasas no se actualizan en Azure.
-  { name: 'FX_SYNC_IN_CYCLE', value: 'true' }
+  // Sincronización FX diaria DENTRO del ciclo de trabajos. Con false las tasas
+  // solo se actualizan con el botón "Actualizar ahora" (ADMIN/FINANCE).
+  { name: 'FX_SYNC_IN_CYCLE', value: fxSyncInCycle ? 'true' : 'false' }
   { name: 'SMTP_HOST', value: smtpHost }
   { name: 'SMTP_PORT', value: empty(smtpHost) ? '' : smtpPort }
   { name: 'SMTP_USER', value: smtpUser }
