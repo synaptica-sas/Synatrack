@@ -48,7 +48,7 @@
     # cada entorno los roles de operador (ver infra/README.md §8). El grupo lo
     # crea TI en Entra; el script solo valida que exista. Si se omite, los
     # roles quedan solo para quien ejecuta bootstrap.
-    OperatorsGroup = "Synatrack-Operadores"
+    OperatorsGroup = "Synatrack-IaC-Operadores"
 
     # --- Correo saliente y buzones (opcionales) -------------------------------
     # SupportEmail = "soporte@synaptica.co"

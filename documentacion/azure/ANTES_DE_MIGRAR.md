@@ -27,7 +27,7 @@ rol debe tener al menos un suplente, para que nadie sea indispensable.
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
 | **Desarrollo**               | Código, ramas y PR. Accesos a Render, Vercel y Supabase. Valida la aplicación.                                                                    | Marcos Armas              |
 | **TI**                       | Suscripción de Azure, Entra ID, DNS de `synaptica.co`, secretos y monitoreo.                                                                     | Juan (Analista de TI)     |
-| **Operador**                 | Despliega, revisa salud y hace rollback con `scripts/azure.ps1`. Lo son **todos** los miembros del grupo de Entra `Synatrack-Operadores`. | Desarrollo y TI           |
+| **Operador**                 | Despliega, revisa salud y hace rollback con `scripts/azure.ps1`. Lo son **todos** los miembros del grupo de Entra `Synatrack-IaC-Operadores`. | Desarrollo y TI           |
 | **Revisor del paso a prod** | Revisa el PR de `dev` a `main` antes del merge. Es un **acuerdo del equipo**: GitHub Free no lo obliga ni frena el despliegue. | Desarrollo y TI, cruzados |
 | **Usuarios de prueba**       | Validan la aplicación con cada rol (ADMIN, PM, CONSULTANT, FINANCE, COMMERCIAL, VIEWER).                                                           | Por definir               |
 
@@ -148,7 +148,7 @@ En [entra.microsoft.com](https://entra.microsoft.com): **Registros de aplicacion
   `bootstrap` crea uno por entorno para el pipeline.
 
   nota: los usuarios pueden agregar aplicaciones en EntraID
-- [X] Crear el **grupo de seguridad `Synatrack-Operadores`** (en *Grupos*) y agregar a cada
+- [X] Crear el **grupo de seguridad `Synatrack-IaC-Operadores`** (en *Grupos*) y agregar a cada
   operador. Los permisos sobre Azure se dan al grupo, no a cada persona: sumar o quitar a alguien
   es solo cambiar la membresía.
 
@@ -276,7 +276,7 @@ Se hace una sola vez, por un operador con los permisos indicados.
 - [X] El operador que ejecute `bootstrap` tiene rol **Owner** en la suscripción, o **Contributor**
   más **User Access Administrator**. `bootstrap` crea asignaciones de roles, y eso no se puede
   hacer solo con Contributor. Los demás operadores no necesitan ese nivel: reciben sus permisos a
-  través del grupo `Synatrack-Operadores`.
+  través del grupo `Synatrack-IaC-Operadores`.
 
 - Los proveedores de recursos (`Microsoft.Web`, `Microsoft.DBforPostgreSQL`, `Microsoft.KeyVault`,
   etc.) **no se registran a mano**: `bootstrap` los registra solo (paso 2) y omite los que ya están.
@@ -301,7 +301,7 @@ se crea presupuesto-synatrack
 > lanzado desde otra rama no puede tocar ningún entorno. No hay nada que configurar en *Settings →
 > Environments*.
 
-- [ ] Confirmar que `OperatorsGroup` en `infra/azure.config.psd1` es **`Synatrack-Operadores`**
+- [ ] Confirmar que `OperatorsGroup` en `infra/azure.config.psd1` es **`Synatrack-IaC-Operadores`**
   (solo Desarrollo y TI), **no** un grupo de todos los empleados: ese grupo recibe permisos para
   modificar y borrar la infraestructura.
 - [ ] `.\scripts\azure.ps1 bootstrap -Env stage` y luego `-Env prod`. Crea los grupos de recursos,
@@ -485,7 +485,7 @@ Reglas para trabajar en pareja:
 - Nadie hace push directo a `main`: también despliega prod al instante.
 - Un secreto nuevo se carga con `secret-sync` o `secret-set` y se avisa al otro operador **qué** se cargó, nunca el
   valor.
-- Si alguien sale del equipo: se le quita del grupo `Synatrack-Operadores` y del repositorio.
+- Si alguien sale del equipo: se le quita del grupo `Synatrack-IaC-Operadores` y del repositorio.
 
 ---
 

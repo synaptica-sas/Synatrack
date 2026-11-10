@@ -41,7 +41,7 @@ La plataforma la opera un equipo, no una persona. Cada tarea de esta guía indic
 |---|---|---|
 | **Administrador de Azure** | quien sea Owner de la suscripción (normalmente TI) | `bootstrap` (registra proveedores, crea el resource group, la identidad del pipeline y asigna roles). Se usa una vez por entorno y al cambiar permisos. |
 | **Administrador de Entra** | TI | crear el grupo de seguridad de operadores y administrar sus miembros; redirect URIs de la app. |
-| **Operador** | miembros del grupo `OperatorsGroup` (p. ej. `Synatrack-Operadores`) | todos los demás comandos: `plan`, `infra`, `secret-set`, `deploy`, `rollback`, `status`, `health`, `logs`, `access`. Roles exactos en §8. |
+| **Operador** | miembros del grupo `OperatorsGroup` (p. ej. `Synatrack-IaC-Operadores`) | todos los demás comandos: `plan`, `infra`, `secret-set`, `deploy`, `rollback`, `status`, `health`, `logs`, `access`. Roles exactos en §8. |
 | **Administrador del repositorio** | operadores con rol *Admin* en GitHub | variables de GitHub (`bootstrap`, `infra` al sincronizar variables, `AZURE_DEPLOY_ENABLED`). |
 
 Una misma persona puede tener varios roles.
@@ -73,7 +73,7 @@ Una misma persona puede tener varios roles.
 ### 3.1 Grupo de operadores (Administrador de Entra)
 
 Crear en Entra ID un **grupo de seguridad** (no de Microsoft 365), por ejemplo
-`Synatrack-Operadores`, y agregar a los operadores. El script no lo crea: solo valida que exista y
+`Synatrack-IaC-Operadores`, y agregar a los operadores. El script no lo crea: solo valida que exista y
 falla con un mensaje claro si no lo encuentra.
 
 ### 3.2 Config
@@ -85,6 +85,17 @@ notepad infra/azure.config.psd1     # TenantId, SubscriptionId, AppClientId, App
 
 El archivo no lleva secretos, pero sí identificadores internos: no se versiona. Cada operador tiene
 su copia (ver §9).
+
+**Config fuera del repositorio** (recomendado si el repo está en OneDrive): guarda el archivo
+completo en otra carpeta, por ejemplo `C:\secretos\azure.config.psd1`, y apúntalo de una de estas
+formas. El script usa la primera que encuentre:
+
+1. `-ConfigFile C:\secretos\azure.config.psd1` en cada comando.
+2. Variable de entorno de tu usuario: `[Environment]::SetEnvironmentVariable('SYNATRACK_AZURE_CONFIG', 'C:\secretos\azure.config.psd1', 'User')`
+   (abre una terminal nueva después).
+3. `infra/azure.config.psd1` con una sola línea: `@{ ConfigFile = 'C:\secretos\azure.config.psd1' }`.
+
+Cuando la config viene de otra ruta, el script la muestra al empezar (`Configuración: ...`).
 
 **`ApiAudience`**: si se omite, el backend acepta `api://<AppClientId>` y `<AppClientId>` (tokens v1
 y v2; el backend admite una lista separada por comas). Defínelo solo para restringirlo.

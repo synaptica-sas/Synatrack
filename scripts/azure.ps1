@@ -72,7 +72,11 @@ param(
 
     # secret-sync: archivo de secretos (por defecto infra/azure.secrets.psd1, o la
     # clave SecretsFile de la config).
-    [string]$SecretsFile
+    [string]$SecretsFile,
+
+    # Archivo de configuración fuera del repositorio (también: variable de
+    # entorno SYNATRACK_AZURE_CONFIG, o la clave ConfigFile en infra/azure.config.psd1).
+    [string]$ConfigFile
 )
 
 Set-StrictMode -Version 2.0
@@ -216,29 +220,62 @@ function New-TempJsonFile($Object) {
 # Configuración
 # =============================================================================
 
-function Get-Config {
+# Ruta de la configuración, en este orden:
+#   1. -ConfigFile <ruta>
+#   2. variable de entorno SYNATRACK_AZURE_CONFIG
+#   3. infra/azure.config.psd1; si ese archivo solo trae la clave ConfigFile
+#      (p. ej. ConfigFile = "C:\secretos\azure.config.psd1"), se sigue esa ruta.
+# Así la config real puede vivir fuera del repositorio (y de OneDrive).
+function Resolve-ConfigPath {
+    $candidate = ''
+    $origin = ''
+    if ($ConfigFile) { $candidate = $ConfigFile; $origin = '-ConfigFile' }
+    elseif ($env:SYNATRACK_AZURE_CONFIG) { $candidate = $env:SYNATRACK_AZURE_CONFIG; $origin = 'SYNATRACK_AZURE_CONFIG' }
+    if ($candidate) {
+        $candidate = [Environment]::ExpandEnvironmentVariables($candidate)
+        if (-not (Test-Path -LiteralPath $candidate)) { Stop-WithError "No existe el archivo de configuración indicado en ${origin}: $candidate" }
+        return $candidate
+    }
     if (-not (Test-Path -LiteralPath $ConfigPath)) {
         Stop-WithError ("No existe infra/azure.config.psd1.`n" +
-            "  Cópialo desde la plantilla y llena los valores:`n" +
+            "  Opción 1: cópialo desde la plantilla y llena los valores:`n" +
             "    Copy-Item infra/azure.config.example.psd1 infra/azure.config.psd1`n" +
+            "  Opción 2: guarda la config fuera del repositorio y apúntala con -ConfigFile,`n" +
+            "    con la variable de entorno SYNATRACK_AZURE_CONFIG o con una sola línea en`n" +
+            "    infra/azure.config.psd1:  @{ ConfigFile = 'C:\ruta\azure.config.psd1' }`n" +
             "  Plantilla: $ExampleConfigPath")
     }
-    $cfg = Import-PowerShellDataFile -LiteralPath $ConfigPath
+    $local = Import-PowerShellDataFile -LiteralPath $ConfigPath
+    if ($local.ContainsKey('ConfigFile') -and -not [string]::IsNullOrWhiteSpace([string]$local.ConfigFile)) {
+        $target = [Environment]::ExpandEnvironmentVariables([string]$local.ConfigFile)
+        if (-not (Test-Path -LiteralPath $target)) { Stop-WithError "infra/azure.config.psd1 apunta (ConfigFile) a un archivo que no existe: $target" }
+        return $target
+    }
+    return $ConfigPath
+}
+
+function Get-Config {
+    $path = Resolve-ConfigPath
+    $label = $path
+    if ($path -eq $ConfigPath) { $label = 'infra/azure.config.psd1' } else { Write-Note "Configuración: $path" }
+    $cfg = Import-PowerShellDataFile -LiteralPath $path
     foreach ($key in @('TenantId', 'SubscriptionId', 'Location', 'GitHubRepo', 'AlertEmail', 'MonthlyBudgetUsd',
             'AppClientId', 'AppApiScope', 'AdminEmail', 'Environments')) {
         if (-not $cfg.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$cfg[$key])) {
-            Stop-WithError "Falta la clave '$key' en infra/azure.config.psd1 (ver la plantilla)."
+            $hint = ''
+            if ($path -eq $ConfigPath) { $hint = " Si la config real está en otra carpeta, apúntala con ConfigFile, -ConfigFile o SYNATRACK_AZURE_CONFIG." }
+            Stop-WithError "Falta la clave '$key' en $label (ver la plantilla).$hint"
         }
     }
     if ($cfg.TenantId -eq '00000000-0000-0000-0000-000000000000') {
-        Stop-WithError 'infra/azure.config.psd1 todavía tiene los valores de ejemplo.'
+        Stop-WithError "$label todavía tiene los valores de ejemplo."
     }
     if (-not $cfg.Environments.ContainsKey($Environment)) {
-        Stop-WithError "infra/azure.config.psd1 no define Environments.$Environment."
+        Stop-WithError "$label no define Environments.$Environment."
     }
     foreach ($key in @('ResourceGroup', 'GitBranch')) {
         if ([string]::IsNullOrWhiteSpace([string]$cfg.Environments[$Environment][$key])) {
-            Stop-WithError "Falta Environments.$Environment.$key en infra/azure.config.psd1."
+            Stop-WithError "Falta Environments.$Environment.$key en $label."
         }
     }
     return $cfg
