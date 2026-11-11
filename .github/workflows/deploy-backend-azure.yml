@@ -1,5 +1,7 @@
 # Despliegue del backend a Azure App Service.
 #
+# Primer despliegue a stage: 2026-11-11 (D3 de documentacion/azure/ANTES_DE_MIGRAR.md).
+#
 #   push a dev   -> stage
 #   push a main  -> prod (SIN aprobación: GitHub Free no tiene revisores en
 #                   repos privados)

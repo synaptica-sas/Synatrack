@@ -1,5 +1,7 @@
 # Despliegue del frontend a Azure Static Web Apps.
 #
+# Primer despliegue a stage: 2026-11-11 (D3 de documentacion/azure/ANTES_DE_MIGRAR.md).
+#
 #   push a dev   -> SWA de stage
 #   push a main  -> SWA de prod SOLO si la variable de repositorio
 #                   AZURE_FRONTEND_PROD_ENABLED == 'true'. Hasta el corte, prod
