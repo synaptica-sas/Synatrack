@@ -207,6 +207,26 @@ function Invoke-Gh {
     Invoke-Native -Exe 'gh' -Arguments $Arguments -AllowFailure:$AllowFailure
 }
 
+# Prefijo del claim `sub` del token OIDC que GitHub emite para el repositorio.
+# Puede ser el clásico (`repo:dueño/repo`) o el inmutable con IDs numéricos
+# (`repo:dueño@123/repo@456`), según `use_immutable_subject` del repo. Entra ID
+# compara el `sub` exacto: con el formato equivocado el login falla con
+# AADSTS700213. Synatrack usa el inmutable (visto el 2026-11-11).
+function Get-GitHubOidcSubjectPrefix([string]$Repo) {
+    $raw = Invoke-Gh -Arguments @('api', "repos/$Repo/actions/oidc/customization/sub") -AllowFailure
+    if ($raw) {
+        try {
+            $c = $raw | ConvertFrom-Json
+            if ($c.use_default -eq $false) {
+                Write-Warn 'El repositorio usa una plantilla OIDC personalizada: revisa a mano el subject de las credenciales federadas.'
+            }
+            if ($c.sub_claim_prefix) { return [string]$c.sub_claim_prefix }
+        } catch { }
+    }
+    Write-Warn "No pude leer la configuración OIDC del repositorio en GitHub; uso el formato clásico repo:$Repo."
+    return "repo:$Repo"
+}
+
 function Assert-Tool([string]$Exe, [string]$InstallHint) {
     if (-not (Get-Command $Exe -ErrorAction SilentlyContinue)) {
         Stop-WithError "No se encontró '$Exe'. $InstallHint"
@@ -855,18 +875,19 @@ function Invoke-Bootstrap($Cfg) {
     # un token. prod = main; un workflow lanzado desde dev u otra rama no puede
     # autenticarse contra prod.
     $branch = [string]$envCfg.GitBranch
-    $subjects = [ordered]@{ "gh-branch-$branch" = "repo:$($repo):ref:refs/heads/$branch" }
+    $prefix = Get-GitHubOidcSubjectPrefix $repo
+    $subjects = [ordered]@{ "gh-branch-$branch" = "$($prefix):ref:refs/heads/$branch" }
     if ($Environment -eq 'stage') {
         # Solo stage: el what-if de los PR. Dársela a prod permitiría que
         # cualquier PR obtuviera permisos sobre producción.
-        $subjects['gh-pull-request'] = "repo:$($repo):pull_request"
+        $subjects['gh-pull-request'] = "$($prefix):pull_request"
     }
-    $existingSubjects = @()
+    $existing = @{}
     $fc = Invoke-AzJson -Arguments @('ad', 'app', 'federated-credential', 'list', '--id', $appId)
-    if ($fc) { $existingSubjects = @($fc | ForEach-Object { $_.subject }) }
+    if ($fc) { foreach ($c in @($fc)) { $existing[[string]$c.name] = [string]$c.subject } }
     foreach ($credName in $subjects.Keys) {
         $subject = $subjects[$credName]
-        if ($existingSubjects -contains $subject) { Write-Ok "$subject (ya estaba)"; continue }
+        if ($existing.ContainsKey($credName) -and $existing[$credName] -eq $subject) { Write-Ok "$subject (ya estaba)"; continue }
         $file = New-TempJsonFile @{
             name        = $credName
             issuer      = $GitHubOidcIssuer
@@ -875,9 +896,16 @@ function Invoke-Bootstrap($Cfg) {
             description = "GitHub Actions de $repo ($credName)"
         }
         try {
-            Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'create', '--id', $appId, '--parameters', "@$file", '-o', 'none') | Out-Null
+            if ($existing.ContainsKey($credName)) {
+                # Misma credencial con otro subject (p. ej. el formato clásico
+                # creado antes): se corrige en vez de duplicarla.
+                Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'update', '--id', $appId, '--federated-credential-id', $credName, '--parameters', "@$file", '-o', 'none') | Out-Null
+                Write-Ok "$subject (actualizada; antes $($existing[$credName]))"
+            } else {
+                Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'create', '--id', $appId, '--parameters', "@$file", '-o', 'none') | Out-Null
+                Write-Ok $subject
+            }
         } finally { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue }
-        Write-Ok $subject
     }
 
     Write-Step "Roles del pipeline sobre $rg"
@@ -1496,7 +1524,7 @@ function Invoke-Access($Cfg) {
     } else {
         $fc = @(Invoke-AzJson -Arguments @('ad', 'app', 'federated-credential', 'list', '--id', $appId, '--query', '[].subject') -AllowFailure)
         foreach ($s in $fc) { if ($s) { Write-Note "  - $s" } }
-        $expected = "repo:$($Cfg.GitHubRepo):ref:refs/heads/$((Get-EnvCfg $Cfg).GitBranch)"
+        $expected = "$(Get-GitHubOidcSubjectPrefix $Cfg.GitHubRepo):ref:refs/heads/$((Get-EnvCfg $Cfg).GitBranch)"
         if ($fc -notcontains $expected) { Write-Warn "Falta $expected : ejecuta bootstrap -Env $Environment." }
         $extra = @($fc | Where-Object { $_ -and $_ -ne $expected -and -not ($Environment -eq 'stage' -and $_ -like '*:pull_request') })
         if ($extra.Count -gt 0) { Write-Warn ("Credenciales que sobran (revisar y borrar): " + ($extra -join ', ')) }
