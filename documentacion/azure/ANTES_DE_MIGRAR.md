@@ -395,10 +395,10 @@ se crea presupuesto-synatrack
 - [X] Archivo de secretos de stage: **no aplica por ahora**. Sin correo ni Teams, y sin tokens
   (FX va a demanda y los trabajos corren dentro del backend), no hay nada que cargar. El aviso
   "Secretos opcionales no cargados" de `infra` es informativo.
-- [ ] Subir a `dev` los cambios de Central US y del resource group de datos (`/commit` y
+- [X] Subir a `dev` los cambios de Central US y del resource group de datos (`/commit` y
   `/sync`). Hasta entonces, el workflow del backend que está en GitHub busca Postgres en el
   resource group de la app.
-- [ ] Activar los workflows de Azure con una **variable de repositorio**, **antes** del push del
+- [X] Activar los workflows de Azure con una **variable de repositorio**, **antes** del push del
   paso anterior, para que ese push despliegue:
   `gh variable set AZURE_DEPLOY_ENABLED --body true --repo synaptica-sas/Synatrack`. Detalle en
   [infra/README.md](../../infra/README.md). La variable vale para los dos entornos: mientras prod
@@ -409,7 +409,7 @@ se crea presupuesto-synatrack
 
 **Rol:** TI.
 
-- [ ] Agregar como URI de redirección (SPA) la URL de la Static Web App de stage:
+- [X] Agregar como URI de redirección (SPA) la URL de la Static Web App de stage:
   `https://happy-mushroom-0f38ab810.8.azurestaticapps.net` (*Registros de aplicaciones → la app
   de Synatrack → Autenticación → Aplicación de página única*). Usa el mismo formato que la de
   Vercel, sin ruta, y no quites la de Vercel. Si alguna vez se recrea la SWA, cambia el hostname
@@ -419,18 +419,18 @@ se crea presupuesto-synatrack
 
 **Rol:** Desarrollo.
 
-- [ ] **Backend:** el push a `dev` de D1 lo despliega solo, porque ese commit cambia
+- [X] **Backend:** el push a `dev` de D1 lo despliega solo, porque ese commit cambia
   `deploy-backend-azure.yml`, que está entre los disparadores del workflow. Seguirlo en *Actions →
   Deploy backend (Azure)*. El workflow abre el firewall para el runner, corre `prisma migrate
   deploy` (crea las tablas en la base vacía), publica y espera a que `/health` responda 200.
-- [ ] **Frontend:** su workflow solo se dispara con cambios en `frontend/**` o en
+- [X] **Frontend:** su workflow solo se dispara con cambios en `frontend/**` o en
   `deploy-frontend-azure.yml`, y el push de D1 no toca ninguno. Para el primer despliegue hace
   falta un push a `dev` que toque uno de los dos (por ejemplo, un comentario en el workflow).
   Después hay que comprobar que la URL de la SWA carga la pantalla de inicio de sesión.
   `.\scripts\azure.ps1 deploy` y `rollback` usan `workflow_dispatch`, y GitHub solo lo habilita
   cuando el workflow ya está en `main`. Hasta que los workflows lleguen a `main`, stage se
   despliega únicamente con pushes a `dev`.
-- [ ] Cargar el seed en la base de stage (`npm run prisma:seed`), **después** del primer
+- [X] Cargar el seed en la base de stage (`npm run prisma:seed`), **después** del primer
   despliegue del backend, porque necesita las tablas que crean las migraciones. Crea los roles, el
   usuario admin (`ADMIN_EMAIL`), los catálogos (empresas, categorías, tipos de hora, feriados,
   umbrales de salud) y un proyecto base. El Postgres solo acepta conexiones del App Service, así
@@ -450,7 +450,27 @@ se crea presupuesto-synatrack
 - [ ] **Datos de prueba:** cargarlos desde la aplicación, con usuarios de prueba: consultores,
   proyectos, asignaciones, horas, horas extra y gastos suficientes para recorrer D4. No se copia
   nada de producción.
-- [ ] `.\scripts\azure.ps1 health -Env stage`: `/health` responde 200 con `database: up`.
+- [X] `.\scripts\azure.ps1 health -Env stage`: `/health` responde 200 con `database: up`.
+  Estado general "degradado" solo porque `fx-sync` está en "nunca": en Azure las tasas van a
+  demanda (botón "Actualizar ahora"), así que es lo esperado hasta que alguien lo use.
+
+> **Primer despliegue, 2026-11-11: qué falló y cómo se corrigió.** Para quien lo repita en prod.
+>
+> 1. **Caída de GitHub Actions** (incidente "major outage" de esa tarde): la primera ejecución
+>    quedó en cola sin jobs y sin poder cancelarse; GitHub la descarta sola a las 24 h. Se
+>    relanzó con otro push (`56deac4`). Estado: https://www.githubstatus.com.
+> 2. **Pruebas unitarias del deploy del backend** cortaban con "Invalid environment variables":
+>    el paso no definía variables y `config/env.ts` las valida al importarse. Ahora usa las
+>    mismas mínimas que `backend-ci.yml` (`c0a66ee`).
+> 3. **Login OIDC: `AADSTS700213`.** Este repo emite el `sub` en el formato **inmutable** de
+>    GitHub, con IDs: `repo:synaptica-sas@310216483/Synatrack@1315110574:ref:refs/heads/dev`, y
+>    las credenciales federadas se habían creado con el clásico (`repo:synaptica-sas/Synatrack:…`).
+>    `bootstrap` y `access` leen ahora el prefijo real de la API de GitHub y corrigen la
+>    credencial existente (`c0a66ee`). Hubo que repetir `bootstrap -Env stage`; **prod sigue
+>    con el formato viejo hasta su `bootstrap`** (B3).
+> 4. **Azure CLI 2.86+ cambió `firewall-rule`:** el servidor va en `--server-name` y la regla en
+>    `--name` (antes `--name` servidor y `--rule-name` regla). Corregido en el workflow, el
+>    script y los comandos de este documento y de PLAN.md (`cbfa091`).
 
 ### D4. Validación funcional en stage
 
