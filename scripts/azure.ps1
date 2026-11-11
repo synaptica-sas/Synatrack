@@ -1138,7 +1138,7 @@ function Invoke-Status($Cfg) {
         $pg = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'show', '-g', $dataRg, '-n', $res.Postgres, '--query',
             '{state:state, version:version, sku:sku.name, storage:storage.storageSizeGb, fqdn:fullyQualifiedDomainName}')
         Write-Note ("Postgres     {0}  estado={1}  v{2}  {3}  {4} GB  (RG {5})" -f $res.Postgres, $pg.state, $pg.version, $pg.sku, $pg.storage, $dataRg)
-        $rules = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'firewall-rule', 'list', '-g', $dataRg, '--name', $res.Postgres, '--query', '[].name') -AllowFailure
+        $rules = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'firewall-rule', 'list', '-g', $dataRg, '--server-name', $res.Postgres, '--query', '[].name') -AllowFailure
         $runnerRules = @($rules | Where-Object { $_ -like 'gh-runner-*' })
         Write-Note ("             reglas de firewall={0}{1}" -f @($rules).Count, $(if ($runnerRules.Count) { "  (AVISO: $($runnerRules.Count) regla(s) gh-runner-* sin cerrar)" } else { '' }))
     } else { Write-Warn 'Postgres: no existe todavía.' }

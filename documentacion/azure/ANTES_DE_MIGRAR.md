@@ -438,12 +438,12 @@ se crea presupuesto-synatrack
 
   ```powershell
   $ip = (Invoke-RestMethod https://api.ipify.org)
-  az postgres flexible-server firewall-rule create -g rg-datos-stage -n psql-synaptica-stage-belvy2 `
-    --rule-name seed-tmp --start-ip-address $ip --end-ip-address $ip -o none
+  az postgres flexible-server firewall-rule create -g rg-datos-stage --server-name psql-synaptica-stage-belvy2 `
+    --name seed-tmp --start-ip-address $ip --end-ip-address $ip -o none
   # DATABASE_URL = secreto database-url del Key Vault de la app (no lo pegues en chats ni archivos)
   cd backend; $env:DATABASE_URL = (az keyvault secret show --vault-name kv-syn-stage-pstwiq -n database-url --query value -o tsv)
   $env:ADMIN_EMAIL = '<tu correo>'; npm run prisma:seed; Remove-Item Env:DATABASE_URL
-  az postgres flexible-server firewall-rule delete -g rg-datos-stage -n psql-synaptica-stage-belvy2 --rule-name seed-tmp --yes
+  az postgres flexible-server firewall-rule delete -g rg-datos-stage --server-name psql-synaptica-stage-belvy2 --name seed-tmp --yes
   ```
 
   Si se recrea el entorno, los nombres cambian: los muestra `.\scripts\azure.ps1 status -Env stage`.

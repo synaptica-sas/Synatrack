@@ -217,10 +217,13 @@ jobs:
           ip="$(curl -fsS https://api.ipify.org)"
           rule="gh-runner-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "rule=$rule" >> "$GITHUB_OUTPUT"
+          # Azure CLI >= 2.86 (la del runner): el servidor va en --server-name y la
+          # regla en --name. La sintaxis vieja (--name servidor --rule-name regla)
+          # ya no existe.
           az postgres flexible-server firewall-rule create \
             --resource-group "${{ env.AZ_POSTGRES_RESOURCE_GROUP }}" \
-            --name "${{ env.AZ_POSTGRES_SERVER }}" \
-            --rule-name "$rule" \
+            --server-name "${{ env.AZ_POSTGRES_SERVER }}" \
+            --name "$rule" \
             --start-ip-address "$ip" --end-ip-address "$ip" \
             --only-show-errors -o none
           echo "Regla $rule abierta para $ip"
@@ -243,8 +246,8 @@ jobs:
         run: |
           az postgres flexible-server firewall-rule delete \
             --resource-group "${{ env.AZ_POSTGRES_RESOURCE_GROUP }}" \
-            --name "${{ env.AZ_POSTGRES_SERVER }}" \
-            --rule-name "${{ steps.fw.outputs.rule }}" \
+            --server-name "${{ env.AZ_POSTGRES_SERVER }}" \
+            --name "${{ steps.fw.outputs.rule }}" \
             --yes --only-show-errors
 
       - name: Publicar en App Service

@@ -65,8 +65,8 @@ en Azure, que nadie usa hasta el corte. Al terminar se vacía, porque el corte r
 ```bash
 # 1) Operador: abrir el firewall de PROD para la IP del equipo que corre el ensayo
 #    (y cerrarlo al terminar con firewall-rule delete)
-az postgres flexible-server firewall-rule create -g rg-datos-prod --name <psql-prod> \
-  --rule-name ensayo-migracion --start-ip-address <ip-del-equipo> --end-ip-address <ip-del-equipo>
+az postgres flexible-server firewall-rule create -g rg-datos-prod --server-name <psql-prod> \
+  --name ensayo-migracion --start-ip-address <ip-del-equipo> --end-ip-address <ip-del-equipo>
 
 # 2) Dump SOLO del esquema public de Supabase, por la conexión DIRECTA (puerto 5432, no el pooler)
 pg_dump "$SUPABASE_DIRECT_URL" --schema=public --format=custom --no-owner --no-privileges \
