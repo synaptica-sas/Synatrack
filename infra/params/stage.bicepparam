@@ -16,6 +16,11 @@ param linuxFxVersion = readEnvironmentVariable('SYNATRACK_LINUX_FX_VERSION', 'NO
 param postgresVersion = '17'
 param postgresSkuName = 'Standard_B1ms'
 param postgresSkuTier = 'Burstable'
+// Zona donde la suscripción permite el SKU (ver: az postgres flexible-server list-skus). Vacío = Azure elige.
+param postgresAvailabilityZone = ''
+// Resource group y nombre del servidor: vienen de la config (DataResourceGroup, PostgresServerName).
+param dataResourceGroupName = readEnvironmentVariable('SYNATRACK_DATA_RESOURCE_GROUP', '')
+param postgresServerName = readEnvironmentVariable('SYNATRACK_POSTGRES_SERVER_NAME', '')
 param postgresStorageGB = 32
 param postgresBackupRetentionDays = 7
 param postgresGeoRedundantBackup = false

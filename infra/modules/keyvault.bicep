@@ -1,11 +1,12 @@
-// Key Vault en modo RBAC + los dos secretos que la infraestructura conoce.
+// Key Vault en modo RBAC + los secretos que la infraestructura conoce.
 //
-// Secretos que crea este módulo:
-//   - postgres-admin-password : la genera scripts/azure.ps1 la primera vez y
-//                               después se relee de aquí, así que no cambia en
-//                               cada despliegue ni queda en disco.
-//   - database-url            : cadena completa para Prisma (DATABASE_URL y
-//                               DIRECT_URL apuntan a ella).
+// main.bicep lo usa dos veces:
+//   - Key Vault de la APP (rg de la app): database-url, la cadena completa
+//     para Prisma (DATABASE_URL y DIRECT_URL apuntan a ella).
+//   - Key Vault de DATOS (rg de datos, compartido entre aplicaciones):
+//     postgres-admin-password, que genera scripts/azure.ps1 la primera vez y
+//     después se relee de aquí, así que no cambia en cada despliegue ni queda
+//     en disco. La identidad del Web App NO tiene acceso a este vault.
 //
 // Los demás secretos (jobs-run-token, fx-sync-token, smtp-pass y los webhooks
 // de Teams) NO se crean aquí: sus valores los carga el usuario con
@@ -34,13 +35,9 @@ param enablePurgeProtection bool
 @maxValue(90)
 param softDeleteRetentionDays int = 90
 
-@description('Contraseña del administrador de Postgres.')
+@description('Secretos a crear, como { nombre: valor }.')
 @secure()
-param postgresAdminPassword string
-
-@description('Cadena de conexión completa de Prisma (con sslmode=require).')
-@secure()
-param databaseUrl string
+param secrets object
 
 @description('Etiquetas comunes.')
 param tags object = {}
@@ -70,23 +67,16 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-resource secretPostgresPassword 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: vault
-  name: 'postgres-admin-password'
-  properties: {
-    value: postgresAdminPassword
-    contentType: 'text/plain'
+resource vaultSecrets 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = [
+  for s in items(secrets): {
+    parent: vault
+    name: s.key
+    properties: {
+      value: s.value
+      contentType: 'text/plain'
+    }
   }
-}
-
-resource secretDatabaseUrl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: vault
-  name: 'database-url'
-  properties: {
-    value: databaseUrl
-    contentType: 'text/plain'
-  }
-}
+]
 
 output keyVaultId string = vault.id
 output keyVaultName string = vault.name

@@ -182,8 +182,24 @@ function Invoke-Az {
 function Invoke-AzJson {
     param([Parameter(Mandatory = $true)][string[]]$Arguments, [switch]$AllowFailure)
     $raw = Invoke-Az -Arguments ($Arguments + @('-o', 'json')) -AllowFailure:$AllowFailure
-    if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
-    return ($raw | ConvertFrom-Json)
+    return (ConvertFrom-AzOutput $raw)
+}
+
+# Convierte la salida JSON de az. Con un .bicepparam, az puede escribir en stdout
+# líneas de Bicep (avisos del linter o "A new Bicep release is available")
+# ANTES del JSON: se muestran como aviso y se descartan.
+function ConvertFrom-AzOutput([string]$Raw) {
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
+    $lines = $Raw -split "`n"
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*[\[\{]') { $start = $i; break }
+    }
+    if ($start -lt 0) { Stop-WithError "az no devolvió JSON. Salida:`n$Raw" }
+    for ($i = 0; $i -lt $start; $i++) {
+        if ($lines[$i].Trim()) { Write-Warn ("az: " + $lines[$i].Trim()) }
+    }
+    return (($lines[$start..($lines.Count - 1)] -join "`n") | ConvertFrom-Json)
 }
 
 function Invoke-Gh {
@@ -291,6 +307,15 @@ function Get-Opt($Cfg, [string]$Key, $Default = '') {
 
 function Get-EnvCfg($Cfg) { return $Cfg.Environments[$Environment] }
 
+# Resource group del servidor de Postgres (Environments.<env>.DataResourceGroup).
+# Si no se define, el servidor va en el mismo RG de la app (comportamiento previo).
+function Get-DataResourceGroup($Cfg) {
+    $envCfg = Get-EnvCfg $Cfg
+    $value = [string]$envCfg['DataResourceGroup']
+    if ([string]::IsNullOrWhiteSpace($value)) { return [string]$envCfg.ResourceGroup }
+    return $value
+}
+
 # AZURE_AD_AUDIENCE (el backend acepta una lista separada por comas): valor
 # explícito (ApiAudience) o, por defecto, los valores que puede traer la claim
 # `aud`: "api://<AppClientId>" (tokens v1), "<AppClientId>" (tokens v2) y el App
@@ -342,6 +367,8 @@ function Get-InfraParams($Cfg) {
         SYNATRACK_SMTP_USER          = [string](Get-Opt $Cfg 'SmtpUser' '')
         SYNATRACK_SMTP_FROM          = [string](Get-Opt $Cfg 'SmtpFrom' '')
         SYNATRACK_LINUX_FX_VERSION   = [string](Get-Opt $Cfg 'LinuxFxVersion' 'NODE|24-lts')
+        SYNATRACK_DATA_RESOURCE_GROUP = (Get-DataResourceGroup $Cfg)
+        SYNATRACK_POSTGRES_SERVER_NAME = [string]((Get-EnvCfg $Cfg)['PostgresServerName'])
     }
     return $p
 }
@@ -395,11 +422,41 @@ function Assert-ResourceGroup([string]$Rg) {
     }
 }
 
+# Crea el resource group en $Location o comprueba que el existente esté ahí. Los
+# recursos del Bicep toman la región del RG: uno que quedó en otra región (p. ej.
+# de un intento previo en eastus2) desplegaría todo en el lugar equivocado.
+function Confirm-ResourceGroup([string]$Rg, [string]$Location, [string]$AppTag) {
+    if (Test-ResourceGroup $Rg) {
+        $current = Invoke-Az -Arguments @('group', 'show', '--name', $Rg, '--query', 'location', '-o', 'tsv')
+        if ($current -ne $Location) {
+            $count = Invoke-Az -Arguments @('resource', 'list', '-g', $Rg, '--query', 'length(@)', '-o', 'tsv') -AllowFailure
+            Stop-WithError ("El resource group '$Rg' existe en '$current' y la config pide '$Location'.`n" +
+                "  La región de un RG no se puede cambiar. Tiene $count recurso(s). Si no hay nada que conservar:`n" +
+                "    az group delete --name $Rg`n" +
+                "  y vuelve a ejecutar bootstrap -Env $Environment (recrea el RG y sus roles).")
+        }
+        Write-Ok "Ya existe ($current)."
+        return
+    }
+    Invoke-Az -Arguments @('group', 'create', '--name', $Rg, '--location', $Location,
+        '--tags', "app=$AppTag", "env=$Environment", 'managedBy=bicep', '-o', 'none') | Out-Null
+    Write-Ok "Creado ($Location)."
+}
+
 # Nombre de un recurso del RG por tipo (primer resultado) o '' si no hay.
 function Get-ResourceName([string]$Rg, [string]$Type) {
     $name = Invoke-Az -Arguments @('resource', 'list', '-g', $Rg, '--resource-type', $Type, '--query', '[0].name', '-o', 'tsv') -AllowFailure
     if ($null -eq $name) { return '' }
     return $name
+}
+
+# Key Vault de la app o el de datos (etiqueta rol=datos). Se distinguen por la
+# etiqueta porque, sin DataResourceGroup, los dos viven en el mismo RG.
+function Find-KeyVault([string]$Rg, [switch]$Data) {
+    $filter = $(if ($Data) { "[?tags.rol=='datos'] | [0].name" } else { "[?tags.rol!='datos'] | [0].name" })
+    $name = Invoke-Az -Arguments @('keyvault', 'list', '-g', $Rg, '--query', $filter, '-o', 'tsv') -AllowFailure
+    if ($null -eq $name) { return '' }
+    return [string]$name
 }
 
 function Get-Outputs {
@@ -413,13 +470,16 @@ function Get-Outputs {
 # Nombres reales del entorno: de infra/.out/<env>.json o descubiertos en el RG.
 function Get-EnvResources($Cfg) {
     $rg = (Get-EnvCfg $Cfg).ResourceGroup
+    $dataRg = Get-DataResourceGroup $Cfg
     $out = Get-Outputs
     $r = [ordered]@{
         ResourceGroup = $rg
+        DataResourceGroup = $dataRg
         WebApp        = ''
         Plan          = ''
         Postgres      = ''
         KeyVault      = ''
+        DataKeyVault  = ''
         StaticWebApp  = ''
         SwaResourceGroup = $rg
         AppInsights   = ''
@@ -431,6 +491,7 @@ function Get-EnvResources($Cfg) {
         $r.Plan = [string]$out.appServicePlanName
         $r.Postgres = [string]$out.postgresServerName
         $r.KeyVault = [string]$out.keyVaultName
+        $r.DataKeyVault = [string]$out.dataKeyVaultName
         $r.StaticWebApp = [string]$out.staticWebAppName
         $r.AppInsights = [string]$out.appInsightsName
         $r.WorkspaceId = [string]$out.logAnalyticsCustomerId
@@ -438,8 +499,16 @@ function Get-EnvResources($Cfg) {
     } else {
         $r.WebApp = Get-ResourceName $rg 'Microsoft.Web/sites'
         $r.Plan = Get-ResourceName $rg 'Microsoft.Web/serverfarms'
-        $r.Postgres = Get-ResourceName $rg 'Microsoft.DBforPostgreSQL/flexibleServers'
-        $r.KeyVault = Get-ResourceName $rg 'Microsoft.KeyVault/vaults'
+        # El RG de datos puede alojar servidores de otras apps: si la config
+        # fija el nombre, se usa ese; si no, el primero que haya.
+        $pgName = [string]((Get-EnvCfg $Cfg)['PostgresServerName'])
+        if ($pgName) {
+            $found = Invoke-Az -Arguments @('postgres', 'flexible-server', 'show', '-g', $dataRg, '-n', $pgName, '--query', 'name', '-o', 'tsv') -AllowFailure
+            $r.Postgres = [string]$found
+        } else {
+            $r.Postgres = Get-ResourceName $dataRg 'Microsoft.DBforPostgreSQL/flexibleServers'
+        }
+        $r.KeyVault = Find-KeyVault $rg
         $r.StaticWebApp = Get-ResourceName $rg 'Microsoft.Web/staticSites'
         $r.AppInsights = Get-ResourceName $rg 'Microsoft.Insights/components'
         $ws = Get-ResourceName $rg 'Microsoft.OperationalInsights/workspaces'
@@ -447,6 +516,8 @@ function Get-EnvResources($Cfg) {
             $r.WorkspaceId = Invoke-Az -Arguments @('monitor', 'log-analytics', 'workspace', 'show', '-g', $rg, '-n', $ws, '--query', 'customerId', '-o', 'tsv') -AllowFailure
         }
     }
+    # Salidas de un despliegue anterior al Key Vault de datos: se busca en el RG.
+    if (-not $r.DataKeyVault) { $r.DataKeyVault = Find-KeyVault $dataRg -Data }
     if (-not (Get-CreateSwa $Cfg)) {
         $existing = [string](Get-Opt $Cfg 'ExistingSwaName' '')
         if ($existing) {
@@ -517,11 +588,20 @@ function Get-PresentOptionalSecrets([string]$Vault) {
 # Contraseña de Postgres: se relee del Key Vault; solo se genera si el entorno es
 # nuevo. Si el servidor existe pero el secreto no, se pide confirmación porque
 # desplegar con otra contraseña la CAMBIA en el servidor.
+#
+# Vive en el Key Vault de DATOS. Los entornos creados antes la tienen en el de la
+# app: se toma de ahí, el despliegue la escribe en el de datos y
+# Remove-LegacyPostgresPassword borra la copia vieja.
 function Resolve-PostgresPassword($Res, [switch]$ForWhatIf) {
-    $existing = Get-KeyVaultSecretValue $Res.KeyVault 'postgres-admin-password'
+    $existing = Get-KeyVaultSecretValue $Res.DataKeyVault 'postgres-admin-password'
     if ($existing) {
-        Write-Ok 'Contraseña de Postgres leída de Key Vault.'
+        Write-Ok "Contraseña de Postgres leída del Key Vault de datos ($($Res.DataKeyVault))."
         return $existing
+    }
+    $legacy = Get-KeyVaultSecretValue $Res.KeyVault 'postgres-admin-password'
+    if ($legacy) {
+        Write-Ok "Contraseña de Postgres leída del Key Vault de la app ($($Res.KeyVault)); este despliegue la pasa al de datos."
+        return $legacy
     }
     if ($ForWhatIf) {
         Write-Note 'Sin contraseña en Key Vault todavía: el what-if usa una temporal que no se guarda.'
@@ -536,6 +616,22 @@ function Resolve-PostgresPassword($Res, [switch]$ForWhatIf) {
         Write-Note 'Entorno nuevo: se genera la contraseña de Postgres (irá directo a Key Vault).'
     }
     return (New-RandomSecret 32)
+}
+
+# Tras un despliegue exitoso: si la contraseña sigue en el Key Vault de la app y
+# el de datos ya tiene la MISMA, se borra la de la app (borrado suave: se puede
+# recuperar durante la retención). Así la identidad del Web App deja de verla.
+function Remove-LegacyPostgresPassword([string]$AppVault, [string]$DataVault) {
+    if (-not $AppVault -or -not $DataVault) { return }
+    $legacy = Get-KeyVaultSecretValue $AppVault 'postgres-admin-password'
+    if (-not $legacy) { return }
+    $current = Get-KeyVaultSecretValue $DataVault 'postgres-admin-password'
+    if ($current -ne $legacy) {
+        Write-Warn "La contraseña de Postgres en $AppVault no coincide con la de $DataVault; no se borra. Revisar a mano."
+        return
+    }
+    Invoke-Az -Arguments @('keyvault', 'secret', 'delete', '--vault-name', $AppVault, '--name', 'postgres-admin-password', '-o', 'none') | Out-Null
+    Write-Ok "Contraseña de Postgres trasladada a $DataVault; borrada de $AppVault (borrado suave)."
 }
 
 # Fecha de inicio del presupuesto: la del presupuesto existente (no se puede
@@ -613,6 +709,7 @@ function Set-GhOutputVariables($Cfg, $Outputs) {
     Set-GhEnvVariable $Cfg 'AZURE_API_URL' ([string]$Outputs.apiUrl)
     Set-GhEnvVariable $Cfg 'AZURE_KEYVAULT_NAME' ([string]$Outputs.keyVaultName)
     Set-GhEnvVariable $Cfg 'AZURE_POSTGRES_SERVER' ([string]$Outputs.postgresServerName)
+    Set-GhEnvVariable $Cfg 'AZURE_POSTGRES_RESOURCE_GROUP' (Get-DataResourceGroup $Cfg)
     Set-GhEnvVariable $Cfg 'AZURE_SWA_NAME' $swaName
     Set-GhEnvVariable $Cfg 'AZURE_SWA_RESOURCE_GROUP' $swaRg
     Set-GhEnvVariable $Cfg 'AZURE_FRONTEND_URL' ([string]$Outputs.frontendUrl)
@@ -720,15 +817,16 @@ function Invoke-Bootstrap($Cfg) {
         }
     }
 
+    $dataRg = Get-DataResourceGroup $Cfg
     Write-Step "Resource group $rg ($($Cfg.Location))"
-    if (Test-ResourceGroup $rg) {
-        Write-Ok 'Ya existe.'
-    } else {
-        Invoke-Az -Arguments @('group', 'create', '--name', $rg, '--location', $Cfg.Location,
-            '--tags', 'app=synatrack', "env=$Environment", 'managedBy=bicep', '-o', 'none') | Out-Null
-        Write-Ok 'Creado.'
-    }
+    Confirm-ResourceGroup $rg $Cfg.Location 'synatrack'
     $rgId = "/subscriptions/$($Cfg.SubscriptionId)/resourceGroups/$rg"
+    $dataRgId = "/subscriptions/$($Cfg.SubscriptionId)/resourceGroups/$dataRg"
+    if ($dataRg -ne $rg) {
+        # Servidor de Postgres del entorno, compartible con otras aplicaciones.
+        Write-Step "Resource group de datos $dataRg ($($Cfg.Location))"
+        Confirm-ResourceGroup $dataRg $Cfg.Location 'compartido'
+    }
 
     # --- Identidad del pipeline (una por entorno) ----------------------------
     # Una app por entorno: la de stage no puede tocar prod y viceversa.
@@ -792,6 +890,17 @@ function Invoke-Bootstrap($Cfg) {
     # permite asignar/quitar ese rol, y solo a service principals: así el
     # pipeline no puede darse Owner a sí mismo ni a nadie.
     Add-RoleAssignment $spId 'ServicePrincipal' $RoleIds.RbacAdministrator 'Role Based Access Control Administrator (condicionado a Key Vault Secrets User)' $rgId (Get-KvRbacCondition)
+    if ($dataRg -ne $rg) {
+        # Desplegar el módulo de Postgres en ese RG y abrir/cerrar la regla
+        # temporal de firewall del runner durante las migraciones.
+        Write-Step "Roles del pipeline sobre $dataRg"
+        Add-RoleAssignment $spId 'ServicePrincipal' $RoleIds.Contributor 'Contributor' $dataRgId ''
+    }
+    # Leer postgres-admin-password del Key Vault de datos (infra-azure.yml). Si
+    # no hay RG de datos aparte, el rol sobre $rg ya lo cubre.
+    if ($dataRg -ne $rg) {
+        Add-RoleAssignment $spId 'ServicePrincipal' $RoleIds.KeyVaultSecretsUser 'Key Vault Secrets User (Key Vault de datos)' $dataRgId ''
+    }
 
     if (-not (Get-CreateSwa $Cfg)) {
         $swaName = [string](Get-Opt $Cfg 'ExistingSwaName' '')
@@ -811,6 +920,10 @@ function Invoke-Bootstrap($Cfg) {
     if ($operators) {
         Write-Step "Roles de operador para el grupo '$($operators.name)' sobre $rg"
         Add-OperatorRoles $operators.id 'Group' "grupo $($operators.name)" $rgId
+        if ($dataRg -ne $rg) {
+            Add-RoleAssignment $operators.id 'Group' $RoleIds.Contributor "Contributor sobre $dataRg para grupo $($operators.name)" $dataRgId ''
+            Add-RoleAssignment $operators.id 'Group' $RoleIds.KeyVaultSecretsOfficer "Key Vault Secrets Officer sobre $dataRg para grupo $($operators.name)" $dataRgId ''
+        }
         if ($userId) {
             $member = Invoke-Az -Arguments @('ad', 'group', 'member', 'check', '--group', $operators.id, '--member-id', $userId, '--query', 'value', '-o', 'tsv') -AllowFailure
             if ($member -ne 'true') {
@@ -823,6 +936,10 @@ function Invoke-Bootstrap($Cfg) {
         Write-Warn 'Recomendado: que TI cree un grupo de seguridad en Entra, ponerlo en OperatorsGroup y repetir bootstrap.'
         if ($userId) {
             Add-OperatorRoles $userId 'User' $account.user.name $rgId
+            if ($dataRg -ne $rg) {
+                Add-RoleAssignment $userId 'User' $RoleIds.Contributor "Contributor sobre $dataRg para $($account.user.name)" $dataRgId ''
+                Add-RoleAssignment $userId 'User' $RoleIds.KeyVaultSecretsOfficer "Key Vault Secrets Officer sobre $dataRg para $($account.user.name)" $dataRgId ''
+            }
         } else {
             Write-Warn 'No se pudo leer el usuario (¿sesión de service principal?). Asigna los roles de operador a mano (README §8).'
         }
@@ -836,6 +953,7 @@ function Invoke-Bootstrap($Cfg) {
     Set-GhVariable $Cfg 'VITE_AZURE_API_SCOPE' $Cfg.AppApiScope
     Set-GhEnvVariable $Cfg 'AZURE_CLIENT_ID' $appId
     Set-GhEnvVariable $Cfg 'AZURE_RESOURCE_GROUP' $rg
+    Set-GhEnvVariable $Cfg 'AZURE_POSTGRES_RESOURCE_GROUP' $dataRg
     Set-GhEnvVariable $Cfg 'AZURE_ENV_BRANCH' $branch
     Set-GhInfraVariables $Cfg
     if ($Environment -eq 'prod') {
@@ -858,6 +976,7 @@ function Invoke-Plan($Cfg) {
     $null = Assert-AzContext $Cfg
     $rg = (Get-EnvCfg $Cfg).ResourceGroup
     Assert-ResourceGroup $rg
+    Assert-ResourceGroup (Get-DataResourceGroup $Cfg)
     $res = Get-EnvResources $Cfg
     $paramFile = Get-ParamFile
     Write-Step "what-if de $Environment sobre $rg (no cambia nada)"
@@ -872,6 +991,7 @@ function Invoke-Infra($Cfg) {
     $null = Assert-AzContext $Cfg
     $rg = (Get-EnvCfg $Cfg).ResourceGroup
     Assert-ResourceGroup $rg
+    Assert-ResourceGroup (Get-DataResourceGroup $Cfg)
     Confirm-ProdChange 'desplegar la infraestructura (Bicep)'
     $res = Get-EnvResources $Cfg
     $paramFile = Get-ParamFile
@@ -885,19 +1005,20 @@ function Invoke-Infra($Cfg) {
     if (-not $outputsRaw) { Stop-WithError 'El despliegue no devolvió salidas.' }
 
     # { nombre: { type, value } } -> { nombre: value }
-    $parsed = $outputsRaw | ConvertFrom-Json
+    $parsed = ConvertFrom-AzOutput $outputsRaw
     $flat = [ordered]@{}
     foreach ($prop in $parsed.PSObject.Properties) { $flat[$prop.Name] = $prop.Value.value }
     if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
     $outFile = Join-Path $OutDir "$Environment.json"
     [System.IO.File]::WriteAllText($outFile, ($flat | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
     Write-Ok "Salidas guardadas en infra/.out/$Environment.json"
+    Remove-LegacyPostgresPassword ([string]$flat.keyVaultName) ([string]$flat.dataKeyVaultName)
 
     Write-Step 'Resumen'
     Write-Note "API:       $($flat.apiUrl)"
     Write-Note "Frontend:  $($flat.frontendUrl)"
-    Write-Note "Postgres:  $($flat.postgresFqdn)"
-    Write-Note "Key Vault: $($flat.keyVaultName)"
+    Write-Note "Postgres:  $($flat.postgresFqdn)  (RG $($flat.postgresResourceGroup))"
+    Write-Note "Key Vault: $($flat.keyVaultName)  (datos: $($flat.dataKeyVaultName))"
     Write-Note "CORS:      $($flat.corsOrigins)"
 
     if (Get-Command gh -ErrorAction SilentlyContinue) {
@@ -915,10 +1036,11 @@ function Invoke-Infra($Cfg) {
         Write-Warn 'gh no está instalado: actualiza a mano las variables de GitHub (ver infra/README.md).'
     }
 
-    $present = Get-PresentOptionalSecrets $flat.keyVaultName
+    $present = @(Get-PresentOptionalSecrets $flat.keyVaultName)
     $missing = @($OptionalSecrets.Keys | Where-Object { $present -notcontains $_ })
     if ($missing.Count -gt 0) {
-        Write-Warn ("Secretos opcionales sin cargar: " + ($missing -join ', ') + ". Usa secret-set y vuelve a correr infra.")
+        # Informativo: cada uno solo activa una función (correo, Teams, cron externo).
+        Write-Note ("Secretos opcionales no cargados (sus funciones quedan apagadas): " + ($missing -join ', ') + ". Para activar alguna: secret-sync o secret-set y luego infra.")
     }
 }
 
@@ -980,21 +1102,25 @@ function Invoke-Status($Cfg) {
         Write-Note ("Web App      {0}  estado={1}  runtime={2}  alwaysOn={3}  https://{4}" -f $res.WebApp, $w.state, $w.runtime, $w.alwaysOn, $w.host)
     } else { Write-Warn 'Web App: no existe todavía.' }
     if ($res.Plan) {
-        $p = Invoke-AzJson -Arguments @('appservice', 'plan', 'show', '-g', $rg, '-n', $res.Plan, '--query', '{sku:sku.name, workers:sku.capacity, status:status}')
-        Write-Note ("Plan         {0}  sku={1}  instancias={2}  estado={3}" -f $res.Plan, $p.sku, $p.workers, $p.status)
+        $p = Invoke-AzJson -Arguments @('appservice', 'plan', 'show', '-g', $rg, '-n', $res.Plan, '--query', '{sku:sku.name, workers:sku.capacity}')
+        Write-Note ("Plan         {0}  sku={1}  instancias={2}" -f $res.Plan, $p.sku, $p.workers)
     }
     if ($res.Postgres) {
-        $pg = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'show', '-g', $rg, '-n', $res.Postgres, '--query',
+        $dataRg = $res.DataResourceGroup
+        $pg = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'show', '-g', $dataRg, '-n', $res.Postgres, '--query',
             '{state:state, version:version, sku:sku.name, storage:storage.storageSizeGb, fqdn:fullyQualifiedDomainName}')
-        Write-Note ("Postgres     {0}  estado={1}  v{2}  {3}  {4} GB" -f $res.Postgres, $pg.state, $pg.version, $pg.sku, $pg.storage)
-        $rules = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'firewall-rule', 'list', '-g', $rg, '--name', $res.Postgres, '--query', '[].name') -AllowFailure
+        Write-Note ("Postgres     {0}  estado={1}  v{2}  {3}  {4} GB  (RG {5})" -f $res.Postgres, $pg.state, $pg.version, $pg.sku, $pg.storage, $dataRg)
+        $rules = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'firewall-rule', 'list', '-g', $dataRg, '--name', $res.Postgres, '--query', '[].name') -AllowFailure
         $runnerRules = @($rules | Where-Object { $_ -like 'gh-runner-*' })
         Write-Note ("             reglas de firewall={0}{1}" -f @($rules).Count, $(if ($runnerRules.Count) { "  (AVISO: $($runnerRules.Count) regla(s) gh-runner-* sin cerrar)" } else { '' }))
     } else { Write-Warn 'Postgres: no existe todavía.' }
     if ($res.KeyVault) {
-        $present = Get-PresentOptionalSecrets $res.KeyVault
+        $present = @(Get-PresentOptionalSecrets $res.KeyVault)
         Write-Note ("Key Vault    {0}  opcionales cargados: {1}" -f $res.KeyVault, $(if ($present.Count) { $present -join ', ' } else { 'ninguno' }))
     }
+    if ($res.DataKeyVault) {
+        Write-Note ("Key Vault de datos  {0}  (RG {1}; contraseña del administrador de Postgres)" -f $res.DataKeyVault, $res.DataResourceGroup)
+    } else { Write-Warn 'Key Vault de datos: no existe todavía (lo crea infra).' }
     if ($res.StaticWebApp) {
         $s = Invoke-AzJson -Arguments @('staticwebapp', 'show', '-g', $res.SwaResourceGroup, '-n', $res.StaticWebApp, '--query', '{host:defaultHostname, sku:sku.name, domains:customDomains}') -AllowFailure
         if ($s) { Write-Note ("Static Web   {0}  sku={1}  https://{2}  dominios={3}" -f $res.StaticWebApp, $s.sku, $s.host, (@($s.domains) -join ',')) }
@@ -1323,6 +1449,18 @@ function Invoke-Access($Cfg) {
         $rows += [pscustomobject]@{ Rol = $a.rol; Principal = $principal; Tipo = $a.tipo; Ambito = $ambito; Condicion = $cond }
     }
     $rows | Sort-Object Ambito, Rol, Principal | Format-Table -AutoSize | Out-String -Width 250 | Write-Host
+
+    $dataRg = Get-DataResourceGroup $Cfg
+    if ($dataRg -ne $rg -and (Test-ResourceGroup $dataRg)) {
+        # Compartido con otras aplicaciones: todo el que tenga rol aquí puede
+        # tocar el servidor de Postgres (firewall, contraseña del administrador).
+        Write-Step "Asignaciones de rol directas sobre $dataRg (servidor de Postgres)"
+        $dataRgId = "/subscriptions/$($Cfg.SubscriptionId)/resourceGroups/$dataRg"
+        $dataRows = @(Invoke-AzJson -Arguments @('role', 'assignment', 'list', '--scope', $dataRgId, '--query', "[].$fields"))
+        $dataRows | Where-Object { $_ } | ForEach-Object {
+            [pscustomobject]@{ Rol = $_.rol; Principal = $(if ($_.principal) { $_.principal } else { '(sin nombre)' }); Tipo = $_.tipo }
+        } | Sort-Object Rol, Principal | Format-Table -AutoSize | Out-String -Width 250 | Write-Host
+    }
 
     Write-Step 'Grupo de operadores'
     $ref = [string](Get-Opt $Cfg 'OperatorsGroup' '')

@@ -4,10 +4,18 @@ Guía para los **operadores de Synaptica** que administran la plataforma. Bicep 
 `scripts/azure.ps1` + tres workflows de GitHub Actions para correr Synatrack en Azure con dos
 entornos aislados:
 
-| Entorno | Rama | Resource group (por defecto) | Frontend |
-|---|---|---|---|
-| `stage` | `dev` | `rg-synatrack-stage` | hostname `*.azurestaticapps.net` de su SWA |
-| `prod` | `main` | `rg-synatrack-prod` | `synatrack.synaptica.co` (se mueve de Vercel a la SWA en el corte) |
+| Entorno | Rama | Resource group de la app | Resource group de datos | Frontend |
+|---|---|---|---|---|
+| `stage` | `dev` | `rg-synatrack-stage` | `rg-datos-stage` | hostname `*.azurestaticapps.net` de su SWA |
+| `prod` | `main` | `rg-synatrack-prod` | `rg-datos-prod` | `synatrack.synaptica.co` (se mueve de Vercel a la SWA en el corte) |
+
+Región: **Central US** (`Location` en la config), la misma de las otras aplicaciones de Synaptica.
+
+El servidor de Postgres de cada entorno vive en su **resource group de datos**
+(`DataResourceGroup`), separado de la app, porque está pensado para alojar después las bases de
+otras aplicaciones: **un servidor por entorno, una base por aplicación**. Stage y prod nunca
+comparten servidor. Synatrack solo es dueña de su base `synatrack` y de sus reglas de firewall
+(`synatrack-<ip>`). Si `DataResourceGroup` se omite, el servidor va dentro del RG de la app.
 
 Plan de migración, decisiones y costos: [`documentacion/azure/PLAN.md`](../documentacion/azure/PLAN.md).
 Cambios de código que hicieron falta: [`documentacion/azure/PREPARACION.md`](../documentacion/azure/PREPARACION.md).
@@ -19,7 +27,7 @@ infra/
     monitoring.bicep          # Log Analytics + Application Insights
     postgres.bicep            # Flexible Server PG17 + base synatrack + TLS obligatorio
     postgres-firewall.bicep   # reglas = IPs salientes posibles del App Service
-    keyvault.bicep            # Key Vault RBAC + postgres-admin-password + database-url
+    keyvault.bicep            # Key Vault RBAC + sus secretos (se usa para el de la app y el de datos)
     keyvault-access.bicep     # "Key Vault Secrets User" para la identidad del Web App
     appservice.bicep          # Plan Linux B1 + Web App Node + App Settings
     staticwebapp.bicep        # Static Web App (sin backend enlazado)
@@ -112,7 +120,9 @@ y v2; el backend admite una lista separada por comas). Defínelo solo para restr
 1. Valida que exista el grupo `OperatorsGroup` (antes de crear nada).
 2. Registra los proveedores `Microsoft.Web`, `DBforPostgreSQL`, `KeyVault`, `Insights`,
    `OperationalInsights`, `AlertsManagement` y `Consumption`.
-3. Crea el resource group.
+3. Crea el resource group de la app y el de datos (`DataResourceGroup`) en `Location`. Si alguno ya
+   existe en **otra región** se detiene: la región de un RG no se cambia, hay que borrarlo
+   (`az group delete`) y repetir `bootstrap`.
 4. Crea (o reutiliza) la identidad del pipeline **`gh-synatrack-<env>`** (app registration +
    service principal, **sin secretos**) con credenciales federadas:
    - `repo:<GitHubRepo>:ref:refs/heads/<GitBranch>`: solo los workflows que corren en la rama del
@@ -124,9 +134,11 @@ y v2; el backend admite una lista separada por comas). Defínelo solo para restr
    | Rol | Para qué |
    |---|---|
    | Contributor | crear y actualizar los recursos del Bicep, desplegar código, reglas de firewall |
-   | Key Vault Secrets User | leer `database-url` (migraciones) y `postgres-admin-password` (infra) |
+   | Key Vault Secrets User | leer `database-url` (migraciones) y, en el RG de datos, `postgres-admin-password` (infra) |
    | Role Based Access Control Administrator **con condición** | el Bicep crea la asignación "Key Vault Secrets User" de la identidad del Web App, y Contributor no puede crear asignaciones de rol. La condición solo permite asignar o quitar **ese** rol y solo a service principals: no puede dar Owner ni darle nada a un usuario o grupo. Es la alternativa de mínimo privilegio a User Access Administrator. |
 
+   Y **Contributor sobre el resource group de datos**: el Bicep despliega ahí la base y las reglas de
+   firewall, y el workflow del backend abre y cierra ahí la regla temporal del runner.
 6. Asigna al **grupo de operadores** los roles de operador sobre el resource group (§8). Si la config
    no define `OperatorsGroup`, se los asigna solo a la cuenta que ejecuta `bootstrap` y avisa de que
    ningún otro operador podrá usar `plan`, `infra` ni `secret-set`.
@@ -140,8 +152,8 @@ y v2; el backend admite una lista separada por comas). Defínelo solo para restr
 ```
 
 En la primera ejecución `infra` genera la contraseña de Postgres (32 caracteres alfanuméricos) y el
-Bicep la guarda en Key Vault como `postgres-admin-password`, junto con `database-url`. En las
-siguientes, cualquier operador la relee de Key Vault, así que **no cambia** en cada despliegue y
+Bicep la guarda como `postgres-admin-password` en el Key Vault de datos (y `database-url` en el de
+la app). En las siguientes, cualquier operador la relee de Key Vault, así que **no cambia** en cada despliegue y
 **nunca toca el disco**: viaja en una variable de entorno del proceso que se borra al terminar.
 
 Las salidas quedan en `infra/.out/<env>.json` **de esa PC** (el script las redescubre en el resource
@@ -266,6 +278,26 @@ riesgos).
 **App Settings**: los gobierna el Bicep y cada `infra` reemplaza la lista completa. Un ajuste hecho a
 mano en el portal se pierde en el siguiente `infra`: hay que agregarlo a `main.bicep`.
 
+**Contraseña del administrador de Postgres**: nadie la configura. El primer `infra` del entorno la
+genera (32 caracteres aleatorios), crea el servidor con ella y la guarda como
+`postgres-admin-password` en el **Key Vault de datos** (`kv-datos-<env>-…`, en el resource group
+de datos), porque es la contraseña del servidor compartido y no de Synatrack. La identidad del Web
+App no tiene acceso a ese Key Vault; el de la app (`kv-syn-<env>-…`) solo guarda `database-url` y
+los tokens. Los `infra` siguientes la releen para no cambiarla. Nunca va en la config ni en el
+archivo de secretos. Para verla (por ejemplo, para conectarse con `psql`), con el rol Key Vault
+Secrets Officer de operador:
+
+```powershell
+az keyvault secret show --vault-name <kv-datos-stage-...> -n postgres-admin-password --query value -o tsv
+```
+
+El nombre del Key Vault sale en `status` y en `infra/.out/<env>.json` (`dataKeyVaultName`). Un
+entorno creado antes del Key Vault de datos tenía la contraseña en el de la app: el siguiente
+`infra` la copia al de datos y borra la vieja (borrado suave, recuperable). El valor
+queda impreso en la terminal: cierra o limpia la consola después y no lo pegues en chats ni correos.
+Para conectarse también hace falta una regla de firewall temporal para tu IP; ver el paso del seed
+en `documentacion/azure/ANTES_DE_MIGRAR.md`.
+
 ---
 
 ## 5. Nombres de recursos
@@ -279,8 +311,9 @@ estable para un mismo resource group, solo en los nombres que deben ser únicos 
 | Application Insights | `appi-synatrack-<env>` |
 | App Service Plan (Linux B1) | `plan-synatrack-<env>` |
 | Web App (backend) | `app-synatrack-<env>-<sfx>` → `https://app-synatrack-<env>-<sfx>.azurewebsites.net` |
-| Postgres Flexible Server | `psql-synatrack-<env>-<sfx>` → `psql-synatrack-<env>-<sfx>.postgres.database.azure.com`, base `synatrack`, usuario `synatrack_admin` |
-| Key Vault | `kv-syn-<env>-<sfx>` |
+| Postgres Flexible Server (en `DataResourceGroup`) | `psql-synaptica-<env>-<dsfx>` → `….postgres.database.azure.com`, base `synatrack`, usuario `synaptica_admin`. `<dsfx>` sale del resource group de **datos**, no del de la app; `PostgresServerName` lo fija |
+| Key Vault de la app | `kv-syn-<env>-<sfx>` (`database-url`, tokens) |
+| Key Vault de datos (en `DataResourceGroup`) | `kv-datos-<env>-<dsfx>` (`postgres-admin-password`) |
 | Static Web App | `stapp-synatrack-<env>` |
 | Action Group | `ag-synatrack-<env>` |
 | Prueba de disponibilidad | `wt-synatrack-<env>-health` (3 ubicaciones, cada 5 min) |
@@ -343,6 +376,7 @@ de **repositorio** (GitHub Free no tiene variables por Environment en repos priv
 |---|---|---|
 | `AZURE_CLIENT_ID` | bootstrap | identidad `gh-synatrack-<env>` |
 | `AZURE_RESOURCE_GROUP` | bootstrap | |
+| `AZURE_POSTGRES_RESOURCE_GROUP` | bootstrap / infra | RG de datos: firewall temporal de las migraciones |
 | `AZURE_ENV_BRANCH` | bootstrap | rama desde la que se permite desplegar (los workflows lo verifican al empezar) |
 | `AZURE_INFRA_PARAMS_B64` | bootstrap / infra | parámetros no sensibles del Bicep (JSON en base64) para `infra-azure.yml`; la de stage también la usa el what-if de los PR |
 | `AZURE_WEBAPP_NAME`, `AZURE_API_URL` | infra | deploy del backend; `VITE_API_URL` del frontend |
@@ -378,6 +412,13 @@ todos los comandos del script salvo `bootstrap`:
 | **Contributor** | desplegar el Bicep (crea y actualiza todos los recursos), reiniciar el Web App, log stream, reglas de firewall, leer métricas, alertas y Log Analytics. Incluye lectura (`*/read`). | `plan`, `infra`, `status`, `health`, `logs`, `access`, `secret-set` (agrega la App Setting) |
 | **Key Vault Secrets Officer** | plano de datos de Key Vault: `infra` relee `postgres-admin-password`; `secret-set` escribe secretos. Contributor no da acceso a valores de secretos. | `plan`, `infra`, `secret-set` |
 | **Role Based Access Control Administrator**, con la misma condición que el pipeline | el despliegue del Bicep corre con la identidad de quien lo lanza y crea (o reafirma) la asignación "Key Vault Secrets User" de la identidad del Web App; Contributor no puede escribir asignaciones de rol. La condición solo permite asignar o quitar ese rol a service principals. | `infra` (y `plan`, que valida las mismas operaciones) |
+
+Sobre el **resource group de datos**: **Contributor** (`infra` despliega ahí la base, el firewall y
+el Key Vault de datos; `status` lee el servidor) y **Key Vault Secrets Officer** (`plan` e `infra`
+releen `postgres-admin-password`). El pipeline recibe ahí Contributor y Key Vault Secrets User.
+Ojo: como el servidor será compartido, esos roles permiten tocar el servidor de todas las
+aplicaciones del entorno (firewall, contraseña del administrador). `access`
+lista quién lo tiene.
 
 Lo que un operador **no** tiene, a propósito: Owner, User Access Administrator, permisos a nivel de
 suscripción ni sobre otros resource groups, ni capacidad de darse roles a sí mismo o a otras

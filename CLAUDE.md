@@ -186,8 +186,8 @@ de `GET /api/auth/permissions` (ya no es una copia).
 - `.github/workflows/azure-static-web-apps-*.yml`: en cada push a `main` corre type-check, tests y build
   del frontend y lo despliega a la SWA `victorious-glacier-0d52b010f`. **Esa SWA no es producción**
   (nadie la usa; `synatrack.synaptica.co` apunta por CNAME a Vercel). Se retira tras el corte.
-- **Migración a Azure en curso** (App Service + PostgreSQL Flexible 17 + SWA, stage y prod en East
-  US 2): `infra/` (Bicep), `scripts/azure.ps1` y los workflows `*-azure.yml`, inactivos mientras la
+- **Migración a Azure en curso** (App Service + PostgreSQL Flexible 17 + SWA, stage y prod en Central
+  US; Postgres de cada entorno en su propio RG de datos, `rg-datos-<env>`, para compartirlo con otras apps): `infra/` (Bicep), `scripts/azure.ps1` y los workflows `*-azure.yml`, inactivos mientras la
   variable de repositorio `AZURE_DEPLOY_ENABLED` no sea `true`. GitHub es plan Free: prod se
   despliega sin aprobación y la identidad OIDC de cada entorno confía solo en su rama (`main` →
   prod, `dev` → stage). Paso a paso en `documentacion/azure/ANTES_DE_MIGRAR.md`; guía de

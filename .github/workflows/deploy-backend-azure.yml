@@ -164,11 +164,12 @@ jobs:
           V_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', env.SFX)] }}
           V_RESOURCE_GROUP: ${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.SFX)] }}
           V_POSTGRES_SERVER: ${{ vars[format('AZURE_POSTGRES_SERVER_{0}', env.SFX)] }}
+          V_POSTGRES_RESOURCE_GROUP: ${{ vars[format('AZURE_POSTGRES_RESOURCE_GROUP_{0}', env.SFX)] }}
           V_KEYVAULT_NAME: ${{ vars[format('AZURE_KEYVAULT_NAME_{0}', env.SFX)] }}
           V_WEBAPP_NAME: ${{ vars[format('AZURE_WEBAPP_NAME_{0}', env.SFX)] }}
           V_API_URL: ${{ vars[format('AZURE_API_URL_{0}', env.SFX)] }}
         run: |
-          for v in V_CLIENT_ID V_RESOURCE_GROUP V_POSTGRES_SERVER V_KEYVAULT_NAME V_WEBAPP_NAME V_API_URL; do
+          for v in V_CLIENT_ID V_RESOURCE_GROUP V_POSTGRES_SERVER V_POSTGRES_RESOURCE_GROUP V_KEYVAULT_NAME V_WEBAPP_NAME V_API_URL; do
             if [[ -z "${!v}" ]]; then
               echo "::error::Falta la variable de repositorio AZURE_${v#V_}_${SFX}. Ejecuta scripts/azure.ps1 bootstrap/infra -Env ${TARGET_ENV}."
               exit 1
@@ -205,7 +206,7 @@ jobs:
           rule="gh-runner-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "rule=$rule" >> "$GITHUB_OUTPUT"
           az postgres flexible-server firewall-rule create \
-            --resource-group "${{ env.AZ_RESOURCE_GROUP }}" \
+            --resource-group "${{ env.AZ_POSTGRES_RESOURCE_GROUP }}" \
             --name "${{ env.AZ_POSTGRES_SERVER }}" \
             --rule-name "$rule" \
             --start-ip-address "$ip" --end-ip-address "$ip" \
@@ -229,7 +230,7 @@ jobs:
         if: always() && steps.fw.outputs.rule != ''
         run: |
           az postgres flexible-server firewall-rule delete \
-            --resource-group "${{ env.AZ_RESOURCE_GROUP }}" \
+            --resource-group "${{ env.AZ_POSTGRES_RESOURCE_GROUP }}" \
             --name "${{ env.AZ_POSTGRES_SERVER }}" \
             --rule-name "${{ steps.fw.outputs.rule }}" \
             --yes --only-show-errors

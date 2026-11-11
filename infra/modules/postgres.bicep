@@ -60,6 +60,9 @@ param databaseName string = 'synatrack'
 @description('Workspace de Log Analytics para los logs del servidor.')
 param logAnalyticsWorkspaceId string
 
+@description('Zona de disponibilidad ("1", "2", "3") o vacío para que Azure elija. Algunas suscripciones (p. ej. MCPP) tienen el SKU bloqueado en ciertas zonas y fallan con SkuNotAvailable si Azure elige esa. Solo se fija al crear el servidor.')
+param availabilityZone string = ''
+
 @description('Etiquetas comunes.')
 param tags object = {}
 
@@ -73,6 +76,7 @@ resource server 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   }
   properties: {
     version: postgresVersion
+    availabilityZone: empty(availabilityZone) ? null : availabilityZone
     administratorLogin: administratorLogin
     administratorLoginPassword: administratorLoginPassword
     authConfig: {

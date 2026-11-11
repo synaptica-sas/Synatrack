@@ -39,8 +39,12 @@ else
   export SYNATRACK_BUDGET_START_DATE
 fi
 
-# 3) Key Vault del entorno (puede no existir todavía).
-KV_NAME="$(az keyvault list -g "$RESOURCE_GROUP" --query '[0].name' -o tsv 2>/dev/null || true)"
+# 3) Key Vaults del entorno (pueden no existir todavía): el de la app y el de
+#    datos (etiqueta rol=datos, en el RG de datos), que guarda la contraseña
+#    del administrador de Postgres.
+KV_NAME="$(az keyvault list -g "$RESOURCE_GROUP" --query "[?tags.rol!='datos'] | [0].name" -o tsv 2>/dev/null || true)"
+DATA_RG="${SYNATRACK_DATA_RESOURCE_GROUP:-$RESOURCE_GROUP}"
+DATA_KV_NAME="$(az keyvault list -g "$DATA_RG" --query "[?tags.rol=='datos'] | [0].name" -o tsv 2>/dev/null || true)"
 
 # 4) Secretos opcionales presentes -> se referencian en App Settings.
 OPTIONAL="jobs-run-token fx-sync-token smtp-pass teams-feedback-webhook-url teams-payroll-webhook-url"
@@ -54,9 +58,14 @@ fi
 export SYNATRACK_PRESENT_SECRETS="$PRESENT"
 echo "Secretos opcionales presentes: ${PRESENT:-ninguno}"
 
-# 5) Contraseña de Postgres desde Key Vault.
+# 5) Contraseña de Postgres: del Key Vault de datos; si un entorno creado antes
+#    aún la tiene solo en el de la app, de ahí (el despliegue la copia al de
+#    datos; la copia vieja la borra scripts/azure.ps1 infra).
 PG_PASSWORD=""
-if [[ -n "$KV_NAME" ]]; then
+if [[ -n "$DATA_KV_NAME" ]]; then
+  PG_PASSWORD="$(az keyvault secret show --vault-name "$DATA_KV_NAME" -n postgres-admin-password --query value -o tsv 2>/dev/null || true)"
+fi
+if [[ -z "$PG_PASSWORD" && -n "$KV_NAME" ]]; then
   PG_PASSWORD="$(az keyvault secret show --vault-name "$KV_NAME" -n postgres-admin-password --query value -o tsv 2>/dev/null || true)"
 fi
 if [[ -z "$PG_PASSWORD" ]]; then

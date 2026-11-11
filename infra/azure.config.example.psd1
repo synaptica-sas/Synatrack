@@ -19,7 +19,7 @@
     # --- Cuenta ---------------------------------------------------------------
     TenantId       = "00000000-0000-0000-0000-000000000000"  # Entra ID de Synaptica
     SubscriptionId = "00000000-0000-0000-0000-000000000000"
-    Location       = "eastus2"
+    Location       = "centralus"   # misma región que las otras apps de Synaptica (y con cupo de B1)
 
     # --- GitHub (para la identidad OIDC del pipeline) -------------------------
     GitHubRepo     = "synaptica-sas/Synatrack"
@@ -71,12 +71,21 @@
     Environments = @{
         stage = @{
             ResourceGroup = "rg-synatrack-stage"
+            # Servidor de Postgres del entorno, en su propio RG para compartirlo
+            # con otras aplicaciones (una base por aplicación). Si se omite, el
+            # servidor va dentro de ResourceGroup.
+            DataResourceGroup = "rg-datos-stage"
+            # Opcional: nombre del servidor. Si se omite se deriva
+            # (psql-synaptica-stage-<sufijo>). Fíjalo si el servidor ya existe.
+            # PostgresServerName = ""
             GitBranch     = "dev"
             FrontendUrl   = ""   # vacío = el hostname que asigne Static Web Apps
             # MonthlyBudgetUsd = 50
         }
         prod = @{
             ResourceGroup = "rg-synatrack-prod"
+            DataResourceGroup = "rg-datos-prod"   # nunca el mismo servidor que stage
+            # PostgresServerName = ""
             GitBranch     = "main"
             # Dominio propio. Hasta el corte resuelve a Vercel; el CORS del
             # backend admite también el hostname *.azurestaticapps.net de la SWA

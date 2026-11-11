@@ -56,37 +56,45 @@ backend.
 - Envío de correo SMTP y webhooks de Teams desde stage (usar destinatarios de prueba).
 - Alertas: provocar un 5xx o detener el Web App unos minutos y comprobar que llega el correo.
 
-### Fase 3 — Ensayo de migración de datos Supabase → stage
+### Fase 3 — Ensayo de migración de datos Supabase → Postgres de prod en Azure (vacío)
 
-Objetivo: medir tiempos y validar el procedimiento que se repetirá en el corte.
+Objetivo: medir tiempos y validar el procedimiento que se repetirá en el corte. Por decisión del
+equipo (2026-11-09), **stage no recibe datos reales**: el ensayo se hace sobre el Postgres de prod
+en Azure, que nadie usa hasta el corte. Al terminar se vacía, porque el corte restaura de nuevo.
 
 ```bash
-# 1) Operador: abrir el firewall de stage para la IP del equipo que corre el ensayo
+# 1) Operador: abrir el firewall de PROD para la IP del equipo que corre el ensayo
 #    (y cerrarlo al terminar con firewall-rule delete)
-az postgres flexible-server firewall-rule create -g rg-synatrack-stage --name <psql-stage> \
+az postgres flexible-server firewall-rule create -g rg-datos-prod --name <psql-prod> \
   --rule-name ensayo-migracion --start-ip-address <ip-del-equipo> --end-ip-address <ip-del-equipo>
 
 # 2) Dump SOLO del esquema public de Supabase, por la conexión DIRECTA (puerto 5432, no el pooler)
 pg_dump "$SUPABASE_DIRECT_URL" --schema=public --format=custom --no-owner --no-privileges \
   --file synatrack-public.dump
 
-# 3) Restaurar en stage sobre una base vacía (si el deploy ya migró, recrear la base o el esquema)
-pg_restore --dbname "$STAGE_DATABASE_URL" --no-owner --no-privileges --clean --if-exists \
+# 3) Restaurar en prod de Azure sobre una base vacía (si el deploy ya migró, recrear el esquema)
+pg_restore --dbname "$AZURE_PROD_DATABASE_URL" --no-owner --no-privileges --clean --if-exists \
   --single-transaction synatrack-public.dump
 
 # 4) Comprobar: conteos por tabla en origen y destino, y que _prisma_migrations está al día
-psql "$STAGE_DATABASE_URL" -c "select count(*) from _prisma_migrations where finished_at is not null"
+psql "$AZURE_PROD_DATABASE_URL" -c "select count(*) from _prisma_migrations where finished_at is not null"
+
+# 5) Al terminar el ensayo: vaciar la base (el corte restaura de nuevo desde Supabase)
+psql "$AZURE_PROD_DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 ```
 
 - Usar `pg_dump`/`pg_restore` **17.x** (origen Supabase PG 17.11, destino PG17).
 - `--schema=public` evita los esquemas propios de Supabase (`auth`, `storage`, `realtime`,
   `extensions`...). La app no usa extensiones (no hay `CREATE EXTENSION` en las migraciones).
 - `--no-owner --no-privileges`: los roles de Supabase (`postgres`, `authenticated`, `anon`) no existen
-  en Azure; todo queda a nombre de `synatrack_admin`.
+  en Azure; todo queda a nombre de `synaptica_admin`.
 - Antes del dump, Supabase debe tener **todas** las migraciones aplicadas (PREPARACION.md §5; CLAUDE.md
   §7.1 avisa de que `20260915164644_sync_schema_drift` estaba pendiente allá).
 - Tras restaurar: `prisma migrate deploy` desde el pipeline no debe encontrar nada pendiente.
-- Registrar el tiempo total (dump + restore + verificación): define la ventana del corte.
+- Registrar el tiempo total (dump + restore + verificación): son los minutos sin escrituras que pide
+  el corte. No hay ventana formal, porque el uso es bajo (decisión 2026-11-09).
+- Validar con datos reales entrando por el hostname `*.azurestaticapps.net` de la SWA de prod; el
+  dominio sigue en Vercel y los usuarios en Render.
 - El ensayo lo hace un operador y lo verifica otro (conteos, login), igual que en el corte.
 - Borrar el `.dump` al terminar: contiene datos personales y tarifas.
 
@@ -109,7 +117,7 @@ psql "$STAGE_DATABASE_URL" -c "select count(*) from _prisma_migrations where fin
       registro TXT de validación (o valida con el propio CNAME): crear el TXT ahora, **sin tocar
       todavía el CNAME**. Bajar el TTL del CNAME actual a 300 s con al menos un día de antelación.
 - [ ] Ensayo de la fase 3 hecho y cronometrado.
-- [ ] Aviso a los usuarios de la ventana.
+- [ ] Aviso por chat a quien suela registrar horas: unos minutos sin escrituras (sin ventana formal).
 - [ ] Asignar los roles de la ventana: un operador ejecuta y otro verifica cada paso (sin
       aprobación en GitHub, la verificación cruzada es un acuerdo del equipo).
 
@@ -154,7 +162,8 @@ Tras 2-4 semanas estables:
 
 | Decisión | Motivo |
 |---|---|
-| Dos entornos, un resource group cada uno (`stage` ← `dev`, `prod` ← `main`), East US 2 | aislamiento de permisos y costos; la identidad del pipeline de stage no puede tocar prod. East US 2 tiene todos los servicios (incluida SWA) y buena latencia a Colombia. |
+| Dos entornos, un resource group cada uno (`stage` ← `dev`, `prod` ← `main`), **Central US** | aislamiento de permisos y costos; la identidad del pipeline de stage no puede tocar prod. Central US tiene todos los servicios (incluida SWA) y es donde están las otras aplicaciones de Synaptica. Antes era East US 2, pero la suscripción MCPP tenía cupo 0 de App Service B1 allí (2026-11-11). |
+| Postgres en un **resource group de datos** por entorno (`rg-datos-stage`, `rg-datos-prod`), con nombre neutro `psql-synaptica-<env>-…` | el servidor se compartirá con otras aplicaciones de Synaptica (una base y, más adelante, un usuario por aplicación) para pagar un solo B1ms por entorno. Stage y prod nunca comparten servidor: un B1ms trabaja con créditos de CPU y una carga de stage podría frenar prod. Costo: el restore a un punto en el tiempo es del servidor entero, y el presupuesto del RG de la app no cubre el RG de datos. |
 | Postgres con **acceso público + firewall** (IPs salientes posibles del App Service) y `require_secure_transport=ON` | lo más simple y barato para empezar; sin VNet no hace falta subir de plan ni pagar private endpoints. TLS obligatorio y contraseña de 32 caracteres en Key Vault. |
 | **Sin deployment slots** (plan B1) | B1 no los tiene; S1 los tendría por ~5x el costo. Rollback = redesplegar un commit anterior con `workflow_dispatch` + `ref`. Se acepta un reinicio de segundos por despliegue. |
 | **Sin "linked backend"** de Static Web Apps; el frontend llama directo al App Service con CORS | la app manda su propio `Authorization: Bearer <JWT de Entra>`. Con un backend enlazado, SWA se interpone en `/api` y gestiona ese encabezado con su propia autenticación, rompiendo la validación del token en el backend. Además el enlace exige SWA Standard. |
@@ -170,7 +179,7 @@ Tras 2-4 semanas estables:
 ## Costos mensuales estimados por entorno
 
 > **Estimación a confirmar en la [calculadora de Azure](https://azure.microsoft.com/pricing/calculator/)**:
-> precios de lista en USD para East US 2, sin impuestos ni descuentos, con poco tráfico.
+> precios de lista en USD para Central US, sin impuestos ni descuentos, con poco tráfico.
 
 | Recurso | stage | prod | Nota |
 |---|---|---|---|

@@ -10,7 +10,7 @@
 // deploy-frontend-azure.yml con un token que obtiene en cada ejecución
 // (`az staticwebapp secrets list`), sin guardarlo en GitHub.
 
-@description('Ubicación (Static Web Apps solo existe en algunas regiones; eastus2 sí).')
+@description('Ubicación (Static Web Apps solo existe en algunas regiones; centralus y eastus2 sí).')
 param location string
 
 @description('Nombre de la Static Web App.')

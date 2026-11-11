@@ -23,13 +23,13 @@ Marca cada casilla al terminar. Las fases van en orden: no empieces una sin cerr
 Las tareas se asignan a **roles**, no a personas. Una persona puede cumplir más de un rol, y cada
 rol debe tener al menos un suplente, para que nadie sea indispensable.
 
-| Rol                                | Qué hace                                                                                                                                           | Quién lo cumple hoy      |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| **Desarrollo**               | Código, ramas y PR. Accesos a Render, Vercel y Supabase. Valida la aplicación.                                                                    | Marcos Armas              |
-| **TI**                       | Suscripción de Azure, Entra ID, DNS de `synaptica.co`, secretos y monitoreo.                                                                     | Juan (Analista de TI)     |
-| **Operador**                 | Despliega, revisa salud y hace rollback con `scripts/azure.ps1`. Lo son **todos** los miembros del grupo de Entra `Synatrack-IaC-Operadores`. | Desarrollo y TI           |
-| **Revisor del paso a prod** | Revisa el PR de `dev` a `main` antes del merge. Es un **acuerdo del equipo**: GitHub Free no lo obliga ni frena el despliegue. | Desarrollo y TI, cruzados |
-| **Usuarios de prueba**       | Validan la aplicación con cada rol (ADMIN, PM, CONSULTANT, FINANCE, COMMERCIAL, VIEWER).                                                           | Por definir               |
+| Rol                               | Qué hace                                                                                                                                               | Quién lo cumple hoy      |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| **Desarrollo**              | Código, ramas y PR. Accesos a Render, Vercel y Supabase. Valida la aplicación.                                                                        | Marcos Armas              |
+| **TI**                      | Suscripción de Azure, Entra ID, DNS de `synaptica.co`, secretos y monitoreo.                                                                         | Juan (Analista de TI)     |
+| **Operador**                | Despliega, revisa salud y hace rollback con `scripts/azure.ps1`. Lo son **todos** los miembros del grupo de Entra `Synatrack-IaC-Operadores`. | Desarrollo y TI           |
+| **Revisor del paso a prod** | Revisa el PR de `dev` a `main` antes del merge. Es un **acuerdo del equipo**: GitHub Free no lo obliga ni frena el despliegue.                | Desarrollo y TI, cruzados |
+| **Usuarios de prueba**      | Validan la aplicación con cada rol (ADMIN, PM, CONSULTANT, FINANCE, COMMERCIAL, VIEWER).                                                               | Por definir               |
 
 Actualiza la última columna cuando cambie el equipo.
 
@@ -301,19 +301,32 @@ se crea presupuesto-synatrack
 > lanzado desde otra rama no puede tocar ningún entorno. No hay nada que configurar en *Settings →
 > Environments*.
 
-- [ ] Confirmar que `OperatorsGroup` en `infra/azure.config.psd1` es **`Synatrack-IaC-Operadores`**
+- [X] Confirmar que `OperatorsGroup` en `infra/azure.config.psd1` es **`Synatrack-IaC-Operadores`**
   (solo Desarrollo y TI), **no** un grupo de todos los empleados: ese grupo recibe permisos para
   modificar y borrar la infraestructura.
-- [ ] `.\scripts\azure.ps1 bootstrap -Env stage` y luego `-Env prod`. Crea los grupos de recursos,
+- [X] `.\scripts\azure.ps1 bootstrap -Env stage` y luego `-Env prod`. Crea los grupos de recursos,
   la identidad del pipeline con OIDC por rama, los permisos del grupo de operadores y las
   variables de GitHub (a nivel de repositorio, con sufijo `_STAGE` / `_PROD`).
-- [ ] Cada operador ejecuta `.\scripts\azure.ps1 login` y `.\scripts\azure.ps1 access -Env stage`
+- [X] Cada operador ejecuta `.\scripts\azure.ps1 login` y `.\scripts\azure.ps1 access -Env stage`
   desde su PC para confirmar que sus permisos funcionan.
-- [ ] `.\scripts\azure.ps1 access -Env prod`: en *Quién puede desplegar a prod* debe aparecer
+- [X] `.\scripts\azure.ps1 access -Env prod`: en *Quién puede desplegar a prod* debe aparecer
   solo `repo:synaptica-sas/Synatrack:ref:refs/heads/main`.
 
 **Listo cuando:** existen los dos grupos de recursos, las variables de GitHub, cada operador pasa
 `access` y prod solo acepta la rama `main`.
+
+> **Cambio del 2026-11-11: región Central US y resource group de datos.** El primer `infra` de
+> stage en East US 2 falló: la suscripción MCPP tiene cupo 0 de App Service B1 en esa región.
+> Se pasó todo a **Central US**, donde están las otras aplicaciones de Synaptica. Además, el
+> Postgres de cada entorno va ahora en su propio resource group de datos (`rg-datos-stage`,
+> `rg-datos-prod`), con un Key Vault de datos para la contraseña del administrador, para alojar
+> después la base de otra aplicación (ver [PLAN.md](PLAN.md), decisiones). Los resource groups de
+> East US 2 se borraron. Hubo que repetir lo siguiente:
+>
+> - [X] En la config: `Location = "centralus"` y `DataResourceGroup` en cada entorno.
+> - [X] `bootstrap -Env stage` en Central US (dos veces: la segunda agrega los roles sobre el Key
+>   Vault de datos).
+> - [ ] `bootstrap -Env prod` en Central US. Hace falta antes de la fase E.
 
 ---
 
@@ -323,10 +336,10 @@ se crea presupuesto-synatrack
 
 **Rol:** Desarrollo, con revisión de TI.
 
-- [ ] Revisar los cambios de `migracion-azure`: código ([PREPARACION.md](PREPARACION.md)),
+- [X] Revisar los cambios de `migracion-azure`: código ([PREPARACION.md](PREPARACION.md)),
   `infra/`, `scripts/azure.ps1` y los workflows nuevos. TI revisa al menos `infra/` y los
   workflows.
-- [ ] Fusionar en `dev`. Es seguro: los workflows de Azure no hacen nada mientras la variable
+- [X] Fusionar en `dev`. Es seguro: los workflows de Azure no hacen nada mientras la variable
   `AZURE_DEPLOY_ENABLED` no sea `true`, y Render sigue igual porque `TRUST_PROXY` sin definir se
   comporta como antes.
 - [X] Corregir CLAUDE.md §6, que hoy dice que el frontend se despliega en Azure Static Web Apps
@@ -336,12 +349,24 @@ se crea presupuesto-synatrack
 
 **Rol:** Desarrollo y TI, juntos.
 
-- [ ] **Datos en stage:** ¿una copia de producción (ensayo realista, pero con datos reales de
+- [X] **Datos en stage:** ¿una copia de producción (ensayo realista, pero con datos reales de
   nómina y tarifas) o solo el seed más datos de prueba? Si es copia de producción, definir quién
   puede entrar a stage.
-- [ ] **Correo en stage:** ¿se envían correos reales o se dejan simulados (sin `SMTP_HOST`)? Si se
+
+  **Decisión:** el seed más datos de prueba. Stage **nunca** recibe datos reales, así que el
+  ensayo de la migración de datos (fase E) se hace sobre el Postgres de **prod en Azure**, que
+  está vacío y nadie usa hasta el corte.
+- [X] **Correo en stage:** ¿se envían correos reales o se dejan simulados (sin `SMTP_HOST`)? Si se
   envían, cuidar que no les lleguen a usuarios reales.
-- [ ] **Ventana del corte:** día y hora con poco uso, y a quién se avisa.
+
+  **Decisión:** no se usa correo (ni en stage ni en prod por ahora; tampoco Teams). Las alertas
+  de Azure sí llegan, porque las envía Azure Monitor y no dependen del SMTP de la app.
+- [X] **Ventana del corte:** día y hora con poco uso, y a quién se avisa.
+
+  **Decisión:** no hace falta una ventana formal, porque el uso es bajo. Sí hacen falta **unos
+  minutos sin escrituras** entre el dump de Supabase y el cambio de DNS: lo que alguien registre
+  en Render en ese intervalo no pasa a Azure. La base pesa 14 MB, así que es cuestión de minutos.
+  Basta con elegir un momento tranquilo y avisar por chat a quien suela registrar horas.
 
 ---
 
@@ -351,31 +376,80 @@ se crea presupuesto-synatrack
 
 **Rol:** Operador (TI de preferencia).
 
-- [ ] `.\scripts\azure.ps1 plan -Env stage`: revisar lo que va a crear.
-- [ ] `.\scripts\azure.ps1 infra -Env stage`.
-- [ ] Llenar la sección `stage` del archivo de secretos y cargarlos con
-  `.\scripts\azure.ps1 secret-sync -Env stage` (SMTP, webhooks de prueba, tokens con `<generar>`).
-- [ ] Activar los workflows de Azure con una **variable de repositorio**:
+- [X] `.\scripts\azure.ps1 plan -Env stage`: revisar lo que va a crear.
+- [X] `.\scripts\azure.ps1 infra -Env stage`. El primero tarda unos 15 minutos, y lo más lento son
+  las reglas de firewall de Postgres, que se crean de una en una.
+- [X] Segundo `infra -Env stage`: crea el Key Vault de datos y le traslada la contraseña de
+  Postgres ("Contraseña de Postgres trasladada…").
+- [X] `.\scripts\azure.ps1 status -Env stage` muestra todo en orden (2026-11-11):
+
+  | Recurso | Nombre |
+  |---|---|
+  | Web App | `app-synatrack-stage-pstwiq` (Running, Node 24, Always On) |
+  | Plan | `plan-synatrack-stage` (B1) |
+  | Postgres | `psql-synaptica-stage-belvy2` en `rg-datos-stage` (Ready, v17, B1ms, 25 reglas de firewall) |
+  | Key Vault de la app | `kv-syn-stage-pstwiq` (`database-url`) |
+  | Key Vault de datos | `kv-datos-stage-belvy2` en `rg-datos-stage` (`postgres-admin-password`) |
+  | Static Web App | `stapp-synatrack-stage` → `https://happy-mushroom-0f38ab810.8.azurestaticapps.net` |
+
+- [X] Archivo de secretos de stage: **no aplica por ahora**. Sin correo ni Teams, y sin tokens
+  (FX va a demanda y los trabajos corren dentro del backend), no hay nada que cargar. El aviso
+  "Secretos opcionales no cargados" de `infra` es informativo.
+- [ ] Subir a `dev` los cambios de Central US y del resource group de datos (`/commit` y
+  `/sync`). Hasta entonces, el workflow del backend que está en GitHub busca Postgres en el
+  resource group de la app.
+- [ ] Activar los workflows de Azure con una **variable de repositorio**, **antes** del push del
+  paso anterior, para que ese push despliegue:
   `gh variable set AZURE_DEPLOY_ENABLED --body true --repo synaptica-sas/Synatrack`. Detalle en
-  [infra/README.md](../../infra/README.md).
+  [infra/README.md](../../infra/README.md). La variable vale para los dos entornos: mientras prod
+  no exista en Azure, no fusionar cambios de `backend/` o `frontend/` a `main`, porque su
+  despliegue fallaría (sin tocar nada) al validar las variables de prod.
 
 ### D2. Entra ID para stage
 
 **Rol:** TI.
 
-- [ ] Agregar como URI de redirección (SPA) la URL de la Static Web App de stage, que muestra
-  `.\scripts\azure.ps1 status -Env stage`.
+- [ ] Agregar como URI de redirección (SPA) la URL de la Static Web App de stage:
+  `https://happy-mushroom-0f38ab810.8.azurestaticapps.net` (*Registros de aplicaciones → la app
+  de Synatrack → Autenticación → Aplicación de página única*). Usa el mismo formato que la de
+  Vercel, sin ruta, y no quites la de Vercel. Si alguna vez se recrea la SWA, cambia el hostname
+  y hay que repetir este paso.
 
 ### D3. Primer despliegue
 
 **Rol:** Desarrollo.
 
-- [ ] Hacer un push a `dev`: eso despliega stage.
+- [ ] **Backend:** el push a `dev` de D1 lo despliega solo, porque ese commit cambia
+  `deploy-backend-azure.yml`, que está entre los disparadores del workflow. Seguirlo en *Actions →
+  Deploy backend (Azure)*. El workflow abre el firewall para el runner, corre `prisma migrate
+  deploy` (crea las tablas en la base vacía), publica y espera a que `/health` responda 200.
+- [ ] **Frontend:** su workflow solo se dispara con cambios en `frontend/**` o en
+  `deploy-frontend-azure.yml`, y el push de D1 no toca ninguno. Para el primer despliegue hace
+  falta un push a `dev` que toque uno de los dos (por ejemplo, un comentario en el workflow).
+  Después hay que comprobar que la URL de la SWA carga la pantalla de inicio de sesión.
   `.\scripts\azure.ps1 deploy` y `rollback` usan `workflow_dispatch`, y GitHub solo lo habilita
   cuando el workflow ya está en `main`. Hasta que los workflows lleguen a `main`, stage se
   despliega únicamente con pushes a `dev`.
-- [ ] Si la base de stage está vacía: cargar roles y el usuario admin (`npm run prisma:seed`) con
-  la cadena de stage.
+- [ ] Cargar el seed en la base de stage (`npm run prisma:seed`), **después** del primer
+  despliegue del backend, porque necesita las tablas que crean las migraciones. Crea los roles, el
+  usuario admin (`ADMIN_EMAIL`), los catálogos (empresas, categorías, tipos de hora, feriados,
+  umbrales de salud) y un proyecto base. El Postgres solo acepta conexiones del App Service, así
+  que desde el PC hay que abrir el firewall a tu IP mientras dura el seed y cerrarlo al terminar:
+
+  ```powershell
+  $ip = (Invoke-RestMethod https://api.ipify.org)
+  az postgres flexible-server firewall-rule create -g rg-datos-stage -n psql-synaptica-stage-belvy2 `
+    --rule-name seed-tmp --start-ip-address $ip --end-ip-address $ip -o none
+  # DATABASE_URL = secreto database-url del Key Vault de la app (no lo pegues en chats ni archivos)
+  cd backend; $env:DATABASE_URL = (az keyvault secret show --vault-name kv-syn-stage-pstwiq -n database-url --query value -o tsv)
+  $env:ADMIN_EMAIL = '<tu correo>'; npm run prisma:seed; Remove-Item Env:DATABASE_URL
+  az postgres flexible-server firewall-rule delete -g rg-datos-stage -n psql-synaptica-stage-belvy2 --rule-name seed-tmp --yes
+  ```
+
+  Si se recrea el entorno, los nombres cambian: los muestra `.\scripts\azure.ps1 status -Env stage`.
+- [ ] **Datos de prueba:** cargarlos desde la aplicación, con usuarios de prueba: consultores,
+  proyectos, asignaciones, horas, horas extra y gastos suficientes para recorrer D4. No se copia
+  nada de producción.
 - [ ] `.\scripts\azure.ps1 health -Env stage`: `/health` responde 200 con `database: up`.
 
 ### D4. Validación funcional en stage
@@ -387,7 +461,8 @@ se crea presupuesto-synatrack
 - [ ] Registrar y aprobar horas, horas extra y gastos.
 - [ ] Los trabajos periódicos corren (`health` muestra su estado) y el botón "Actualizar ahora" de
   tasas FX trae tasas nuevas (en Azure la sincronización es a demanda: `fxSyncInCycle = false`).
-- [ ] Llega un correo de prueba y un mensaje al canal de Teams de prueba.
+- [ ] Sin correo ni Teams (decisión C2): confirmar que aprobar horas o gastos **no da error**
+  aunque no haya SMTP. La notificación simplemente no se envía.
 - [ ] La auditoría guarda la **IP real** del usuario, no una interna.
 - [ ] Recargar el navegador en una ruta interna (por ejemplo `/timesheet`): debe cargar la
   pantalla, no un 404.
@@ -403,25 +478,37 @@ se crea presupuesto-synatrack
 
 ## Fase E. Ensayo de la migración de datos
 
-Se hace en **stage**, con el mismo procedimiento que se usará en producción, y se mide cuánto tarda.
+Por la decisión C2, stage no recibe datos reales. El ensayo se hace sobre el **Postgres de prod en
+Azure**: está vacío, nadie lo usa hasta el corte y es justo el destino real. Se usa el mismo
+procedimiento que el día del corte y se mide cuánto tarda.
 **Rol:** Desarrollo ejecuta y TI acompaña. Conviene hacerlo juntos: es el mismo trabajo que harán el
 día del corte.
 
+- [ ] Requisito: la infraestructura de prod ya existe (`bootstrap` hecho; `infra -Env prod` y el
+  primer deploy del backend a prod, condición 1 de la fase F). Se adelanta respecto del orden
+  original.
+- [ ] Abrir el firewall del Postgres de prod a tu IP solo durante el ensayo (mismo procedimiento
+  que el seed de D3, con `rg-synatrack-prod`) y cerrarlo al terminar.
 - [ ] Dump del esquema `public` de Supabase ([PREPARACION.md §5](PREPARACION.md)). **Anotar la
   duración.**
 - [ ] Extensiones: el esquema no necesita ninguna (`gen_random_uuid()` viene incluida desde PG 13;
   `uuid-ossp` y `pgcrypto` no se usan; `pg_stat_statements` y `supabase_vault` son de Supabase).
   Si el restore falla por un `CREATE EXTENSION`, excluirla del dump en vez de habilitarla.
-- [ ] `pg_restore` en la base de stage. **Anotar la duración.**
-- [ ] `npx prisma migrate status` contra stage: debe decir *up to date*.
+- [ ] `pg_restore` en la base de **prod de Azure**. **Anotar la duración.**
+- [ ] `npx prisma migrate status` contra esa base: debe decir *up to date*.
 - [ ] Comparar el conteo de filas de las tablas principales (usuarios, consultores, proyectos,
-  horas, gastos, auditoría) entre Supabase y stage.
-- [ ] Repetir la validación de D4 con los datos reales.
-- [ ] Con las duraciones medidas, **definir la ventana del corte** (dump + restauración +
-  validación + margen).
-- [ ] Borrar del PC el archivo del dump al terminar: contiene datos de nómina.
+  horas, gastos, auditoría) entre Supabase y Azure prod.
+- [ ] Validar con datos reales entrando por el **hostname `*.azurestaticapps.net` de la SWA de
+  prod**, no por el dominio, que sigue en Vercel. Solo Desarrollo y TI: los usuarios siguen en
+  Render.
+- [ ] Con las duraciones medidas, estimar cuántos **minutos sin escrituras** pide el corte
+  (dump + restauración + verificación rápida).
+- [ ] **Al terminar, vaciar la base de prod de Azure:** el día del corte se restaura de nuevo
+  desde Supabase. Si quedaran los datos del ensayo, se mezclarían con los nuevos.
+- [ ] Borrar del PC el archivo del dump: contiene datos de nómina.
 
-**Listo cuando:** el ensayo salió completo, los conteos coinciden y se sabe cuánto dura.
+**Listo cuando:** el ensayo salió completo, los conteos coinciden, se sabe cuánto dura y la base
+de prod de Azure quedó vacía otra vez.
 
 ---
 
@@ -439,13 +526,13 @@ Desarrollo y TI la revisan juntos. Todo en **sí** antes de fijar la fecha. El c
 | 5  | Dominio personalizado preparado en la Static Web App de prod: registro TXT de validación creado en el DNS, a la espera solo del cambio de CNAME (detalle en [PLAN.md](PLAN.md), fase 4)                                                  | TI         | ☐ |
 | 6  | TTL del registro DNS de `synatrack` en 300 s desde hace al menos 48 h                                                                                                                                                                  | TI         | ☐ |
 | 7  | Quien tiene acceso al DNS está disponible durante la ventana                                                                                                                                                                            | TI         | ☐ |
-| 8  | Ensayo de datos (fase E) completo, con duración medida                                                                                                                                                                                  | Desarrollo | ☐ |
+| 8  | Ensayo de datos (fase E) completo sobre Azure prod, con duración medida y la base vaciada después                                                                                                                                      | Desarrollo | ☐ |
 | 9  | Validación en stage (fase D4) completa                                                                                                                                                                                                  | Desarrollo | ☐ |
-| 10 | Aviso enviado a los usuarios con la ventana de mantenimiento                                                                                                                                                                             | Desarrollo | ☐ |
+| 10 | Momento tranquilo elegido y aviso por chat a quien suela registrar horas: unos minutos sin escrituras (no hay ventana formal, decisión C2)                                                                                              | Desarrollo | ☐ |
 | 11 | Plan de rollback acordado: CNAME de vuelta a Vercel, Render y Supabase intactos. **Punto de no retorno** definido: desde que los usuarios escriben datos en Azure, volver a Render implica perder esos datos o copiarlos de vuelta | Ambos      | ☐ |
-| 12 | `access -Env prod` muestra que solo la rama `main` puede desplegar a prod (no hay aprobación: GitHub Free)                                                                                                                           | TI         | ☐ |
+| 12 | `access -Env prod` muestra que solo la rama `main` puede desplegar a prod (no hay aprobación: GitHub Free)                                                                                                                          | TI         | ☐ |
 | 13 | Workflows de Azure fusionados en `main`, para que `deploy` y `rollback` funcionen. La variable `AZURE_FRONTEND_PROD_ENABLED` se activa recién en el corte                                                                       | Desarrollo | ☐ |
-| 14 | El botón "Actualizar ahora" de tasas FX funciona en Azure (sincronización a demanda, sin el cron de Render)                                                                                                                         | Desarrollo | ☐ |
+| 14 | El botón "Actualizar ahora" de tasas FX funciona en Azure (sincronización a demanda, sin el cron de Render)                                                                                                                            | Desarrollo | ☐ |
 | 15 | Al menos dos operadores pasan `access` y saben ejecutar `health` y `rollback`                                                                                                                                                      | Ambos      | ☐ |
 
 ---

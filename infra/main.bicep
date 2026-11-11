@@ -102,6 +102,20 @@ param smtpFrom string = ''
 
 // --- Postgres ----------------------------------------------------------------
 
+// El servidor vive en un resource group de DATOS propio del entorno (p. ej.
+// rg-datos-stage), pensado para alojar más adelante las bases de otras
+// aplicaciones de Synaptica en el mismo servidor (una base por aplicación).
+// Por eso su nombre no lleva "synatrack". Este Bicep crea el servidor si no
+// existe y, sobre todo, la base `synatrack` y las reglas de firewall de esta app.
+@description('Resource group del servidor de Postgres (debe existir; lo crea bootstrap). Vacío = el mismo de la app.')
+param dataResourceGroupName string = ''
+
+@description('Nombre del servidor de Postgres. Vacío = psql-<postgresNamePrefix>-<env>-<sufijo del RG de datos>.')
+param postgresServerName string = ''
+
+@description('Prefijo del nombre derivado del servidor (compartido entre aplicaciones).')
+param postgresNamePrefix string = 'synaptica'
+
 @description('Versión mayor de PostgreSQL.')
 param postgresVersion string = '17'
 
@@ -110,6 +124,9 @@ param postgresSkuName string = 'Standard_B1ms'
 
 @description('Nivel del SKU de Postgres.')
 param postgresSkuTier string = 'Burstable'
+
+@description('Zona de disponibilidad del Postgres ("1", "2", "3"); vacío = la elige Azure. Ver modules/postgres.bicep.')
+param postgresAvailabilityZone string = ''
 
 @description('Almacenamiento de Postgres en GB.')
 param postgresStorageGB int = 32
@@ -120,8 +137,8 @@ param postgresBackupRetentionDays int = 7
 @description('Backups geo-redundantes (solo al crear).')
 param postgresGeoRedundantBackup bool = false
 
-@description('Usuario administrador de Postgres.')
-param postgresAdminLogin string = 'synatrack_admin'
+@description('Usuario administrador del servidor de Postgres (no se puede cambiar después de crearlo).')
+param postgresAdminLogin string = 'synaptica_admin'
 
 @description('Contraseña del administrador de Postgres. La genera/relee scripts/azure.ps1 desde Key Vault.')
 @secure()
@@ -169,14 +186,21 @@ param responseTimeThresholdSeconds int = 3
 var suffix = substring(uniqueString(resourceGroup().id), 0, 6)
 var namePrefix = '${appName}-${environmentName}'
 
+// Sufijo del servidor de Postgres: estable por resource group de DATOS, no por
+// el de la app, para que otra aplicación que lo derive llegue al mismo nombre.
+var dataRgName = empty(dataResourceGroupName) ? resourceGroup().name : dataResourceGroupName
+var dataSuffix = substring(uniqueString('${subscription().id}/resourceGroups/${dataRgName}'), 0, 6)
+
 var names = {
   logAnalytics: 'log-${namePrefix}'
   appInsights: 'appi-${namePrefix}'
   plan: 'plan-${namePrefix}'
   webApp: 'app-${namePrefix}-${suffix}'
-  postgres: 'psql-${namePrefix}-${suffix}'
+  postgres: empty(postgresServerName) ? 'psql-${postgresNamePrefix}-${environmentName}-${dataSuffix}' : postgresServerName
   // Máx. 24 caracteres: kv-syn-stage-xxxxxx = 19.
   keyVault: 'kv-${take(appName, 3)}-${environmentName}-${suffix}'
+  // kv-datos-stage-xxxxxx = 21. Sufijo del RG de datos, como el servidor.
+  dataKeyVault: 'kv-datos-${environmentName}-${dataSuffix}'
   staticWebApp: 'stapp-${namePrefix}'
 }
 
@@ -216,13 +240,15 @@ module monitoring 'modules/monitoring.bicep' = {
 }
 
 module postgres 'modules/postgres.bicep' = {
-  name: 'postgres'
+  name: 'postgres-${appName}'
+  scope: resourceGroup(dataRgName)
   params: {
     location: location
     serverName: names.postgres
     postgresVersion: postgresVersion
     skuName: postgresSkuName
     skuTier: postgresSkuTier
+    availabilityZone: postgresAvailabilityZone
     storageSizeGB: postgresStorageGB
     backupRetentionDays: postgresBackupRetentionDays
     geoRedundantBackup: postgresGeoRedundantBackup
@@ -230,7 +256,8 @@ module postgres 'modules/postgres.bicep' = {
     administratorLoginPassword: postgresAdminPassword
     databaseName: databaseName
     logAnalyticsWorkspaceId: monitoring.outputs.workspaceId
-    tags: tags
+    // El servidor es de todas las aplicaciones del entorno, no solo de Synatrack.
+    tags: union(tags, { app: 'compartido' })
   }
 }
 
@@ -238,6 +265,7 @@ module postgres 'modules/postgres.bicep' = {
 // Aquí DATABASE_URL y DIRECT_URL son la misma conexión directa.
 var databaseUrl = 'postgresql://${postgresAdminLogin}:${uriComponent(postgresAdminPassword)}@${postgres.outputs.fqdn}:5432/${databaseName}?sslmode=require'
 
+// Key Vault de la app: lo lee la identidad del Web App.
 module keyVault 'modules/keyvault.bicep' = {
   name: 'keyvault'
   params: {
@@ -245,9 +273,28 @@ module keyVault 'modules/keyvault.bicep' = {
     keyVaultName: names.keyVault
     tenantId: tenantId
     enablePurgeProtection: keyVaultPurgeProtection
-    postgresAdminPassword: postgresAdminPassword
-    databaseUrl: databaseUrl
+    secrets: {
+      'database-url': databaseUrl
+    }
     tags: tags
+  }
+}
+
+// Key Vault de datos, junto al servidor: guarda la contraseña del administrador,
+// que es de todas las aplicaciones del servidor y no de Synatrack. La etiqueta
+// `rol: datos` es la que usan el script y la CI para encontrarlo.
+module dataKeyVault 'modules/keyvault.bicep' = {
+  name: 'keyvault-datos-${appName}'
+  scope: resourceGroup(dataRgName)
+  params: {
+    location: location
+    keyVaultName: names.dataKeyVault
+    tenantId: tenantId
+    enablePurgeProtection: keyVaultPurgeProtection
+    secrets: {
+      'postgres-admin-password': postgresAdminPassword
+    }
+    tags: union(tags, { app: 'compartido', rol: 'datos' })
   }
 }
 
@@ -350,10 +397,13 @@ module keyVaultAccess 'modules/keyvault-access.bicep' = {
 }
 
 module postgresFirewall 'modules/postgres-firewall.bicep' = {
-  name: 'postgres-firewall'
+  name: 'postgres-firewall-${appName}'
+  scope: resourceGroup(dataRgName)
   params: {
     serverName: postgres.outputs.serverName
     allowedIps: split(appService.outputs.possibleOutboundIpAddresses, ',')
+    // Prefijo por aplicación: en un servidor compartido se sabe de quién es cada regla.
+    rulePrefix: appName
   }
 }
 
@@ -388,10 +438,12 @@ output webAppHostname string = appService.outputs.defaultHostname
 output apiUrl string = 'https://${appService.outputs.defaultHostname}'
 output appServicePlanName string = appService.outputs.planName
 output postgresServerName string = postgres.outputs.serverName
+output postgresResourceGroup string = dataRgName
 output postgresFqdn string = postgres.outputs.fqdn
 output postgresDatabase string = postgres.outputs.databaseName
 output keyVaultName string = keyVault.outputs.keyVaultName
 output keyVaultUri string = keyVault.outputs.keyVaultUri
+output dataKeyVaultName string = dataKeyVault.outputs.keyVaultName
 output staticWebAppName string = createStaticWebApp ? staticWebApp!.outputs.name : ''
 output staticWebAppHostname string = createStaticWebApp ? staticWebApp!.outputs.defaultHostname : ''
 output frontendUrl string = effectiveFrontendUrl
