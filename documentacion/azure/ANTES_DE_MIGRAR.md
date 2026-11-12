@@ -447,7 +447,7 @@ se crea presupuesto-synatrack
   ```
 
   Si se recrea el entorno, los nombres cambian: los muestra `.\scripts\azure.ps1 status -Env stage`.
-- [ ] **Datos de prueba:** cargarlos desde la aplicación, con usuarios de prueba: consultores,
+- [X] **Datos de prueba:** cargarlos desde la aplicación, con usuarios de prueba: consultores,
   proyectos, asignaciones, horas, horas extra y gastos suficientes para recorrer D4. No se copia
   nada de producción.
 - [X] `.\scripts\azure.ps1 health -Env stage`: `/health` responde 200 con `database: up`.
