@@ -6,8 +6,8 @@
 > [!NOTE]
 > **El nombre aparece de tres formas distintas** y conviene saberlo para no confundirse:
 > `Synatrack` (repositorio y documentación), `SynaTrack` (títulos y pie de página de la interfaz,
-> `frontend/src/App.tsx`) y `App Gestión` / `app-gestion-*` (nombres de los servicios en
-> `render.yaml`, `vercel.json` y varias variables de entorno, además del nombre de la base
+> `frontend/src/App.tsx`) y `App Gestión` / `app-gestion-*` (nombres de los contenedores de
+> `docker-compose.yml` y varias variables de entorno, además del nombre de la base
 > `app_gestion_demo`). Unificarlos implica tocar código y configuración de despliegue, así que
 > por ahora queda documentado, no cambiado.
 
@@ -33,9 +33,9 @@ Las ramas que existen hoy en el repositorio (`git branch -a`) son:
 - **`fix/*` y `docs/*`**: ramas de trabajo creadas para la depuración en curso; su alcance y orden están descritos en `documentacion/PLAN_DE_RAMAS.md`.
 
 > [!IMPORTANT]
-> **No existen las ramas `develop` ni `deploy`** que mencionaban versiones anteriores de este documento, y **no hay un flujo de promoción acordado** entre ramas. Lo que sí está automatizado hoy:
-> - `.github/workflows/azure-static-web-apps-*.yml` despliega el frontend a Azure Static Web Apps en cada push a `main` (y en los PR contra `main`). Ojo: declara `output_location: "build"` cuando Vite emite `dist`; está registrado como DEP-19 en `BACKLOG_DEPURACION.md`.
-> - Render y Vercel (ver `render.yaml` y `frontend/vercel.json`) apuntan al despliegue de la demo; la rama que tienen configurada debe confirmarse en los paneles de cada servicio, porque no está declarada en el repositorio.
+> **No existen las ramas `develop` ni `deploy`** que mencionaban versiones anteriores de este documento. El flujo actual (desde noviembre de 2026, en Azure):
+> - Un push a `dev` despliega **stage** y uno a `main`, **producción**, con los workflows `deploy-backend-azure.yml` y `deploy-frontend-azure.yml`. Prod se publica sin aprobación (GitHub Free), así que la revisión va en el PR de `dev` a `main`.
+> - Render y Vercel se están retirando: `render.yaml` y `frontend/vercel.json` ya no existen. Detalle y estado del corte en `documentacion/DESPLIEGUE.md`.
 >
 > Antes de definir un flujo de ramas formal hay que acordarlo con el equipo; este documento solo describe el estado actual.
 

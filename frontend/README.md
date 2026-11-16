@@ -23,12 +23,9 @@
 - `npm run build`
 - `npm run start` (serves built files using `server.mjs`)
 
-## Vercel
-- Root directory: `frontend`
-- Install command: `npm ci`
-- Build command: `npm run build`
-- Output directory: `dist`
-- Configure `VITE_API_URL` with the Render backend public URL.
-- Configure `VITE_FORCE_LOCAL_AUTH=true` for demo mode, or `false` for Microsoft Entra auth.
-- `vercel.json` rewrites SPA routes like `/home` back to `index.html`.
-- `public/env.js` provides an empty runtime config fallback so the static Vercel build does not 404 on `/env.js`.
+## Despliegue (Azure Static Web Apps)
+- Lo hace el pipeline `.github/workflows/deploy-frontend-azure.yml`: un push a `dev` publica en stage y uno a `main`, en prod.
+- Las `VITE_*` se fijan en el build del pipeline. Los App Settings de la SWA no llegan a Vite.
+- `public/staticwebapp.config.json` hace que las rutas de la SPA (por ejemplo `/projects`) caigan en `index.html`.
+- `public/env.js` es un respaldo vacío de la configuración en runtime. Solo `server.mjs` (Docker local) lo reemplaza con valores reales.
+- Detalle: `documentacion/DESPLIEGUE.md` e `infra/README.md`.

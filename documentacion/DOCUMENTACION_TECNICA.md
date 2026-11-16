@@ -55,14 +55,14 @@ No hay colas de mensajes, cache intermedio (Redis) ni un *API Gateway* separado:
 | Capa | Tecnología |
 |---|---|
 | Frontend | React 19, TypeScript, Vite 8 |
-| Backend | Node.js 20/24 (ver inconsistencia en [§10](#10-puntos-críticos-del-proyecto)), Fastify 5, TypeScript |
-| ORM / Base de datos | Prisma 6 sobre PostgreSQL 15 (Supabase en producción) |
+| Backend | Node.js 24, Fastify 5, TypeScript |
+| ORM / Base de datos | Prisma 6 sobre PostgreSQL (17 en Azure; 15 en Docker local) |
 | Validación | Zod 4 (frontend implícito vía errores del backend; backend explícito en cada ruta) |
 | Autenticación | Microsoft Entra ID (Azure AD) vía `jose` (backend) y `@azure/msal-browser`/`@azure/msal-react` (frontend) |
 | Notificaciones | `nodemailer` (SMTP/Office 365) + webhooks entrantes de Microsoft Teams |
 | Exportación | `jspdf`/`jspdf-autotable` (PDF), `xlsx` (Excel), CSV propio |
 | Testing | Vitest + Testing Library (frontend), Vitest (backend) |
-| Hosting | Vercel (frontend), Render (backend), Supabase (base de datos) |
+| Hosting | Azure: Static Web Apps (frontend), App Service (backend), PostgreSQL Flexible Server (base de datos). Ver [§6](#6-despliegue) |
 
 ### 1.5 Arquitectura general
 
@@ -95,12 +95,12 @@ flowchart TB
         AAD["Microsoft Entra ID\n(Azure AD)"]
     end
 
-    subgraph render["Render (Web Service)"]
+    subgraph appsvc["Azure App Service"]
         API["API Fastify 5\n(Node.js, TypeScript)"]
     end
 
-    subgraph supabase["Supabase"]
-        DB[(PostgreSQL 15)]
+    subgraph pg["Azure PostgreSQL Flexible Server"]
+        DB[(PostgreSQL 17)]
     end
 
     subgraph ext["Servicios externos"]
@@ -127,12 +127,12 @@ flowchart TB
 
 1. El usuario interactúa con un componente de un **`*Tab.tsx`** en `frontend/src/features/`.
 2. El componente llama a una función de un **hook de dominio** (`frontend/src/hooks/useX.ts`) o directamente a una función de **`frontend/src/services/api.ts`**.
-3. `api.ts` arma la petición `fetch` (JSON, header `Authorization: Bearer <token>` si hay sesión), la envía a `VITE_API_URL` (o a `/api/*` si es Vercel, que la reescribe hacia Render).
+3. `api.ts` arma la petición `fetch` (JSON, header `Authorization: Bearer <token>` si hay sesión), la envía a `VITE_API_URL` (el App Service del entorno; no hay proxy de `/api`).
 4. En el backend, Fastify enruta la petición al módulo correspondiente en `backend/src/modules/*/*.routes.ts`.
 5. Se ejecutan los `preHandler`: `authenticate` (resuelve/crea el usuario, valida el JWT o aplica bypass demo) y `authorize([...roles])` (verifica rol).
 6. El handler valida el `body`/`params`/`query` con un esquema **Zod** definido en el mismo archivo.
 7. El handler llama a **Prisma** directamente (no hay capa de repositorio) y, si aplica, a funciones puras de `backend/src/utils/*` (EVM, capacidad, moneda, recargos, salud).
-8. Prisma traduce a SQL y consulta/escribe en PostgreSQL (Supabase).
+8. Prisma traduce a SQL y consulta/escribe en PostgreSQL.
 9. El handler arma la respuesta (usualmente `{ data: ... }`) y la retorna; Fastify la serializa a JSON.
 10. `api.ts` (frontend) parsea la respuesta; si `!response.ok`, lanza un `Error` con el mensaje (traducido al español si es un error de validación Zod).
 11. El hook de dominio actualiza su estado (`useState`); React re-renderiza el `*Tab.tsx`, y el usuario ve el resultado (o un toast/banner de error vía `handleError` en `App.tsx`).
@@ -157,7 +157,7 @@ Ver diagrama detallado en [§5.4](#54-autenticación-y-autorización) y la expli
 | Servicio | Uso | Notas |
 |---|---|---|
 | **Microsoft Entra ID (Azure AD)** | Autenticación corporativa (OIDC/JWT) | Validación contra JWKS remoto; puede desactivarse con `AUTH_DEMO_BYPASS=true` |
-| **Supabase** | Hosting de PostgreSQL | Se usa solo como Postgres administrado; no se usan sus features de Auth/Storage/Realtime |
+| **Azure** | App Service, Static Web Apps, PostgreSQL Flexible Server, Key Vault, Application Insights | Antes Render, Vercel y Supabase (en retiro, ver [§6](#6-despliegue)) |
 | **SMTP (Office 365)** | Envío de correos de notificación | Si no está configurado, cae en modo *mock* (`console.log`) |
 | **Microsoft Teams (Incoming Webhooks)** | Notificaciones de nómina y feedback | Igual que SMTP, mockeado si no hay URL configurada |
 | **Tasas de cambio (FX)** | — | **No se encontró ninguna integración automática** con un proveedor externo (ECB, Banrep, etc.). El campo `FxRateHistory.source` admite ese texto libre, pero la carga de tasas es manual vía `fx.routes.ts` / la vista "Tasas FX". Esto se documenta explícitamente porque no se debe asumir que las tasas se actualizan solas. |
@@ -176,7 +176,7 @@ No hay ningún *scheduler* (cron, `node-cron`, `setInterval`) en el repositorio:
 
 | Categoría | Detalle |
 |---|---|
-| Runtime | Node.js (`.nvmrc`/`render.yaml` fijan `20.19.0`; `package.json.engines` pide `24.x` — inconsistencia, ver [§10](#10-puntos-críticos-del-proyecto)) |
+| Runtime | Node.js 24 (`.nvmrc` fija `24.13.0`, `package.json.engines` pide `24.x` y App Service corre Node 24 LTS) |
 | Framework HTTP | **Fastify 5.8.4** |
 | Lenguaje | TypeScript (ESM puro, `NodeNext`) |
 | ORM | **Prisma 6.16.3** (`@prisma/client` + CLI `prisma`) |
@@ -483,7 +483,7 @@ No existen carpetas `pages/`, `context/`, `layouts/`, `store/` ni `routes/` — 
 - Un listener de `popstate` sincroniza `activeTab` cuando el usuario usa atrás/adelante del navegador.
 - Un `useEffect` sincroniza la URL cada vez que cambia `activeTab`.
 - **Rutas protegidas**: un `useEffect` de guardia redirige a `/` si no hay sesión y la ruta pedida es una de las protegidas, o redirige a la pestaña activa si hay sesión y la ruta es pública (`/`, `/landing`, `/login`).
-- **Deep-link / refresh directo**: como no hay servidor de rutas real, tanto `frontend/vercel.json` (`"source": "/(.*)", "destination": "/index.html"`) como `frontend/server.mjs` (fallback a `index.html` si el archivo no existe) devuelven siempre `index.html` para cualquier ruta — es la SPA la que decide, en el cliente, qué tab mostrar según `window.location.pathname`.
+- **Deep-link / refresh directo**: como no hay servidor de rutas real, tanto `frontend/public/staticwebapp.config.json` (`navigationFallback` en la SWA) como `frontend/server.mjs` (fallback a `index.html` si el archivo no existe) devuelven siempre `index.html` para cualquier ruta — es la SPA la que decide, en el cliente, qué tab mostrar según `window.location.pathname`.
 
 **Manejo de sesión**: `bootstrap()` en `App.tsx` decide entre 3 modos: (a) Microsoft real (`authWithMicrosoftEnabled`) — exige cuenta MSAL activa o redirige a `/`; (b) bypass local (`VITE_FORCE_LOCAL_AUTH=true`) — usa `sessionStorage.bypass_auth`; (c) llama siempre `getMe()` para poblar `authUser`/permisos una vez resuelto el modo. El login **siempre es redirect**, nunca popup (`loginRedirect`/`acquireTokenRedirect`).
 
@@ -508,7 +508,7 @@ No existen carpetas `pages/`, `context/`, `layouts/`, `store/` ni `routes/` — 
 
 ### 5.1 Cómo se comunican
 
-HTTP/JSON puro sobre `fetch`. En desarrollo, el frontend llama directo a `VITE_API_URL` (`http://localhost:4000`). En producción (Vercel), `/api/*` se reescribe hacia el backend en Render (`frontend/vercel.json`); alternativamente, `VITE_API_URL` puede apuntar directo al backend.
+HTTP/JSON puro sobre `fetch`. En desarrollo, el frontend llama directo a `VITE_API_URL` (`http://localhost:4000`). En stage y producción, `VITE_API_URL` apunta directo al App Service del entorno; no hay proxy de `/api`.
 
 ### 5.2 Formato de las peticiones
 
@@ -544,17 +544,23 @@ Ver el flujo detallado con datos reales en la [§8](#8-flujo-completo-de-una-fun
 | Entorno | Frontend | Backend | Base de datos |
 |---|---|---|---|
 | **Local (Docker)** | `frontend` container, puerto `4173` | `backend` container, puerto `4000` | `postgres:15-alpine`, puerto `5433→5432` |
-| **Local (sin Docker)** | `npm run dev` (Vite), puerto `5173` | `npm run dev` (`tsx watch`), puerto `4000` | Postgres local o el mismo Supabase |
-| **Producción** | **Vercel** | **Render** (Web Service, plan free) | **Supabase** (PostgreSQL administrado) |
+| **Local (sin Docker)** | `npm run dev` (Vite), puerto `5173` | `npm run dev` (`tsx watch`), puerto `4000` | Postgres portable o Docker en `:5433` |
+| **Stage** (rama `dev`) | **Azure Static Web Apps** | **Azure App Service** Linux B1 | **Azure PostgreSQL Flexible 17** (`rg-datos-stage`) |
+| **Producción** (rama `main`) | **Azure Static Web Apps** | **Azure App Service** Linux B1 | **Azure PostgreSQL Flexible 17** (`rg-datos-prod`) |
 
 ```mermaid
 flowchart LR
-    Dev["Desarrollador\n(VS Code)"] -- "git push" --> GH["GitHub\n(rama deploy)"]
-    GH -- deploy automático --> Vercel["Vercel\n(frontend, build Vite)"]
-    GH -- deploy automático --> Render["Render\n(backend, Fastify)"]
-    Vercel -- "proxy /api/* (vercel.json)" --> Render
-    Render -- "Prisma Client" --> Supabase[("Supabase\nPostgreSQL")]
+    Dev["Desarrollador"] -- "git push dev / main" --> GH["GitHub Actions\n(*-azure.yml)"]
+    GH -- "OIDC + zip" --> App["App Service\n(backend, Fastify)"]
+    GH -- "build con VITE_*" --> SWA["Static Web App\n(frontend)"]
+    SWA -. "el navegador llama a VITE_API_URL" .-> App
+    App -- "Prisma Client" --> PG[("PostgreSQL\nFlexible 17")]
+    App -- "referencias" --> KV["Key Vault"]
 ```
+
+> Hasta noviembre de 2026 producción corría en Vercel, Render y Supabase. El corte de DNS de
+> `synatrack.synaptica.co` a la SWA de prod seguía pendiente el 2026-11-16 (ver
+> `documentacion/DESPLIEGUE.md`).
 
 ### 6.2 `docker-compose.yml` (desarrollo local)
 
@@ -564,26 +570,21 @@ flowchart LR
 | `backend` | `./backend/Dockerfile` | `4000:4000` | `AUTH_DEMO_BYPASS=true`; corre `npx prisma migrate deploy && npm run start`; espera a que `db` esté `service_healthy` |
 | `frontend` | `./frontend/Dockerfile` | `4173:4173` | `VITE_API_URL=http://localhost:4000`, `VITE_FORCE_LOCAL_AUTH=true` |
 
-### 6.3 Backend en Render (`render.yaml`)
+### 6.3 Backend en Azure App Service
 
-```yaml
-type: web
-runtime: node
-plan: free
-rootDir: backend
-buildCommand: npm install --include=dev && npm run build
-startCommand: npm run start
-healthCheckPath: /health
-```
+- El zip lo construye `deploy-backend-azure.yml`: `npm ci`, pruebas, `npm run build`,
+  `npm prune --omit=dev`. App Service no compila nada (`SCM_DO_BUILD_DURING_DEPLOYMENT=false`).
+- **Las migraciones son automáticas**: el pipeline corre `prisma migrate deploy` antes de
+  publicar, con una regla de firewall temporal para la IP del runner.
+- Los App Settings los define `infra/main.bicep`, y cada `infra` reemplaza la lista completa.
+  Los secretos son referencias a Key Vault. La tabla completa está en `infra/README.md` §5.
 
-Variables con `sync: false` (deben configurarse manualmente en el dashboard de Render, nunca en el repo): `CORS_ORIGIN`, `DATABASE_URL`, `DIRECT_URL`, `ADMIN_EMAIL`, `AZURE_AD_TENANT_ID`, `AZURE_AD_AUDIENCE`. Con valor fijo en el repo: `NODE_ENV=production`, `NODE_VERSION=20.19.0`, `AUTH_ENABLED=false`, `AUTH_DEMO_BYPASS=true` (⚠️ estos dos últimos vienen en modo demo por defecto — para producción real con Azure AD hay que cambiarlos manualmente).
+### 6.4 Frontend en Azure Static Web Apps
 
-> **Importante**: ni `buildCommand` ni `startCommand` ejecutan `prisma migrate deploy`. Las migraciones contra Supabase se aplican **manualmente** (`npm run prisma:deploy` desde la máquina del desarrollador), a diferencia de `docker-compose.yml`, que sí las aplica automáticamente al levantar el contenedor.
-
-### 6.4 Frontend en Vercel
-
-- Root directory: `frontend`. Install: `npm ci`. Build: `npm run build` (`tsc -b && vite build`). Output: `dist`.
-- `frontend/vercel.json` reescribe `/api/*` hacia `https://app-gestion-demo.onrender.com/api/:path*` (URL de Render **hardcodeada** en el archivo, no una variable) y todo lo demás hacia `/index.html` (fallback SPA).
+- `deploy-frontend-azure.yml` compila con las `VITE_*` del entorno y solo sube `frontend/dist`.
+- `frontend/public/staticwebapp.config.json` hace el fallback de la SPA a `/index.html`.
+- No hay proxy de `/api`: el bundle llama directo a `VITE_API_URL` (el App Service) con su
+  propio `Authorization: Bearer`.
 
 ### 6.5 Variables de entorno
 
@@ -594,8 +595,8 @@ Variables con `sync: false` (deben configurarse manualmente en el dashboard de R
 | `PORT` | Puerto HTTP | `4000` |
 | `NODE_ENV` | Entorno | `production` |
 | `CORS_ORIGIN` | Orígenes permitidos (coma-separados o `*`) | — |
-| `DATABASE_URL` | Cadena Postgres *pooled* (uso normal de la API) | Supabase pooler `:6543` |
-| `DIRECT_URL` | Cadena Postgres directa (solo migraciones) | Supabase directo `:5432` |
+| `DATABASE_URL` | Cadena Postgres que usa la API | Local `:5433`; en Azure, Key Vault `database-url` |
+| `DIRECT_URL` | Cadena directa para migraciones (en Azure es la misma que `DATABASE_URL`) | Ídem |
 | `AUTH_ENABLED` | Activa validación real de JWT | `false` |
 | `AUTH_DEMO_BYPASS` | Salta login, usuario admin local | `true` |
 | `ADMIN_EMAIL` | Email que siempre recupera rol ADMIN | — |
@@ -605,34 +606,46 @@ Variables con `sync: false` (deben configurarse manualmente en el dashboard de R
 | `PAYROLL_EMAIL` / `SUPPORT_EMAIL` | Destinatarios de notificaciones | — |
 | `TEAMS_PAYROLL_WEBHOOK_URL` / `TEAMS_FEEDBACK_WEBHOOK_URL` | Webhooks de Teams | — |
 
-**Frontend** (`frontend/.env.example`, 6 variables): `VITE_API_URL`, `VITE_FORCE_LOCAL_AUTH`, `VITE_AZURE_TENANT_ID`, `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_REDIRECT_URI`, `VITE_AZURE_API_SCOPE`. En producción estas mismas variables pueden inyectarse **en runtime** (sin rebuild) vía `frontend/server.mjs`, que expone `/env.js` generando `window.__APP_CONFIG__` a partir de variables de entorno del proceso (con varios alias aceptados, p. ej. `AZURE_TENANT_ID`/`ENTRA_TENANT_ID`/`AAD_TENANT_ID` para `VITE_AZURE_TENANT_ID`).
+**Frontend** (`frontend/.env.example`, 6 variables): `VITE_API_URL`, `VITE_FORCE_LOCAL_AUTH`, `VITE_AZURE_TENANT_ID`, `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_REDIRECT_URI`, `VITE_AZURE_API_SCOPE`. En Azure se fijan en el build del pipeline. Con Docker, en cambio, pueden inyectarse **en runtime** (sin rebuild) vía `frontend/server.mjs`, que expone `/env.js` generando `window.__APP_CONFIG__` a partir de variables de entorno del proceso (con varios alias aceptados, p. ej. `AZURE_TENANT_ID`/`ENTRA_TENANT_ID`/`AAD_TENANT_ID` para `VITE_AZURE_TENANT_ID`).
 
 ### 6.6 Cómo realizar un nuevo despliegue
 
-1. Trabajar y probar en la rama correspondiente (hoy solo existen `main`, `origin/dev` y las ramas de depuración `fix/*`/`docs/*` de `documentacion/PLAN_DE_RAMAS.md`; **las ramas `develop` y `deploy` que citaban versiones anteriores de este documento no existen**).
-2. Fusionar en `main` y empujar. El push a `main` dispara el workflow de Azure Static Web Apps; Render y Vercel despliegan por sus integraciones nativas con GitHub, pero **la rama que tienen conectada no está declarada en el repositorio** y hay que confirmarla en el panel de cada servicio.
-3. Si hubo cambios de esquema: correr manualmente `npm run prisma:deploy` (desde `backend/`, contra la `DATABASE_URL`/`DIRECT_URL` de producción) — **no ocurre automáticamente**.
-4. Validar: `GET /health` del backend (`ok`, `database: "up"`), abrir el frontend, revisar consola por errores CORS, probar login y un CRUD básico, y opcionalmente correr `npm run smoke` contra la URL de Render.
+1. Trabajar en `dev`. Cada push despliega **stage** solo (backend y/o frontend, según la
+   carpeta que cambió).
+2. Validar en stage y abrir un PR de `dev` a `main`. Antes del merge, el agente `versionador`
+   marca la versión.
+3. **El merge a `main` despliega prod sin aprobación** (GitHub Free). Las migraciones se aplican
+   solas en el pipeline del backend.
+4. Validar con `.\scripts\azure.ps1 health -Env prod`. El rollback es
+   `.\scripts\azure.ps1 rollback -Env prod`. Detalle en `documentacion/DESPLIEGUE.md`.
 
 ### 6.7 Cómo configurar un nuevo entorno
 
-1. Crear proyecto en Supabase → copiar cadena *pooled* (`DATABASE_URL`) y directa (`DIRECT_URL`, con `sslmode=require`).
-2. `cd backend && npm ci && npm run prisma:generate && npm run prisma:deploy && npm run prisma:seed`. Ya **no** hace falta `npm run prisma:push`: el drift quedó cubierto por la migración `20260918120000_fix_schema_drift` (ver [§3.5.2](#352-migraciones)). El seed crea solo los roles y el usuario `ADMIN_EMAIL`, no datos de demostración.
-3. Configurar el Web Service en Render (ver [§6.3](#63-backend-en-render-renderyaml)) con todas las variables `sync: false`.
-4. Configurar el proyecto en Vercel (ver [§6.4](#64-frontend-en-vercel)) con las 6 variables de `frontend/.env.example`.
-5. Si se usará login real (no demo): registrar la app en Microsoft Entra ID, configurar `AZURE_AD_TENANT_ID`/`AZURE_AD_AUDIENCE` en el backend y `VITE_AZURE_*` en el frontend (mismo tenant/app registration en ambos lados), y cambiar `AUTH_ENABLED=true`, `AUTH_DEMO_BYPASS=false`.
-6. Actualizar `CORS_ORIGIN` en Render con la URL final de Vercel.
+Con `scripts/azure.ps1`, en este orden: `bootstrap`, `infra`, `secret-sync`, configuración de
+Entra ID y primer despliegue. El paso a paso está en `infra/README.md` §3. El seed (solo roles
+y el usuario `ADMIN_EMAIL`) se corre una vez, con una regla de firewall temporal; el
+procedimiento está en `documentacion/azure/ANTES_DE_MIGRAR.md`.
 
 ### 6.8 Scripts operativos
 
 | Script | Comando | Uso |
 |---|---|---|
 | `backend/scripts/bootstrap-admin.mjs` | `npm run bootstrap:admin` | Garantiza/crea el usuario ADMIN inicial en una BD ya migrada |
-| `backend/scripts/smoke.mjs` | `npm run smoke` | Smoke test E2E contra una API viva (health → CRUD básico → stats) |
+| `backend/scripts/smoke.mjs` | `npm run smoke` | Smoke test E2E contra una API **local** (health → CRUD básico → stats). Crea datos de prueba, así que nunca se corre contra stage ni prod |
+| `scripts/azure.ps1` | `.\scripts\azure.ps1 <comando> -Env <stage\|prod>` | Operación de Azure: `bootstrap`, `infra`, `deploy`, `rollback`, `health`, `logs`, `access`, secretos |
 
 ### 6.9 CI/CD
 
-Existe **un** workflow de GitHub Actions: `.github/workflows/azure-static-web-apps-victorious-glacier-0d52b010f.yml`, que construye y publica el frontend en Azure Static Web Apps en cada push a `main` y en los PR contra `main`. **No corre tests ni type-check**, y declara `output_location: "build"` cuando Vite emite `dist` (ver DEP-19 en `BACKLOG_DEPURACION.md`). El resto del despliegue (backend en Render, frontend en Vercel) sigue dependiendo de las integraciones nativas de esos servicios con GitHub, sin ninguna validación automática previa.
+Cuatro workflows de GitHub Actions; la tabla completa está en `infra/README.md` §7:
+
+- `backend-ci.yml`: type-check y pruebas unitarias y de ruta en cada push o PR a `dev`/`main`.
+- `deploy-backend-azure.yml` y `deploy-frontend-azure.yml`: verifican y despliegan stage o
+  prod según la rama. También se lanzan a mano para un commit concreto o un rollback.
+- `infra-azure.yml`: what-if de Bicep comentado en los PR que tocan `infra/`, y despliegue
+  manual de infraestructura.
+
+Todos se autentican en Azure por OIDC. No hay secretos guardados en GitHub, solo variables de
+repositorio.
 
 ---
 
@@ -656,7 +669,7 @@ Existe **un** workflow de GitHub Actions: `.github/workflows/azure-static-web-ap
 
 ### 7.3 Servidor de producción del frontend
 
-`frontend/server.mjs` (usado por `npm start`, para despliegues tipo Docker/Render, distinto del hosting real en Vercel): sirve `dist/` estático con verificación anti path-traversal, expone `/env.js` para inyectar configuración en runtime, hace fallback SPA a `index.html`, y escucha en `0.0.0.0:${PORT || 4173}`.
+`frontend/server.mjs` (usado por `npm start` y por el contenedor de Docker local; en Azure no interviene): sirve `dist/` estático con verificación anti path-traversal, expone `/env.js` para inyectar configuración en runtime, hace fallback SPA a `index.html`, y escucha en `0.0.0.0:${PORT || 4173}`.
 
 ### 7.4 Lint y testing
 
@@ -831,10 +844,10 @@ Hallazgos verificados directamente contra el código (no son suposiciones), orde
 
 | # | Punto crítico | Evidencia |
 |---|---|---|
-| 21 | Versión de Node inconsistente: `.nvmrc`/`render.yaml`/Dockerfiles fijan `20.x`, pero `package.json` (ambos proyectos) declara `engines.node: "24.x"`. | `backend/.nvmrc`, `render.yaml`, `backend/package.json`, `frontend/package.json` |
-| 22 | Comando de build de Render (`npm install --include=dev`) documentado distinto en `DEPLOYMENT.md` (`npm ci`) — pueden divergir en qué versiones exactas de dependencias se instalan. | `render.yaml` vs. `DEPLOYMENT.md` |
+| 21 | **RESUELTO** (`.nvmrc` y App Service en Node 24; `render.yaml` se retiró el 2026-11-16). Versión de Node inconsistente: `.nvmrc`/`render.yaml`/Dockerfiles fijan `20.x`, pero `package.json` (ambos proyectos) declara `engines.node: "24.x"`. | `backend/.nvmrc`, `render.yaml`, `backend/package.json`, `frontend/package.json` |
+| 22 | **OBSOLETO** (Render retirado; el pipeline de Azure usa `npm ci`). Comando de build de Render (`npm install --include=dev`) documentado distinto en `DEPLOYMENT.md` (`npm ci`) — pueden divergir en qué versiones exactas de dependencias se instalan. | `render.yaml` vs. `DEPLOYMENT.md` |
 | 23 | `DEPLOYMENT.md` referencia `backend/.env.local.example`, `backend/.env.local.5433.example` y `backend/.env.production.example`, ninguno existe en el repo. | Verificado con `Test-Path` |
-| 24 | La URL del backend en `frontend/vercel.json` está **hardcodeada** (`app-gestion-demo.onrender.com`) en vez de parametrizada — mover de servicio de Render rompe el rewrite silenciosamente. | `frontend/vercel.json` |
+| 24 | **OBSOLETO** (`vercel.json` se retiró el 2026-11-16; en Azure la URL es `VITE_API_URL` del pipeline). La URL del backend en `frontend/vercel.json` está **hardcodeada** (`app-gestion-demo.onrender.com`) en vez de parametrizada — mover de servicio de Render rompe el rewrite silenciosamente. | `frontend/vercel.json` |
 | 25 | No hay pipeline de CI: no se corren tests ni type-check automáticamente antes de desplegar; el único *smoke test* (`npm run smoke`) es manual y post-despliegue. | Ausencia de `.github/workflows/` |
 | 26 | El chat "IA" (`RagChat.tsx`) es una simulación local por coincidencia de texto, no un LLM real — puede generar expectativas equivocadas en el usuario final si no se documenta como tal en la UI. | `frontend/src/components/RagChat.tsx` |
 | 27 | `DIRECT_URL` (usada por Prisma para migraciones) no pasa por la validación Zod de `config/env.ts` — solo `DATABASE_URL` se valida; un `DIRECT_URL` mal configurado falla recién al correr una migración, no al arrancar el server. | `backend/src/config/env.ts` vs. `backend/prisma/schema.prisma` |
@@ -871,8 +884,8 @@ Hallazgos verificados directamente contra el código (no son suposiciones), orde
 - Agregar advertencia visible (no silenciosa) cuando `GET /payroll` no logra convertir un monto por falta de tasa FX (punto #19).
 - Añadir validación de solapamiento de fechas en `delegations.routes.ts` (punto #18).
 - Homologar `entity` en `AuditLog` a un único formato (recomendado: camelCase minúscula, como ya hace la mayoría) (punto #10).
-- Alinear la versión de Node entre `.nvmrc`, Dockerfiles, `render.yaml` y `package.json.engines` (punto #21) para evitar comportamientos distintos entre entornos.
-- Parametrizar la URL del backend en `frontend/vercel.json` (punto #24), o documentar explícitamente el paso manual de actualizarla si cambia el nombre del servicio en Render.
+- ~~Alinear la versión de Node entre `.nvmrc`, Dockerfiles, `render.yaml` y `package.json.engines` (punto #21)~~ (resuelto) para evitar comportamientos distintos entre entornos.
+- ~~Parametrizar la URL del backend en `frontend/vercel.json` (punto #24)~~ (obsoleto: se retiró Vercel), o documentar explícitamente el paso manual de actualizarla si cambia el nombre del servicio en Render.
 
 ### 11.5 Sobre pruebas y CI
 

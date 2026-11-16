@@ -43,32 +43,12 @@
 - Forecast ranges must use `YYYY-MM-DD` in `startDate` and `endDate`.
 - Stats endpoint validates date ranges (`to` cannot be before `from`).
 
-## Render deploy (API)
-1. Root directory:
-   - `backend`
-2. Build command:
-   - `npm ci && npm run build`
-3. Start command:
-   - `npm run start`
-4. Variables:
-   - `NODE_ENV=production`
-   - `CORS_ORIGIN=https://<frontend-domain>,https://<optional-custom-domain>`
-   - `DATABASE_URL=<supabase-pooled-url>`
-   - `DIRECT_URL=<supabase-direct-url>`
-   - `AUTH_ENABLED=false`
-   - `AUTH_DEMO_BYPASS=true`
-   - `ADMIN_EMAIL=<demo-admin-email>`
+## Despliegue (Azure App Service)
+Lo hace el pipeline `.github/workflows/deploy-backend-azure.yml`: un push a `dev` publica en stage y uno a `main`, en prod. El pipeline construye el backend, poda las dependencias, lo empaqueta en un zip, corre `prisma migrate deploy` y publica el zip en App Service.
 
-For a Microsoft Entra production-style flow, set:
-- `AUTH_ENABLED=true`
-- `AUTH_DEMO_BYPASS=false`
-- `AZURE_AD_TENANT_ID=<entra-tenant-id>`
-- `AZURE_AD_AUDIENCE=<api-audience>`
+Los App Settings los define `infra/main.bicep` y los secretos viven en Key Vault. Detalle: `documentacion/DESPLIEGUE.md` e `infra/README.md`.
 
-Apply migrations before or during deployment with:
-- `npm run prisma:deploy`
-
-Do not run `prisma db push --accept-data-loss` as part of a production start command.
+Nunca correr `prisma db push` contra stage ni contra producción.
 
 ## Health and readiness
 - `GET /health`:
@@ -76,19 +56,14 @@ Do not run `prisma db push --accept-data-loss` as part of a production start com
    - Returns `503` when DB is down.
 
 ## Notes
-- `render.yaml` in the repository root documents the expected Render Web Service.
-- The health check path is `/health`.
-- Render provides the `PORT` variable automatically.
+- The health check path is `/health` (App Service health check and the Azure availability test).
+- App Service injects the `PORT` variable.
 
 ## Smoke test (E2E-lite)
-With API running locally or deployed, execute:
+With the API running locally, execute:
 - `npm run smoke`
 
-To run against Render:
-- `API_BASE_URL=https://<your-backend-domain>.onrender.com npm run smoke`
-
-If authentication is enabled, provide a token:
-- `SMOKE_BEARER_TOKEN=<access-token> API_BASE_URL=https://<your-backend-domain>.onrender.com npm run smoke`
+The smoke test creates test projects and consultants: run it only against a local API, never against stage or production. If authentication is enabled locally, provide `SMOKE_BEARER_TOKEN=<access-token>`.
 
 ## Available scripts
 - `npm run dev`

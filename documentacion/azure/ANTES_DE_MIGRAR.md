@@ -678,10 +678,13 @@ No son tareas previas, pero se deciden ahora para que no queden colgadas:
 
 - Mantener Render y Supabase **sin tocar y en solo lectura** al menos 2 semanas como respaldo.
 - Apagar los crons de Render para que no corran dos ciclos de trabajos contra bases distintas.
-- Retirar el proyecto de Vercel, `frontend/vercel.json`, la Static Web App
-  `victorious-glacier-0d52b010f` y su workflow.
+- Retirar el proyecto de Vercel y el recurso de la Static Web App `victorious-glacier-0d52b010f`
+  (en el portal), y borrar en GitHub el secreto `AZURE_STATIC_WEB_APPS_API_TOKEN_VICTORIOUS_GLACIER_0D52B010F`.
+  *En el repositorio ya se borraron `frontend/vercel.json`, `render.yaml` y el workflow de esa
+  SWA (rama `chore/retirar-render-vercel`, 2026-11-16).*
 - Quitar de Entra las URIs de redirección que ya no se usen.
-- Actualizar CLAUDE.md (§2, §3 y §6) y `documentacion/DESPLIEGUE.md` con la arquitectura nueva.
+- ~~Actualizar CLAUDE.md §6 y `documentacion/DESPLIEGUE.md` con la arquitectura nueva~~: hecho el
+  2026-11-16, en la misma rama.
 
 ---
 

@@ -1,8 +1,8 @@
 name: Backend CI
 
-# Hasta ahora el backend no se verificaba en ningún pipeline: solo el frontend
-# corría type-check y tests antes de desplegar. Este workflow no despliega nada
-# (Render despliega por su cuenta); solo impide que un cambio roto pase sin aviso.
+# Verificación del backend en cada push y PR: type-check, pruebas unitarias y
+# pruebas de ruta contra un Postgres real. No despliega nada (eso lo hace
+# deploy-backend-azure.yml); su valor está en los PR, donde avisa antes del merge.
 on:
   push:
     branches: [main, dev]

@@ -26,19 +26,18 @@ const HORA = 60 * MINUTO;
 /**
  * Catálogo de trabajos que SE ESPERA que corran, con su plazo máximo.
  *
- * Las cadencias salen de `render.yaml`:
- *  - `app-gestion-jobs` dispara `POST /api/jobs/run` cada hora en punto, y ese
- *    ciclo ejecuta `assignment-maintenance`, `alert-engine` y
- *    `approval-digest`.
- *  - `app-gestion-fx-sync` dispara `POST /api/fx/sync` una vez al día a las
- *    13:00 UTC.
+ * Las cadencias salen de la configuración de Azure (`infra/main.bicep`):
+ *  - `JOBS_INTERVAL_MINUTES=60`: el ciclo en proceso corre cada hora y ejecuta
+ *    `assignment-maintenance`, `alert-engine` y `approval-digest`.
+ *  - `fx-sync` se vigila como diario, que es lo que pasa con
+ *    `FX_SYNC_IN_CYCLE=true`. Hoy Azure lo tiene en false (tasas solo a
+ *    demanda), así que si nadie pulsa "Actualizar ahora", sale atrasado.
+ *    (Antes las dos cadencias venían de los cron jobs de Render.)
  *
- * Las tolerancias son deliberadamente holgadas (3 ejecuciones perdidas): el
- * servicio está dormido cuando el cron lo despierta, así que el primer intento
- * puede tardar o fallar por el arranque en frío. Lo que se quiere detectar es
- * "esto lleva días sin correr", no "esta vez llegó tarde".
+ * Las tolerancias son deliberadamente holgadas (3 ejecuciones perdidas): lo que
+ * se quiere detectar es "esto lleva días sin correr", no "esta vez llegó tarde".
  *
- * Si se cambia una cadencia en `render.yaml`, hay que cambiarla también aquí.
+ * Si se cambia una cadencia en `infra/main.bicep`, hay que cambiarla también aquí.
  */
 export const TRABAJOS_VIGILADOS: TrabajoVigilado[] = [
   {

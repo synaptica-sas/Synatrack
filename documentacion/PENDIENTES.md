@@ -32,7 +32,18 @@ usuarios **sin pasar por la aplicación**. Ningún control del backend intervien
 Según quien lo encontró, se corrige en minutos y no afecta a la aplicación; el detalle está en la
 §3 de su documento. **Esto va antes que cualquier otro pendiente de esta lista.**
 
+> **Actualización 2026-11-16.** Producción se está mudando a Azure (ver `DESPLIEGUE.md`), pero
+> el dominio todavía apunta a Vercel y Render, y la base de Supabase sigue viva. **El riesgo sigue
+> abierto mientras exista ese proyecto de Supabase**, aunque nadie lo use. Se cierra activando
+> RLS o, después del corte y del respaldo final, borrando el proyecto.
+
 ### Y nada de lo hecho está todavía en producción
+
+> **Actualización 2026-11-16:** esta sección describe el despliegue a Render y Supabase, que se
+> reemplazó por Azure. En Azure las migraciones las aplica el pipeline, los trabajos corren en
+> proceso y no hay `render.yaml`. Los ítems sobre Render quedan tachados. Siguen vigentes las
+> tasas de cambio, `AUTH_DEV_*` y los avisos a Nómina y al equipo, que se aplican al primer
+> despliegue de prod en Azure.
 
 `main` y `dev` están sincronizadas, pero **eso no significa desplegado**. Producción sigue en el estado de
 principios de septiembre, así que **todo lo arreglado no le sirve a nadie todavía**: el
@@ -49,22 +60,21 @@ Resumen de lo que hay que hacer:
 - [ ] **Activar la seguridad por filas (RLS) en las 28 tablas y revocar los permisos de `anon`
       y `authenticated`.** Ver el recuadro de arriba: hoy la base está abierta a cualquiera que
       tenga la clave pública.
-- [ ] **Añadir `prisma migrate deploy` al arranque del despliegue en Render.** Hoy arranca con
-      `npm run start` y nunca aplica migraciones — ésa es la razón de fondo por la que Supabase
-      lleva semanas atrasada, no un olvido puntual.
-- [ ] Rehacer la base de **Supabase**: no se construyó con las migraciones de este repo
-      (se usó `db push` desde Railway), así que `migrate deploy` falla contra ella.
+- [x] ~~**Añadir `prisma migrate deploy` al arranque del despliegue en Render.**~~ Obsoleto: en
+      Azure lo corre `deploy-backend-azure.yml` antes de publicar.
+- [x] ~~Rehacer la base de **Supabase**~~. Reemplazado por la migración de datos a Azure: la
+      fase E de `azure/ANTES_DE_MIGRAR.md` exige que `prisma migrate status` quede *up to date*
+      después del restore.
 - [ ] **Cargar las tasas de cambio** con `POST /api/fx/sync` justo después. El seed deja
       cero, y sin ellas los importes salen en la moneda equivocada.
-- [ ] Confirmar que Render acepta **Node 24** (`NODE_VERSION` en `render.yaml`). Es
-      reversible en una línea si algo falla.
+- [x] ~~Confirmar que Render acepta **Node 24**~~. Obsoleto: App Service corre Node 24 LTS.
 - [ ] Asegurarse de que las variables `AUTH_DEV_*` **no existan** en producción. Son el
       simulador de rol; están apagadas por defecto y protegidas por tres cerrojos, pero
       no deben estar ahí.
-- [ ] Crear en Render los cron `app-gestion-jobs` y `app-gestion-fx-sync` si el Blueprint no
-      los aplica solo. **Cómo se comprueba ahora**: espera un ciclo y mira `GET /health`; si
-      algún trabajo sigue en `estado: "nunca"` pasadas su cadencia, ese cron no existe. El
-      detalle completo está en `GET /api/jobs/status` (ADMIN o `JOBS_RUN_TOKEN`).
+- [x] ~~Crear en Render los cron `app-gestion-jobs` y `app-gestion-fx-sync`~~. Obsoleto: en
+      Azure el ciclo corre en proceso cada 60 min. Se comprueba igual que antes: pasada una
+      hora, `GET /health` no debe mostrar trabajos en `estado: "nunca"`, salvo `fx-sync`, que
+      solo corre con el botón mientras `FX_SYNC_IN_CYCLE=false`.
 - [ ] Revisar si las tasas de cambio quedaron congeladas durante los meses en que el cron
       apuntaba a un host que no existía.
 - [ ] **Avisar a Nómina de que pierde su bandeja de aprobación.** La aprobación de horas extra

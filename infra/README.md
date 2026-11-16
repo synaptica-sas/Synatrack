@@ -397,8 +397,10 @@ repositorio debe correr `.\scripts\azure.ps1 infra` desde su PC para sincronizar
 | `deploy-backend-azure.yml` | push a `dev`/`main` en `backend/**`; manual (`environment`, `ref`, `skip_migrations`) | build y pruebas **sin** permiso de Azure → zip (`dist/`, `node_modules` podado, `package.json`, …) → firewall temporal para la IP del runner → `prisma migrate deploy` → cierra el firewall (`if: always()`) → `azure/webapps-deploy` → espera `/health` 200 hasta 5 min |
 | `deploy-frontend-azure.yml` | push a `dev`/`main` en `frontend/**`; manual | type-check, pruebas y build con las `VITE_*` y la URL de la API del entorno → token de la SWA con `az staticwebapp secrets list` → `static-web-apps-deploy` (solo subida; `staticwebapp.config.json` viene de `frontend/public/`) → comprueba que responde |
 
-El workflow viejo `azure-static-web-apps-victorious-glacier-0d52b010f.yml` no se tocó; su SWA no es
-la que sirve producción (prod está en Vercel) y es candidata a retirarse tras el corte.
+El workflow viejo `azure-static-web-apps-victorious-glacier-0d52b010f.yml` se borró del repositorio
+el 2026-11-16, porque su SWA nunca sirvió producción. **Falta borrar el recurso** de esa SWA
+(`victorious-glacier-0d52b010f`) en el portal. Mientras exista, no hace nada, pero su token de
+despliegue sigue siendo válido.
 
 ---
 

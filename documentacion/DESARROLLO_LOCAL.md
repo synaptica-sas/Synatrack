@@ -145,8 +145,8 @@ Después, desde `backend/`: `npm run prisma:deploy` y `npm run prisma:seed`.
 
 1. **Node.js 24** (el que declaran ambos `package.json`).
 2. `cd backend && npm install` y `cd frontend && npm install`.
-3. `cp backend/.env.example backend/.env` y ajustar `DATABASE_URL`/`DIRECT_URL` al puerto 5433
-   (el propio ejemplo trae ese par comentado; hay que descomentarlo y borrar las cadenas de Supabase).
+3. `cp backend/.env.example backend/.env`. El ejemplo ya trae activas `DATABASE_URL`/`DIRECT_URL`
+   apuntando a `localhost:5433`. Conviene cambiar `NODE_ENV` a `development`.
 4. `cp frontend/.env.example frontend/.env`, dejar `VITE_API_URL=http://localhost:4000`,
    `VITE_FORCE_LOCAL_AUTH=true` y **vaciar** las variables `VITE_AZURE_*` (si quedan con los
    placeholders `<...>`, MSAL intenta inicializarse con un client id inválido).

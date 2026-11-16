@@ -142,8 +142,8 @@ hook `use<Dominio>(enabled)` -> `features/<dominio>/<Dominio>Tab.tsx` -> registr
 **Lógica de negocio**: cálculo puro -> `backend/src/utils/` con test en `utils/__tests__/`.
 Proceso que reacciona solo -> `*.service.ts` dentro del módulo (patrón `alerts.service.ts`).
 **Trabajos periódicos**: se agregan a la lista `TRABAJOS` de `modules/jobs/jobs.service.ts` (candado
-anti-solapamiento e historial en `JobRun`). Corren con `JOBS_INTERVAL_MINUTES` o con el cron de Render
-(`POST /api/jobs/run`).
+anti-solapamiento e historial en `JobRun`). En Azure corren en proceso cada `JOBS_INTERVAL_MINUTES`
+(60, con Always On); también se pueden disparar con `POST /api/jobs/run`.
 
 **Fechas de calendario** (asignaciones, feriados, vigencias): columnas `@db.Date` y `IsoDate`
 (`"YYYY-MM-DD"`) de `utils/isoDate.ts`; nada de hora local.
@@ -174,31 +174,36 @@ de `GET /api/auth/permissions` (ya no es una copia).
 
 ---
 
-## 6. Despliegue (estado confuso — verificar antes de tocar)
+## 6. Despliegue (Azure)
 
-- `render.yaml`: backend como Web Service (`app-gestion-backend`) + cron job diario de FX.
-- **Producción** (verificado el 2026-11-09): backend `https://synatrack.onrender.com` (Render,
-  base Supabase `nugvde...`), frontend en Vercel desplegado desde el repo alterno
-  `alejandroespinosa03/synatrack` (rama `main`). `app-gestion-demo.onrender.com` es otro servicio,
-  con otra base y sin autenticación: no es producción.
-- `frontend/vercel.json`: rewrite de `/api` a `synatrack.onrender.com`, hardcodeado. El frontend
-  en realidad llama al backend por `VITE_API_URL`; el rewrite es solo respaldo.
-- `.github/workflows/azure-static-web-apps-*.yml`: en cada push a `main` corre type-check, tests y build
-  del frontend y lo despliega a la SWA `victorious-glacier-0d52b010f`. **Esa SWA no es producción**
-  (nadie la usa; `synatrack.synaptica.co` apunta por CNAME a Vercel). Se retira tras el corte.
-- **Migración a Azure en curso** (App Service + PostgreSQL Flexible 17 + SWA, stage y prod en Central
-  US; Postgres de cada entorno en su propio RG de datos, `rg-datos-<env>`, para compartirlo con otras apps): `infra/` (Bicep), `scripts/azure.ps1` y los workflows `*-azure.yml`, inactivos mientras la
-  variable de repositorio `AZURE_DEPLOY_ENABLED` no sea `true`. GitHub es plan Free: prod se
-  despliega sin aprobación y la identidad OIDC de cada entorno confía solo en su rama (`main` →
-  prod, `dev` → stage). Paso a paso en `documentacion/azure/ANTES_DE_MIGRAR.md`; guía de
-  operación en `infra/README.md`. Los agentes **no** leen `infra/azure.config.psd1`, los archivos
-  de secretos ni `C:\secretos\`.
-- `.github/workflows/backend-ci.yml`: type-check, tests unitarios y de ruta del backend (Postgres de
-  servicio) en `main` y `dev`. No despliega.
-- `frontend/server.mjs`: servidor estático propio que inyecta `/env.js` con `window.__APP_CONFIG__`
-  (config en runtime, usado por Docker/Render; Vercel usa las `VITE_*` de build).
-- Ramas: `main` (activa, la de este checkout) y `origin/dev`. Los docs hablan de `develop`/`deploy`,
-  que ya no existen como tales.
+- **Plataforma**: Azure, con stage y prod en Central US. Cada entorno tiene:
+  - App Service Linux B1 para el backend;
+  - Static Web App para el frontend;
+  - PostgreSQL Flexible 17 en su propio RG de datos (`rg-datos-<env>`), compartible con otras apps;
+  - Key Vault y Application Insights.
+
+  Bicep en `infra/`, operación con `scripts/azure.ps1`, guía en `infra/README.md` y resumen en
+  `documentacion/DESPLIEGUE.md`. Los agentes **no** leen `infra/azure.config.psd1`, los
+  archivos de secretos ni `C:\secretos\`.
+- **Pipelines** (`.github/workflows/*-azure.yml`): un push a `dev` despliega stage y uno a
+  `main`, prod. Solo corren si la variable de repositorio `AZURE_DEPLOY_ENABLED` es `true`. El
+  frontend de prod además exige `AZURE_FRONTEND_PROD_ENABLED`.
+  - GitHub es plan Free: prod se despliega **sin aprobación**.
+  - La identidad OIDC de cada entorno confía solo en su rama (`main` → prod, `dev` → stage).
+  - Está planeado pasar a Azure DevOps para tener aprobaciones en prod.
+- `.github/workflows/backend-ci.yml`: type-check y pruebas unitarias y de ruta del backend
+  (Postgres de servicio) en `main` y `dev`. No despliega.
+- **Render, Vercel y Supabase están en retiro**, y `render.yaml` y `frontend/vercel.json` ya se
+  borraron. ⚠ El 2026-11-16 el dominio `synatrack.synaptica.co` **todavía apuntaba a Vercel** y
+  ese frontend llamaba a `synatrack.onrender.com`: el corte de DNS (fase F de
+  `documentacion/azure/ANTES_DE_MIGRAR.md`) seguía pendiente. Comprobar con
+  `nslookup -type=CNAME synatrack.synaptica.co` antes de dar la plataforma vieja por apagada.
+  Vercel desplegaba desde el repo alterno `alejandroespinosa03/synatrack`.
+- `frontend/server.mjs` + `Dockerfile`s + `docker-compose.yml`: solo para el entorno local con
+  Docker. `server.mjs` inyecta `/env.js` con `window.__APP_CONFIG__`; en la SWA, `env.js` es un
+  respaldo vacío y la configuración son las `VITE_*` del build.
+- Ramas: `dev` (integración, despliega stage) y `main` (despliega prod). Los docs hablan de
+  `develop`/`deploy`, que ya no existen como tales.
 
 ---
 
