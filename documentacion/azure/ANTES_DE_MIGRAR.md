@@ -506,6 +506,14 @@ se crea presupuesto-synatrack
 
 ## Fase E. Ensayo de la migración de datos
 
+> **Actualización del 2026-11-17: el ensayo fue la migración definitiva.** La copia de Supabase
+> que se restauró ese día en Azure prod es la **base viva**: la usuaria que carga datos ya
+> trabaja en la Static Web App de prod, y Render y Supabase no reciben escrituras. **No se
+> repite el dump ni la restauración**, porque borraría lo registrado en Azure desde entonces. El
+> cambio de dominio solo mueve el CNAME ([MIGRAR_A_AZURE_DEVOPS.md](MIGRAR_A_AZURE_DEVOPS.md),
+> parte 1). El procedimiento de abajo queda como referencia, por ejemplo para migrar la base de
+> otra aplicación al mismo servidor.
+
 Por la decisión C2, stage no recibe datos reales. El ensayo se hace sobre el **Postgres de prod en
 Azure**: está vacío, nadie lo usa hasta el corte y es justo el destino real. Se usa el mismo
 procedimiento que el día del corte y se mide cuánto tarda.
@@ -532,18 +540,14 @@ día del corte.
   13 consultores, 3 proyectos, 2 horas, 0 horas extra, 0 financiero, 2 asignaciones,
   80 auditoría, 33 migraciones.
 - [ ] Validar con datos reales entrando por el **hostname `*.azurestaticapps.net` de la SWA de
-  prod**, no por el dominio, que sigue en Vercel. Solo Desarrollo y TI: los usuarios siguen en
-  Render. **No registrar nada:** esos datos se reemplazan en el corte.
-- [X] Minutos sin escrituras que pide el corte: la copia completa (dump, restauración y
-  conteos) tarda unos **2 minutos**; con la verificación en el navegador y el cambio de CNAME,
-  la ventana cabe en unos **15 minutos**.
-- [X] ~~Al terminar, vaciar la base de prod de Azure.~~ **Decisión del 2026-11-17: no se vacía.**
-  Se deja la copia para validar prod en Azure con datos reales hasta el corte. No hay riesgo de
-  mezcla: el `pg_restore --clean --if-exists` del corte borra cada tabla antes de restaurarla.
-  Lo que se escriba en Azure antes del corte se pierde, por eso no se registra nada ahí.
+  prod**, no por el dominio, que sigue en Vercel.
+- [X] Duración: la copia completa (dump, restauración y conteos) tarda unos **2 minutos**.
+- [X] ~~Al terminar, vaciar la base de prod de Azure.~~ **No se vacía:** la copia del 2026-11-17
+  quedó como base de producción (ver la actualización al inicio de esta fase).
 - [ ] Borrar del PC el archivo del dump (`C:\temp\migracion`): contiene datos de nómina.
 
-> **Procedimiento probado (2026-11-17), para repetirlo el día del corte.** Windows PowerShell
+> **Procedimiento probado (2026-11-17).** **No volver a ejecutarlo contra Azure prod**: el
+> restore con `--clean` reemplaza la base viva. Windows PowerShell
 > 5.1, sin herramientas de PostgreSQL instaladas: se usan con Docker Desktop y la imagen
 > `postgres:17` (17.12). Dos detalles que hicieron fallar el primer intento:
 >
@@ -597,8 +601,8 @@ día del corte.
 > historial de `JobRun` que viene de Supabase (última ejecución en Render). Pasan a "ok" en el
 > siguiente ciclo, en menos de una hora.
 
-**Listo cuando:** el ensayo salió completo, los conteos coinciden y se sabe cuánto dura. La base
-de prod de Azure conserva la copia del ensayo hasta el corte (decisión del 2026-11-17).
+**Listo cuando:** la migración salió completa y los conteos coinciden. Hecho el 2026-11-17: desde
+entonces Azure prod es la fuente de verdad.
 
 > **Frontend de prod publicado antes del corte (2026-11-12).** Para validar prod de punta a
 > punta sin mover el dominio, se creó `AZURE_FRONTEND_PROD_ENABLED=true` y se desplegó el
@@ -622,7 +626,7 @@ Desarrollo y TI la revisan juntos. Todo en **sí** antes de fijar la fecha. El c
 | 5  | Dominio personalizado preparado en la Static Web App de prod: registro TXT de validación creado en el DNS, a la espera solo del cambio de CNAME (detalle en [PLAN.md](PLAN.md), fase 4)                                                  | TI         | ☐ |
 | 6  | TTL del registro DNS de `synatrack` en 300 s desde hace al menos 48 h                                                                                                                                                                  | TI         | ☑ |
 | 7  | Quien tiene acceso al DNS está disponible durante la ventana                                                                                                                                                                            | TI         | ☐ |
-| 8  | Ensayo de datos (fase E) completo sobre Azure prod, con duración medida (2026-11-17: unos 2 min de copia). La base conserva la copia hasta el corte                                                                                                                                      | Desarrollo | ☑ |
+| 8  | Ensayo de datos (fase E) completo sobre Azure prod, con duración medida (2026-11-17: unos 2 min de copia). Fue la migración definitiva: no se repite                                                                                                                                      | Desarrollo | ☑ |
 | 9  | Validación en stage (fase D4) completa                                                                                                                                                                                                  | Desarrollo | ☐ |
 | 10 | Momento tranquilo elegido y aviso por chat a quien suela registrar horas: unos minutos sin escrituras (no hay ventana formal, decisión C2)                                                                                              | Desarrollo | ☐ |
 | 11 | Plan de rollback acordado: CNAME de vuelta a Vercel, Render y Supabase intactos. **Punto de no retorno** definido: desde que los usuarios escriben datos en Azure, volver a Render implica perder esos datos o copiarlos de vuelta | Ambos      | ☐ |

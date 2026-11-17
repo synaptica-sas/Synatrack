@@ -123,6 +123,11 @@ psql "$AZURE_PROD_DATABASE_URL" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA pu
 
 **Ventana**
 
+> **2026-11-17: los pasos 1 a 5 ya no se ejecutan.** Los datos se migraron ese día y desde
+> entonces Azure prod es la base viva (ver [ANTES_DE_MIGRAR.md](ANTES_DE_MIGRAR.md), fase E).
+> Repetir el dump y el restore borraría lo registrado en Azure. Del corte solo queda el DNS
+> (paso 6 en adelante; detalle en [MIGRAR_A_AZURE_DEVOPS.md](MIGRAR_A_AZURE_DEVOPS.md), parte 1).
+
 1. Congelar escrituras: **suspender el Web Service** en Render y apagar sus dos crons.
 2. `pg_dump` de Supabase (conexión directa, `--schema=public`).
 3. `pg_restore` en prod Azure (con `--clean --if-exists`: el esquema vacío del primer deploy se
