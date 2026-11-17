@@ -31,10 +31,11 @@ Dos entornos aislados, cada uno con sus propios recursos:
 | `stage` | `dev` | `rg-synatrack-stage` + `rg-datos-stage` |
 | `prod` | `main` | `rg-synatrack-prod` + `rg-datos-prod` |
 
-> **Corte pendiente (verificado el 2026-11-16).** `synatrack.synaptica.co` todavía es un CNAME a
-> Vercel, y ese frontend llama al backend de Render (`synatrack.onrender.com`). Hasta mover el
-> dominio a la SWA de prod (fase F de `azure/ANTES_DE_MIGRAR.md`), los usuarios siguen entrando
-> a la plataforma vieja. **No apaguen Render ni Vercel antes de ese corte.**
+> **Corte hecho el 2026-11-17.** Ese día se migraron los datos de Supabase a Azure prod, que es
+> la base viva desde entonces. `synatrack.synaptica.co` es un CNAME a la SWA de prod
+> (`calm-flower-00e3d4c10.3.azurestaticapps.net`), con el certificado gestionado por Azure.
+> Render, Vercel y Supabase siguen existiendo sin tráfico, como respaldo, hasta la parte 2 de
+> `azure/MIGRAR_A_AZURE_DEVOPS.md`. Supabase **no** está al día: no volver a usarlo como origen.
 
 Los `Dockerfile`, `docker-compose.yml` y `frontend/server.mjs` solo se usan para el entorno local
 con Docker. No intervienen en Azure.

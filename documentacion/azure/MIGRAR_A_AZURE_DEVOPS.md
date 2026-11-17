@@ -19,6 +19,13 @@ documentación, pero no recibe secretos ni lee `infra/azure.config.psd1`.
 
 ## Parte 1. Mover el dominio
 
+> **Hecho el 2026-11-17.** Se quitó el dominio de Vercel y el CNAME pasó a
+> `calm-flower-00e3d4c10.3.azurestaticapps.net` (TTL 300). Después se agregó el dominio a la SWA
+> con `az staticwebapp hostname set`, que lo validó por el CNAME y emitió el certificado en
+> minutos. En Entra se agregó `https://synatrack.synaptica.co` **sin barra final**, porque el
+> frontend usa `window.location.origin` y la URI registrada antes tenía la barra. El paso 5 no
+> hizo falta: `CORS_ORIGIN` de prod ya incluía el dominio.
+
 1. **Vercel:** quitar `synatrack.synaptica.co` del proyecto. Si sigue ahí, Vercel pelea por el
    certificado.
 2. **Portal de Azure:** en la SWA de prod, abrir *Custom domains → Add → Custom domain on other

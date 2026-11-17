@@ -193,12 +193,15 @@ de `GET /api/auth/permissions` (ya no es una copia).
   - Está planeado pasar a Azure DevOps para tener aprobaciones en prod.
 - `.github/workflows/backend-ci.yml`: type-check y pruebas unitarias y de ruta del backend
   (Postgres de servicio) en `main` y `dev`. No despliega.
+- **Producción está en Azure desde el 2026-11-17.** Ese día se migraron los datos de Supabase
+  y `synatrack.synaptica.co` pasó a ser un CNAME a la SWA de prod
+  (`calm-flower-00e3d4c10.3.azurestaticapps.net`, certificado gestionado por Azure). Backend:
+  `app-synatrack-prod-rnfnik`.
 - **Render, Vercel y Supabase están en retiro**, y `render.yaml` y `frontend/vercel.json` ya se
-  borraron. ⚠ El 2026-11-16 el dominio `synatrack.synaptica.co` **todavía apuntaba a Vercel** y
-  ese frontend llamaba a `synatrack.onrender.com`: el corte de DNS (fase F de
-  `documentacion/azure/ANTES_DE_MIGRAR.md`) seguía pendiente. Comprobar con
-  `nslookup -type=CNAME synatrack.synaptica.co` antes de dar la plataforma vieja por apagada.
-  Vercel desplegaba desde el repo alterno `alejandroespinosa03/synatrack`.
+  borraron. Siguen existiendo sin tráfico, como respaldo, mientras se confirma la estabilidad;
+  se apagan con la parte 2 de `documentacion/azure/MIGRAR_A_AZURE_DEVOPS.md`. Supabase quedó
+  con los datos al 2026-11-17: **no** está al día. Vercel desplegaba desde el repo alterno
+  `alejandroespinosa03/synatrack`.
 - `frontend/server.mjs` + `Dockerfile`s + `docker-compose.yml`: solo para el entorno local con
   Docker. `server.mjs` inyecta `/env.js` con `window.__APP_CONFIG__`; en la SWA, `env.js` es un
   respaldo vacío y la configuración son las `VITE_*` del build.
