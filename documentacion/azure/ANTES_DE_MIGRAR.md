@@ -326,7 +326,15 @@ se crea presupuesto-synatrack
 > - [X] En la config: `Location = "centralus"` y `DataResourceGroup` en cada entorno.
 > - [X] `bootstrap -Env stage` en Central US (dos veces: la segunda agrega los roles sobre el Key
 >   Vault de datos).
-> - [ ] `bootstrap -Env prod` en Central US. Hace falta antes de la fase E.
+> - [X] `bootstrap -Env prod` en Central US (2026-11-12). Lo ejecutó quien tiene Owner sobre la
+>   suscripción: un operador sin ese rol recibe `Forbidden` en `az group exists` mientras los
+>   resource groups no existan (tus roles llegan por el grupo de operadores, sobre cada RG, no
+>   sobre la suscripción). Con los RG ya creados, el operador puede repetirlo sin error.
+>   Ya deja la credencial OIDC de `main` en el formato inmutable.
+> - [X] `infra -Env prod` (dos veces, como en stage) y `status -Env prod` en orden (2026-11-12):
+>   Web App `app-synatrack-prod-rnfnik`, Postgres `psql-synaptica-prod-4bqbc5` (en `rg-datos-prod`),
+>   Key Vault `kv-syn-prod-rnfnik`, Key Vault de datos `kv-datos-prod-4bqbc5` y Static Web App
+>   `stapp-synatrack-prod` (https://calm-flower-00e3d4c10.3.azurestaticapps.net).
 
 ---
 
@@ -466,8 +474,8 @@ se crea presupuesto-synatrack
 >    GitHub, con IDs: `repo:synaptica-sas@310216483/Synatrack@1315110574:ref:refs/heads/dev`, y
 >    las credenciales federadas se habían creado con el clásico (`repo:synaptica-sas/Synatrack:…`).
 >    `bootstrap` y `access` leen ahora el prefijo real de la API de GitHub y corrigen la
->    credencial existente (`c0a66ee`). Hubo que repetir `bootstrap -Env stage`; **prod sigue
->    con el formato viejo hasta su `bootstrap`** (B3).
+>    credencial existente (`c0a66ee`). Hubo que repetir `bootstrap -Env stage`; prod quedó
+>    corregida con su `bootstrap` del 2026-11-12 (B3).
 > 4. **Azure CLI 2.86+ cambió `firewall-rule`:** el servidor va en `--server-name` y la regla en
 >    `--name` (antes `--name` servidor y `--rule-name` regla). Corregido en el workflow, el
 >    script y los comandos de este documento y de PLAN.md (`cbfa091`).
@@ -504,31 +512,99 @@ procedimiento que el día del corte y se mide cuánto tarda.
 **Rol:** Desarrollo ejecuta y TI acompaña. Conviene hacerlo juntos: es el mismo trabajo que harán el
 día del corte.
 
-- [ ] Requisito: la infraestructura de prod ya existe (`bootstrap` hecho; `infra -Env prod` y el
+- [X] Requisito: la infraestructura de prod ya existe (`bootstrap` hecho; `infra -Env prod` y el
   primer deploy del backend a prod, condición 1 de la fase F). Se adelanta respecto del orden
-  original.
-- [ ] Abrir el firewall del Postgres de prod a tu IP solo durante el ensayo (mismo procedimiento
-  que el seed de D3, con `rg-synatrack-prod`) y cerrarlo al terminar.
-- [ ] Dump del esquema `public` de Supabase ([PREPARACION.md §5](PREPARACION.md)). **Anotar la
-  duración.**
-- [ ] Extensiones: el esquema no necesita ninguna (`gen_random_uuid()` viene incluida desde PG 13;
+  original. Hecho el 2026-11-12: el merge de `dev` a `main` (`c81a922`) desplegó el backend
+  (migraciones sobre la base vacía, `/health` 200) y luego se publicó el frontend con
+  `AZURE_FRONTEND_PROD_ENABLED=true` (ver la nota de abajo).
+- [X] Abrir el firewall del Postgres de prod a tu IP solo durante el ensayo y cerrarlo al terminar.
+  El Postgres está en **`rg-datos-prod`**, no en `rg-synatrack-prod`.
+- [X] Dump del esquema `public` de Supabase ([PREPARACION.md §5](PREPARACION.md)): **12,7 s**,
+  144 KB (formato custom, comprimido). Antes se confirmó en el SQL Editor de Supabase que tenía
+  las 33 migraciones del repositorio.
+- [X] Extensiones: el esquema no necesita ninguna (`gen_random_uuid()` viene incluida desde PG 13;
   `uuid-ossp` y `pgcrypto` no se usan; `pg_stat_statements` y `supabase_vault` son de Supabase).
-  Si el restore falla por un `CREATE EXTENSION`, excluirla del dump en vez de habilitarla.
-- [ ] `pg_restore` en la base de **prod de Azure**. **Anotar la duración.**
-- [ ] `npx prisma migrate status` contra esa base: debe decir *up to date*.
-- [ ] Comparar el conteo de filas de las tablas principales (usuarios, consultores, proyectos,
-  horas, gastos, auditoría) entre Supabase y Azure prod.
+  El restore no pidió ninguna.
+- [X] `pg_restore` en la base de **prod de Azure**: **65,7 s**, sin errores.
+- [X] Migraciones al día: `_prisma_migrations` tiene 33 filas en las dos bases (en lugar de
+  `prisma migrate status`, que pide un checkout con dependencias instaladas).
+- [X] Conteo de filas idéntico entre Supabase y Azure prod (2026-11-17): 6 usuarios,
+  13 consultores, 3 proyectos, 2 horas, 0 horas extra, 0 financiero, 2 asignaciones,
+  80 auditoría, 33 migraciones.
 - [ ] Validar con datos reales entrando por el **hostname `*.azurestaticapps.net` de la SWA de
   prod**, no por el dominio, que sigue en Vercel. Solo Desarrollo y TI: los usuarios siguen en
-  Render.
-- [ ] Con las duraciones medidas, estimar cuántos **minutos sin escrituras** pide el corte
-  (dump + restauración + verificación rápida).
-- [ ] **Al terminar, vaciar la base de prod de Azure:** el día del corte se restaura de nuevo
-  desde Supabase. Si quedaran los datos del ensayo, se mezclarían con los nuevos.
-- [ ] Borrar del PC el archivo del dump: contiene datos de nómina.
+  Render. **No registrar nada:** esos datos se reemplazan en el corte.
+- [X] Minutos sin escrituras que pide el corte: la copia completa (dump, restauración y
+  conteos) tarda unos **2 minutos**; con la verificación en el navegador y el cambio de CNAME,
+  la ventana cabe en unos **15 minutos**.
+- [X] ~~Al terminar, vaciar la base de prod de Azure.~~ **Decisión del 2026-11-17: no se vacía.**
+  Se deja la copia para validar prod en Azure con datos reales hasta el corte. No hay riesgo de
+  mezcla: el `pg_restore --clean --if-exists` del corte borra cada tabla antes de restaurarla.
+  Lo que se escriba en Azure antes del corte se pierde, por eso no se registra nada ahí.
+- [ ] Borrar del PC el archivo del dump (`C:\temp\migracion`): contiene datos de nómina.
 
-**Listo cuando:** el ensayo salió completo, los conteos coinciden, se sabe cuánto dura y la base
-de prod de Azure quedó vacía otra vez.
+> **Procedimiento probado (2026-11-17), para repetirlo el día del corte.** Windows PowerShell
+> 5.1, sin herramientas de PostgreSQL instaladas: se usan con Docker Desktop y la imagen
+> `postgres:17` (17.12). Dos detalles que hicieron fallar el primer intento:
+>
+> - **Supabase por el *Session pooler*** (Connect → Session pooler: host
+>   `aws-0-us-east-1.pooler.supabase.com`, puerto 5432, usuario `postgres.<ref>`). La conexión
+>   directa (`db.<ref>.supabase.co`) es solo IPv6 y el *Transaction pooler* (6543) no sirve
+>   para `pg_dump`.
+> - **Nada de cadenas con espacios ni comillas dentro de `docker run`:** PowerShell 5.1 quita
+>   las comillas al pasarlas a Docker, la cadena llega partida y el pooler responde
+>   `ENOIDENTIFIER no tenant identifier provided`. Se usan las variables `PG*` y archivos `.sql`.
+>
+> ```powershell
+> New-Item -ItemType Directory -Force C:\temp\migracion | Out-Null; cd C:\temp\migracion
+> $sec = Read-Host "Contraseña de Supabase" -AsSecureString   # pegar con clic derecho, no Ctrl+V
+> $env:PGPASSWORD = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+> $env:PGHOST = "aws-0-us-east-1.pooler.supabase.com"; $env:PGPORT = "5432"
+> $env:PGDATABASE = "postgres"; $env:PGUSER = "postgres.<ref>"; $env:PGSSLMODE = "require"
+> $supa = @("-e","PGPASSWORD","-e","PGHOST","-e","PGPORT","-e","PGDATABASE","-e","PGUSER","-e","PGSSLMODE")
+> $env:AZ_URL = az keyvault secret show --vault-name kv-syn-prod-rnfnik -n database-url --query value -o tsv
+>
+> # 1. Dump de Supabase
+> docker run --rm @supa -v "${PWD}:/work" postgres:17 pg_dump --schema=public --format=custom --no-owner --no-privileges --file /work/synatrack-public.dump
+>
+> # 2. Backend detenido y firewall abierto a la IP del equipo
+> az webapp stop -g rg-synatrack-prod -n app-synatrack-prod-rnfnik
+> $ip = Invoke-RestMethod https://api.ipify.org
+> az postgres flexible-server firewall-rule create -g rg-datos-prod --server-name psql-synaptica-prod-4bqbc5 --name migracion --start-ip-address $ip --end-ip-address $ip -o none
+>
+> # 3. Restaurar sin la entrada del esquema public: en Azure ese esquema no es del usuario
+> #    administrador y, con --single-transaction, ese error revertiría toda la restauración
+> docker run --rm -v "${PWD}:/work" postgres:17 pg_restore -l -f /work/lista.txt /work/synatrack-public.dump
+> $l = Get-Content lista.txt | Where-Object { $_ -notmatch 'SCHEMA - public' }
+> [IO.File]::WriteAllText("$PWD\lista-filtrada.txt", ($l -join "`n") + "`n")
+> docker run --rm -v "${PWD}:/work" postgres:17 pg_restore --dbname $env:AZ_URL -L /work/lista-filtrada.txt --no-owner --no-privileges --clean --if-exists --single-transaction --exit-on-error /work/synatrack-public.dump
+>
+> # 4. Conteos en las dos bases (deben coincidir)
+> Set-Content conteos.sql 'select (select count(*) from "User") usuarios, (select count(*) from "Consultant") consultores, (select count(*) from "Project") proyectos, (select count(*) from "TimeEntry") horas, (select count(*) from "ExtraHourEntry") extras, (select count(*) from "FinancialEntry") financiero, (select count(*) from "Assignment") asignaciones, (select count(*) from "AuditLog") auditoria, (select count(*) from "_prisma_migrations") migraciones;'
+> docker run --rm @supa -v "${PWD}:/work" postgres:17 psql -f /work/conteos.sql
+> docker run --rm -v "${PWD}:/work" postgres:17 psql $env:AZ_URL -f /work/conteos.sql
+>
+> # 5. Cerrar firewall, encender backend y comprobar
+> az postgres flexible-server firewall-rule delete -g rg-datos-prod --server-name psql-synaptica-prod-4bqbc5 --name migracion --yes
+> az webapp start -g rg-synatrack-prod -n app-synatrack-prod-rnfnik
+> .\scripts\azure.ps1 health -Env prod    # desde la carpeta del repo
+>
+> # 6. Limpiar: cerrar la terminal (borra las contraseñas) y el dump
+> Remove-Item C:\temp\migracion -Recurse -Force
+> ```
+>
+> Tras la restauración, `/health` muestra "obsoleto" en `alert-engine` y `approval-digest`: es el
+> historial de `JobRun` que viene de Supabase (última ejecución en Render). Pasan a "ok" en el
+> siguiente ciclo, en menos de una hora.
+
+**Listo cuando:** el ensayo salió completo, los conteos coinciden y se sabe cuánto dura. La base
+de prod de Azure conserva la copia del ensayo hasta el corte (decisión del 2026-11-17).
+
+> **Frontend de prod publicado antes del corte (2026-11-12).** Para validar prod de punta a
+> punta sin mover el dominio, se creó `AZURE_FRONTEND_PROD_ENABLED=true` y se desplegó el
+> frontend a `stapp-synatrack-prod`. Desde entonces, **cada push a `main` publica también el
+> frontend en Azure prod**. No afecta a los usuarios mientras `synatrack.synaptica.co` siga
+> apuntando a Vercel.
 
 ---
 
@@ -539,19 +615,19 @@ Desarrollo y TI la revisan juntos. Todo en **sí** antes de fijar la fecha. El c
 
 | #  | Condición                                                                                                                                                                                                                               | Rol        | ✔ |
 | -- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -- |
-| 1  | Infraestructura de prod desplegada (`infra -Env prod`) y secretos de prod cargados                                                                                                                                                     | TI         | ☐ |
-| 2  | Static Web App de prod creada y compilada con las `VITE_*` de prod (`VITE_API_URL` = backend de Azure prod)                                                                                                                          | Desarrollo | ☐ |
-| 3  | `CORS_ORIGIN` de prod incluye `https://synatrack.synaptica.co` y la URL propia de la Static Web App de prod                                                                                                                          | Desarrollo | ☐ |
-| 4  | Entra ID tiene como URI de redirección la URL de la Static Web App de prod, además de `synatrack.synaptica.co`, que ya existe                                                                                                        | TI         | ☐ |
+| 1  | Infraestructura de prod desplegada (`infra -Env prod`) y secretos de prod cargados (sin opcionales por ahora: sin correo ni Teams, decisión C2)                                                                                                                                                     | TI         | ☑ |
+| 2  | Static Web App de prod creada y compilada con las `VITE_*` de prod (`VITE_API_URL` = backend de Azure prod)                                                                                                                          | Desarrollo | ☑ |
+| 3  | `CORS_ORIGIN` de prod incluye `https://synatrack.synaptica.co` y la URL propia de la Static Web App de prod                                                                                                                          | Desarrollo | ☑ |
+| 4  | Entra ID tiene como URI de redirección la URL de la Static Web App de prod, además de `synatrack.synaptica.co`, que ya existe                                                                                                        | TI         | ☑ |
 | 5  | Dominio personalizado preparado en la Static Web App de prod: registro TXT de validación creado en el DNS, a la espera solo del cambio de CNAME (detalle en [PLAN.md](PLAN.md), fase 4)                                                  | TI         | ☐ |
-| 6  | TTL del registro DNS de `synatrack` en 300 s desde hace al menos 48 h                                                                                                                                                                  | TI         | ☐ |
+| 6  | TTL del registro DNS de `synatrack` en 300 s desde hace al menos 48 h                                                                                                                                                                  | TI         | ☑ |
 | 7  | Quien tiene acceso al DNS está disponible durante la ventana                                                                                                                                                                            | TI         | ☐ |
-| 8  | Ensayo de datos (fase E) completo sobre Azure prod, con duración medida y la base vaciada después                                                                                                                                      | Desarrollo | ☐ |
+| 8  | Ensayo de datos (fase E) completo sobre Azure prod, con duración medida (2026-11-17: unos 2 min de copia). La base conserva la copia hasta el corte                                                                                                                                      | Desarrollo | ☑ |
 | 9  | Validación en stage (fase D4) completa                                                                                                                                                                                                  | Desarrollo | ☐ |
 | 10 | Momento tranquilo elegido y aviso por chat a quien suela registrar horas: unos minutos sin escrituras (no hay ventana formal, decisión C2)                                                                                              | Desarrollo | ☐ |
 | 11 | Plan de rollback acordado: CNAME de vuelta a Vercel, Render y Supabase intactos. **Punto de no retorno** definido: desde que los usuarios escriben datos en Azure, volver a Render implica perder esos datos o copiarlos de vuelta | Ambos      | ☐ |
 | 12 | `access -Env prod` muestra que solo la rama `main` puede desplegar a prod (no hay aprobación: GitHub Free)                                                                                                                          | TI         | ☐ |
-| 13 | Workflows de Azure fusionados en `main`, para que `deploy` y `rollback` funcionen. La variable `AZURE_FRONTEND_PROD_ENABLED` se activa recién en el corte                                                                       | Desarrollo | ☐ |
+| 13 | Workflows de Azure fusionados en `main`, para que `deploy` y `rollback` funcionen. `AZURE_FRONTEND_PROD_ENABLED` se activó el 2026-11-12 para validar el frontend de prod antes del corte                                                                       | Desarrollo | ☑ |
 | 14 | El botón "Actualizar ahora" de tasas FX funciona en Azure (sincronización a demanda, sin el cron de Render)                                                                                                                            | Desarrollo | ☐ |
 | 15 | Al menos dos operadores pasan `access` y saben ejecutar `health` y `rollback`                                                                                                                                                      | Ambos      | ☐ |
 
