@@ -1,6 +1,6 @@
 # Dominio propio, apagado de lo viejo y mudanza a Azure DevOps
 
-**Actualizado:** 2026-11-17. Lo ejecutan Juan, Alejandro y Marcos, que hacen tanto TI como
+**Actualizado:** 2026-11-17. Lo ejecutan Juan Alejandro Espinosa y Marcos Armas, que hacen tanto TI como
 desarrollo. Claude Code puede encargarse de las verificaciones, los pipelines y la
 documentación, pero no recibe secretos ni lee `infra/azure.config.psd1`.
 
@@ -89,26 +89,40 @@ Se hace todo de una vez, sin esperas, porque nada de esto se usa.
 
 ### 3.1 Preparar el repositorio
 
-- [ ] Borrar las ramas históricas. Hay que confirmar antes que no queda nada sin fusionar:
+> **Hecho el 2026-11-17.** Ninguna rama sin fusionar; se borraron las 19 históricas y en GitHub
+> quedan `main` y `dev`. gitleaks (Docker, `zricethezav/gitleaks:v8.21.2`, 256 commits) dio 3
+> falsos positivos: los IDs públicos de los roles *Key Vault Secrets User* y *Officer*. El
+> `frontend/.env` commiteado en abril de 2026 solo tenía `VITE_*` no secretas. Nada que rotar.
+> No había issues ni PRs abiertos. Los tags `v1.0.0` y `v2.0.0` existen solo en un PC y **no
+> viajan** (decisión del 2026-11-17): en la 3.3 se empujan `v2.1.0` y `v2.3.0` por nombre.
+
+- [X] Borrar las ramas históricas. Hay que confirmar antes que no queda nada sin fusionar:
   ```powershell
   git fetch --prune origin
   git branch -r --no-merged origin/dev        # debe salir vacío
   git branch -r --merged origin/dev | Select-String -NotMatch 'origin/(main|dev|HEAD)' |
     ForEach-Object { git push origin --delete ($_.ToString().Trim() -replace '^origin/','') }
   ```
-- [ ] Escanear la historia con `gitleaks git . --report-path gitleaks.json`, porque viaja
+- [X] Escanear la historia con `gitleaks git . --report-path gitleaks.json`, porque viaja
       completa. Si aparece un secreto real, hay que rotarlo. El reporte no se commitea.
-- [ ] Cerrar o anotar los issues y PRs abiertos, que no viajan.
+- [X] Cerrar o anotar los issues y PRs abiertos, que no viajan.
 
 ### 3.2 Crear la organización
 
-- [ ] Crear la organización de Azure DevOps conectada al tenant de Synaptica y un proyecto
+> **Hecho el 2026-11-17:** organización **`synaptica-co`** (https://dev.azure.com/synaptica-co),
+> conectada al tenant de Synaptica, con el proyecto privado `Synatrack`.
+
+- [X] Crear la organización de Azure DevOps conectada al tenant de Synaptica y un proyecto
       privado `Synatrack`.
-- [ ] Revisar *Organization settings → Parallel jobs*. Si no aparece 1 job hospedado, pedir el
-      free grant, que tarda unos días, o comprar 1 job (unos USD 40 al mes) y cancelarlo cuando
-      llegue el grant.
-- [ ] Dar licencias Basic a los tres operadores y permisos de administración al grupo
-      `Synatrack-IaC-Operadores`.
+- [X] Paralelismo. **Microsoft retiró el formulario del *free grant***: ahora el job gratis
+      (1 job hospedado, 1800 min/mes para proyectos privados) se concede solo al vincular la
+      facturación. En *Organization settings → Billing* quedó vinculada la suscripción **MCPP
+      Subscription**, con 0 jobs pagos y *GitHub-hosted agents* en Off. No cuesta nada mientras
+      no se compren jobs, no se active la prueba de *Test Plans* y no pasen de 5 usuarios Basic.
+- [X] Licencia Basic para los dos operadores. El grupo de Entra `Synatrack-IaC-Operadores` quedó
+      en **Project Collection Administrators** (administra toda la organización, que hoy solo
+      tiene este proyecto); para el permiso mínimo bastaría *Project Administrators* del proyecto.
+- [X] *Policies*: *Allow public projects* y *Third-party application access via OAuth* en Off.
 
 ### 3.3 Subir el código (solo `main`, `dev` y tags)
 
@@ -178,5 +192,5 @@ pasa a `AdoOrg`/`AdoProject`.
 
 | Decisión | Recomendación |
 |---|---|
-| Quién aprueba prod | Cualquiera de los tres que no haya hecho el merge |
-| Paralelismo | Free grant; si urge, 1 job pagado por un mes |
+| Quién aprueba prod | El otro operador, el que no hizo el merge |
+| Paralelismo | Resuelto: job gratis activo con la facturación vinculada (3.2) |
