@@ -126,6 +126,13 @@ Se hace todo de una vez, sin esperas, porque nada de esto se usa.
 
 ### 3.3 Subir el código (solo `main`, `dev` y tags)
 
+> **Hecho el 2026-11-17.** En https://dev.azure.com/synaptica-co/Synatrack/_git/Synatrack quedaron
+> `main` (`c81a922`), `dev` (`94326cb`), `v2.1.0` y `v2.3.0`, con los mismos SHAs que GitHub y
+> `main` como rama por defecto. Los tags se empujaron por nombre, no con `--tags`. La
+> autenticación fue un token temporal de `az account get-access-token`, sin PAT. GitHub sigue
+> siendo el repositorio activo hasta la 3.6: lo que se suba antes a GitHub hay que volver a
+> empujarlo.
+
 ```powershell
 git clone --mirror https://github.com/synaptica-sas/Synatrack.git synatrack-mirror
 cd synatrack-mirror
