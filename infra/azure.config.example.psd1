@@ -21,8 +21,14 @@
     SubscriptionId = "00000000-0000-0000-0000-000000000000"
     Location       = "centralus"   # misma región que las otras apps de Synaptica (y con cupo de B1)
 
-    # --- GitHub (para la identidad OIDC del pipeline) -------------------------
-    GitHubRepo     = "synaptica-sas/Synatrack"
+    # --- CI/CD ------------------------------------------------------------------
+    # github = GitHub Actions (variables de repositorio, workflows de .github/).
+    # ado    = Azure DevOps (grupos de variables synatrack-<env>, pipelines/).
+    # Ver documentacion/azure/MIGRAR_A_AZURE_DEVOPS.md §3.5 y §3.6.
+    CiProvider     = "github"
+    GitHubRepo     = "synaptica-sas/Synatrack"   # obligatoria con CiProvider = "github"
+    AdoOrg         = "synaptica-co"              # obligatorias con CiProvider = "ado"
+    AdoProject     = "Synatrack"
 
     # --- Notificaciones -------------------------------------------------------
     AlertEmail     = "equipo@synaptica.co"   # alertas de salud y de presupuesto

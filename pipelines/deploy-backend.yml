@@ -1,0 +1,306 @@
+# Despliegue del backend a Azure App Service
+# (equivale a .github/workflows/deploy-backend-azure.yml).
+#
+#   push a dev   -> stage
+#   push a main  -> prod
+#   ejecución manual (environment, ref, skipMigrations) -> cualquier commit; es
+#   el ROLLBACK: scripts/azure.ps1 -Command rollback -Env prod
+#
+# Lo que en GitHub hacían el guard AZURE_DEPLOY_ENABLED, la verificación de rama y
+# el OIDC por rama, aquí lo hacen los checks de las service connections
+# (Project settings -> Service connections):
+#   - azure-prod:  Branch control (solo refs/heads/main), Approvals, Exclusive lock.
+#   - azure-stage: Branch control (refs/heads/dev y PRs).
+# Un prod lanzado desde otra rama se detiene en el check, antes de pedir el token.
+# Para desplegar a prod un commit anterior, se lanza desde `main` con `ref=<sha>`.
+#
+# Variables: grupo synatrack-<env> (Pipelines -> Library), sin sufijo _STAGE/_PROD.
+# Los secretos siguen en Key Vault.
+#
+# Sin deployment slots (plan B1): cada despliegue reemplaza el código en el mismo
+# Web App. Migraciones: `prisma migrate deploy` corre ANTES de publicar, con una
+# regla temporal de firewall para la IP del agente que se cierra siempre. Son solo
+# hacia adelante: el rollback NO las revierte (expandir/contraer).
+#
+# Guía: documentacion/azure/MIGRAR_A_AZURE_DEVOPS.md §3.5 y infra/README.md.
+
+parameters:
+  - name: environment
+    displayName: Entorno (auto = según la rama)
+    type: string
+    default: auto
+    values: [auto, stage, prod]
+  - name: ref
+    displayName: Commit (SHA), tag o rama a desplegar (HEAD = la rama lanzada)
+    type: string
+    default: HEAD
+  - name: skipMigrations
+    displayName: No ejecutar prisma migrate deploy (rollback a código anterior)
+    type: boolean
+    default: false
+
+trigger:
+  branches:
+    include: [dev, main]
+  paths:
+    include: [backend, pipelines/deploy-backend.yml]
+
+pr: none
+
+# Exclusive lock (azure-prod): los despliegues esperan en fila, no se cancelan.
+lockBehavior: sequential
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - ${{ if or(eq(parameters.environment, 'prod'), and(eq(parameters.environment, 'auto'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))) }}:
+      - group: synatrack-prod
+      - name: targetEnv
+        value: prod
+      - name: serviceConnection
+        value: azure-prod
+  - ${{ else }}:
+      - group: synatrack-stage
+      - name: targetEnv
+        value: stage
+      - name: serviceConnection
+        value: azure-stage
+  - name: npm_config_cache
+    value: $(Pipeline.Workspace)/.npm
+
+name: backend-$(targetEnv)-$(Date:yyyyMMdd)$(Rev:.r)
+
+stages:
+  - stage: build
+    displayName: Build y pruebas
+    jobs:
+      # Sin service connection: este job ejecuta scripts de npm y no debe poder
+      # pedir un token de Azure.
+      - job: build
+        displayName: Build y pruebas
+        timeoutInMinutes: 30
+        steps:
+          - checkout: self
+            fetchDepth: 0
+            fetchTags: true
+
+          # El checkout deja el commit suelto y las ramas solo como origin/<rama>.
+          - bash: |
+              set -euo pipefail
+              ref="${{ parameters.ref }}"
+              if ! git rev-parse --verify --quiet "${ref}^{commit}" > /dev/null; then ref="origin/${ref}"; fi
+              git checkout --quiet --detach "$ref"
+              echo "Desplegando $(git rev-parse HEAD) a $(targetEnv)"
+            displayName: Commit a desplegar
+
+          - bash: echo "##vso[task.setvariable variable=nodeVersion]$(cat backend/.nvmrc)"
+            displayName: Versión de Node (.nvmrc)
+
+          - task: UseNode@1
+            displayName: Node $(nodeVersion)
+            inputs:
+              version: $(nodeVersion)
+
+          - task: Cache@2
+            displayName: Caché de npm
+            inputs:
+              key: 'npm | "$(Agent.OS)" | backend/package-lock.json'
+              restoreKeys: 'npm | "$(Agent.OS)"'
+              path: $(npm_config_cache)
+
+          - bash: npm ci
+            workingDirectory: backend
+            displayName: Instalar dependencias (con dev)
+
+          - bash: npx tsc -p tsconfig.json --noEmit
+            workingDirectory: backend
+            displayName: Type-check
+
+          # `config/env.ts` valida las variables al importarse; los unitarios no se
+          # conectan a la base: DATABASE_URL solo tiene que ser válida.
+          - bash: npm test
+            workingDirectory: backend
+            displayName: Pruebas unitarias
+            env:
+              NODE_ENV: test
+              DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres?schema=public
+              AUTH_ENABLED: "false"
+              AUTH_DEMO_BYPASS: "true"
+              ADMIN_EMAIL: admin@synaptica.local
+
+          - bash: npm run build
+            workingDirectory: backend
+            displayName: Build (prisma generate + tsc)
+
+          # `npm prune` respeta node_modules/.prisma (cliente generado). NO usar
+          # `npm ci --omit=dev`: reinstalaría @prisma/client como stub.
+          - bash: npm prune --omit=dev
+            workingDirectory: backend
+            displayName: Podar devDependencies
+
+          - bash: |
+              test -f node_modules/.prisma/client/libquery_engine-debian-openssl-3.0.x.so.node \
+                || { echo "##vso[task.logissue type=error]Falta libquery_engine-debian-openssl-3.0.x.so.node (¿binaryTargets en schema.prisma?)"; exit 1; }
+              test -f dist/server.js || { echo "##vso[task.logissue type=error]Falta dist/server.js"; exit 1; }
+            workingDirectory: backend
+            displayName: Verificar el motor de Prisma para App Service Linux
+
+          # dist/ + node_modules podado + package.json ("type": "module") +
+          # package-lock.json (trazabilidad) + prisma/ (lo usan las migraciones).
+          # node_modules/.bin se excluye: son enlaces simbólicos que no se usan.
+          - bash: |
+              set -euo pipefail
+              mkdir -p "$(Build.ArtifactStagingDirectory)/pkg"
+              zip -qr "$(Build.ArtifactStagingDirectory)/pkg/backend.zip" dist node_modules package.json package-lock.json prisma -x 'node_modules/.bin/*'
+              ls -lh "$(Build.ArtifactStagingDirectory)/pkg/backend.zip"
+              sha="$(git rev-parse HEAD)"
+              # La CLI ya se podó: la versión sale del lockfile.
+              prisma="$(jq -r '.packages["node_modules/prisma"].version' package-lock.json)"
+              echo "$sha" > "$(Build.ArtifactStagingDirectory)/pkg/sha.txt"
+              echo "$prisma" > "$(Build.ArtifactStagingDirectory)/pkg/prisma-version.txt"
+              cp .nvmrc "$(Build.ArtifactStagingDirectory)/pkg/nvmrc.txt"
+              echo "##vso[build.addbuildtag]$(targetEnv)"
+              echo "##vso[build.addbuildtag]sha-${sha:0:7}"
+            workingDirectory: backend
+            displayName: Empaquetar
+
+          - publish: $(Build.ArtifactStagingDirectory)/pkg
+            artifact: backend-package
+            displayName: Publicar paquete
+
+  - stage: deploy
+    displayName: Deploy ${{ variables.targetEnv }}
+    dependsOn: build
+    jobs:
+      - deployment: deploy
+        displayName: Deploy a ${{ variables.targetEnv }}
+        environment: ${{ variables.targetEnv }}
+        timeoutInMinutes: 30
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: backend-package
+                  displayName: Descargar paquete
+
+                - bash: |
+                    set -euo pipefail
+                    cd "$(Pipeline.Workspace)/backend-package"
+                    for v in AZURE_RESOURCE_GROUP AZURE_POSTGRES_SERVER AZURE_POSTGRES_RESOURCE_GROUP AZURE_KEYVAULT_NAME AZURE_WEBAPP_NAME AZURE_API_URL; do
+                      if [[ -z "${!v:-}" ]]; then
+                        echo "##vso[task.logissue type=error]Falta la variable $v en el grupo synatrack-$(targetEnv) (Pipelines -> Library)."
+                        exit 1
+                      fi
+                    done
+                    unzip -q backend.zip 'prisma/*' -d migraciones
+                    echo "##vso[task.setvariable variable=deploySha]$(cat sha.txt)"
+                    echo "##vso[task.setvariable variable=prismaVersion]$(cat prisma-version.txt)"
+                    echo "##vso[task.setvariable variable=nodeVersion]$(cat nvmrc.txt)"
+                  displayName: Verificar variables y preparar migraciones
+                  env:
+                    AZURE_RESOURCE_GROUP: $(AZURE_RESOURCE_GROUP)
+                    AZURE_POSTGRES_SERVER: $(AZURE_POSTGRES_SERVER)
+                    AZURE_POSTGRES_RESOURCE_GROUP: $(AZURE_POSTGRES_RESOURCE_GROUP)
+                    AZURE_KEYVAULT_NAME: $(AZURE_KEYVAULT_NAME)
+                    AZURE_WEBAPP_NAME: $(AZURE_WEBAPP_NAME)
+                    AZURE_API_URL: $(AZURE_API_URL)
+
+                - ${{ if eq(parameters.skipMigrations, false) }}:
+                    - task: UseNode@1
+                      displayName: Node $(nodeVersion)
+                      inputs:
+                        version: $(nodeVersion)
+
+                    - task: AzureCLI@2
+                      displayName: Abrir firewall de Postgres para este agente
+                      inputs:
+                        azureSubscription: ${{ variables.serviceConnection }}
+                        scriptType: bash
+                        scriptLocation: inlineScript
+                        inlineScript: |
+                          set -euo pipefail
+                          ip="$(curl -fsS https://api.ipify.org)"
+                          rule="ado-agent-$(Build.BuildId)-$(System.JobAttempt)"
+                          # Azure CLI >= 2.86: el servidor va en --server-name y la regla en --name.
+                          az postgres flexible-server firewall-rule create \
+                            --resource-group "$(AZURE_POSTGRES_RESOURCE_GROUP)" \
+                            --server-name "$(AZURE_POSTGRES_SERVER)" \
+                            --name "$rule" \
+                            --start-ip-address "$ip" --end-ip-address "$ip" \
+                            --only-show-errors -o none
+                          echo "Regla $rule abierta para $ip"
+
+                    - task: AzureCLI@2
+                      displayName: Migraciones (prisma migrate deploy)
+                      inputs:
+                        azureSubscription: ${{ variables.serviceConnection }}
+                        scriptType: bash
+                        scriptLocation: inlineScript
+                        workingDirectory: $(Pipeline.Workspace)/backend-package/migraciones
+                        inlineScript: |
+                          set -euo pipefail
+                          DATABASE_URL="$(az keyvault secret show --vault-name "$(AZURE_KEYVAULT_NAME)" -n database-url --query value -o tsv)"
+                          echo "##vso[task.setsecret]$DATABASE_URL"
+                          export DATABASE_URL
+                          export DIRECT_URL="$DATABASE_URL"
+                          # Misma versión de la CLI que el lockfile del commit desplegado.
+                          npx --yes "prisma@$(prismaVersion)" migrate deploy --schema prisma/schema.prisma
+
+                    - task: AzureCLI@2
+                      displayName: Cerrar firewall de Postgres
+                      condition: always()
+                      inputs:
+                        azureSubscription: ${{ variables.serviceConnection }}
+                        scriptType: bash
+                        scriptLocation: inlineScript
+                        inlineScript: |
+                          rule="ado-agent-$(Build.BuildId)-$(System.JobAttempt)"
+                          az postgres flexible-server firewall-rule delete \
+                            --resource-group "$(AZURE_POSTGRES_RESOURCE_GROUP)" \
+                            --server-name "$(AZURE_POSTGRES_SERVER)" \
+                            --name "$rule" \
+                            --yes --only-show-errors || echo "La regla $rule no existía."
+
+                # Mismo despliegue que azure/webapps-deploy@v3 (OneDeploy): zip,
+                # limpia lo anterior y reinicia.
+                - task: AzureCLI@2
+                  displayName: Publicar en App Service
+                  inputs:
+                    azureSubscription: ${{ variables.serviceConnection }}
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    inlineScript: |
+                      set -euo pipefail
+                      az webapp deploy \
+                        --resource-group "$(AZURE_RESOURCE_GROUP)" \
+                        --name "$(AZURE_WEBAPP_NAME)" \
+                        --src-path "$(Pipeline.Workspace)/backend-package/backend.zip" \
+                        --type zip --clean true --restart true \
+                        --only-show-errors -o none
+
+                # backend/scripts/smoke.mjs crea datos de prueba y necesita token:
+                # no sirve contra stage/prod. Aquí solo /health.
+                - bash: |
+                    for i in $(seq 1 30); do
+                      code="$(curl -s -o health.json -w '%{http_code}' --max-time 15 "$(AZURE_API_URL)/health" || true)"
+                      if [[ "$code" == "200" ]] && jq -e '.ok == true' health.json > /dev/null; then
+                        echo "OK en el intento $i:"; jq . health.json
+                        {
+                          echo "### Backend $(targetEnv) desplegado"
+                          echo ""
+                          echo "- Commit: \`$(deploySha)\`"
+                          echo "- API: $(AZURE_API_URL)"
+                          echo "- Migraciones: ${{ iif(parameters.skipMigrations, 'omitidas', 'aplicadas') }}"
+                        } > resumen.md
+                        echo "##vso[task.uploadsummary]$PWD/resumen.md"
+                        exit 0
+                      fi
+                      echo "Intento $i: HTTP $code; reintento en 10 s"
+                      sleep 10
+                    done
+                    echo "##vso[task.logissue type=error]/health no devolvió 200 en 5 minutos. Revisa: scripts/azure.ps1 -Command logs -Env $(targetEnv)"
+                    cat health.json 2>/dev/null || true
+                    exit 1
+                  displayName: Smoke - esperar /health 200

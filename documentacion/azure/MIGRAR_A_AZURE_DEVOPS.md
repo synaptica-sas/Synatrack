@@ -147,38 +147,74 @@ borrar el clon espejo.
 
 ### 3.4 Seguridad
 
-- [ ] **Políticas de rama:**
+> **Hecho el 2026-11-18, salvo las políticas de rama.** Verificado con `az`: cada service
+> connection coincide con su credencial federada, ninguna está abierta a todos los pipelines y
+> las credenciales de GitHub siguen intactas hasta la 3.6.
+
+- [ ] **Políticas de rama** (pasan a la 3.5, cuando exista `pipelines/ci.yml`; la validación de
+      build necesita un pipeline, y exigir PR en `main` antes de la 3.6 impediría reflejar ahí los
+      merges de GitHub):
   - `main`: PR obligatorio, 1 revisor distinto del autor, y el CI en verde;
   - `dev`: el CI en verde.
-- [ ] **Service connections** `azure-stage` y `azure-prod`, de tipo *Workload Identity
+  - Cuando existan, activar *Verify branch protection* en el *Branch control* de `azure-prod`.
+- [X] **Service connections** `azure-stage` y `azure-prod`, de tipo *Workload Identity
       Federation (manual)*, sobre las mismas app registrations de hoy (`gh-synatrack-<env>`).
-      A cada una se le agrega la credencial federada que indica Azure DevOps.
-- [ ] **Checks de `azure-prod`:** *Branch control* (solo `main`), *Approvals* y *Exclusive lock*.
-      En Azure DevOps la federación es por conexión y no por rama, así que sin *Branch control*
-      cualquier rama podría desplegar a prod.
-- [ ] **Check de `azure-stage`:** *Branch control* (`dev` y PRs).
-- [ ] **Environments** `stage` y `prod`.
-- [ ] **Grupos de variables** `synatrack-stage` y `synatrack-prod`, con las mismas claves que las
-      variables de GitHub pero sin el sufijo `_STAGE`/`_PROD`. Los secretos siguen en Key Vault.
+      Las credenciales federadas se llaman `ado-azure-<env>`. Azure DevOps usa ahora como issuer
+      el de Entra (`login.microsoftonline.com/<tenant>/v2.0`) con un subject `/eid1/...`, no
+      `vstoken.dev.azure.com` ni `sc://...`.
+- [X] **Checks de `azure-prod`:** *Branch control* (solo `main`), *Approvals* (grupo
+      `Synatrack-IaC-Operadores`, 1 día) y *Exclusive lock*. En Azure DevOps la federación es por
+      conexión y no por rama, así que sin *Branch control* cualquier rama podría desplegar a prod.
+  - ⚠ **Decisión temporal (2026-11-18):** *Allow approvers to approve their own runs* quedó
+    **marcado**, para publicar correcciones a prod sin esperar al otro operador. Cuando la
+    versión esté estable, desmarcarlo para que siempre apruebe quien no lanzó el despliegue.
+- [X] **Check de `azure-stage`:** *Branch control* (`refs/heads/dev, refs/pull/*`).
+- [X] **Environments** `stage` y `prod` (vacíos: las aprobaciones van en la service connection).
+- [X] **Grupos de variables** `synatrack-stage` y `synatrack-prod`, 15 variables cada uno, con las
+      mismas claves que las variables de GitHub pero sin el sufijo `_STAGE`/`_PROD`. Fuera quedan
+      `AZURE_DEPLOY_ENABLED`, `AZURE_FRONTEND_PROD_ENABLED` y `AZURE_ENV_BRANCH_*` (los reemplaza
+      *Branch control*) y `AZURE_CLIENT_ID_*` (lo lleva la service connection). Ningún pipeline
+      los usa sin autorización. Los secretos siguen en Key Vault.
 
 ### 3.5 Pipelines y script
 
-Claude Code puede adelantarlo en una rama de GitHub, para que viaje con el código.
+> **Escrito el 2026-11-18** en la rama `chore/azure-pipelines`. Hasta la 3.6 solo se crea en
+> Azure DevOps el pipeline `ci` (no toca Azure): los de despliegue se crean después de apagar
+> GitHub, para que nunca desplieguen los dos a la vez.
 
 | Hoy (GitHub Actions) | Azure Pipelines |
 |---|---|
-| `backend-ci.yml` | `pipelines/ci.yml`, validación de PR, con Postgres de servicio |
-| `deploy-backend-azure.yml` | `pipelines/deploy-backend.yml` |
+| `backend-ci.yml` | `pipelines/ci.yml`: backend con Postgres de servicio y, además, type-check, pruebas y build del frontend. Sin service connection |
+| `deploy-backend-azure.yml` | `pipelines/deploy-backend.yml`: build sin acceso a Azure → *deployment job* en el environment → firewall, migraciones, `az webapp deploy`, `/health`. Etiqueta cada ejecución con `<env>` y `sha-<7>` para el rollback |
 | `deploy-frontend-azure.yml` | `pipelines/deploy-frontend.yml` |
-| `infra-azure.yml` | `pipelines/infra.yml`, con el what-if en el PR |
+| `infra-azure.yml` | `pipelines/infra.yml`: manual (what-if o deploy) y what-if de stage en PR vía *Build validation* con filtro `/infra/*` |
 
-En `scripts/azure.ps1`, `gh` pasa a ser `az pipelines`, y en `azure.config.psd1`, `GitHubRepo`
-pasa a `AdoOrg`/`AdoProject`.
+- `dev` despliega a stage y `main` a prod. Los parámetros manuales (`environment`, `ref`,
+  `skipMigrations`) cubren el rollback.
+- Rama, aprobación y bloqueo los imponen los checks de la service connection, no el YAML.
+- `infra/ci/infra-env.sh` emite la sintaxis de cada plataforma (`TF_BUILD`).
+- `scripts/azure.ps1` funciona con las dos plataformas según `CiProvider` (`github` | `ado`) en
+  `azure.config.psd1`, con `AdoOrg` y `AdoProject`. Resumen en `infra/README.md` §11.
+- Probado el 2026-11-18: `access` y `status` en modo `ado` contra Azure DevOps real y en modo
+  `github` (sin cambios). La escritura en los grupos de variables y `deploy` solo se probarán en
+  la 3.6.
+
+- [X] YAML de los cuatro pipelines y adaptación de `azure.ps1` e `infra-env.sh`.
+- [ ] Agregar `CiProvider = "github"`, `AdoOrg = "synaptica-co"` y `AdoProject = "Synatrack"` a
+      `infra/azure.config.psd1` (lo hace un operador; Claude no lo lee).
+- [ ] Crear el pipeline `ci` en Azure DevOps desde la rama `chore/azure-pipelines`
+      (`/pipelines/ci.yml`) y correrlo una vez en verde.
+- [ ] Fusionar `chore/azure-pipelines` a `dev` y a `main` en GitHub (los workflows de GitHub no
+      cambian de comportamiento).
 
 ### 3.6 Cambio
 
 1. En GitHub, poner `AZURE_DEPLOY_ENABLED=false`, para que nunca desplieguen los dos a la vez.
-2. Crear los 4 pipelines en Azure DevOps apuntando a cada YAML.
+   Reflejar en Azure DevOps lo último de `main` y `dev` y crear las políticas de rama (3.4).
+2. Crear en Azure DevOps los pipelines `deploy-backend`, `deploy-frontend` e `infra` (con esos
+   nombres: `azure.ps1` los busca así) apuntando a cada YAML. La primera ejecución de cada uno pide
+   autorizar la service connection, el grupo de variables y el environment (*Permit*). Poner
+   `CiProvider = "ado"` en `azure.config.psd1`.
 3. Cada uno cambia el remoto. `/sync` y `/commit` siguen funcionando:
    ```powershell
    git remote set-url origin https://dev.azure.com/<org>/Synatrack/_git/Synatrack
@@ -188,7 +224,8 @@ pasa a `AdoOrg`/`AdoProject`.
 6. Si todo salió bien:
    - archivar el repositorio de GitHub, sin borrarlo;
    - borrar las credenciales federadas de GitHub en `gh-synatrack-<env>`;
-   - borrar `.github/workflows/` y las variables de GitHub.
+   - borrar `.github/workflows/` y las variables de GitHub;
+   - quitar de `azure.ps1` el modo `github` y reescribir `infra/README.md` sin GitHub.
 
 **Si algo falla antes del paso 6:** volver a poner `AZURE_DEPLOY_ENABLED=true` y apuntar el
 `origin` a GitHub.
@@ -199,5 +236,5 @@ pasa a `AdoOrg`/`AdoProject`.
 
 | Decisión | Recomendación |
 |---|---|
-| Quién aprueba prod | El otro operador, el que no hizo el merge |
+| Quién aprueba prod | El otro operador, el que no hizo el merge. Hoy se permite autoaprobar (ver 3.4) |
 | Paralelismo | Resuelto: job gratis activo con la facturación vinculada (3.2) |

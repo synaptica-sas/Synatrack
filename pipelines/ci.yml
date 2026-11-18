@@ -1,0 +1,147 @@
+# CI de Synatrack en Azure Pipelines (equivale a .github/workflows/backend-ci.yml).
+#
+# No despliega ni usa ninguna service connection: no puede tocar Azure.
+#   - Backend: type-check, pruebas unitarias y pruebas de ruta contra un Postgres
+#     real (contenedor de servicio en el puerto 5433, el mismo del entorno local).
+#   - Frontend: type-check, pruebas y build. En GitHub esto solo corría dentro del
+#     despliegue; aquí corre antes del merge.
+#
+# En Azure Repos el disparador `pr:` del YAML no aplica: la validación de PR la
+# activa la política de rama de `dev` y `main` (Build validation -> este pipeline).
+# El `trigger` de abajo cubre los push directos a esas ramas.
+#
+# Guía: documentacion/azure/MIGRAR_A_AZURE_DEVOPS.md §3.5.
+
+name: ci-$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include: [dev, main]
+  paths:
+    include: [backend, frontend, pipelines/ci.yml]
+
+pr: none
+
+pool:
+  vmImage: ubuntu-latest
+
+resources:
+  containers:
+    - container: postgres
+      image: postgres:15-alpine
+      ports:
+        - 5433:5432
+      env:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: postgres
+      options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+
+variables:
+  npm_config_cache: $(Pipeline.Workspace)/.npm
+
+jobs:
+  - job: backend
+    displayName: Backend - type-check y pruebas
+    timeoutInMinutes: 30
+    services:
+      postgres: postgres
+    # `config/env.ts` valida las variables al importarse; las pruebas cargan
+    # módulos que lo importan, así que necesitan valores mínimos válidos.
+    variables:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5433/postgres?schema=public
+      AUTH_ENABLED: "false"
+      AUTH_DEMO_BYPASS: "true"
+      ADMIN_EMAIL: admin@synaptica.local
+    steps:
+      - checkout: self
+        fetchDepth: 1
+
+      - bash: echo "##vso[task.setvariable variable=nodeVersion]$(cat backend/.nvmrc)"
+        displayName: Versión de Node (.nvmrc)
+
+      - task: UseNode@1
+        displayName: Node $(nodeVersion)
+        inputs:
+          version: $(nodeVersion)
+
+      - task: Cache@2
+        displayName: Caché de npm
+        inputs:
+          key: 'npm | "$(Agent.OS)" | backend/package-lock.json'
+          restoreKeys: 'npm | "$(Agent.OS)"'
+          path: $(npm_config_cache)
+
+      - bash: npm ci
+        workingDirectory: backend
+        displayName: Instalar dependencias
+
+      - bash: npx prisma generate
+        workingDirectory: backend
+        displayName: Prisma generate
+
+      - bash: npx tsc --noEmit -p tsconfig.json
+        workingDirectory: backend
+        displayName: Type-check
+
+      - bash: npm test
+        workingDirectory: backend
+        displayName: Pruebas unitarias
+
+      - bash: |
+          # El contenedor publica el puerto antes de aceptar conexiones.
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/127.0.0.1/5433) 2>/dev/null && exit 0
+            sleep 2
+          done
+          echo "##vso[task.logissue type=error]Postgres no respondió en el puerto 5433"
+          exit 1
+        displayName: Esperar a Postgres
+
+      - bash: npm run test:routes
+        workingDirectory: backend
+        displayName: Pruebas de ruta
+
+  - job: frontend
+    displayName: Frontend - type-check, pruebas y build
+    timeoutInMinutes: 20
+    steps:
+      - checkout: self
+        fetchDepth: 1
+
+      - bash: echo "##vso[task.setvariable variable=nodeVersion]$(cat frontend/.nvmrc)"
+        displayName: Versión de Node (.nvmrc)
+
+      - task: UseNode@1
+        displayName: Node $(nodeVersion)
+        inputs:
+          version: $(nodeVersion)
+
+      - task: Cache@2
+        displayName: Caché de npm
+        inputs:
+          key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
+          restoreKeys: 'npm | "$(Agent.OS)"'
+          path: $(npm_config_cache)
+
+      - bash: npm ci
+        workingDirectory: frontend
+        displayName: Instalar dependencias
+
+      # `tsc -b` (modo build): el tsconfig.json raíz solo tiene referencias.
+      - bash: npx tsc -b --noEmit
+        workingDirectory: frontend
+        displayName: Type-check
+
+      - bash: npm test
+        workingDirectory: frontend
+        displayName: Pruebas
+
+      # Build con valores de relleno: comprueba que compila, no se publica.
+      - bash: npm run build && test -f dist/index.html
+        workingDirectory: frontend
+        displayName: Build
+        env:
+          VITE_API_URL: https://ci.invalid
+          VITE_FORCE_LOCAL_AUTH: "true"

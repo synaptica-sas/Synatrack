@@ -1,0 +1,104 @@
+# Infraestructura de Azure (Bicep) (equivale a .github/workflows/infra-azure.yml).
+#
+# - Pull request que toca infra/**: what-if contra STAGE. En Azure Repos lo
+#   dispara una política de Build validation de `dev` y `main` con filtro de ruta
+#   `/infra/*` que apunta a este pipeline. El resultado queda en la pestaña
+#   "Extensions" de la ejecución, enlazada desde el PR.
+# - Ejecución manual: what-if o despliegue del entorno elegido. Prod solo desde
+#   `main` (Branch control de azure-prod), con aprobación y bloqueo exclusivo.
+#
+# El PRIMER despliegue de cada entorno se hace desde la PC
+# (scripts/azure.ps1 -Command infra), que genera la contraseña de Postgres y la
+# deja en Key Vault; desde ahí este pipeline solo la relee.
+
+parameters:
+  - name: environment
+    displayName: Entorno
+    type: string
+    default: stage
+    values: [stage, prod]
+  - name: mode
+    displayName: what-if (solo muestra) o deploy (aplica)
+    type: string
+    default: what-if
+    values: [what-if, deploy]
+
+trigger: none
+pr: none
+
+lockBehavior: sequential
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - group: synatrack-${{ parameters.environment }}
+  - name: targetEnv
+    value: ${{ parameters.environment }}
+
+name: infra-${{ parameters.environment }}-${{ parameters.mode }}-$(Date:yyyyMMdd)$(Rev:.r)
+
+jobs:
+  - deployment: infra
+    displayName: ${{ parameters.mode }} ${{ parameters.environment }}
+    environment: ${{ parameters.environment }}
+    timeoutInMinutes: 60
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+              fetchDepth: 1
+
+            - task: AzureCLI@2
+              displayName: ${{ parameters.mode }}
+              inputs:
+                azureSubscription: azure-${{ parameters.environment }}
+                scriptType: bash
+                scriptLocation: inlineScript
+                inlineScript: |
+                  set -euo pipefail
+                  mode="${{ parameters.mode }}"
+                  # Un PR nunca aplica: solo what-if (y solo stage, por los checks).
+                  if [[ "$(Build.Reason)" == "PullRequest" ]]; then mode="what-if"; fi
+                  export ALLOW_TEMP_PASSWORD=0
+                  [[ "$mode" == "what-if" ]] && export ALLOW_TEMP_PASSWORD=1
+                  source infra/ci/infra-env.sh
+                  name="synatrack-${ENV_NAME}-ado$(Build.BuildId)"
+                  if [[ "$mode" == "what-if" ]]; then
+                    set +e
+                    az deployment group what-if --resource-group "$RESOURCE_GROUP" --name "$name" \
+                      --parameters "infra/params/${ENV_NAME}.bicepparam" --only-show-errors > whatif.raw 2>&1
+                    code=$?
+                    set -e
+                    sed -r 's/\x1B\[[0-9;]*[mK]//g' whatif.raw > whatif.txt
+                    cat whatif.txt
+                    {
+                      echo "### What-if de infraestructura (${ENV_NAME})"
+                      echo ""
+                      echo "Commit \`$(Build.SourceVersion)\`. No se aplicó ningún cambio."
+                      echo ""
+                      echo '```'
+                      head -c 60000 whatif.txt
+                      echo '```'
+                    } > resumen.md
+                    echo "##vso[task.uploadsummary]$PWD/resumen.md"
+                    exit $code
+                  fi
+                  az deployment group create --resource-group "$RESOURCE_GROUP" --name "$name" \
+                    --parameters "infra/params/${ENV_NAME}.bicepparam" --only-show-errors \
+                    --query properties.outputs -o json > outputs.json
+                  {
+                    echo "### Infraestructura ${ENV_NAME} desplegada"
+                    echo ""
+                    echo "| Salida | Valor |"
+                    echo "|---|---|"
+                    jq -r 'to_entries[] | "| \(.key) | \(.value.value) |"' outputs.json
+                    echo ""
+                    echo "Si cambió algún nombre o URL, ejecuta \`scripts/azure.ps1 -Command infra -Env ${ENV_NAME}\` desde la PC para actualizar el grupo de variables synatrack-${ENV_NAME} (este pipeline no puede escribirlo)."
+                  } > resumen.md
+                  echo "##vso[task.uploadsummary]$PWD/resumen.md"
+              env:
+                INFRA_PARAMS_B64: $(AZURE_INFRA_PARAMS_B64)
+                RESOURCE_GROUP: $(AZURE_RESOURCE_GROUP)
+                ENV_NAME: ${{ parameters.environment }}

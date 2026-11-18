@@ -2,8 +2,9 @@
 # Prepara, EN LA SHELL ACTUAL, las variables SYNATRACK_* que lee
 # infra/params/<env>.bicepparam. Es el equivalente en CI de
 # Invoke-WithInfraEnv de scripts/azure.ps1. Se usa con `source` desde
-# .github/workflows/infra-azure.yml, en el MISMO paso que ejecuta az, para que la
-# contraseña de Postgres no pase nunca por $GITHUB_ENV ni por un archivo.
+# .github/workflows/infra-azure.yml y pipelines/infra.yml (Azure DevOps), en el
+# MISMO paso que ejecuta az, para que la contraseña de Postgres no pase nunca por
+# $GITHUB_ENV, una variable del pipeline ni un archivo.
 #
 # Entradas (variables de entorno):
 #   INFRA_PARAMS_B64     JSON en base64 con los parámetros no sensibles
@@ -16,6 +17,20 @@
 
 set -euo pipefail
 
+# Mensajes y enmascarado según la plataforma: Azure Pipelines define TF_BUILD;
+# si no, se asume GitHub Actions.
+if [[ "${TF_BUILD:-}" == "True" ]]; then
+  ci_mask()    { echo "##vso[task.setsecret]$1"; }
+  ci_error()   { echo "##vso[task.logissue type=error]$1"; }
+  ci_warning() { echo "##vso[task.logissue type=warning]$1"; }
+  ci_notice()  { echo "$1"; }
+else
+  ci_mask()    { echo "::add-mask::$1"; }
+  ci_error()   { echo "::error::$1"; }
+  ci_warning() { echo "::warning::$1"; }
+  ci_notice()  { echo "::notice::$1"; }
+fi
+
 : "${INFRA_PARAMS_B64:?Falta la variable AZURE_INFRA_PARAMS_B64: ejecuta scripts/azure.ps1 bootstrap/infra}"
 : "${RESOURCE_GROUP:?Falta AZURE_RESOURCE_GROUP}"
 : "${ENV_NAME:?Falta ENV_NAME}"
@@ -24,7 +39,7 @@ set -euo pipefail
 while IFS='=' read -r key value; do
   case "$key" in
     SYNATRACK_*) export "$key=$value" ;;
-    *) echo "::warning::Clave ignorada en los parámetros: $key" ;;
+    *) ci_warning "Clave ignorada en los parámetros: $key" ;;
   esac
 done < <(echo "$INFRA_PARAMS_B64" | base64 -d | jq -r 'to_entries[] | "\(.key)=\(.value)"')
 
@@ -70,15 +85,15 @@ if [[ -z "$PG_PASSWORD" && -n "$KV_NAME" ]]; then
 fi
 if [[ -z "$PG_PASSWORD" ]]; then
   if [[ "${ALLOW_TEMP_PASSWORD:-0}" == "1" ]]; then
-    echo "::notice::Key Vault aún no tiene postgres-admin-password: el what-if usa una contraseña temporal."
+    ci_notice "Key Vault aún no tiene postgres-admin-password: el what-if usa una contraseña temporal."
     PG_PASSWORD="Tmp$(openssl rand -hex 16)"
   else
-    echo "::error::Key Vault no tiene postgres-admin-password. El PRIMER despliegue de infraestructura se hace desde la PC: scripts/azure.ps1 -Command infra -Env ${ENV_NAME}"
+    ci_error "Key Vault no tiene postgres-admin-password. El PRIMER despliegue de infraestructura se hace desde la PC: scripts/azure.ps1 -Command infra -Env ${ENV_NAME}"
     # Se usa con `source`: `return` corta el script sin cerrar la shell del paso,
     # que de todos modos falla por `set -e`.
     return 1
   fi
 fi
-echo "::add-mask::$PG_PASSWORD"
+ci_mask "$PG_PASSWORD"
 export SYNATRACK_PG_ADMIN_PASSWORD="$PG_PASSWORD"
 unset PG_PASSWORD

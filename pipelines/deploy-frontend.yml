@@ -1,0 +1,180 @@
+# Despliegue del frontend a Azure Static Web Apps
+# (equivale a .github/workflows/deploy-frontend-azure.yml).
+#
+#   push a dev   -> SWA de stage
+#   push a main  -> SWA de prod
+#   ejecución manual (environment, ref) -> cualquier commit (rollback).
+#
+# La restricción de rama, la aprobación y el bloqueo exclusivo de prod los ponen
+# los checks de la service connection azure-prod (ver deploy-backend.yml).
+#
+# Las VITE_* se fijan en el BUILD (Vite las incrusta en el bundle). El token de
+# despliegue de la SWA se pide en cada ejecución con `az staticwebapp secrets
+# list`: no hay secreto guardado en Azure DevOps.
+#
+# SIN backend enlazado: el bundle llama directo al App Service (VITE_API_URL) con
+# su propio `Authorization: Bearer <JWT de Entra>`.
+
+parameters:
+  - name: environment
+    displayName: Entorno (auto = según la rama)
+    type: string
+    default: auto
+    values: [auto, stage, prod]
+  - name: ref
+    displayName: Commit (SHA), tag o rama a desplegar (HEAD = la rama lanzada)
+    type: string
+    default: HEAD
+
+trigger:
+  branches:
+    include: [dev, main]
+  paths:
+    include: [frontend, pipelines/deploy-frontend.yml]
+
+pr: none
+
+lockBehavior: sequential
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  - ${{ if or(eq(parameters.environment, 'prod'), and(eq(parameters.environment, 'auto'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))) }}:
+      - group: synatrack-prod
+      - name: targetEnv
+        value: prod
+      - name: serviceConnection
+        value: azure-prod
+  - ${{ else }}:
+      - group: synatrack-stage
+      - name: targetEnv
+        value: stage
+      - name: serviceConnection
+        value: azure-stage
+  - name: npm_config_cache
+    value: $(Pipeline.Workspace)/.npm
+
+name: frontend-$(targetEnv)-$(Date:yyyyMMdd)$(Rev:.r)
+
+jobs:
+  - deployment: deploy
+    displayName: Build y deploy a ${{ variables.targetEnv }}
+    environment: ${{ variables.targetEnv }}
+    timeoutInMinutes: 30
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+              fetchDepth: 0
+              fetchTags: true
+
+            # El checkout deja el commit suelto y las ramas solo como origin/<rama>.
+            - bash: |
+                set -euo pipefail
+                ref="${{ parameters.ref }}"
+                if ! git rev-parse --verify --quiet "${ref}^{commit}" > /dev/null; then ref="origin/${ref}"; fi
+                git checkout --quiet --detach "$ref"
+                sha="$(git rev-parse HEAD)"
+                echo "Desplegando $sha a $(targetEnv)"
+                echo "##vso[build.addbuildtag]$(targetEnv)"
+                echo "##vso[build.addbuildtag]sha-${sha:0:7}"
+                for v in AZURE_API_URL AZURE_SWA_NAME AZURE_SWA_RESOURCE_GROUP VITE_AZURE_TENANT_ID VITE_AZURE_CLIENT_ID VITE_AZURE_API_SCOPE; do
+                  if [[ -z "${!v:-}" ]]; then
+                    echo "##vso[task.logissue type=error]Falta la variable $v en el grupo synatrack-$(targetEnv) (Pipelines -> Library)."
+                    exit 1
+                  fi
+                done
+                echo "##vso[task.setvariable variable=nodeVersion]$(cat frontend/.nvmrc)"
+              displayName: Commit a desplegar y variables
+              env:
+                AZURE_API_URL: $(AZURE_API_URL)
+                AZURE_SWA_NAME: $(AZURE_SWA_NAME)
+                AZURE_SWA_RESOURCE_GROUP: $(AZURE_SWA_RESOURCE_GROUP)
+                VITE_AZURE_TENANT_ID: $(VITE_AZURE_TENANT_ID)
+                VITE_AZURE_CLIENT_ID: $(VITE_AZURE_CLIENT_ID)
+                VITE_AZURE_API_SCOPE: $(VITE_AZURE_API_SCOPE)
+
+            - task: UseNode@1
+              displayName: Node $(nodeVersion)
+              inputs:
+                version: $(nodeVersion)
+
+            - task: Cache@2
+              displayName: Caché de npm
+              inputs:
+                key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
+                restoreKeys: 'npm | "$(Agent.OS)"'
+                path: $(npm_config_cache)
+
+            - bash: npm ci
+              workingDirectory: frontend
+              displayName: Instalar dependencias
+
+            # `tsc -b` (modo build): el tsconfig.json raíz solo tiene referencias.
+            - bash: npx tsc -b --noEmit
+              workingDirectory: frontend
+              displayName: Type-check
+
+            - bash: npm test
+              workingDirectory: frontend
+              displayName: Pruebas
+
+            - bash: |
+                set -euo pipefail
+                npm run build
+                test -f dist/index.html
+              workingDirectory: frontend
+              displayName: Build
+              env:
+                VITE_API_URL: $(AZURE_API_URL)
+                VITE_AZURE_TENANT_ID: $(VITE_AZURE_TENANT_ID)
+                VITE_AZURE_CLIENT_ID: $(VITE_AZURE_CLIENT_ID)
+                VITE_AZURE_API_SCOPE: $(VITE_AZURE_API_SCOPE)
+                # VITE_AZURE_REDIRECT_URI se deja SIN definir a propósito: el
+                # frontend usa window.location.origin, así el mismo bundle sirve en
+                # *.azurestaticapps.net y en el dominio propio.
+                VITE_FORCE_LOCAL_AUTH: "false"
+
+            - task: AzureCLI@2
+              displayName: Token de despliegue de la SWA
+              inputs:
+                azureSubscription: ${{ variables.serviceConnection }}
+                scriptType: bash
+                scriptLocation: inlineScript
+                inlineScript: |
+                  set -euo pipefail
+                  token="$(az staticwebapp secrets list \
+                    --name "$(AZURE_SWA_NAME)" \
+                    --resource-group "$(AZURE_SWA_RESOURCE_GROUP)" \
+                    --query properties.apiKey -o tsv)"
+                  if [[ -z "$token" ]]; then echo "##vso[task.logissue type=error]No se obtuvo el token de la SWA"; exit 1; fi
+                  echo "##vso[task.setvariable variable=swaToken;issecret=true]$token"
+                  host="$(az staticwebapp show \
+                    --name "$(AZURE_SWA_NAME)" \
+                    --resource-group "$(AZURE_SWA_RESOURCE_GROUP)" \
+                    --query defaultHostname -o tsv)"
+                  echo "##vso[task.setvariable variable=swaHost]$host"
+
+            # Ya compilado arriba (con las VITE_* del entorno): la tarea solo sube.
+            - task: AzureStaticWebApp@0
+              displayName: Publicar en Static Web Apps
+              inputs:
+                azure_static_web_apps_api_token: $(swaToken)
+                app_location: frontend/dist
+                output_location: ""
+                skip_app_build: true
+                skip_api_build: true
+
+            # Hostname propio de la SWA, no el dominio.
+            - bash: |
+                url="https://$(swaHost)/"
+                for i in $(seq 1 12); do
+                  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$url" || true)"
+                  if [[ "$code" == "200" ]]; then echo "OK ($url)"; exit 0; fi
+                  echo "Intento $i: HTTP $code"; sleep 10
+                done
+                echo "##vso[task.logissue type=error]$url no respondió 200"
+                exit 1
+              displayName: Comprobar que responde

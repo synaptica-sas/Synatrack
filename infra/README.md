@@ -478,8 +478,42 @@ comprobar que ya no aparece.
   cambio aún no se propagó). `access` lo muestra.
 - **`infra` falla al crear la asignación de rol del Key Vault**: falta el rol RBAC Administrator
   condicionado; un Administrador de Azure debe repetir `bootstrap`.
-- **`migrate deploy` no conecta**: mirar `status`; si quedaron reglas `gh-runner-*` abiertas,
-  borrarlas con `az postgres flexible-server firewall-rule delete`.
+- **`migrate deploy` no conecta**: mirar `status`; si quedaron reglas `gh-runner-*` (GitHub) o
+  `ado-agent-*` (Azure DevOps) abiertas, borrarlas con
+  `az postgres flexible-server firewall-rule delete`.
 - **Reglas de firewall viejas**: el modo incremental no borra reglas `appsvc-*` de IPs que el App
   Service ya no usa. Revisarlas tras un cambio de plan.
 - **`gh workflow run` falla con 404**: el workflow todavía no está en `main` (§3.8).
+
+---
+
+## 11. Azure DevOps (a partir de la 3.6)
+
+El repositorio se muda a Azure DevOps (`https://dev.azure.com/synaptica-co/Synatrack`). Mientras
+tanto, todo lo anterior sigue valiendo para GitHub. Plan y estado:
+`documentacion/azure/MIGRAR_A_AZURE_DEVOPS.md`. Lo que cambia:
+
+| Tema | GitHub Actions | Azure DevOps |
+|---|---|---|
+| Definiciones | `.github/workflows/*.yml` | `pipelines/ci.yml`, `deploy-backend.yml`, `deploy-frontend.yml`, `infra.yml` |
+| Identidad | Credenciales federadas por **rama** (`gh-branch-<rama>`, `gh-pull-request`) | Una credencial por **service connection** (`ado-azure-<env>`) sobre la misma app `gh-synatrack-<env>` |
+| Quién despliega a prod | La rama `main` (OIDC) | Checks de la service connection `azure-prod`: *Branch control* (`main`), *Approvals* (grupo de operadores) y *Exclusive lock* |
+| Variables | De repositorio con sufijo `_STAGE`/`_PROD` | Grupos `synatrack-stage` y `synatrack-prod`, sin sufijo. No existen `AZURE_DEPLOY_ENABLED`, `AZURE_FRONTEND_PROD_ENABLED`, `AZURE_ENV_BRANCH_*` ni `AZURE_CLIENT_ID_*` |
+| What-if en PR | Comentario en el PR | Política de *Build validation* con filtro `/infra/*` → `infra.yml`; el resultado queda en la ejecución |
+| Rollback | `workflow_dispatch` con `ref` | Ejecución manual de `deploy-backend` desde la rama del entorno con `ref=<sha>` y `skipMigrations=true` |
+
+`scripts/azure.ps1` sirve para las dos plataformas según `CiProvider` en `azure.config.psd1`
+(`github` o `ado`, con `AdoOrg` y `AdoProject`). Con `ado`, necesita la extensión
+`az extension add --name azure-devops` y no usa `gh`:
+
+- `bootstrap` no crea credenciales por rama: si la service connection `azure-<env>` ya existe,
+  agrega a la app la credencial que esa conexión espera (`ado-azure-<env>`). La conexión se crea
+  primero en el portal (*Workload identity federation, manual*).
+- `bootstrap` e `infra` escriben en el grupo `synatrack-<env>` (que debe existir).
+- `deploy` y `rollback` lanzan `deploy-backend`/`deploy-frontend` con `az pipelines run` sobre la
+  rama del entorno y siguen la ejecución; en prod hay que aprobarla en el portal.
+- `status` muestra la última ejecución de cada pipeline y `access`, qué credencial federada
+  corresponde a la service connection y cuáles son de GitHub.
+
+La primera ejecución de cada pipeline pide autorizar la service connection, el grupo de variables
+y el environment (*Permit* en la ejecución). Ningún recurso está abierto a todos los pipelines.

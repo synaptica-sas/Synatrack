@@ -10,6 +10,14 @@
     La configuración se lee de infra/azure.config.psd1 (copia de
     infra/azure.config.example.psd1; no se versiona). Guía completa: infra/README.md.
 
+    Plataforma de CI/CD (clave CiProvider de la config):
+      github  (por defecto) GitHub Actions: variables de repositorio y workflows de
+              .github/workflows/. Necesita `gh`.
+      ado     Azure DevOps: grupos de variables synatrack-<env> y pipelines de
+              pipelines/ (deploy-backend, deploy-frontend). Necesita la extensión
+              azure-devops de az y las claves AdoOrg y AdoProject.
+      Ver documentacion/azure/MIGRAR_A_AZURE_DEVOPS.md §3.5 y §3.6.
+
     Comandos:
       login       az login con el tenant y selección de la suscripción.
       bootstrap   Una vez por entorno: resource group, identidad OIDC del pipeline,
@@ -106,6 +114,16 @@ $GenerateKeyword = '<generar>'
 
 $BackendWorkflow = 'deploy-backend-azure.yml'
 $FrontendWorkflow = 'deploy-frontend-azure.yml'
+
+# Azure DevOps: nombres de los pipelines (pipelines/<nombre>.yml) y recurso de
+# Azure DevOps para pedir tokens con `az rest`.
+$AdoBackendPipeline = 'deploy-backend'
+$AdoFrontendPipeline = 'deploy-frontend'
+# Variables de GitHub que en Azure DevOps no existen: la rama la controla el check
+# Branch control y el client id lo lleva la service connection.
+$AdoSkippedVariables = @('AZURE_CLIENT_ID', 'AZURE_ENV_BRANCH')
+# Caché del id del grupo de variables del entorno (Get-AdoGroupId).
+$script:AdoGroupId = $null
 
 # Secretos opcionales (los carga el usuario) -> variable de entorno del backend.
 # Debe coincidir con `optionalSecretEnv` de infra/main.bicep.
@@ -295,14 +313,20 @@ function Get-Config {
     $label = $path
     if ($path -eq $ConfigPath) { $label = 'infra/azure.config.psd1' } else { Write-Note "Configuración: $path" }
     $cfg = Import-PowerShellDataFile -LiteralPath $path
-    foreach ($key in @('TenantId', 'SubscriptionId', 'Location', 'GitHubRepo', 'AlertEmail', 'MonthlyBudgetUsd',
-            'AppClientId', 'AppApiScope', 'AdminEmail', 'Environments')) {
+    $provider = 'github'
+    if ($cfg.ContainsKey('CiProvider') -and -not [string]::IsNullOrWhiteSpace([string]$cfg.CiProvider)) { $provider = ([string]$cfg.CiProvider).ToLowerInvariant() }
+    if ($provider -notin @('github', 'ado')) { Stop-WithError "CiProvider debe ser 'github' o 'ado' en $label (vale '$provider')." }
+    $required = @('TenantId', 'SubscriptionId', 'Location', 'AlertEmail', 'MonthlyBudgetUsd',
+        'AppClientId', 'AppApiScope', 'AdminEmail', 'Environments')
+    if ($provider -eq 'ado') { $required += @('AdoOrg', 'AdoProject') } else { $required += 'GitHubRepo' }
+    foreach ($key in $required) {
         if (-not $cfg.ContainsKey($key) -or [string]::IsNullOrWhiteSpace([string]$cfg[$key])) {
             $hint = ''
             if ($path -eq $ConfigPath) { $hint = " Si la config real está en otra carpeta, apúntala con ConfigFile, -ConfigFile o SYNATRACK_AZURE_CONFIG." }
             Stop-WithError "Falta la clave '$key' en $label (ver la plantilla).$hint"
         }
     }
+    $cfg['CiProvider'] = $provider
     if ($cfg.TenantId -eq '00000000-0000-0000-0000-000000000000') {
         Stop-WithError "$label todavía tiene los valores de ejemplo."
     }
@@ -429,6 +453,56 @@ function Assert-GhContext {
     Assert-Tool 'gh' 'Instala GitHub CLI: https://cli.github.com'
     $null = Invoke-Gh -Arguments @('auth', 'status') -AllowFailure
     if ($LASTEXITCODE -ne 0) { Stop-WithError 'No hay sesión de GitHub CLI. Ejecuta: gh auth login' }
+}
+
+# --- Azure DevOps ------------------------------------------------------------
+
+function Test-Ado($Cfg) { return ([string]$Cfg.CiProvider -eq 'ado') }
+
+function Get-AdoScope($Cfg) {
+    return @('--organization', "https://dev.azure.com/$($Cfg.AdoOrg)", '--project', [string]$Cfg.AdoProject)
+}
+
+function Get-AdoRunUrl($Cfg, [string]$RunId) {
+    return "https://dev.azure.com/$($Cfg.AdoOrg)/$($Cfg.AdoProject)/_build/results?buildId=$RunId"
+}
+
+function Test-AdoExtension {
+    $v = Invoke-Az -Arguments @('extension', 'show', '--name', 'azure-devops', '--query', 'version', '-o', 'tsv') -AllowFailure
+    return [bool]$v
+}
+
+# Azure DevOps usa la misma sesión de `az login` (cuenta de Entra del tenant).
+function Assert-AdoContext($Cfg) {
+    $null = Assert-AzContext $Cfg
+    if (-not (Test-AdoExtension)) { Stop-WithError 'Falta la extensión de Azure DevOps. Ejecuta: az extension add --name azure-devops' }
+    $p = Invoke-Az -Arguments (@('devops', 'project', 'show', '--query', 'name', '-o', 'tsv') + (Get-AdoScope $Cfg)) -AllowFailure
+    if (-not $p) {
+        Stop-WithError "No se pudo abrir el proyecto $($Cfg.AdoProject) de https://dev.azure.com/$($Cfg.AdoOrg) con la sesión de az (¿licencia o permisos en Azure DevOps?)."
+    }
+}
+
+function Assert-CiContext($Cfg) {
+    if (Test-Ado $Cfg) { Assert-AdoContext $Cfg } else { Assert-GhContext }
+}
+
+# ¿Se pueden escribir variables del CI sin detener el script? (infra lo usa para
+# avisar en vez de fallar cuando falta la herramienta).
+function Test-CiAvailable($Cfg) {
+    if (Test-Ado $Cfg) { return (Test-AdoExtension) }
+    return [bool](Get-Command gh -ErrorAction SilentlyContinue)
+}
+
+function Get-AdoPipelineId($Cfg, [string]$PipelineName) {
+    $id = Invoke-Az -Arguments (@('pipelines', 'show', '--name', $PipelineName, '--query', 'id', '-o', 'tsv') + (Get-AdoScope $Cfg)) -AllowFailure
+    if (-not $id) { return $null }
+    return [string]$id
+}
+
+# Service connection azure-<env>: id, app y la credencial federada que espera.
+function Get-AdoServiceEndpoint($Cfg) {
+    $q = "[?name=='azure-$Environment'] | [0].{id:id, appId:authorization.parameters.serviceprincipalid, issuer:authorization.parameters.workloadIdentityFederationIssuer, subject:authorization.parameters.workloadIdentityFederationSubject}"
+    return (Invoke-AzJson -Arguments (@('devops', 'service-endpoint', 'list', '--query', $q) + (Get-AdoScope $Cfg)) -AllowFailure)
 }
 
 function Test-ResourceGroup([string]$Rg) {
@@ -689,14 +763,18 @@ function Invoke-WithInfraEnv($Cfg, $Res, [switch]$ForWhatIf, [scriptblock]$Body)
 }
 
 # =============================================================================
-# GitHub
+# Variables del CI (GitHub o Azure DevOps)
 # =============================================================================
 
 # GitHub Free con repositorio privado NO tiene variables por Environment (ni
 # revisores obligatorios). Por eso todas las variables van a nivel de
 # repositorio y las de cada entorno llevan sufijo: AZURE_WEBAPP_NAME_STAGE,
 # AZURE_WEBAPP_NAME_PROD... Los workflows eligen el sufijo según el entorno.
-function Set-GhVariable($Cfg, [string]$VarName, [string]$Value) {
+#
+# En Azure DevOps cada entorno tiene su grupo de variables (synatrack-<env>) y
+# las claves van SIN sufijo; las "globales" (tenant, VITE_*) se repiten en ambos.
+function Set-CiVariable($Cfg, [string]$VarName, [string]$Value) {
+    if (Test-Ado $Cfg) { Set-AdoVariable $Cfg $VarName $Value; return }
     $scope = @('--repo', $Cfg.GitHubRepo)
     if ([string]::IsNullOrEmpty($Value)) {
         # GitHub no admite variables vacías: si no hay valor, se borra.
@@ -708,16 +786,52 @@ function Set-GhVariable($Cfg, [string]$VarName, [string]$Value) {
     Write-Ok $VarName
 }
 
-# Variable propia del entorno actual: <Base>_STAGE o <Base>_PROD.
-function Set-GhEnvVariable($Cfg, [string]$BaseName, [string]$Value) {
-    Set-GhVariable $Cfg ("{0}_{1}" -f $BaseName, $Environment.ToUpperInvariant()) $Value
+# Variable propia del entorno actual: <Base>_STAGE o <Base>_PROD en GitHub;
+# <Base> en el grupo synatrack-<env> de Azure DevOps.
+function Set-CiEnvVariable($Cfg, [string]$BaseName, [string]$Value) {
+    if (Test-Ado $Cfg) {
+        if ($AdoSkippedVariables -contains $BaseName) { return }
+        Set-AdoVariable $Cfg $BaseName $Value
+        return
+    }
+    Set-CiVariable $Cfg ("{0}_{1}" -f $BaseName, $Environment.ToUpperInvariant()) $Value
 }
 
-function Set-GhInfraVariables($Cfg) {
-    Set-GhEnvVariable $Cfg 'AZURE_INFRA_PARAMS_B64' (ConvertTo-Base64Json (Get-InfraParams $Cfg))
+function Get-AdoGroupId($Cfg) {
+    if ($script:AdoGroupId) { return $script:AdoGroupId }
+    $groupName = "synatrack-$Environment"
+    $id = Invoke-Az -Arguments (@('pipelines', 'variable-group', 'list', '--group-name', $groupName, '--query', '[0].id', '-o', 'tsv') + (Get-AdoScope $Cfg)) -AllowFailure
+    if (-not $id) {
+        Stop-WithError "No existe el grupo de variables $groupName en Azure DevOps (Pipelines -> Library). Ver documentacion/azure/MIGRAR_A_AZURE_DEVOPS.md §3.4."
+    }
+    $script:AdoGroupId = [string]$id
+    return $script:AdoGroupId
 }
 
-function Set-GhOutputVariables($Cfg, $Outputs) {
+function Set-AdoVariable($Cfg, [string]$VarName, [string]$Value) {
+    $scope = Get-AdoScope $Cfg
+    $groupId = Get-AdoGroupId $Cfg
+    $exists = Invoke-Az -Arguments (@('pipelines', 'variable-group', 'variable', 'list', '--group-id', $groupId,
+            '--query', "contains(keys(@), '$VarName')", '-o', 'tsv') + $scope)
+    $label = "$VarName (synatrack-$Environment)"
+    if ([string]::IsNullOrEmpty($Value)) {
+        if ($exists -eq 'true') {
+            Invoke-Az -Arguments (@('pipelines', 'variable-group', 'variable', 'delete', '--group-id', $groupId, '--name', $VarName, '--yes', '-o', 'none') + $scope) | Out-Null
+        }
+        Write-Note "$label (vacía, se borra si existía)"
+        return
+    }
+    $verb = 'create'
+    if ($exists -eq 'true') { $verb = 'update' }
+    Invoke-Az -Arguments (@('pipelines', 'variable-group', 'variable', $verb, '--group-id', $groupId, '--name', $VarName, '--value', $Value, '-o', 'none') + $scope) | Out-Null
+    Write-Ok $label
+}
+
+function Set-CiInfraVariables($Cfg) {
+    Set-CiEnvVariable $Cfg 'AZURE_INFRA_PARAMS_B64' (ConvertTo-Base64Json (Get-InfraParams $Cfg))
+}
+
+function Set-CiOutputVariables($Cfg, $Outputs) {
     $envCfg = Get-EnvCfg $Cfg
     $swaName = [string]$Outputs.staticWebAppName
     $swaRg = $envCfg.ResourceGroup
@@ -725,14 +839,14 @@ function Set-GhOutputVariables($Cfg, $Outputs) {
         $swaName = [string](Get-Opt $Cfg 'ExistingSwaName' '')
         $swaRg = [string](Get-Opt $Cfg 'ExistingSwaResourceGroup' $envCfg.ResourceGroup)
     }
-    Set-GhEnvVariable $Cfg 'AZURE_WEBAPP_NAME' ([string]$Outputs.webAppName)
-    Set-GhEnvVariable $Cfg 'AZURE_API_URL' ([string]$Outputs.apiUrl)
-    Set-GhEnvVariable $Cfg 'AZURE_KEYVAULT_NAME' ([string]$Outputs.keyVaultName)
-    Set-GhEnvVariable $Cfg 'AZURE_POSTGRES_SERVER' ([string]$Outputs.postgresServerName)
-    Set-GhEnvVariable $Cfg 'AZURE_POSTGRES_RESOURCE_GROUP' (Get-DataResourceGroup $Cfg)
-    Set-GhEnvVariable $Cfg 'AZURE_SWA_NAME' $swaName
-    Set-GhEnvVariable $Cfg 'AZURE_SWA_RESOURCE_GROUP' $swaRg
-    Set-GhEnvVariable $Cfg 'AZURE_FRONTEND_URL' ([string]$Outputs.frontendUrl)
+    Set-CiEnvVariable $Cfg 'AZURE_WEBAPP_NAME' ([string]$Outputs.webAppName)
+    Set-CiEnvVariable $Cfg 'AZURE_API_URL' ([string]$Outputs.apiUrl)
+    Set-CiEnvVariable $Cfg 'AZURE_KEYVAULT_NAME' ([string]$Outputs.keyVaultName)
+    Set-CiEnvVariable $Cfg 'AZURE_POSTGRES_SERVER' ([string]$Outputs.postgresServerName)
+    Set-CiEnvVariable $Cfg 'AZURE_POSTGRES_RESOURCE_GROUP' (Get-DataResourceGroup $Cfg)
+    Set-CiEnvVariable $Cfg 'AZURE_SWA_NAME' $swaName
+    Set-CiEnvVariable $Cfg 'AZURE_SWA_RESOURCE_GROUP' $swaRg
+    Set-CiEnvVariable $Cfg 'AZURE_FRONTEND_URL' ([string]$Outputs.frontendUrl)
 }
 
 # =============================================================================
@@ -747,7 +861,10 @@ function Invoke-Login($Cfg) {
     $acc = Invoke-AzJson -Arguments @('account', 'show')
     Write-Ok "Suscripción: $($acc.name) ($($acc.id))"
     Write-Ok "Usuario: $($acc.user.name)"
-    if (Get-Command gh -ErrorAction SilentlyContinue) {
+    if (Test-Ado $Cfg) {
+        if (Test-AdoExtension) { Write-Ok "Azure DevOps: extensión de az instalada (https://dev.azure.com/$($Cfg.AdoOrg))." }
+        else { Write-Warn 'Falta la extensión de Azure DevOps (la necesitan bootstrap, infra, deploy y rollback): az extension add --name azure-devops' }
+    } elseif (Get-Command gh -ErrorAction SilentlyContinue) {
         $null = Invoke-Gh -Arguments @('auth', 'status') -AllowFailure
         if ($LASTEXITCODE -ne 0) { Write-Warn 'GitHub CLI sin sesión: ejecuta `gh auth login` antes de bootstrap/deploy.' }
         else { Write-Ok 'GitHub CLI con sesión.' }
@@ -814,9 +931,87 @@ function Add-RoleAssignment([string]$PrincipalId, [string]$PrincipalType, [strin
     Write-Ok $RoleLabel
 }
 
+function Add-GitHubFederatedCredentials($Cfg, [string]$AppId, [string]$Repo, [string]$Branch) {
+    Write-Step 'Credenciales federadas (OIDC de GitHub Actions)'
+    # Confianza por RAMA (GitHub Free no ofrece Environments útiles en repos
+    # privados): solo los workflows que corren en la rama del entorno obtienen
+    # un token. prod = main; un workflow lanzado desde dev u otra rama no puede
+    # autenticarse contra prod.
+    $prefix = Get-GitHubOidcSubjectPrefix $Repo
+    $subjects = [ordered]@{ "gh-branch-$Branch" = "$($prefix):ref:refs/heads/$Branch" }
+    if ($Environment -eq 'stage') {
+        # Solo stage: el what-if de los PR. Dársela a prod permitiría que
+        # cualquier PR obtuviera permisos sobre producción.
+        $subjects['gh-pull-request'] = "$($prefix):pull_request"
+    }
+    $existing = @{}
+    $fc = Invoke-AzJson -Arguments @('ad', 'app', 'federated-credential', 'list', '--id', $AppId)
+    if ($fc) { foreach ($c in @($fc)) { $existing[[string]$c.name] = [string]$c.subject } }
+    foreach ($credName in $subjects.Keys) {
+        $subject = $subjects[$credName]
+        if ($existing.ContainsKey($credName) -and $existing[$credName] -eq $subject) { Write-Ok "$subject (ya estaba)"; continue }
+        $file = New-TempJsonFile @{
+            name        = $credName
+            issuer      = $GitHubOidcIssuer
+            subject     = $subject
+            audiences   = @($GitHubOidcAudience)
+            description = "GitHub Actions de $Repo ($credName)"
+        }
+        try {
+            if ($existing.ContainsKey($credName)) {
+                # Misma credencial con otro subject (p. ej. el formato clásico
+                # creado antes): se corrige en vez de duplicarla.
+                Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'update', '--id', $AppId, '--federated-credential-id', $credName, '--parameters', "@$file", '-o', 'none') | Out-Null
+                Write-Ok "$subject (actualizada; antes $($existing[$credName]))"
+            } else {
+                Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'create', '--id', $AppId, '--parameters', "@$file", '-o', 'none') | Out-Null
+                Write-Ok $subject
+            }
+        } finally { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue }
+    }
+}
+
+# Azure DevOps: la federación es por service connection, no por rama. El subject
+# lo genera Azure DevOps al crear la conexión azure-<env> (tipo Workload identity
+# federation, manual), así que primero se crea la conexión en el portal y luego
+# bootstrap agrega la credencial que pide, si falta. La restricción de rama, la
+# aprobación y el bloqueo exclusivo son checks de la conexión (§3.4 del plan).
+function Add-AdoFederatedCredential($Cfg, [string]$AppId, [string]$AppName) {
+    Write-Step "Credencial federada de la service connection azure-$Environment (Azure DevOps)"
+    $ep = Get-AdoServiceEndpoint $Cfg
+    if ($null -eq $ep -or -not $ep.id) {
+        Write-Warn ("No existe la service connection azure-$Environment. Créala en Project settings -> Service connections " +
+            "(Azure Resource Manager, App registration (manual), Workload identity federation) con la app $AppName ($AppId) y repite bootstrap.")
+        return
+    }
+    if ([string]$ep.appId -ne $AppId) {
+        Write-Warn "La service connection azure-$Environment usa la app $($ep.appId), no $AppName ($AppId). Revísala en el portal."
+        return
+    }
+    $fc = @(Invoke-AzJson -Arguments @('ad', 'app', 'federated-credential', 'list', '--id', $AppId, '--query', '[].{name:name, issuer:issuer, subject:subject}'))
+    $match = @($fc | Where-Object { $_ -and $_.issuer -eq $ep.issuer -and $_.subject -eq $ep.subject })
+    if ($match.Count -gt 0) { Write-Ok "$($match[0].name) (ya estaba)"; return }
+    $credName = "ado-azure-$Environment"
+    if (@($fc | Where-Object { $_ -and $_.name -eq $credName }).Count -gt 0) {
+        Write-Warn "Ya existe una credencial $credName con otro subject (¿se recreó la service connection?). Bórrala en Entra y repite bootstrap."
+        return
+    }
+    $file = New-TempJsonFile @{
+        name        = $credName
+        issuer      = [string]$ep.issuer
+        subject     = [string]$ep.subject
+        audiences   = @($GitHubOidcAudience)
+        description = "Azure DevOps $($Cfg.AdoOrg)/$($Cfg.AdoProject), service connection azure-$Environment"
+    }
+    try {
+        Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'create', '--id', $AppId, '--parameters', "@$file", '-o', 'none') | Out-Null
+        Write-Ok "$credName creada"
+    } finally { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue }
+}
+
 function Invoke-Bootstrap($Cfg) {
     $account = Assert-AzContext $Cfg
-    Assert-GhContext
+    Assert-CiContext $Cfg
     $envCfg = Get-EnvCfg $Cfg
     $rg = $envCfg.ResourceGroup
     $repo = $Cfg.GitHubRepo
@@ -869,43 +1064,11 @@ function Invoke-Bootstrap($Cfg) {
         Write-Ok 'Service principal existente.'
     }
 
-    Write-Step 'Credenciales federadas (OIDC de GitHub Actions)'
-    # Confianza por RAMA (GitHub Free no ofrece Environments útiles en repos
-    # privados): solo los workflows que corren en la rama del entorno obtienen
-    # un token. prod = main; un workflow lanzado desde dev u otra rama no puede
-    # autenticarse contra prod.
     $branch = [string]$envCfg.GitBranch
-    $prefix = Get-GitHubOidcSubjectPrefix $repo
-    $subjects = [ordered]@{ "gh-branch-$branch" = "$($prefix):ref:refs/heads/$branch" }
-    if ($Environment -eq 'stage') {
-        # Solo stage: el what-if de los PR. Dársela a prod permitiría que
-        # cualquier PR obtuviera permisos sobre producción.
-        $subjects['gh-pull-request'] = "$($prefix):pull_request"
-    }
-    $existing = @{}
-    $fc = Invoke-AzJson -Arguments @('ad', 'app', 'federated-credential', 'list', '--id', $appId)
-    if ($fc) { foreach ($c in @($fc)) { $existing[[string]$c.name] = [string]$c.subject } }
-    foreach ($credName in $subjects.Keys) {
-        $subject = $subjects[$credName]
-        if ($existing.ContainsKey($credName) -and $existing[$credName] -eq $subject) { Write-Ok "$subject (ya estaba)"; continue }
-        $file = New-TempJsonFile @{
-            name        = $credName
-            issuer      = $GitHubOidcIssuer
-            subject     = $subject
-            audiences   = @($GitHubOidcAudience)
-            description = "GitHub Actions de $repo ($credName)"
-        }
-        try {
-            if ($existing.ContainsKey($credName)) {
-                # Misma credencial con otro subject (p. ej. el formato clásico
-                # creado antes): se corrige en vez de duplicarla.
-                Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'update', '--id', $appId, '--federated-credential-id', $credName, '--parameters', "@$file", '-o', 'none') | Out-Null
-                Write-Ok "$subject (actualizada; antes $($existing[$credName]))"
-            } else {
-                Invoke-Az -Arguments @('ad', 'app', 'federated-credential', 'create', '--id', $appId, '--parameters', "@$file", '-o', 'none') | Out-Null
-                Write-Ok $subject
-            }
-        } finally { Remove-Item -LiteralPath $file -ErrorAction SilentlyContinue }
+    if (Test-Ado $Cfg) {
+        Add-AdoFederatedCredential $Cfg $appId $appName
+    } else {
+        Add-GitHubFederatedCredentials $Cfg $appId $repo $branch
     }
 
     Write-Step "Roles del pipeline sobre $rg"
@@ -973,25 +1136,31 @@ function Invoke-Bootstrap($Cfg) {
         }
     }
 
-    Write-Step "Variables de GitHub en $repo (nivel repositorio)"
-    Set-GhVariable $Cfg 'AZURE_TENANT_ID' $Cfg.TenantId
-    Set-GhVariable $Cfg 'AZURE_SUBSCRIPTION_ID' $Cfg.SubscriptionId
-    Set-GhVariable $Cfg 'VITE_AZURE_CLIENT_ID' $Cfg.AppClientId
-    Set-GhVariable $Cfg 'VITE_AZURE_TENANT_ID' $Cfg.TenantId
-    Set-GhVariable $Cfg 'VITE_AZURE_API_SCOPE' $Cfg.AppApiScope
-    Set-GhEnvVariable $Cfg 'AZURE_CLIENT_ID' $appId
-    Set-GhEnvVariable $Cfg 'AZURE_RESOURCE_GROUP' $rg
-    Set-GhEnvVariable $Cfg 'AZURE_POSTGRES_RESOURCE_GROUP' $dataRg
-    Set-GhEnvVariable $Cfg 'AZURE_ENV_BRANCH' $branch
-    Set-GhInfraVariables $Cfg
-    if ($Environment -eq 'prod') {
+    if (Test-Ado $Cfg) {
+        Write-Step "Variables de Azure DevOps en el grupo synatrack-$Environment"
+    } else {
+        Write-Step "Variables de GitHub en $repo (nivel repositorio)"
+    }
+    Set-CiVariable $Cfg 'AZURE_TENANT_ID' $Cfg.TenantId
+    Set-CiVariable $Cfg 'AZURE_SUBSCRIPTION_ID' $Cfg.SubscriptionId
+    Set-CiVariable $Cfg 'VITE_AZURE_CLIENT_ID' $Cfg.AppClientId
+    Set-CiVariable $Cfg 'VITE_AZURE_TENANT_ID' $Cfg.TenantId
+    Set-CiVariable $Cfg 'VITE_AZURE_API_SCOPE' $Cfg.AppApiScope
+    Set-CiEnvVariable $Cfg 'AZURE_CLIENT_ID' $appId
+    Set-CiEnvVariable $Cfg 'AZURE_RESOURCE_GROUP' $rg
+    Set-CiEnvVariable $Cfg 'AZURE_POSTGRES_RESOURCE_GROUP' $dataRg
+    Set-CiEnvVariable $Cfg 'AZURE_ENV_BRANCH' $branch
+    Set-CiInfraVariables $Cfg
+    if ($Environment -eq 'prod' -and -not (Test-Ado $Cfg)) {
         Write-Note "prod NO pide aprobación (GitHub Free): despliega todo lo que llegue a $branch."
     }
 
     Write-Host ''
     Write-Ok "Bootstrap de $Environment terminado."
     Write-Note "Siguiente: .\scripts\azure.ps1 plan -Env $Environment   y luego   infra -Env $Environment"
-    Write-Note 'Los despliegues siguen apagados hasta que crees la variable de repositorio AZURE_DEPLOY_ENABLED=true.'
+    if (-not (Test-Ado $Cfg)) {
+        Write-Note 'Los despliegues siguen apagados hasta que crees la variable de repositorio AZURE_DEPLOY_ENABLED=true.'
+    }
 }
 
 function Get-ParamFile {
@@ -1049,17 +1218,22 @@ function Invoke-Infra($Cfg) {
     Write-Note "Key Vault: $($flat.keyVaultName)  (datos: $($flat.dataKeyVaultName))"
     Write-Note "CORS:      $($flat.corsOrigins)"
 
-    if (Get-Command gh -ErrorAction SilentlyContinue) {
-        Write-Step 'Actualizando variables de GitHub que dependen de las salidas'
+    $ciLabel = 'GitHub'
+    if (Test-Ado $Cfg) { $ciLabel = "Azure DevOps (grupo synatrack-$Environment)" }
+    if (Test-CiAvailable $Cfg) {
+        Write-Step "Actualizando variables de $ciLabel que dependen de las salidas"
         try {
-            Set-GhOutputVariables $Cfg ([pscustomobject]$flat)
-            Set-GhInfraVariables $Cfg
+            Set-CiOutputVariables $Cfg ([pscustomobject]$flat)
+            Set-CiInfraVariables $Cfg
         } catch {
-            # Escribir variables exige rol Admin en el repositorio. La infra ya
-            # quedó desplegada: solo falta que un operador con Admin repita infra.
-            Write-Warn 'No se pudieron actualizar las variables de GitHub (hace falta rol Admin en el repositorio).'
-            Write-Warn 'La infraestructura sí quedó desplegada; un operador con Admin debe ejecutar infra de nuevo.'
+            # Escribir variables exige rol Admin en el repositorio de GitHub o
+            # permiso de administrador sobre el grupo de variables. La infra ya
+            # quedó desplegada: solo falta que un operador con ese permiso repita infra.
+            Write-Warn "No se pudieron actualizar las variables de $ciLabel (falta permiso de escritura)."
+            Write-Warn 'La infraestructura sí quedó desplegada; un operador con ese permiso debe ejecutar infra de nuevo.'
         }
+    } elseif (Test-Ado $Cfg) {
+        Write-Warn 'Falta la extensión azure-devops de az: actualiza a mano el grupo de variables (o instálala y repite infra).'
     } else {
         Write-Warn 'gh no está instalado: actualiza a mano las variables de GitHub (ver infra/README.md).'
     }
@@ -1084,12 +1258,59 @@ function Wait-WorkflowRun($Cfg, [string]$Workflow, [DateTime]$Since) {
     return $null
 }
 
+# Lanza deploy-backend / deploy-frontend en Azure DevOps sobre la rama del
+# entorno (el check Branch control de azure-prod exige main) y sigue la
+# ejecución hasta que termina. `ref` es lo que se despliega; si es la misma
+# rama, se pasa HEAD.
+function Invoke-AdoDeploy($Cfg, [string]$DeployRef, [string]$Which, [bool]$NoMigrations, [string]$Branch) {
+    $scope = Get-AdoScope $Cfg
+    $pipelines = @()
+    if ($Which -in @('backend', 'all')) { $pipelines += $AdoBackendPipeline }
+    if ($Which -in @('frontend', 'all')) { $pipelines += $AdoFrontendPipeline }
+    $refParam = $DeployRef
+    if ($DeployRef -eq $Branch) { $refParam = 'HEAD' }
+
+    foreach ($p in $pipelines) {
+        Write-Step "Lanzando $p en $Environment (rama $Branch, ref $DeployRef)"
+        $params = @("environment=$Environment", "ref=$refParam")
+        if ($p -eq $AdoBackendPipeline) {
+            $skip = 'false'
+            if ($NoMigrations) { $skip = 'true' }
+            $params += "skipMigrations=$skip"
+        }
+        $run = Invoke-AzJson -Arguments (@('pipelines', 'run', '--name', $p, '--branch', $Branch, '--parameters') + $params +
+            @('--query', '{id:id, number:buildNumber}') + $scope)
+        if ($null -eq $run -or -not $run.id) { Stop-WithError "Azure DevOps no devolvió la ejecución de $p." }
+        $url = Get-AdoRunUrl $Cfg ([string]$run.id)
+        Write-Note "Ejecución $($run.number): $url"
+        if ($Environment -eq 'prod') {
+            Write-Note 'prod pide aprobación: ábrela en el enlace y pulsa Review. Aquí se espera (Ctrl+C deja la ejecución corriendo).'
+        }
+        $last = ''
+        $state = $null
+        while ($true) {
+            Start-Sleep -Seconds 15
+            $state = Invoke-AzJson -Arguments (@('pipelines', 'runs', 'show', '--id', [string]$run.id, '--query', '{status:status, result:result}') + $scope) -AllowFailure
+            if ($null -eq $state) { continue }
+            if ($state.status -ne $last) { Write-Note "Estado: $($state.status)"; $last = [string]$state.status }
+            if ($state.status -eq 'completed') { break }
+        }
+        if ($state.result -ne 'succeeded') { Stop-WithError "$p terminó con resultado '$($state.result)'. Detalle: $url" }
+        Write-Ok "$p terminó bien."
+    }
+}
+
 function Invoke-Deploy($Cfg, [string]$DeployRef, [string]$Which, [bool]$NoMigrations) {
-    Assert-GhContext
+    Assert-CiContext $Cfg
     $envCfg = Get-EnvCfg $Cfg
     $branch = $envCfg.GitBranch
     if (-not $DeployRef) { $DeployRef = $branch }
     Confirm-ProdChange "desplegar '$DeployRef' ($Which)"
+
+    if (Test-Ado $Cfg) {
+        Invoke-AdoDeploy $Cfg $DeployRef $Which $NoMigrations $branch
+        return
+    }
 
     $workflows = @()
     if ($Which -in @('backend', 'all')) { $workflows += $BackendWorkflow }
@@ -1139,8 +1360,9 @@ function Invoke-Status($Cfg) {
             '{state:state, version:version, sku:sku.name, storage:storage.storageSizeGb, fqdn:fullyQualifiedDomainName}')
         Write-Note ("Postgres     {0}  estado={1}  v{2}  {3}  {4} GB  (RG {5})" -f $res.Postgres, $pg.state, $pg.version, $pg.sku, $pg.storage, $dataRg)
         $rules = Invoke-AzJson -Arguments @('postgres', 'flexible-server', 'firewall-rule', 'list', '-g', $dataRg, '--server-name', $res.Postgres, '--query', '[].name') -AllowFailure
-        $runnerRules = @($rules | Where-Object { $_ -like 'gh-runner-*' })
-        Write-Note ("             reglas de firewall={0}{1}" -f @($rules).Count, $(if ($runnerRules.Count) { "  (AVISO: $($runnerRules.Count) regla(s) gh-runner-* sin cerrar)" } else { '' }))
+        # Reglas temporales de las migraciones: gh-runner-* (GitHub) y ado-agent-* (Azure DevOps).
+        $runnerRules = @($rules | Where-Object { $_ -like 'gh-runner-*' -or $_ -like 'ado-agent-*' })
+        Write-Note ("             reglas de firewall={0}{1}" -f @($rules).Count, $(if ($runnerRules.Count) { "  (AVISO: $($runnerRules.Count) regla(s) temporal(es) del pipeline sin cerrar)" } else { '' }))
     } else { Write-Warn 'Postgres: no existe todavía.' }
     if ($res.KeyVault) {
         $present = @(Get-PresentOptionalSecrets $res.KeyVault)
@@ -1153,6 +1375,21 @@ function Invoke-Status($Cfg) {
         $s = Invoke-AzJson -Arguments @('staticwebapp', 'show', '-g', $res.SwaResourceGroup, '-n', $res.StaticWebApp, '--query', '{host:defaultHostname, sku:sku.name, domains:customDomains}') -AllowFailure
         if ($s) { Write-Note ("Static Web   {0}  sku={1}  https://{2}  dominios={3}" -f $res.StaticWebApp, $s.sku, $s.host, (@($s.domains) -join ',')) }
     } else { Write-Note 'Static Web   (no se gestiona en este entorno)' }
+
+    if (Test-Ado $Cfg) {
+        if (-not (Test-AdoExtension)) { Write-Warn 'Sin la extensión azure-devops de az no se pueden listar los despliegues.'; return }
+        Write-Step 'Últimos despliegues (Azure Pipelines)'
+        foreach ($pair in @(@($AdoBackendPipeline, 'backend'), @($AdoFrontendPipeline, 'frontend'))) {
+            $pipelineId = Get-AdoPipelineId $Cfg $pair[0]
+            if (-not $pipelineId) { Write-Note "$($pair[0]): el pipeline aún no existe en Azure DevOps."; continue }
+            # El número de ejecución es "<backend|frontend>-<env>-<fecha>.<n>" (ver pipelines/*.yml).
+            $q = "[?starts_with(buildNumber, '$($pair[1])-$Environment-')] | [0].{numero:buildNumber, estado:status, resultado:result, fin:finishTime, id:id}"
+            $last = Invoke-AzJson -Arguments (@('pipelines', 'runs', 'list', '--pipeline-ids', $pipelineId, '--top', '30', '--query', $q) + (Get-AdoScope $Cfg)) -AllowFailure
+            if ($null -eq $last -or -not $last.numero) { Write-Note "$($pair[0]): sin ejecuciones para $Environment."; continue }
+            Write-Note ("{0}: {1} -> {2}/{3}  {4}  {5}" -f $pair[0], $last.numero, $last.estado, $last.resultado, $last.fin, (Get-AdoRunUrl $Cfg ([string]$last.id)))
+        }
+        return
+    }
 
     if (Get-Command gh -ErrorAction SilentlyContinue) {
         Write-Step 'Últimos despliegues (GitHub Actions)'
@@ -1262,9 +1499,24 @@ function Invoke-Logs($Cfg) {
     & az webapp log tail -g $rg -n $res.WebApp --only-show-errors
 }
 
-function Invoke-Rollback($Cfg, [string]$Which) {
-    Assert-GhContext
-    Write-Step "Despliegues exitosos recientes de $Environment"
+function Get-AdoRollbackCandidates($Cfg) {
+    $pipelineId = Get-AdoPipelineId $Cfg $AdoBackendPipeline
+    if (-not $pipelineId) { Stop-WithError "No existe el pipeline $AdoBackendPipeline en Azure DevOps." }
+    # El pipeline etiqueta cada ejecución con el entorno y con sha-<7 caracteres>
+    # del commit desplegado (ver pipelines/deploy-backend.yml, paso Empaquetar).
+    $q = "[?starts_with(buildNumber, 'backend-$Environment-')].{fecha:finishTime, numero:buildNumber, motivo:reason, tags:tags}"
+    $runs = @(Invoke-AzJson -Arguments (@('pipelines', 'runs', 'list', '--pipeline-ids', $pipelineId, '--result', 'succeeded', '--top', '40', '--query', $q) + (Get-AdoScope $Cfg)))
+    $candidates = @()
+    foreach ($r in $runs) {
+        if ($null -eq $r) { continue }
+        $shaTag = @($r.tags) | Where-Object { $_ -like 'sha-*' } | Select-Object -First 1
+        if (-not $shaTag) { continue }
+        $candidates += [pscustomobject]@{ Fecha = $r.fecha; Ref = ([string]$shaTag).Substring(4); Evento = $r.motivo; Titulo = $r.numero }
+    }
+    return $candidates
+}
+
+function Get-GhRollbackCandidates($Cfg) {
     $runs = Invoke-Gh -Arguments @('run', 'list', '--repo', $Cfg.GitHubRepo, '--workflow', $BackendWorkflow, '--status', 'success',
         '--limit', '40', '--json', 'displayTitle,headSha,createdAt,event,url') | ConvertFrom-Json
     # El run-name del workflow es "Backend <env> @ <ref>" (ver deploy-backend-azure.yml).
@@ -1276,6 +1528,13 @@ function Invoke-Rollback($Cfg, [string]$Which) {
             $candidates += [pscustomobject]@{ Fecha = $r.createdAt; Ref = $deployed; Evento = $r.event; Titulo = $r.displayTitle }
         }
     }
+    return $candidates
+}
+
+function Invoke-Rollback($Cfg, [string]$Which) {
+    Assert-CiContext $Cfg
+    Write-Step "Despliegues exitosos recientes de $Environment"
+    if (Test-Ado $Cfg) { $candidates = @(Get-AdoRollbackCandidates $Cfg) } else { $candidates = @(Get-GhRollbackCandidates $Cfg) }
     if ($candidates.Count -lt 1) { Stop-WithError "No hay despliegues exitosos de $Environment en el historial." }
     $candidates = @($candidates | Select-Object -First 10)
     for ($i = 0; $i -lt $candidates.Count; $i++) {
@@ -1290,7 +1549,7 @@ function Invoke-Rollback($Cfg, [string]$Which) {
     if (-not [int]::TryParse($choice, [ref]$n) -or $n -lt 0 -or $n -ge $candidates.Count) { Stop-WithError 'Opción no válida.' }
     $target = $candidates[$n].Ref
     Write-Warn 'Las migraciones NO se revierten: el rollback despliega código anterior sobre el esquema actual.'
-    Write-Warn 'Por eso el rollback se lanza con skip_migrations=true.'
+    Write-Warn 'Por eso el rollback se lanza sin migraciones (skip_migrations / skipMigrations).'
     Invoke-Deploy $Cfg $target $Which $true
 }
 
@@ -1451,6 +1710,30 @@ function Invoke-SecretSync($Cfg) {
     Update-SecretReferences $res @($plan | ForEach-Object { $_.Name })
 }
 
+# Azure DevOps: qué credenciales federadas tiene la identidad del entorno y cuál
+# corresponde a la service connection azure-<env>. La rama, la aprobación y el
+# bloqueo los imponen los checks de la conexión (se ven en el portal).
+function Show-AdoDeployAccess($Cfg) {
+    Write-Step "Quién puede desplegar a $Environment (credenciales federadas de gh-synatrack-$Environment)"
+    $appName = "gh-synatrack-$Environment"
+    $appId = Invoke-Az -Arguments @('ad', 'app', 'list', '--display-name', $appName, '--query', '[0].appId', '-o', 'tsv') -AllowFailure
+    if (-not $appId) { Write-Warn "No existe la identidad $appName (o falta permiso para leerla en Entra)."; return }
+    $fc = @(Invoke-AzJson -Arguments @('ad', 'app', 'federated-credential', 'list', '--id', $appId, '--query', '[].{name:name, issuer:issuer, subject:subject}') -AllowFailure)
+    $ep = $null
+    if (Test-AdoExtension) { $ep = Get-AdoServiceEndpoint $Cfg } else { Write-Warn 'Sin la extensión azure-devops de az no se puede leer la service connection.' }
+    $found = $false
+    foreach ($c in $fc) {
+        if ($null -eq $c) { continue }
+        $tipo = 'REVISAR: no es de Azure DevOps ni de GitHub'
+        if ($ep -and $c.issuer -eq $ep.issuer -and $c.subject -eq $ep.subject) { $tipo = "Azure DevOps, service connection azure-$Environment"; $found = $true }
+        elseif ($c.issuer -eq $GitHubOidcIssuer) { $tipo = 'GitHub Actions (se borra al cerrar la 3.6)' }
+        Write-Note ("  - {0}: {1}" -f $c.name, $tipo)
+    }
+    if ($ep -and -not $found) { Write-Warn "La service connection azure-$Environment no tiene su credencial federada: ejecuta bootstrap -Env $Environment." }
+    if ($null -eq $ep -or -not $ep.id) { Write-Warn "No existe la service connection azure-$Environment en $($Cfg.AdoOrg)/$($Cfg.AdoProject)." }
+    Write-Note "Checks (rama, aprobación, bloqueo): Project settings -> Service connections -> azure-$Environment -> Approvals and checks."
+}
+
 function Invoke-Access($Cfg) {
     $null = Assert-AzContext $Cfg
     $rg = (Get-EnvCfg $Cfg).ResourceGroup
@@ -1515,6 +1798,11 @@ function Invoke-Access($Cfg) {
         }
     }
 
+    if (Test-Ado $Cfg) {
+        Show-AdoDeployAccess $Cfg
+        return
+    }
+
     # Qué ramas de GitHub pueden obtener un token de este entorno (OIDC).
     Write-Step "Quién puede desplegar a $Environment desde GitHub (credenciales federadas)"
     $appName = "gh-synatrack-$Environment"
@@ -1526,7 +1814,11 @@ function Invoke-Access($Cfg) {
         foreach ($s in $fc) { if ($s) { Write-Note "  - $s" } }
         $expected = "$(Get-GitHubOidcSubjectPrefix $Cfg.GitHubRepo):ref:refs/heads/$((Get-EnvCfg $Cfg).GitBranch)"
         if ($fc -notcontains $expected) { Write-Warn "Falta $expected : ejecuta bootstrap -Env $Environment." }
-        $extra = @($fc | Where-Object { $_ -and $_ -ne $expected -and -not ($Environment -eq 'stage' -and $_ -like '*:pull_request') })
+        # Las de Azure DevOps (subject /eid1/... o sc://...) son de la service
+        # connection azure-<env> y conviven con las de GitHub hasta la 3.6.
+        $ado = @($fc | Where-Object { $_ -like '/eid1/*' -or $_ -like 'sc://*' })
+        if ($ado.Count -gt 0) { Write-Note "  ($($ado.Count) de Azure DevOps: service connection azure-$Environment; ver access con CiProvider='ado')" }
+        $extra = @($fc | Where-Object { $_ -and $_ -ne $expected -and $ado -notcontains $_ -and -not ($Environment -eq 'stage' -and $_ -like '*:pull_request') })
         if ($extra.Count -gt 0) { Write-Warn ("Credenciales que sobran (revisar y borrar): " + ($extra -join ', ')) }
     }
     if ($Environment -eq 'prod') {
