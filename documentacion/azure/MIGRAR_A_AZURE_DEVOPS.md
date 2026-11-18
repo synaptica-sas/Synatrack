@@ -200,10 +200,13 @@ borrar el clon espejo.
   la 3.6.
 
 - [X] YAML de los cuatro pipelines y adaptación de `azure.ps1` e `infra-env.sh`.
-- [ ] Agregar `CiProvider = "github"`, `AdoOrg = "synaptica-co"` y `AdoProject = "Synatrack"` a
-      `infra/azure.config.psd1` (lo hace un operador; Claude no lo lee).
-- [ ] Crear el pipeline `ci` en Azure DevOps desde la rama `chore/azure-pipelines`
-      (`/pipelines/ci.yml`) y correrlo una vez en verde.
+- [X] Agregar `CiProvider = "github"`, `AdoOrg = "synaptica-co"` y `AdoProject = "Synatrack"` a
+      `infra/azure.config.psd1` (lo hace un operador; Claude no lo lee). Cada operador lo
+      repite en su copia.
+- [X] Crear el pipeline `ci` en Azure DevOps desde la rama `chore/azure-pipelines`
+      (`/pipelines/ci.yml`) y correrlo una vez en verde. Primera ejecución `ci-20261118.1`:
+      frontend ~4 min y backend ~2,5 min (con las pruebas de ruta), en serie porque hay un solo
+      job gratis.
 - [ ] Fusionar `chore/azure-pipelines` a `dev` y a `main` en GitHub (los workflows de GitHub no
       cambian de comportamiento).
 
