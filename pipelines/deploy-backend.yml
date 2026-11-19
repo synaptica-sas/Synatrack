@@ -162,6 +162,9 @@ stages:
               cp .nvmrc "$(Build.ArtifactStagingDirectory)/pkg/nvmrc.txt"
               echo "##vso[build.addbuildtag]$(targetEnv)"
               echo "##vso[build.addbuildtag]sha-${sha:0:7}"
+              # `npm prune` reescribió package-lock.json; se restaura para que la
+              # clave de Cache@2 sea la misma al guardar (si no, no guarda la caché).
+              git checkout -- package-lock.json
             workingDirectory: backend
             displayName: Empaquetar
 

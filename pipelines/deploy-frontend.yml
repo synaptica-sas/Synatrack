@@ -52,8 +52,6 @@ variables:
         value: stage
       - name: serviceConnection
         value: azure-stage
-  - name: npm_config_cache
-    value: $(Pipeline.Workspace)/.npm
 
 name: frontend-$(targetEnv)-$(Date:yyyyMMdd)$(Rev:.r)
 
@@ -101,13 +99,8 @@ jobs:
               inputs:
                 version: $(nodeVersion)
 
-            - task: Cache@2
-              displayName: Caché de npm
-              inputs:
-                key: 'npm | "$(Agent.OS)" | frontend/package-lock.json'
-                restoreKeys: 'npm | "$(Agent.OS)"'
-                path: $(npm_config_cache)
-
+            # Sin Cache@2: la caché de pipelines no funciona dentro de un deployment
+            # job ("Unable to find pipeline caching scopes" al guardarla).
             - bash: npm ci
               workingDirectory: frontend
               displayName: Instalar dependencias
