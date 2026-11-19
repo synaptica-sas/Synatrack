@@ -212,6 +212,17 @@ borrar el clon espejo.
 
 ### 3.6 Cambio
 
+> **En curso desde el 2026-11-18.** Hechos los pasos 1 y 2:
+> - GitHub con `AZURE_DEPLOY_ENABLED=false`. `dev` y `main` de Azure DevOps en `982a2cb`, iguales
+>   a GitHub. `ci` con rama por defecto `dev`; `chore/azure-pipelines` borrada.
+> - Pipelines `deploy-backend` (id 2), `deploy-frontend` (3) e `infra` (4) creados desde `dev`
+>   sin ejecutarse, y compilados con *preview* para stage, prod y rollback.
+> - **`dev` sin políticas** (decisión del 2026-11-18): con política, toda la rama exigiría PR y
+>   `/commit` + `/sync` dejarían de servir; el CI corre igual en cada push por el `trigger`.
+> - `main`: 1 revisor (**el autor puede aprobar su PR por ahora**, como la aprobación de prod),
+>   `ci` obligatorio y `infra` obligatorio con filtro `/infra/*`. *Verify branch protection*
+>   activado en el *Branch control* de `azure-prod`.
+
 1. En GitHub, poner `AZURE_DEPLOY_ENABLED=false`, para que nunca desplieguen los dos a la vez.
    Reflejar en Azure DevOps lo último de `main` y `dev` y crear las políticas de rama (3.4).
 2. Crear en Azure DevOps los pipelines `deploy-backend`, `deploy-frontend` e `infra` (con esos
