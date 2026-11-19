@@ -222,6 +222,12 @@ borrar el clon espejo.
 > - `main`: 1 revisor (**el autor puede aprobar su PR por ahora**, como la aprobación de prod),
 >   `ci` obligatorio y `infra` obligatorio con filtro `/infra/*`. *Verify branch protection*
 >   activado en el *Branch control* de `azure-prod`.
+> - Paso 3 hecho por Juan Alejandro (remoto en Azure DevOps, `CiProvider = "ado"`). Marcos lo
+>   repite en su PC.
+> - Paso 4 (stage) probado el 2026-11-19: despliegue manual de backend y frontend (el primero
+>   pide *Permit*), despliegue automático por push a `dev`, `rollback -Env stage` a `982a2cb`
+>   sin migraciones, y `infra` what-if sin cambios reales (solo ruido del what-if). La caché de
+>   npm no funciona en un *deployment job*: se quitó del frontend.
 
 1. En GitHub, poner `AZURE_DEPLOY_ENABLED=false`, para que nunca desplieguen los dos a la vez.
    Reflejar en Azure DevOps lo último de `main` y `dev` y crear las políticas de rama (3.4).

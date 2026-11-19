@@ -1282,7 +1282,8 @@ function Invoke-AdoDeploy($Cfg, [string]$DeployRef, [string]$Which, [bool]$NoMig
             @('--query', '{id:id, number:buildNumber}') + $scope)
         if ($null -eq $run -or -not $run.id) { Stop-WithError "Azure DevOps no devolvió la ejecución de $p." }
         $url = Get-AdoRunUrl $Cfg ([string]$run.id)
-        Write-Note "Ejecución $($run.number): $url"
+        # Recién encolada, la ejecución puede no tener número todavía.
+        if ($run.number) { Write-Note "Ejecución $($run.number): $url" } else { Write-Note "Ejecución: $url" }
         if ($Environment -eq 'prod') {
             Write-Note 'prod pide aprobación: ábrela en el enlace y pulsa Review. Aquí se espera (Ctrl+C deja la ejecución corriendo).'
         }
