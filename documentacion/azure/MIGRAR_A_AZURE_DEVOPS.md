@@ -79,9 +79,9 @@ Se hace todo de una vez, sin esperas, porque nada de esto se usa.
   - sacar `fx-sync` de `TRABAJOS_VIGILADOS` (`backend/src/modules/jobs/job-runs.service.ts`);
   - borrar `fx-sync-token` del Key Vault si existe;
   - pulsar "Actualizar ahora" una vez en Tasas FX.
-- [ ] **Repositorio:** rebasar `chore/retirar-render-vercel` sobre `origin/dev`, cambiar
+- [X] **Repositorio:** rebasar `chore/retirar-render-vercel` sobre `origin/dev`, cambiar
       "corte pendiente" por "hecho" en `CLAUDE.md` §6 y `DESPLIEGUE.md`, y fusionarla a `dev` y
-      después a `main`.
+      después a `main`. (Hecho: commits `01781be` y `0da66ca`, ya en `main`.)
 
 ---
 
@@ -151,7 +151,7 @@ borrar el clon espejo.
 > connection coincide con su credencial federada, ninguna está abierta a todos los pipelines y
 > las credenciales de GitHub siguen intactas hasta la 3.6.
 
-- [ ] **Políticas de rama** (pasan a la 3.5, cuando exista `pipelines/ci.yml`; la validación de
+- [X] **Políticas de rama** (hechas en la 3.6; ver ahí la decisión de dejar `dev` sin políticas; la validación de
       build necesita un pipeline, y exigir PR en `main` antes de la 3.6 impediría reflejar ahí los
       merges de GitHub):
   - `main`: PR obligatorio, 1 revisor distinto del autor, y el CI en verde;
@@ -207,7 +207,7 @@ borrar el clon espejo.
       (`/pipelines/ci.yml`) y correrlo una vez en verde. Primera ejecución `ci-20261118.1`:
       frontend ~4 min y backend ~2,5 min (con las pruebas de ruta), en serie porque hay un solo
       job gratis.
-- [ ] Fusionar `chore/azure-pipelines` a `dev` y a `main` en GitHub (los workflows de GitHub no
+- [X] Fusionar `chore/azure-pipelines` a `dev` y a `main` en GitHub (los workflows de GitHub no
       cambian de comportamiento).
 
 ### 3.6 Cambio
@@ -228,6 +228,11 @@ borrar el clon espejo.
 >   pide *Permit*), despliegue automático por push a `dev`, `rollback -Env stage` a `982a2cb`
 >   sin migraciones, y `infra` what-if sin cambios reales (solo ruido del what-if). La caché de
 >   npm no funciona en un *deployment job*: se quitó del frontend.
+> - Paso 5 (prod) hecho el 2026-11-19 con el flujo real: PR #1 de `dev` a `main` (`ci` verde,
+>   aprobación, *Rebase and fast-forward* sin borrar `dev`); el merge disparó `deploy-backend` y
+>   `deploy-frontend` hacia prod (*Permit* la primera vez y aprobación). `/health` y el dominio
+>   bien, sin reglas temporales abiertas.
+> - Falta: paso 3 en la PC de Marcos y paso 6 (cierre de GitHub) cuando todo esté estable.
 
 1. En GitHub, poner `AZURE_DEPLOY_ENABLED=false`, para que nunca desplieguen los dos a la vez.
    Reflejar en Azure DevOps lo último de `main` y `dev` y crear las políticas de rama (3.4).
@@ -235,7 +240,8 @@ borrar el clon espejo.
    nombres: `azure.ps1` los busca así) apuntando a cada YAML. La primera ejecución de cada uno pide
    autorizar la service connection, el grupo de variables y el environment (*Permit*). Poner
    `CiProvider = "ado"` en `azure.config.psd1`.
-3. Cada uno cambia el remoto. `/sync` y `/commit` siguen funcionando:
+3. Cada uno prepara su PC según `ESTACION_DE_TRABAJO.md` (remoto, credenciales, config,
+   verificación). `/sync` y `/commit` siguen funcionando:
    ```powershell
    git remote set-url origin https://dev.azure.com/<org>/Synatrack/_git/Synatrack
    ```

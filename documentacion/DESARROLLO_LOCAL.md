@@ -143,6 +143,9 @@ Después, desde `backend/`: `npm run prisma:deploy` y `npm run prisma:seed`.
 
 ## 3. Instalación en una máquina nueva
 
+Antes: clonar el repositorio desde Azure DevOps y configurar Git, `az` y
+`infra/azure.config.psd1` según `azure/ESTACION_DE_TRABAJO.md`.
+
 1. **Node.js 24** (el que declaran ambos `package.json`).
 2. `cd backend && npm install` y `cd frontend && npm install`.
 3. `cp backend/.env.example backend/.env`. El ejemplo ya trae activas `DATABASE_URL`/`DIRECT_URL`
